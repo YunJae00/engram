@@ -81,7 +81,8 @@ test('c9 fix 2/3: C5 and C6 open with the thing, in two different ways, with no 
   const c5 = mergedReport([kim])
   const c5lead = c5.split('\n')[0]!
   // c13a (cause H; C5 judge on "…일정 3개를 찾아 왔어요"): no host count lead; the first line is the first item, with whose it is.
-  expect(c5lead).toMatch(/^- .+ \(지민\) \[[^\]]+\]\(https:/u)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(c5lead).toMatch(/^- 지민이 찾아보니 .+ \[[^\]]+\]\(https:/u)
   expect(c5).not.toMatch(/\d개를|찾아 왔어요/u)
   // The teammate's own "…은 이래요." intro line is not an item; the three are, each with its link. BAR C5: 행사 and a date.
   expect(c5).not.toContain('확인해 보니')
@@ -103,7 +104,8 @@ test('c9 fix 2/3: C5 and C6 open with the thing, in two different ways, with no 
   // A list job that brought one item shows it as one line with its link, not a list.
   const one = mergedReport([{ ...kim, data: { facts: [C5_DATA.facts[0]!] } }])
   expect(one.split('\n')).toHaveLength(1)
-  expect(one).toMatch(/^[^-].+ \(지민\) \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(one).toMatch(/^지민이 찾아보니 .+ \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
 })
 
 test('c9 fix 2: a writer\'s own closing line on where the facts came from is not shown (c11a: structure)', async () => {
@@ -139,7 +141,8 @@ test('c9b r2 finding 2: C5 and C6 openers are said in each teammate\'s own store
   // c11a: no stock ending is forced on a teammate's lines; the same data reads the same in any voice.
   const plain = mergedReport([kim()])
   for (const voice of ['차분하고 또박또박', '밝고 시원시원하게', '담백하고 짧게', '사투리로']) expect(mergedReport([kim(voice)])).toBe(plain)
-  expect(plain.split('\n')[0]).toMatch(/^- .+ \(지민\) \[/u)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(plain.split('\n')[0]).toMatch(/^- 지민이 찾아보니 .+ \[/u)
   expect(plain).not.toMatch(/더라고요!|네요\./u)
   const park = (voice?: string) => member({ id: 'm2', role: '서연', ...(voice ? { voice } : {}), lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT, data: { facts: [], items: C6_ITEMS } })
   const c6 = mergedReport([park('밝고 시원시원하게')])

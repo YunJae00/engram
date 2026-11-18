@@ -173,7 +173,8 @@ it('an owed late part survives a restart: its report comes once if it had ended,
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', team: { lateDone: true } }))
     // c12a B1: alone in its own report, not a "part(name):" label. c13a (cause H): the find itself, whose, and its link; no host lead.
-    expect((await first(after)).result).toBe(died ? '이번엔 못 찾았어요 (서연).' : '슬랙이 캔버스 공유를 냈어요. (서연) [example.com](https://example.com/b)')
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    expect((await first(after)).result).toBe(died ? '이번엔 못 찾았어요 (서연).' : '서연이 찾아보니 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
     // Once: a second request starts nothing.
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(() => expect(after.runner.activeChannels()).toEqual([]))

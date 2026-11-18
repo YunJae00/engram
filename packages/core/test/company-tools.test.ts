@@ -1622,7 +1622,9 @@ test('c6 item 1: the writer gets what is left of the report\'s cap, and before t
   expect(writerMs(hired(REPORT_CAP_MS - 20_000), at)).toBe(20_000)
   // c16a: with the answer's due known, what is left to it.
   expect(writerMs(hired(90_000), at, at + 17_000)).toBe(17_000)
-  expect(writerMs(hired(5000), at, at + 3000)).toBe(REPORT_WRITER_MS)
+  // c16a r2: updated (pinned the 4 s floor over a known due): a due is never passed; 3 s left is 3 s, a passed due is 0 (the host's table).
+  expect(writerMs(hired(5000), at, at + 3000)).toBe(3000)
+  expect(writerMs(hired(5000), at, at - 1000)).toBe(0)
   expect(writerMs(hired(REPORT_CAP_MS - 6000), at)).toBe(6000)
   expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs(hired(REPORT_CAP_MS - 500), at)).toBe(REPORT_WRITER_MS)
@@ -1674,7 +1676,8 @@ test('c6 item 2 (C3): the host\'s own table reads like a person wrote it: no sen
   // A label that is the finding's own title stays ("노션 3.0 출시: …" is no repeat of "노션").
   expect(mergedReport([reported(part('m1', '지민', '노션 조사', { topic: '노션' }), { facts: [{ text: '노션 3.0 출시: AI 회의록이 추가됐어요.', url: 'https://notion.so/a' }] })]))
     // c12a B1: one part alone has no "part(name):" label. c13a (cause H): and no host lead; the finding, whose, and its link.
-    .toMatch(/^노션 3\.0 출시: AI 회의록이 추가됐어요\. \(지민\) \[[^\]]+\]\(https:\/\/notion\.so\/a\)$/)
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    .toMatch(/^지민이 찾아보니 노션 3\.0 출시: AI 회의록이 추가됐어요\. \[[^\]]+\]\(https:\/\/notion\.so\/a\)$/)
 })
 
 test('c6 item 2 (C5): a line that is only a link joins the line before it, whoever wrote the result; under a list or a table it stays', () => {
@@ -1804,11 +1807,13 @@ test('c6 item 6 (C4, C7, C8, H5): a result\'s lead follows the job\'s own verb, 
   const two = { facts: [{ text: '소프트웨이브가 열려요.', url: 'https://a.example/sw', date: '12월 2일' }, { text: 'AI 서밋이 열려요.', url: 'https://a.example/ai', date: '12월 9일' }] }
   // c12a B1: never the job's title. c13a (cause H; H5/C5 judges on "…2개를 찾아 왔어요"): never who brought how many either; the first
   // line is the first item itself, whose it is, and its link, whatever the job's wording or part name.
-  for (const [brief, more] of [['서울 IT 행사 조사', {}], ['다음 달 서울 IT 행사 일정 정리', {}], ['다음 달 서울 IT 행사 일정 정리', { topic: 'IT 행사' }]] as const) expect(first(brief, two, more)).toBe('- 소프트웨이브가 열려요 (12월 2일). (지민) [a.example](https://a.example/sw)')
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  for (const [brief, more] of [['서울 IT 행사 조사', {}], ['다음 달 서울 IT 행사 일정 정리', {}], ['다음 달 서울 IT 행사 일정 정리', { topic: 'IT 행사' }]] as const) expect(first(brief, two, more)).toBe('- 지민이 찾아보니 소프트웨이브가 열려요 (12월 2일). [a.example](https://a.example/sw)')
   expect(first('홍보 문구 3개 써줘', { items: ['가', '나', '다'] }, { lookup: false, writer: true })).toBe('1. 가')
   // One finding: the teammate's own sentence on the first line, with its link.
   const one = { facts: [{ text: '원달러 환율은 지금 1달러에 1,385원이에요.', url: 'https://finance.example/usd' }] }
-  expect(first('원달러 환율 알아봐', one)).toMatch(/^원달러 환율은 지금 1달러에 1,385원이에요\. \(지민\) \[[^\]]+\]\(https:\/\/finance\.example\/usd\)$/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(first('원달러 환율 알아봐', one)).toMatch(/^지민이 찾아보니 원달러 환율은 지금 1달러에 1,385원이에요\. \[[^\]]+\]\(https:\/\/finance\.example\/usd\)$/)
   // The table's lead too: no "둘 다 찾아봤어요" line; each part opens on its name.
   const pair = [reported(part('m1', '지민', '노션 신기능 조사', { topic: '노션' }), { facts: [{ text: '노션이 AI 회의록을 냈어요.', url: 'https://notion.so/a' }] }), reported(part('m2', '서연', '슬랙 신기능 조사', { topic: '슬랙' }), { facts: [{ text: '슬랙이 허들 요약을 냈어요.', url: 'https://slack.com/b' }] })]
   expect(mergedReport(pair).split('\n\n').map(row => row.split(': ')[0])).toEqual(['노션(지민)', '슬랙(서연)'])
@@ -2037,14 +2042,16 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   ] })
   const c5 = mergedReport([kim])
   // c11a: no "정리해 왔어요" sentence, no line of links alone. c13a (cause H): no count head either; the first item leads, with whose it is.
-  expect(c5.split('\n')[0]).toMatch(/^- 소프트웨이브 2026.* \(지민\) \[코엑스\]/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(c5.split('\n')[0]).toMatch(/^- 지민이 찾아보니 소프트웨이브 2026.* \[코엑스\]/)
   expect(c5).not.toMatch(/정리해 왔어요/)
   expect(c5.split('\n').some(onlyLinks)).toBe(false)
   const items = c5.split('\n').filter(line => line.startsWith('- '))
   expect(items).toHaveLength(2)
   for (const item of items) { expect(linksIn(item), item).toHaveLength(1); expect(item).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
   // c12a B2: the text says 코엑스 and the event but no day, so its day follows it once (C10: "12월 2일~4일 … 12월 2일부터 4일까지").
-  expect(items[0]).toMatch(/^- 소프트웨이브 2026\(제11회 대한민국 소프트웨어 대전\)이 코엑스에서 열려요\. 무료예요 \(12월 2일~4일\)\. \(지민\) \[/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(items[0]).toMatch(/^- 지민이 찾아보니 소프트웨이브 2026\(제11회 대한민국 소프트웨어 대전\)이 코엑스에서 열려요\. 무료예요 \(12월 2일~4일\)\. \[/)
   expect(linksIn(items[0]!)[0]).toContain('coex.co.kr')
   expect(linksIn(items[1]!)[0]).toBe('https://www.ncloud.com/support/edu')
   // BAR C5: 지민 named and a date in the last bubble. c13a: the host's rendering adds no words of its own, so "행사" is the writer's lead

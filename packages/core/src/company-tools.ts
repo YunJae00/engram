@@ -912,7 +912,7 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date,
 
 // c11a: teammates hand back data, never prose for the host to parse (stack-10: eleven regexes cut their prose back into lines and still
 // let a draft aside through). The block is the whole answer; the person reads what one writer pass makes of it (writtenReport).
-const REPORT_RULE = 'Your whole answer is one fenced block, ```report, holding JSON and nothing before or after it: {"facts":[{"text":"…","url":"…","site":"…","date":"…"}],"nothing_in_period":{"latest":{"text":"…","name":"…","url":"…","site":"…","date":"…"}},"note":"…"}. facts: what you found for your part, each one short plain sentence in the person\'s language (polite -요 form in Korean) that names what it is about and states its own day or period when it has one ("11월 8일 저녁에 열려요"), with no address in it; url: the page it came from, copied exactly (a result\'s own page, never a search-results page unless the figure is read from that page\'s own box); site: that page\'s site or publication name as its result shows it; date: that same day once more as a label, in words ("10월 19일", with the year when it is not this year). For a schedule or a list, one fact per item, only items that really are the kind of thing asked (judge by what each one is), each with its own page. Everything the rules above say to report goes into facts. nothing_in_period: only when nothing is there for the time your part asks; then facts is [] and latest is the newest such thing you did see, when you saw one; its text says only what that thing is, never that nothing is there, and name is that thing in a few words (what it is, at most 30 characters). note: optional, one short sentence to your colleagues in your own words, no address. Nothing about searching, tools, time or limits anywhere.'
+const REPORT_RULE = 'Your whole answer is one fenced block, ```report, holding JSON and nothing before or after it: {"facts":[{"text":"…","url":"…","site":"…","date":"…"}],"nothing_in_period":{"latest":{"text":"…","name":"…","url":"…","site":"…","date":"…"}},"note":"…"}. facts: what you found for your part, each one short plain sentence in the person\'s language (polite -요 form in Korean) that names what it is about and states its own day or period when it has one ("11월 8일 저녁에 열려요"), with no address in it; url: the page it came from, copied exactly (a result\'s own page, never a search-results page unless the figure is read from that page\'s own box); site: that page\'s site or publication name as its result shows it; date: that same day once more as a label, in words ("10월 19일", with the year when it is not this year), and only the day the fact itself happens or holds: never the day its page or result was posted or updated; a fact with no day of its own has no date. For a schedule or a list, one fact per item, only items that really are the kind of thing asked (judge by what each one is), each with its own page. Everything the rules above say to report goes into facts. nothing_in_period: only when nothing is there for the time your part asks; then facts is [] and latest is the newest such thing you did see, when you saw one; its text says only what that thing is, never that nothing is there, and name is that thing in a few words (what it is, at most 30 characters). note: optional, one short sentence to your colleagues in your own words, no address. Nothing about searching, tools, time or limits anywhere.'
 /** c12a A1: a lookup teammate's time ran out before it wrote its report: the quick model writes that report from what it read, under the
  * same contract (reportData and kindChecked then take it as usual). The rows are never items by themselves. */
 export const keptReportPrompt = (brief: string, read: readonly string[]): string => [
@@ -1168,7 +1168,8 @@ const factWords = (f: MemberFact): string => { const text = f.text.trim(); retur
 export const LISTING_LABEL = '여러 건이 한 페이지에 모여 있어요.'
 // c16a (cause F2, H5: "11월 22일(일) 아침 기온은 …" and the like with another day in brackets): a fact whose text already states a day of
 // its own shows no `date` beside it; a different one is the day its page was written. Number forms (dateParts), no words.
-// shortcut: a text with no day of its own still shows its `date`, which may be a publication day; the item judge's "outside" could tell.
+// c16a r2: a text with no day of its own shows its `date`, which REPORT_RULE now keeps to the day the fact itself happens or holds (never
+// the day its page was posted), so that day is the fact's.
 const ownDay = (f: MemberFact): string | undefined => f.date && !dateParts(factWords(f)).size ? f.date : undefined
 // c16a: a nothing-new part's latest as a row: the short name the judge or the teammate gave it (`name`), else the teammate's whole sentence
 // (latestName's first clause was the state itself on C3).
@@ -1197,7 +1198,11 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
 // A page that lists several things (kindChecked) is shown labeled as what it is, a page of several: never as an item (rule 7).
   // stack-13 (cause H, C5 "하나씩은 아직 못 뽑았어요"): the label says what the page holds, never what the teammate did or did not do.
   // Whose it is is said once, on the part's first line.
-  const item = (f: MemberFact, i: number): string => `${datedText({ text: factWords(f), date: ownDay(f) })}${f.listing ? ` ${LISTING_LABEL}` : ''}${i ? '' : by} ${linkOf(f)}`
+  // c16a r2 (H5, review #4: "(지민)" tagged on one row of a one-part answer): when the answer is one part's, whose it is is the subject of
+  // its first line, inside the answer ("지민이 찾아보니 …"), never a tag at a line's end and never a sentence of its own about the work
+  // (c13a). Side by side, each part keeps its "(name)" so no row opens on a name (c13a cause H).
+  const lead = by && !side ? `${josa(m.role, '이', '가')} 찾아보니 ` : ''
+  const item = (f: MemberFact, i: number): string => `${i ? '' : lead}${datedText({ text: factWords(f), date: ownDay(f) })}${f.listing ? ` ${LISTING_LABEL}` : ''}${i || lead ? '' : by} ${linkOf(f)}`
   // round 3: a listing page some items were taken from is where the full list is: one line after the items, never an item.
   const shown = facts.filter(f => !f.rest), rest = facts.filter(f => f.rest), full = rest.length ? [`전체 목록은 여기 있어요. ${[...new Map(rest.map(f => [f.url, f])).values()].map(linkOf).join(' · ')}`] : [] // stack-15: one link per page (two entries of one page left two copies)
   if (shown.length === 1) return [`${row}${item(shown[0]!, 0)}`, ...full].join('\n')
@@ -1218,8 +1223,12 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
 function helperTable(parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
   const cell = (text: string): string => clip(text.replace(/\|/g, '/'), 300)
   return ['| 항목 | 찾은 내용 | 출처 |', '|---|---|---|', ...parts.map(m => {
-    const f = m.data?.facts[0], looked = lookedAt(m), label = cell(partName(m, topics) || m.role)
-    return `| ${label} | ${atWork(m) ? STILL : f ? cell(factWords(f)) : NOTHING} | ${f ? linkOf(f) : looked ? linkOf(looked) : '-'} |`
+    // c16a r2 (review #1): a part's facts from different pages each keep their own link, right after them; one page is its source cell.
+    // A results page a helper cites is a figure read off its own box (a weather or quote box): kept here too.
+    const facts = atWork(m) ? [] : m.data?.facts ?? [], looked = lookedAt(m), label = cell(partName(m, topics) || m.role)
+    const pages = [...new Map(facts.map(f => [f.url, f])).values()], each = pages.length > 1
+    const found = atWork(m) ? STILL : facts.length ? facts.map(f => `${cell(factWords(f))}${each ? ` ${linkOf(f)}` : ''}`).join(' · ') : NOTHING
+    return `| ${label} | ${found} | ${pages.length ? pages.map(linkOf).join(' · ') : looked ? linkOf(looked) : '-'} |`
   })].join('\n')
 }
 // c15b (cause F, C3: "노션(지민): 이번엔 새로 나온 게 없어요. 가장 최근엔 노션은 이번 주엔 새로 낸 기능이 없고, …" three times): the parts that
@@ -1339,7 +1348,8 @@ export function employeesReport(task: DelegatedTask | undefined): string | undef
 /** The same, written by the quick model when there is one (writtenReport). */
 export async function employeesAnswer(task: DelegatedTask | undefined, write?: ReportWriter, previous?: string): Promise<string | undefined> {
   const members = reportable(task)
-  return members && writtenReport({ ask: task!.goal, members, ...(write ? { write } : {}), previous, due: reportDue(task!) })
+  // The late parts' own report follows an answer already given at the due: nobody waits on it, so it has the writer's least time, no due.
+  return members && writtenReport({ ask: task!.goal, members, ...(write ? { write } : {}), previous, due: task!.team?.lateTold ? undefined : reportDue(task!) })
 }
 /** The team result shown last in this thread before this task's report (its own first report, once a late part follows): the next lead does not end like it. */
 export function lastTeamResult(tasks: readonly DelegatedTask[], task: DelegatedTask | undefined): string | undefined {
@@ -1359,15 +1369,18 @@ export const REPORT_CAP_MS = TEAM_ANSWER_MS
 // c16a (cause F2, H5: write, check, repair and check ran out of a fixed 8 s at 27.7 s of a 45 s row): the time is what is left to the
 // answer's due (`due`: the person's message plus TEAM_ANSWER_MS, or a handed part's own due), with no ceiling; the one clock c15a gave the
 // item judge. Without a known due, the cap counted from when the work was handed out.
+// c16a r2 (review #2: a 4 s floor ran 1 s past a due 3 s away): a known due is never passed; the writer's least time is taken from the
+// parts' time: the answer is due that long after the parts are (reportDue, the assign wait below), as a helper's lead answer is due
+// LEAD_ANSWER_MS after its helpers (team-runner). The floor stays only where no due is known.
 export function writerMs(members: readonly TeamMember[], now = Date.now(), due?: number): number {
+  if (due !== undefined) return Math.max(0, due - now)
   const since = Math.min(...members.map(m => Date.parse(m.hiredAt)).filter(at => !Number.isNaN(at)))
-  const left = due !== undefined ? due - now : Number.isFinite(since) ? REPORT_CAP_MS - (now - since) : 0
-  return Math.max(REPORT_WRITER_MS, left)
+  return Math.max(REPORT_WRITER_MS, Number.isFinite(since) ? REPORT_CAP_MS - (now - since) : 0)
 }
-/** c16a: when a task's report is due: its message time plus the answer time, or later when a part started late still needs its least time
- * (half the answer time, from when it was handed out: a hand-off's second teammate). */
+/** c16a: when a task's report is due: the writer's least time after its parts are due (its message time plus the answer time, or later
+ * when a part started late still needs its least time: half the answer time from when it was handed out, a hand-off's second teammate). */
 // shortcut: the same rule as team-runner taskDue, without its test scale; move taskDue here if the two ever differ.
-export const reportDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + TEAM_ANSWER_MS, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + TEAM_ANSWER_MS / 2))
+export const reportDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + TEAM_ANSWER_MS, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + TEAM_ANSWER_MS / 2)) + REPORT_WRITER_MS
 // Each fact the writer may use, with an id it reports back in "kept".
 const factIds = (parts: readonly TeamMember[]): { id: string; m: TeamMember; fact: MemberFact }[] => {
   let k = 0
@@ -1507,6 +1520,7 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   const fallback = mergedReport(members, topics, hired, helpers), ms = input.timeoutMs ?? writerMs(members, input.now?.getTime(), input.due), began = Date.now()
   const all = shownParts(members), log = (writer: string): void => reportLog(`writer=${writer} ms=${Date.now() - began} parts=${all.length} missing=${all.filter(missing).length} outcomes=${all.map(m => `${m.role}:${partOutcome(m)}`).join(',')}`)
   if (!input.write || !all.some(m => m.data)) { log('none'); return fallback }
+  if (ms <= 0) { log('late'); return fallback }
   const write = input.write, prompt = reportPrompt(input.ask, members, topics, context)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -1561,6 +1575,8 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
     },
     async run(args, context) {
       const wait = args['wait'] !== false
+      // c16a r2: the answer is due the writer's least time after the parts (host.due, team-runner taskDue).
+      const partsDue = async (): Promise<number | undefined> => { const due = await host.due?.(); return due === undefined ? undefined : due + REPORT_WRITER_MS }
       const parts = rows(args['to']).map(row => {
         const next = typeof row['then'] === 'object' && row['then'] !== null ? row['then'] as Record<string, unknown> : undefined
         return { who: said(row['who'], 60), brief: String(row['brief'] ?? '').trim().slice(0, 1500), topic: said(row['topic'], 30), title: said(row['role'], BOT_LABEL_CHARS), make: row['make'] === true, ...(next ? { then: { who: said(next['who'], 60), brief: String(next['brief'] ?? '').trim().slice(0, 1500), title: said(next['role'], BOT_LABEL_CHARS) } } : {}) }
@@ -1652,7 +1668,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       const asking = reports.filter(m => m.state === 'waiting')
       if (asking.length && !reports.some(m => m.result && m.review?.ok)) return formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), [])
       // Words only: the host's own merge is the answer (the call closed the turn). Someone still asking is said in their own line.
-      if (wanted.every(one => !one.make)) return [await writtenReport({ ask: context.task, members: reports.filter(m => m.state !== 'waiting'), hired: lines, ...(host.write ? { write: host.write } : {}), signal: context.signal, due: await host.due?.() }), ...asking.map(m => `${m.role}: ${m.result ?? ''}`)].join('\n\n')
+      if (wanted.every(one => !one.make)) return [await writtenReport({ ask: context.task, members: reports.filter(m => m.state !== 'waiting'), hired: lines, ...(host.write ? { write: host.write } : {}), signal: context.signal, due: await partsDue() }), ...asking.map(m => `${m.role}: ${m.result ?? ''}`)].join('\n\n')
       return JSON.stringify({
         ...(lines.length ? { added: lines } : {}),
         reports: reports.map(m => ({ who: m.role, state: m.review ? (m.review.ok ? 'done' : 'failed') : m.state, result: m.result ?? '', ...(m.sources?.length ? { sources: m.sources } : {}), ...(m.files?.length ? { files: m.files } : {}), ...(m.state === 'waiting' ? { id: m.id, ask: m.result ?? '' } : {}) })),

@@ -26,7 +26,7 @@ const ACCEPTED_NOTE = 'Members with accepted true are lookups, already accepted 
 export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist and says only what the cells below show, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"). Every concrete value a member reported stays in its row, labeled as the member labeled it (출시가, 예상, 전작, or the model it belongs to: "상위 모델 출시가 199만 원부터"), never dropped or turned into "미발표"; a thing already out has its 출시가 and date. No sentence about how the work was split, who took which part or how many took part: the first line is the answer. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A value marked "(no live source)" lost the page it was read on: its cell keeps the value labeled unconfirmed ("199만 원(미확인)"), and its source cell links another page that member read, or, with none, says 미확인; never an empty cell. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value not out yet keeps the labeled figure its member reported ("예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
 const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id, a site you cannot name by its host as written in the address (store.google.com), never a piece of a title, never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
-const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
+const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; when they drop or replace a part, give that member id in stop (the new part, if any, in members): it ends and is no part of the answer. With nothing to add or drop, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
 // A lookup member (research, fact check, reading): a faster model, reading tools only, and a time box. perf146: three opus members with 65 tools
@@ -813,6 +813,10 @@ const measured = (brief: string, measure: string): string => measure ? `${brief}
 const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(m.sources?.length ? { sources: m.sources } : {}), ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''
 
+// c16a r2 (review #3: after "그건 빼고 …" the old part stayed a row of the one answer): what the host writes on a member the lead took off
+// at the person's change. It ends at once and no answer is made from it (lead-check turnHelpers), the way a named part taken off leaves no row.
+export const TAKEN_OFF = 'Taken off: the person changed the ask while it worked.'
+
 export function teamHireTools(host: TeamHost): AgentTool[] {
   // Members this caller hired in this turn and has not been handed back finished: an early return leaves some working.
   const open = new Map<string, Promise<void>>()
@@ -859,11 +863,17 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
         members: { type: 'array', maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' }, query: { type: 'string' }, topic: { type: 'string' } } } },
-        notes: { type: 'string' }, big: { type: 'boolean' }, measure: { type: 'string' },
+        notes: { type: 'string' }, big: { type: 'boolean' }, measure: { type: 'string' }, stop: { type: 'array', items: { type: 'string' } },
       },
     },
     async run(args, context) {
       const asked = (Array.isArray(args['members']) ? args['members'] : []) as Record<string, unknown>[]
+      const stop = (Array.isArray(args['stop']) ? args['stop'] : []).filter((id): id is string => typeof id === 'string' && took.includes(id))
+      if (stop.length) {
+        await host.release(stop)
+        await host.change(task => { for (const m of task.team?.members ?? []) if (stop.includes(m.id)) { m.review = { ok: false, note: TAKEN_OFF }; delete m.result; delete m.data } })
+        for (const id of stop) { open.delete(id); took.splice(took.indexOf(id), 1) }
+      }
       // Nobody new: wait for the members an earlier call left working.
       if (!asked.length && (open.size || took.length)) return collect()
       const said = host.personSaid()

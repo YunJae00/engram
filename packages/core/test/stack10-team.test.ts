@@ -13,7 +13,8 @@ test('stack-10 (c10b run C5): a schedule counts the items that give a day; the o
   // The teammate is named on the part's head (c12a B1: a sentence of who brought how many, no job title); every item stays listed, each
   // with its own link named by its site.
   // c13a (cause H): no host count lead; the first line is the first item, with whose it is.
-  expect(said.split('\n')[0]).toMatch(/^- 부산 클라우드 밋업.* \(하린\) \[/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(said.split('\n')[0]).toMatch(/^- 하린이 찾아보니 부산 클라우드 밋업.* \[/)
   expect(said).not.toMatch(/\d개를/)
   expect(said.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
   expect(said).toContain('12월 9일')

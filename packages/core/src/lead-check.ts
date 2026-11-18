@@ -5,7 +5,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { TeamMember } from './delegated-tasks.js'
 import { writtenReport } from './company-tools.js'
-import { isSearchPage, mergeReady, siteOf } from './team-hire-tools.js'
+import { isSearchPage, mergeReady, siteOf, TAKEN_OFF } from './team-hire-tools.js'
 import { checkedWrite, type QuickText } from './written-check.js'
 
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
@@ -26,9 +26,10 @@ export const keepsForm = (draft: string, again: string): boolean => {
 }
 const brought = (m: TeamMember): boolean => !!m.result?.trim() && m.state !== 'failed' && !m.empty
 
-/** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's). */
+/** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's), less any it took
+ * off at the person's change (c16a r2). */
 export function turnHelpers(members: readonly TeamMember[] | undefined, since: number): TeamMember[] {
-  return (members ?? []).filter(m => m.parentId === null && !m.botId && Date.parse(m.hiredAt) >= since - 1000)
+  return (members ?? []).filter(m => m.parentId === null && !m.botId && Date.parse(m.hiredAt) >= since - 1000 && m.review?.note !== TAKEN_OFF)
 }
 
 /** What the check and the rewrite read: each helper's part and what it brought back, and the parts that brought nothing. */
@@ -80,17 +81,33 @@ export async function checkedLead(input: {
 // requested (MERGED_SHAPE), its meaning check (checkedLead) due before it started. The named team's answer already had one writer with a
 // guaranteed form, a check with time to run and one fallback voice (writtenReport); the helpers' answer now goes through that same writer.
 
-/** A helper as a part of the team's one answer: its row is its topic (the item, "서울"), its one fact its result in plain words with the
- * page it cites, so writtenReport, reportCheck and mergedReport read it like any part. The result is never parsed into facts: it is one. */
+/** A helper as a part of the team's one answer: its row is its topic (the item, "서울"), its facts what it found, each with the page it
+ * cites for it, so writtenReport, reportCheck and mergedReport read it like any part.
+ * c16a r2 (review #1: a price and a release date from two pages came out as one fact under the first page): a lookup cites each fact
+ * where it states it (LOOKUP_RULE), so the result is cut after each citation: every stretch of words ending at a link is a fact of that
+ * page; words after the last link belong to the fact before them. Only the helper's own citations are read, never its words. With no
+ * citation at all the whole result is one fact, of a page it read (its own before a results page). */
 export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
   return helpers.map(m => {
     const topic = (m.topic || m.role).replace(/[|()[\]]/g, ' ').trim()
     if (!brought(m)) return { ...m, topic }
-    const result = m.result!.trim(), cited = [...result.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
-    // The page its result cites first (a weather box cites its results page on purpose), else a page it read, its own before a results page.
-    const own = cited[0], url = own?.[2] ?? (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
-    const text = result.replace(/\[([^\]\n]*)\]\((?:https?:\/\/[^)\s]+)\)/g, '$1').replace(/https?:\/\/[^\s)\]>"'|]+/g, '').replace(/\s+/g, ' ').trim()
-    return url && text ? { ...m, topic, data: { facts: [{ text: clip(text, 600), url, site: siteOf(url, own?.[1], /[가-힣]/.test(text)) }] } } : { ...m, topic }
+    const result = m.result!.trim(), korean = /[가-힣]/.test(result)
+    const plain = (text: string): string => text.replace(/\s+/g, ' ').replace(/^[\s,.;:·—–)）-]+/u, '').trim()
+    const facts: { text: string; url: string; label?: string }[] = []
+    let from = 0
+    for (const hit of result.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g)) {
+      const text = plain(result.slice(from, hit.index).replace(/[(（]\s*$/u, ''))
+      from = hit.index + hit[0].length
+      if (text) facts.push({ text, url: hit[2] ?? hit[0], ...(hit[2] ? { label: hit[1] } : {}) })
+      // A link right after another adds no fact: the words before them were cited already.
+    }
+    const tail = plain(result.slice(from))
+    if (tail && facts.length) facts[facts.length - 1]!.text += ` ${tail}`
+    if (!facts.length) {
+      const url = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
+      if (url && tail) facts.push({ text: tail, url })
+    }
+    return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })
 }
 

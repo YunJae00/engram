@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createTask, helperAnswer, kindChecked, listTasks, mergedReport, mergingHire, reportData, REPORT_WRITER_MS, setReportLog, settleMember, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createBot, createTask, employeeNote, employeesAnswer, helperAnswer, kindChecked, listTasks, mergedReport, mergingHire, reportData, reportDue, REPORT_WRITER_MS, setReportLog, settleMember, TAKEN_OFF, TEAM_ANSWER_MS, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
@@ -154,14 +154,26 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
     expect(calls).toHaveLength(3)
   })
 
-  it('with 3 s left the host\'s rendering is shown, inside the writer\'s least time, and no repair runs past it', async () => {
+  // c16a r2: updated (review #2: it allowed the 4 s floor past a due 3 s away): the answer is in by the due itself.
+  it('with 3 s left the host\'s rendering is shown by the due, and no repair runs past it', async () => {
     vi.useFakeTimers({ now: T0 })
     const calls: string[] = [], m = handed()
-    const out = writtenReport({ ask: '하람이는 이번 주말 강릉 날씨 찾아봐', members: [m], write: slowRepair(calls), due: T0 + 3000 })
-    await vi.advanceTimersByTimeAsync(REPORT_WRITER_MS + 100)
+    let at: number | undefined
+    const out = writtenReport({ ask: '하람이는 이번 주말 강릉 날씨 찾아봐', members: [m], write: slowRepair(calls), due: T0 + 3000 }).then(text => { at = Date.now(); return text })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(at).toBeDefined()
+    expect(at! - T0).toBeLessThanOrEqual(3000)
     expect(await out).toBe(mergedReport([m]))
-    expect(Date.now() - T0).toBeLessThanOrEqual(REPORT_WRITER_MS + 100)
     expect(calls).toHaveLength(2)
+    expect(REPORT_WRITER_MS).toBeGreaterThan(3000)
+  })
+
+  it('c16a r2: a due already passed (a teammate back after it) is the host\'s rendering at once, with no writer call', async () => {
+    vi.useFakeTimers({ now: T0 })
+    const calls: string[] = [], m = handed()
+    expect(await writtenReport({ ask: '하람이는 이번 주말 강릉 날씨 찾아봐', members: [m], write: slowRepair(calls), due: T0 - 500 })).toBe(mergedReport([m]))
+    expect(Date.now()).toBe(T0)
+    expect(calls).toHaveLength(0)
   })
 })
 
@@ -181,8 +193,10 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
     expect(out).toContain(GU)
     expect(out).not.toContain(BLOG)
     expect(out).not.toMatch(/\((?:11월 2일|10월 30일|10월 28일)\)/)
-    // Whose it is is said once (rule 7), on the first row only.
-    expect(out.match(/\(이든\)/g)).toHaveLength(1)
+    // Whose it is is said once (rule 7), as the first row's subject, never a "(이든)" tag on a row (c16a r2, review #4).
+    expect(out.match(/이든/g)).toHaveLength(1)
+    expect(out).toMatch(/^- 이든이 찾아보니 부산 불꽃축제는 /)
+    expect(out).not.toContain('(이든)')
     expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(2)
   })
 
@@ -204,5 +218,79 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
     const out = mergedReport(quiet)
     expect(out.match(/없/g)).toHaveLength(1)
     for (const topic of ['피그마', '미로', '캔바']) expect(out).toContain(`${topic} 개선판 (11월 5일)`)
+  })
+})
+
+// c16a round 2 (Codex r1 findings #1–#3). Wordings not in the harness: 후쿠오카 → 오키나와 swap, 갤럭시 탭 S11 price and release day.
+describe('c16a r2: review findings', () => {
+  it('#3: a part the person replaces mid-work ("후쿠오카 말고 오키나와로") leaves no row; the new part is a row of the one table', async () => {
+    const { hire, paths } = await lane('swap', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { steer: 10, delay: 80 })
+    const first = await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })
+    const back = JSON.parse(first) as { members: { id: string; role: string }[]; note: string }
+    expect(back.note).toContain('give that member id in stop')
+    const gone = back.members.find(m => m.role === '후쿠오카')!.id
+    const out = await hire.run({ stop: [gone], members: [{ role: '오키나와', topic: '오키나와', brief: '오키나와 환율 영향', lookup: true }] }, { task: '' })
+    expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['도쿄', '오사카', '오키나와'])
+    expect(out).not.toContain('후쿠오카')
+    expect(hire.closesOn!(out)).toBe(true)
+    // The record: taken off, released, nothing of it kept as a result (every member still ends reviewed and released).
+    const member = (await listTasks(paths))[0]!.team!.members.find(m => m.id === gone)!
+    expect(member).toMatchObject({ state: 'released', review: { ok: false, note: TAKEN_OFF } })
+    expect(member.result).toBeUndefined()
+  })
+
+  it('#3: a stop with nothing new waits for the rest and answers over them alone', async () => {
+    const { hire } = await lane('drop', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { steer: 10, delay: 80 })
+    const back = JSON.parse(await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })) as { members: { id: string; role: string }[] }
+    const out = await hire.run({ stop: [back.members.find(m => m.role === '오사카')!.id], members: [] }, { task: '' })
+    expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['도쿄', '후쿠오카'])
+  })
+
+  it('#1: a helper\'s facts from two pages each keep their own page, in the writer\'s data and in the host\'s table', async () => {
+    const at = Date.now(), SAM = 'https://www.samsung.com/sec/tablets/galaxy-tab-s11/', YNA = 'https://www.yna.co.kr/view/AKR2026090500001'
+    const helper: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '탭 조사', topic: '갤럭시 탭 S11', brief: '갤럭시 탭 S11 가격과 출시일', lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: 's1', hiredAt: new Date(at).toISOString(),
+      result: `가격: 기본 모델 국내 출고가 119만 9천 원이에요. [삼성닷컴](${SAM})\n출시일: 2026년 9월 5일에 국내 출시됐어요 ([연합뉴스](${YNA})).`, sources: [SAM, YNA] }
+    const other: TeamMember = { ...helper, id: 'm2', topic: '아이패드', brief: '아이패드 가격', result: '아이패드 기본 모델은 59만 9천 원이에요. [애플](https://www.apple.com/kr/ipad/)', sources: ['https://www.apple.com/kr/ipad/'] }
+    const prompts: string[] = []
+    const out = await helperAnswer({ ask: '갤럭시 탭 S11이랑 아이패드 가격, 출시일 비교해줘', members: [helper, other], since: at, write: async prompt => { prompts.push(prompt); return undefined }, due: at + 10_000 })
+    const data = JSON.parse(prompts[0]!.split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { text: string; link: string }[] }[]
+    const tab = data.find(p => p.part === '갤럭시 탭 S11')!.facts!
+    expect(tab).toHaveLength(2)
+    expect(tab[0]!.text).toContain('119만 9천 원'); expect(tab[0]!.link).toContain(SAM); expect(tab[0]!.text).not.toContain('9월 5일')
+    expect(tab[1]!.text).toContain('9월 5일'); expect(tab[1]!.link).toContain(YNA)
+    // The host's table: in that part's row each fact is followed by its own page.
+    const row = tableRows(out!).find(line => line.includes('갤럭시 탭 S11'))!
+    expect(row).toMatch(new RegExp(`119만 9천 원이에요\\.? \\[[^\\]]+\\]\\(${SAM.replace(/[.?/]/g, '\\$&')}\\) · .*9월 5일[^|]*\\]\\(${YNA.replace(/[.?/]/g, '\\$&')}\\)`))
+    // A part with one page keeps the one link in its source cell only.
+    const ipad = tableRows(out!).find(line => line.includes('아이패드'))!
+    expect(ipad.match(/apple\.com/g)).toHaveLength(1)
+  })
+
+  it('#2: a named team\'s answer is due the writer\'s least time after its parts; a late parts\' follow-up has no due', () => {
+    const created = '2026-11-19T01:00:00.000Z'
+    const task = { createdAt: created, team: { members: [] } } as unknown as Parameters<typeof reportDue>[0]
+    expect(reportDue(task)).toBe(Date.parse(created) + TEAM_ANSWER_MS + REPORT_WRITER_MS)
+  })
+
+  it('#2: past the due the first report is the host\'s at once; the late parts\' own report after it still gets the writer\'s least time', async () => {
+    const m = (late: boolean): TeamMember => {
+      const one: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '하람', brief: '강릉 날씨', topic: '강릉', botId: 'bot-1', lookup: true, background: true, state: 'done', sessionKey: 's', hiredAt: '2026-01-05T01:00:00.000Z', ...(late ? { late: true as const } : {}) }
+      const answer = `\`\`\`report\n${JSON.stringify({ facts: [{ text: '강릉은 맑아요.', url: 'https://weather.example.kr/g' }] })}\n\`\`\``
+      settleMember(one, { answer, report: reportData(answer, one, [], true) ?? null }, '2026-01-05T01:00:30.000Z', true)
+      return one
+    }
+    const task = (lateTold: boolean) => ({ id: 't', botId: 'b1', goal: '하람이는 강릉 날씨 찾아봐', createdAt: '2026-01-05T01:00:00.000Z', team: { members: [m(lateTold)], hires: 1, maxHires: 8, maxDepth: 2, big: false, ...(lateTold ? { lateTold: true as const } : {}) } }) as unknown as Parameters<typeof employeesAnswer>[0]
+    const given: (number | undefined)[] = []
+    await employeesAnswer(task(false), async (_prompt, ms) => { given.push(ms); return undefined })
+    expect(given).toHaveLength(0)
+    await employeesAnswer(task(true), async (_prompt, ms) => { given.push(ms); return undefined })
+    expect(given).toEqual([REPORT_WRITER_MS])
+  })
+
+  it('#4: a teammate\'s rule keeps a fact\'s date to the day the fact itself holds, never its page\'s day (what the host shows beside a dayless text)', async () => {
+    const paths = await vault('rule')
+    const bot = await createBot(paths, { name: '하람' })
+    const note = await employeeNote(paths, bot.id, undefined, 'lookup')
+    expect(note).toContain('only the day the fact itself happens or holds: never the day its page or result was posted or updated; a fact with no day of its own has no date')
   })
 })
