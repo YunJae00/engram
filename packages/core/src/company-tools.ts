@@ -1128,8 +1128,15 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
 function uncited(text: string, facts: readonly MemberFact[]): MemberFact[] {
   const flat = (s: string): string => s.replace(/\s+/g, ' ').replace(/[.。!?]+$/u, '').trim(), words = flat(text.replace(/\[[^\]]*\]\([^)]*\)/g, ' '))
   const one = [...new Map(facts.map(f => [JSON.stringify([f.url, flat(f.text)]), f])).values()]
-  const times = (url: string): number => text.split(`](${named('x', url).slice(4, -1)})`).length - 1
-  return one.filter(f => f.url && !times(f.url) ? true : (!f.url || times(f.url) < one.filter(o => o.url === f.url).length) && !words.includes(flat(f.text)))
+  const link = (url: string): string => `](${named('x', url).slice(4, -1)})`, said = (f: MemberFact): boolean => words.includes(flat(f.text))
+  const units = [...new Set([...text.matchAll(/[^\n]*?\]\([^)\s]*\)/g)].map(one => flat(one[0])))]
+  return one.filter(f => {
+    if (said(f)) return !!f.url && !text.includes(link(f.url))
+    if (!f.url) return true
+    const page = one.filter(o => o.url === f.url), matched = page.filter(said)
+    const free = units.filter(unit => unit.includes(link(f.url)) && !matched.some(o => unit.replace(/\[[^\]]*\]\([^)]*\)/g, ' ').replace(/\s+/g, ' ').includes(flat(o.text))))
+    return free.length < page.length - matched.length
+  })
 }
 export type ReportRefusal = { refused: string; why: string; quote?: string; form?: true }
 export function reportCheck(raw: string | undefined, members: readonly TeamMember[], helpers = false): { text: string; soft: ReportRefusal[]; adds: TeamMember[]; unlinked: MemberFact[] } | ReportRefusal {

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createTask, helperAnswer, listTasks, mergingHire, officeTools, runToolSession, setReportLog, updateTask, wellFormed, writtenReport, type AgentTool, type Engine, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
+import { checkedSearch, createTask, reportCheck, helperAnswer, listTasks, mergingHire, officeTools, runToolSession, setReportLog, updateTask, wellFormed, writtenReport, type AgentTool, type Engine, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -269,5 +269,16 @@ describe('stack-19: fixes after the branch results', () => {
     const kept = await close(ask)
     expect(kept.startsWith(reply), kept).toBe(true)
     expect((await close('')).split('\n')[0]).toBe('월별 지출 파일을 시트 1개로 만들었어요.')
+  })
+})
+
+describe('stack-19: Codex-cap decisions', () => {
+  const page = 'https://fest.example/gangwon', at = new Date().toISOString()
+  const member: TeamMember = { id: 'm', parentId: null, depth: 1, role: '하람', brief: '강원 축제 두 개', lookup: true, state: 'done', sessionKey: 's', hiredAt: at, data: { facts: [{ text: '강릉 커피축제는 토요일에 열려요.', url: page, site: '축제' }, { text: '속초 오징어축제는 일요일에 열려요.', url: page, site: '축제' }] } }
+  const unlinked = (message: string) => { const out = reportCheck(JSON.stringify({ message }), [member]); return 'unlinked' in out ? out.unlinked.map(f => f.text) : ['refused'] }
+  it('c19a r3 #1: one fact said twice with the page link twice does not cover the page\'s other fact', () => {
+    expect(unlinked(`강릉 커피축제는 토요일에 열려요. [축제](${page})\n강릉 커피축제는 토요일에 열려요. [축제](${page})`)).toEqual(['속초 오징어축제는 일요일에 열려요.'])
+    expect(unlinked(`강릉 커피축제는 토요일에 열려요. [축제](${page})\n속초 축제는 일요일이에요. [축제](${page})`)).toEqual([])
+    expect(unlinked(`강릉 커피축제는 토요일에 열려요. [축제](${page}) 속초 오징어축제는 일요일에 열려요. [축제](${page})`)).toEqual([])
   })
 })
