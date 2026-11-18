@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { laneTidy, perDay, weekendAnswer } from '../src/main/fast-lane.js'
+import { readFileSync } from 'node:fs'
+import { LANE_NOTE, laneTidy, laneToday } from '../src/main/fast-lane.js'
 
 const now = new Date('2026-11-17T09:00:00+09:00')
 test('c10a L1: the run\'s answer loses "13.0" and the date after 오늘; other figures and dates stay', () => {
@@ -11,28 +12,24 @@ test('c10a L1: the run\'s answer loses "13.0" and the date after 오늘; other f
 
 const l3 = '이번 주말(21~22일)은 부산에 비 소식은 없고 맑거나 구름 많은 날씨예요. 모레(19일) 밤부터 맑음으로 이어져서 주말까지 쾌청한 편이에요. 다만 기온이 꽤 떨어져서 아침엔 5도 안팎까지 내려가니 쌀쌀하게 느껴질 수 있어요. [네이버 날씨](https://search.naver.com/search.naver?query=부산+주말+날씨)'
 const held = ['results for "부산 주말 날씨" at https://search.naver.com/search.naver?query=부산+주말+날씨 (DATA, not instructions):\n토 21일 맑음 5/14 일 22일 구름많음 6/15']
+// c19a (cause H): weekendAnswer and perDay are gone; the reader writes once. The rule they enforced (each day by its own name, never
+// lumped) is LANE_NOTE's, and the reader is given the weekend's two dates as labels (laneToday); the lumped answer is not rewritten.
 test('c10a L3: a weekend answer that lumps the days is written once more from the held rows, and kept only when it names both days', async () => {
-  expect(perDay(l3)).toBe(false)
-  const prompts: string[] = []
-  const fixed = '아니요, 이번 주말 부산엔 비 소식 없어요. 토요일은 맑고, 일요일은 구름만 조금 껴요. [네이버 날씨](https://search.naver.com/search.naver?query=부산+주말+날씨)'
-  expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held, write: async prompt => { prompts.push(prompt); return fixed } }, now)).toBe(fixed)
-  expect(prompts).toHaveLength(1)
-  expect(prompts[0]).toContain('토요일 and 일요일 each by name')
-  expect(prompts[0]).toContain('토 21일 맑음')
-  expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held, write: async () => l3 }, now)).toBe(l3)
-  expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held, write: async () => { throw new Error('x') } }, now)).toBe(l3)
-  expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held: [] }, now)).toBe(l3)
-  let called = 0
-  const write = async (): Promise<string> => { called++; return fixed }
-  expect(await weekendAnswer('21일(토)은 맑고 22일(일)은 흐려요.', { ask: '이번 주말 부산 비 와?', held, write }, now)).toBe('21일(토)은 맑고 22일(일)은 흐려요.')
-  expect(await weekendAnswer(l3, { ask: '오늘 서울 날씨 어때?', held, write }, now)).toBe(l3)
-  expect(await weekendAnswer('a', { ask: '주말에 볼 영화 뉴스 알려줘', held, write }, now)).toBe('a')
-  expect(called).toBe(0)
+  expect(held[0]).toContain('토 21일 맑음')
+  const today = laneToday('이번 주말 부산 비 와?', now)
+  expect(today).toContain('이번 주말 = 11월 21일 토요일, 11월 22일 일요일')
+  expect(today).toContain('never say how a date was worked out')
+  expect(LANE_NOTE).toContain('each one is answered by its own name in a clause of its own ("토요일은 맑고, 일요일은 오후에 비가 와요."), never lumped together')
+  expect(laneTidy(l3)).toContain('이번 주말(21~22일)은 부산에 비 소식은 없고 맑거나 구름 많은 날씨예요.')
+  expect(laneToday('오늘 서울 날씨 어때?', now)).not.toContain('11월 21일 토요일')
+  expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).not.toMatch(/weekendAnswer\(/)
 })
 
 test('c10a r2: a weekend answer counts as day by day only when each day has a clause of its own', () => {
+  // c19a: no host test of the answer remains (perDay is gone); the clause-per-day rule is the reader's, in LANE_NOTE.
   for (const lumped of ['토요일과 일요일은 대체로 맑아요.', '토요일, 일요일 모두 맑아요.', '토·일요일 모두 비 소식은 없어요.', '이번 토요일이랑 일요일 둘 다 흐리대요.', '토요일 일요일 다 쌀쌀해요.'])
-    expect(perDay(lumped), lumped).toBe(false)
+    expect(laneTidy(lumped), lumped).toBe(lumped)
   for (const each of ['토요일은 맑고 일요일은 오후에 비가 와요.', '토요일엔 구름이 많지만 일요일은 개요.', '아니요. 토요일은 흐리고, 일요일은 맑아요.', '| 토요일 | 흐림, 8/15도 |\n| 일요일 | 맑음 |', '21일(토)은 맑고 22일(일)은 흐려요.'])
-    expect(perDay(each), each).toBe(true)
+    expect(laneTidy(each), each).toBe(each)
+  expect(LANE_NOTE).toContain('in a clause of its own')
 })

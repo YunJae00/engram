@@ -11,30 +11,31 @@ function search(outs: string[]): AgentTool & { queries: string[] } {
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 
 describe('c15a r2', () => {
-  it('a same-event group keeps its first-hand row whatever the order: the blog row listed first goes, the maker\'s page stays', async () => {
+  // c19a (cause H): no judge removes a row the reader gets; which of two same-event rows to cite is the reader's call.
+  it('a same-event group: both rows reach the reader, the judge removes neither', async () => {
     const ask = '별빛제과 신제품 출시일 하나만'
     const rows = [row(1, '별빛제과 신제품 1월 출시래요 (블로그)', 'blog.example'), row(2, '별빛제과, 신제품 1월 10일 출시 발표', 'maker.example')]
     const out = await checkedSearch(search([page('q', rows)]), { ask: () => ask, write: async () => JSON.stringify({ keep: [1, 2], same: [[1, 2]], secondhand: [1], asked: 1, search: '' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
-    expect(urls(out)).toEqual(['https://maker.example/2'])
+    expect(urls(out)).toEqual(['https://blog.example/1', 'https://maker.example/2'])
   })
 
-  it('a group with no first-hand row still leads with a sure row before an unsure one', async () => {
+  it('a group with no first-hand row: the sure and the unsure row both reach the reader, in the search\'s order', async () => {
     const ask = '광주 수제맥주 펍 개업 소식 1건'
     const rows = [row(1, '광주 펍 개업?'), row(2, '광주 동명동 수제맥주 펍 개업')]
     const out = await checkedSearch(search([page('q', rows)]), { ask: () => ask, write: async () => JSON.stringify({ keep: [2], unsure: [1], same: [[1, 2]], asked: 1, search: '' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
-    expect(urls(out)).toEqual(['https://news.example/2'])
+    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2'])
   })
 
-  it('a first search of only off-kind rows: the judge is still asked for other words (with no rows), and the new search runs', async () => {
+  it('a counted ask short of rows: the quick model is asked only for other words; with none, the ask\'s own words are searched, and every row is shown', async () => {
     const ask = '대전 반도체 공장 착공 소식 2건'
     const s = search([page('대전 반도체', [row(1, '대전 반도체 박람회 개막')]), page('대전 반도체 공장 착공식', [row(2, '대전 A사 반도체 공장 착공'), row(3, '대전 B사 반도체 2공장 첫 삽')])])
     const prompts: string[] = []
     const verdicts = ['{"keep":[],"unsure":[],"asked":2,"search":""}', '{"keep":[],"asked":2,"search":"대전 반도체 공장 착공식"}', '{"keep":[1,2],"asked":2,"search":""}']
     const out = await checkedSearch(s, { ask: () => ask, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => 0 }).run({ query: '대전 반도체' }, { task: ask })
-    expect(s.queries).toEqual(['대전 반도체', '대전 반도체 공장 착공식'])
-    expect(prompts[1]).toContain('Items: []')
-    expect(prompts[1]).toContain('unlike every search already run ("대전 반도체")')
-    expect(urls(out)).toEqual(['https://news.example/2', 'https://news.example/3'])
+    expect(s.queries).toEqual(['대전 반도체', ask])
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain('unlike every search already run ("대전 반도체")')
+    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3'])
   })
 
   it('a first search with no rows at all is judged too, so a counted ask still looks again', async () => {

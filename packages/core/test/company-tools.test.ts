@@ -563,9 +563,18 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   expect(out.split('\n\n').at(-1)).toBe(`슬랙(서연): 이번엔 끝까지 못 봤어요. 보던 곳은 [Bing 검색](${c3[1]!.sources![0]!})`)
   expect(out).not.toMatch(/^\|/m)
   const fallback = mergedReport(c3d, topics)
-  for (const bad of [said(full), said(message.replace(/\n\n리니어는 .*$/m, '')), said(message.replace(/ \[출처\]\(https:\/\/www\.bing[^)]*\)/, '')),
-    said(message.replace(/ \[출처\]\(https:\/\/linear[^)]*\)/, '')), said(message, ['f1', 'f2']), said(message.replace('[다른 곳](https://evil.example/x)', 'https://evil.example/x')),
-    said(message.replace('크게 개선된 게', 'This week the agent was rebuilt, 그게')), said(message.replace('자체 키 연결을', '세션 키 연결을')), message, said(''), ''])
+  // c19a (cause H): what the host can fix exactly is fixed in the draft, never by the template: a sentence about a part that brought nothing is
+  // cut (its own line follows), a part left out or without its link gets its own lines added after, a plain address goes, "kept" decides nothing.
+  for (const fixable of [said(full), said(message.replace(/\n\n리니어는 .*$/m, '')), said(message.replace(/ \[출처\]\(https:\/\/www\.bing[^)]*\)/, '')),
+    said(message.replace(/ \[출처\]\(https:\/\/linear[^)]*\)/, '')), said(message, ['f1', 'f2']), said(message.replace('[다른 곳](https://evil.example/x)', 'https://evil.example/x'))]) {
+    const shown = await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => fixable })
+    expect(shown, fixable.slice(0, 60)).not.toBe(fallback)
+    expectParts(shown, [['지민', bing], ['서연'], ['도윤', byok]])
+    expect(shown).not.toContain('evil.example')
+    expect(shown).not.toContain('서연이 이번엔 못 찾았어요.')
+  }
+  // Only a message that cannot be shown at all (English or jargon the repair did not fix, not JSON, empty) falls to the host rendering.
+  for (const bad of [said(message.replace('크게 개선된 게', 'This week the agent was rebuilt, 그게')), said(message.replace('자체 키 연결을', '세션 키 연결을')), message, said(''), ''])
     expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => bad }), bad.slice(0, 60)).toBe(fallback)
   expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => said(message.replace('노션은 지민이', '지민: 노션은')) })).toContain('지민: 노션은')
   expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => { throw new Error('no model') } })).toBe(fallback)
@@ -887,7 +896,8 @@ test('c4 C6: N short things asked for come back as a numbered list of N, from th
   expect(checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요.', ...lines].join('\n\n')), [kim, park])).toBeUndefined()
   expect(checkedReport(said([numbered.join('\n'), '서연이 지민이 찾은 행사로 뽑았어요.'].join('\n\n')), [kim, park])?.trimEnd().split('\n').at(-1)).toBe('서연이 지민이 찾은 행사로 뽑았어요. [example.com](https://example.com/sw)')
   expect(checkedReport(said([numbered.join('\n'), '서연이 행사 문구를 뽑았어요.'].join('\n\n')), [kim, park])).toBeUndefined()
-  expect(checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요.', numbered.join('\n')].join('\n\n')), [kim, park])).toBeUndefined()
+  // c19a: items-first is no longer a check: a lead before the numbered items stands where the writer put it.
+  expect(checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요.', numbered.join('\n')].join('\n\n')), [kim, park])?.split('\n')[0]).toMatch(/^서연이 지민이 찾은 행사로 뽑았어요\./)
   const passed = checkedReport(said([numbered.join('\n'), '서연이 지민이 찾은 행사로 뽑았어요. [example.com](https://example.com/sw)'].join('\n\n')), [kim, park])
   expect(passed?.split('\n').filter(line => /^\d\. /.test(line))).toEqual(numbered)
   expect(own.split('\n\n')[0]).toMatch(/\[[^\]]+\]\(https:\/\/example\.com\/sw\)/)
@@ -949,7 +959,8 @@ test('c4b r2: a written answer that drops a dated item the teammate listed is re
   const said = (message: string, kept: string[]): string => JSON.stringify({ message, kept })
   const one = said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)', ['f1', 'f2', 'f3'])
   expect(checkedReport(one, [kim])).toBeUndefined()
-  expect(checkedReport(said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)', ['f1']), [kim])).toBeUndefined()
+  // c19a: the facts a message uses are the ones it links; a "kept" list shorter than the links refuses nothing.
+  expect(checkedReport(said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)', ['f1']), [kim])).toContain('개발자 행사')
   const all = '지민이 정리했어요.\n\n- 12/2 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)\n- 2026-12-09 AI 행사 [출처](https://example.com/c)'
   expectParts(checkedReport(said(all, ['f1', 'f2', 'f3']), [kim]), [['지민', 'https://example.com/a', 'https://example.com/b', 'https://example.com/c']])
   const shown = await writtenReport({ ask: kim.brief, members: [kim], write: async () => one })
@@ -1457,7 +1468,11 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   expect(checkedReport(shown, c5)).toBeUndefined()
   const good = said(`다음 달 서울 IT 행사는 지민이 봤는데 아직 올라온 게 없어요. 가장 가까운 건 작년 12월 11일 ACC 2025였어요. [ACC 2025](${acc})`)
   expectParts(checkedReport(good, c5), [['지민', acc]])
-  expect(await writtenReport({ ask: stack5.c5.goal, members: c5, now: NOV17, write: async () => shown })).toBe(host)
+  // c19a: a draft without the part's latest link is not thrown away: that part's own line (dated, linked) is added after it.
+  const added = await writtenReport({ ask: stack5.c5.goal, members: c5, now: NOV17, write: async () => shown })
+  expect(added).not.toBe(host)
+  expect(added.split('\n\n').at(-1)).toMatch(/^지민이 찾아보니 이번엔 새로 나온 게 없어요\. 가장 최근엔 .*2025년 12월 11일.*\]\(/)
+  expectParts(added, [['지민', acc]])
   expect(await writtenReport({ ask: stack5.c5.goal, members: c5, now: NOV17, write: async () => good })).toBe(checkedReport(good, c5))
   const handed = handoffBrief('홍보 문구 3개 뽑기', '지민', c5[0]!.result!, c5[0]!.brief)
   expect(handedFrom(handed)).toMatchObject({ brief: '홍보 문구 3개 뽑기', from: '지민', job: '다음 달 서울 IT 행사 일정 정리' })
@@ -1684,12 +1699,19 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   expectParts(passed, [['지민', notion], ['서연', slack], ['도윤', linear]])
   expect([...passed.matchAll(/\[([^\]]+)\]\(/g)].map(one => one[1])).toEqual(c3.map(m => m.data!.nothing!.latest!.site))
   expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => json(good) })).toBe(passed)
-  for (const bad of [json(good.replace(/\n\n슬랙은 .*/, '')), json(good.replace(` [슬랙](${slack})`, '')), json(good.replace('이번 주엔 셋 다 새로 낸 게 없어요.', 'Nothing new shipped this week at all.')), good])
+  // c19a: a part left out, or without its link, gets its own line added after the draft; only English (or no JSON) falls to the host.
+  for (const fixable of [json(good.replace(/\n\n슬랙은 .*/, '')), json(good.replace(` [슬랙](${slack})`, ''))]) {
+    const shown = await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => fixable })
+    expect(shown, fixable.slice(0, 60)).not.toBe(said)
+    expectParts(shown, [['지민', notion], ['서연', slack], ['도윤', linear]])
+  }
+  for (const bad of [json(good.replace('이번 주엔 셋 다 새로 낸 게 없어요.', 'Nothing new shipped this week at all.')), good])
     expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => bad }), bad.slice(0, 60)).toBe(said)
   expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => json(good.replace('리니어는 도윤이 봤는데', '도윤: 리니어는')) })).toContain('도윤: 리니어는')
   const waiting = [c3[0]!, c3[1]!, { ...s6.c3[2]!, state: 'working' as const, result: undefined, empty: undefined, read: undefined }]
   const early = mergedReport(waiting)
-  expect(early.split('\n\n')[1]).toMatch(/^리니어\(도윤\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[[^\]]+\]\(https:\/\/search\.naver\.com\/[^)]+\)$/)
+  // c19a (C3): the still line carries no source label.
+  expect(early.split('\n\n')[1]).toBe('리니어(도윤): 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')
   expect(early.split('\n\n')[0]).toContain('1월 20일')
   expect(checkedReport(json(good.replace(/\n\n리니어는 .*/, '\n\n리니어는 도윤이 보고 있어요.')), waiting)).toBeUndefined()
   expect(checkedReport(json(good.replace(/\n\n리니어는 .*/, '\n\n리니어는 도윤이 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')), waiting)).toBeDefined()

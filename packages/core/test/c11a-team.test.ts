@@ -81,7 +81,11 @@ test('a list job: a search-page-only item never reaches the writer, and the writ
   const shown = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f3'] }), timeoutMs: 500, now: NOW })
   expect(shown).not.toMatch(/코미디|프런트엔드/)
   expect(links(shown)).toHaveLength(2)
+  // c19a: a fact the writer says it kept but left unlinked is not dropped: the draft is not taken as is (checkedReport), and the host adds that fact as its own line.
   expect(checkedReport(JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), [meetups])).toBeUndefined()
+  const back = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), timeoutMs: 500, now: NOW })
+  expect(back.startsWith(message.split('\n')[0]!)).toBe(true)
+  expect(links(back)).toHaveLength(3)
 })
 
 test('a compare job: a table is fine, and every link is named by the site or its host, never 출처', () => {

@@ -65,24 +65,30 @@ describe('c17a (B): one due for helpers on the merge path', () => {
     const text = await hire.run({ members }, { task: '' })
     const took = Date.now() - since, last = Math.max(...searches.map(s => s.at))
     console.log(`c17a fake split: delivered ${took} ms, searches ${searches.length}, last search start ${last} ms, judge ${quick.filter(q => q.kind === 'judge').length}, writer calls ${quick.filter(q => q.kind !== 'judge').map(q => `${q.kind}@${q.at}`).join(' ')}, helper model calls ${models.length}`)
+    // c19a (cause H): no judge holds back a helper's words or sends it searching on its own words: one search each, no judge round, and
+    // each helper's own cited sentence (its fee) is its row.
     expect(took).toBeLessThan(35_000)
-    expect(last).toBeGreaterThanOrEqual(12_000)
+    expect(searches).toHaveLength(3)
+    expect(last).toBeLessThan(2_000)
+    expect(quick.filter(q => q.kind === 'judge')).toHaveLength(0)
     expect(models).toHaveLength(3)
     const rows = tableRows(text)
     expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(TOWNS)
-    for (const row of rows) { expect(row).toMatch(/\]\(https:\/\//); expect(row).not.toContain('2만 3천') }
+    for (const row of rows) { expect(row).toMatch(/\]\(https:\/\//); expect(row).toContain('2만 3천') }
     expect(hire.closesOn!(text)).toBe(true)
-    for (const m of (await listTasks(paths))[0]!.team!.members.filter(one => one.lookup)) expect(m.proof).toEqual([])
+    for (const m of (await listTasks(paths))[0]!.team!.members.filter(one => one.lookup)) expect('proof' in m).toBe(false)
   }, 45_000)
 
   it('a helper\'s verified quotes reach its member; a quoted fee stops its search at once', async () => {
     const { hire, paths, searches } = await lane('proof', { searchMs: 20, judgeMs: 20, modelMs: 20, writeMs: 20, checkMs: 20, proveAt: 0 })
     await hire.run({ members }, { task: '' })
     const team = (await listTasks(paths))[0]!.team!.members.filter(m => m.lookup)
+    // c19a: what reaches the member is what it was shown (its rows and read pages: m.shown), not a judge's quotes; its link to its own
+    // fee page is one of them, so it stands.
     expect(searches).toHaveLength(3)
     for (const m of team) {
-      expect(m.proof?.[0]).toMatchObject({ point: '요금', quote: '대인 왕복 2만 3천 원' })
-      expect(m.missing).toBeUndefined()
+      expect(m.shown!.some(url => url.startsWith(`${PAGE(m.topic!)}/`))).toBe(true)
+      expect('proof' in m || 'missing' in m).toBe(false)
     }
   })
 })

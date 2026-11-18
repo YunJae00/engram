@@ -35,17 +35,21 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   const kept = ['f1', 'f2']
   const good = '이번 달엔 카카오톡이랑 텔레그램에 새 기능이 나왔어요.\n\n카카오톡은 민준이 봤는데 채팅방 폴더 정리 기능이 생겼어요. [카카오](https://www.kakaocorp.com/page/detail/11234)\n\n텔레그램은 하율이 봤는데 그룹 통화 인원이 늘었어요. [텔레그램](https://telegram.org/blog/group-calls-2026)'
   const invented = good.replace('\n\n텔레그램은', '\n\n라인은 지아가 봤는데 새 소식이 없어요.\n\n텔레그램은')
-  expect(reportCheck(JSON.stringify({ message: invented, kept }), parts)).toMatchObject({ refused: 'missing-said' })
+  // c19a: a sentence about a part that brought nothing is cut from the draft (its own line follows), never a refusal to the host template.
+  const cut = reportCheck(JSON.stringify({ message: invented, kept }), parts)
+  expect('text' in cut && cut.text).not.toContain('지아')
   const lines: string[] = []
   setReportLog(line => lines.push(line))
   try {
     const refused = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: invented, kept }), timeoutMs: 500, now: NOW })
-    expect(refused).toBe(mergedReport(parts))
-    expect(lines.at(-1)).toMatch(/^writer=fallback:missing-said ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
+    expect(refused).not.toBe(mergedReport(parts))
+    expect(refused.match(/지아/g)).toHaveLength(1)
+    expect(lines.at(-1)).toMatch(/^writer=accepted ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
     const shown = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: good, kept }), timeoutMs: 500, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=accepted ms=\d+/)
     expect(shown.split('\n\n').at(-1)).toBe(`라인(지아): 이번엔 끝까지 못 봤어요. 보던 곳은 [linecorp.com](${LINE_PAGE})`)
     expect(shown.match(/지아/g)).toHaveLength(1)
+    expect(refused).toBe(shown)
     expect(links(shown)).toEqual(['https://www.kakaocorp.com/page/detail/11234', 'https://telegram.org/blog/group-calls-2026', LINE_PAGE])
     await writtenReport({ ask: ASK, members: parts, write: () => new Promise(() => {}), timeoutMs: 20, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=late /)

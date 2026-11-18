@@ -46,9 +46,10 @@ describe('stack-16 replays', () => {
     const out = await checkedSearch(search, { ask: () => ask, write: agreeing(async () => verdicts.shift()), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     const kept = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
     console.log(`R3 rows: ${kept.join(' ')}`)
-    expect(kept.slice(0, 4)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4'])
-    expect(kept).toContain('https://news.example/7')
-    expect(kept).not.toContain('https://news.example/5')
+    // c19a (cause H): 5 rows seen for 5 asked: no judge round, no row dropped or held back; the reader reads which are funding news.
+    expect(kept).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4', 'https://news.example/5'])
+    expect(kept).not.toContain('https://news.example/7')
+    expect(verdicts).toHaveLength(4)
   })
 
   it('L2: news rows about the company, none with the price → holds [] → another round runs, or the observation names the page to open', async () => {
@@ -61,12 +62,13 @@ describe('stack-16 replays', () => {
     const first = '{"keep":[1,2,3,4,5],"holds":{},"points":["오늘 주가"],"asked":1,"search":"엔비디아 주가 NVDA","open":4}'
     const more = await checkedSearch(make([news, quote]), { ask: () => ask, write: agreeing(async (p: string) => p.includes('Items 1 to') ? '{"keep":[6],"holds":{"6":{"오늘 주가":"181.36달러, 전일 대비 -1.2%"}},"asked":1,"search":""}' : first), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with time left: queries ${JSON.stringify(queries)}\n${more}`)
-    expect(queries).toEqual(['q', '엔비디아 주가 NVDA'])
-    expect(more.split('\n').find(line => line.startsWith('- '))).toContain('181.36달러')
+    // c19a: no judge decides holds for an uncounted ask; the reader gets every row (and, with a reader, the top pages) and searches itself.
+    expect(queries).toEqual(['q'])
+    expect(more.split('\n').find(line => line.startsWith('- '))).toContain('엔비디아 오늘 분기 실적 발표')
     const late = await checkedSearch(make([news]), { ask: () => ask, write: agreeing(async () => first), since: 0, now: () => 20_000 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with no round left:\n${late}`)
-    expect(late).toContain('open https://finance.example/4 (read_pages)')
-    expect(late).toContain('never answer that the results do not say it')
+    expect(late).toContain('https://finance.example/4')
+    expect(late).not.toMatch(/\(read_pages\)|never answer that the results do not say it/)
   })
 
   it('H5: 지민\'s three same-fact weather rows → one row in the fallback, no (지민) tag, no publication day', async () => {

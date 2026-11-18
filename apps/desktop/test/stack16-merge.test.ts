@@ -79,17 +79,19 @@ describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
   it('a fact the judge says holds the value leads the writer data and the host fallback; a nothing part with no short name uses latestName', async () => {
     const facts = [{ text: '대구는 미세먼지 이야기가 많아요.', url: 'https://blog.example/daegu', site: '블로그' }, { text: '대구 오늘 미세먼지는 보통(42㎍/㎥)이에요.', url: 'https://air.example/daegu', site: '에어코리아' }]
     const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', agreeing(async () => JSON.stringify({ keep: [1, 2], holds: { 2: { 농도: '보통(42㎍/㎥)' } }, points: ['농도'], asked: 1 })))
-    expect(judged!.facts.map(f => f.url)).toEqual(['https://air.example/daegu', 'https://blog.example/daegu'])
+    // c19a (cause H): the judge's holds no longer reorder a teammate's facts; they keep the teammate's own order.
+    expect(judged!.facts.map(f => f.url)).toEqual(['https://blog.example/daegu', 'https://air.example/daegu'])
     const at = new Date().toISOString()
     const m = (id: string, role: string, data: TeamMember['data']): TeamMember => ({ id, parentId: null, depth: 1, role, topic: role, brief: `${role} 조사`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: id, hiredAt: at, result: 'x', data })
     const parts = [m('m1', '대구', judged), m('m2', '판교', { facts: [], nothing: { latest: { text: '판교 카페 거리 새 매장 오픈 소식, 영업시간은 10시부터 22시까지, 주말 포함', url: 'https://cafe.example/pangyo', site: '카페' } } })]
     const prompt = reportPrompt('대구 미세먼지랑 판교 카페 소식', parts, new Map(), { helpers: true })
     const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { facts?: { link: string }[]; nothing?: { latest: { text: string } } }[]
-    expect(data[0]!.facts![0]!.link).toContain('air.example')
+    expect(data[0]!.facts!.map(f => f.link).join(' ')).toContain('air.example')
     expect(data[1]!.nothing!.latest.text).toContain('판교 카페 거리 새 매장 오픈 소식')
     expect(data[1]!.nothing!.latest.text).not.toContain('영업시간')
     const fallback = mergedReport(parts, new Map(), [], true)
-    expect(fallback.indexOf('air.example')).toBeLessThan(fallback.indexOf('blog.example') === -1 ? Infinity : fallback.indexOf('blog.example'))
+    expect(fallback).toContain('air.example')
+    expect(fallback).toContain('blog.example')
   })
 })
 
@@ -116,10 +118,15 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect(tableRows(text)).toHaveLength(0)
     for (const town of ['강릉', '속초', '양양']) expect(text).toContain(town)
     expect(hire.closesOn!(text)).toBe(true)
-    expect(searches.filter(q => q.includes('예보'))).toHaveLength(3)
-    expect(quick.filter(l => l.kind === 'judge' && l.prompt.includes('were already judged'))).toHaveLength(3)
+    // c19a: no judge proposes a second search for an uncounted part: the helper answers from its first search's rows.
+    expect(searches.filter(q => q.includes('예보'))).toHaveLength(0)
+    // c19a: an uncounted part runs no judge round before or after its reader.
+    expect(quick.filter(l => l.kind === 'judge')).toHaveLength(0)
     expect(models).toHaveLength(3)
-    expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'check'])
+    // c19a: the prose draft links no part, so the one scoped repair is asked for them (a second 'write'); when it does not land the host
+    // adds each part's own line with its link after the draft, never a template over it.
+    expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'check', 'write'])
+    for (const town of ['강릉', '속초', '양양']) expect(text).toContain(PAGE[town])
   }, 45_000)
 
   it('a part added mid-work lands as a row of the one table; one answer after the first, non-closing call', async () => {
@@ -136,7 +143,8 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     const began = Date.now()
     const out = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '', signal: stop.signal })
     expect(Date.now() - began - stopAt).toBeLessThan(3000)
-    expect(hire.closesOn!(out)).toBe(false)
+    // c19a: with no judge round left, the split is answered before a stop at 50 ms; a stop during the writer's repair still ends it unsent.
+    expect(hire.closesOn!(out)).toBe(_what === 'a judge round')
     const calls = quick.length
     await tick(300)
     expect(quick.length).toBe(calls)

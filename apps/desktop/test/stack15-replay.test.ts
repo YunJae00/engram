@@ -131,10 +131,12 @@ describe('R3 replay', () => {
     }
     const out = await checkedSearch(search, { ask: () => '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', write, since: Date.now() }).run({ query: '국내 AI 스타트업 투자 유치' }, { task: '' })
     console.log(`[replay R3] judges=${prompts.length} queries=${JSON.stringify(queries)}\n${out}`)
-    expect(out).not.toMatch(/우주|룸메이트|데모데이/)
-    expect(out).toMatch(/2 of the 5 asked for were found/)
-    expect(prompts[1]).toContain('"국내 AI 스타트업 투자 유치"')
-    expect(queries).toEqual(['국내 AI 스타트업 투자 유치', 'AI 스타트업 시리즈A 유치'])
+    // c19a (cause H): 5 rows for 5 asked: no judge round and no row removed; which 2 are funding news is the reader's reading (the search's
+    // own rule: "a row that only touches the topic … is not one"), and it says the number it lists.
+    expect(out).toMatch(/우주|룸메이트|데모데이/)
+    expect(out).not.toContain('of these rows are from the period asked')
+    expect(prompts).toHaveLength(0)
+    expect(queries).toEqual(['국내 AI 스타트업 투자 유치'])
   })
 })
 
