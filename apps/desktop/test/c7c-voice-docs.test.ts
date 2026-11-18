@@ -106,7 +106,7 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
 
   it('touches only the quick voice line and its fallback', () => {
     const first = source('first-line.ts')
-    expect(first.slice(first.indexOf('export const laneLine'), first.indexOf('// The line said when the small model has none'))).not.toContain('saidBefore')
+    expect(first.slice(first.indexOf('export const laneLine'), first.indexOf('const FILE_WORK ='))).not.toContain('saidBefore')
     expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })
 })
