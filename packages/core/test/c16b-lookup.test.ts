@@ -2,26 +2,30 @@ import { describe, expect, it } from 'vitest'
 import { checkedSearch, judgedItems } from '../src/item-check.js'
 import { kindChecked, withItems } from '../src/company-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
+import { agreeing } from './agreeing.js'
 
 // c16b (cause K2): (a) a row judged a fit stays a fit across rounds (R3: 4 fits in round 1, 3 after five rounds); (b) a single-value ask is
 // satisfied only by a row that states the value, not by rows about the topic (L2: five stories about a company, no price). Wordings are in
 // no harness row.
 const page = (query: string, rows: string[], words = ''): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows, ...(words ? ['', words] : [])].join('\n')
-const row = (n: number, title: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — x — 11월 ${n}일`
+// c18a: a snippet that says what its headline says (as a news row's does), so a kind quote is also the item's own words beyond its title.
+// c18a r2: and says it as a whole statement, the event at the end of its sentence (a kind quote covers its sentence's end).
+const row = (n: number, title: string, host = 'news.example', snippet = 'x'): string => `- ${title} — https://${host}/${n} — ${snippet} — 11월 ${n}일`
+const told = (n: number, title: string, host = 'news.example'): string => row(n, title, host, `관계자 설명: ${title.split(' ').slice(1).join(' ')}`)
 function search(outs: string[]): AgentTool & { queries: string[] } {
   const queries: string[] = []
   return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
 }
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 const run = (s: AgentTool, ask: string, verdicts: (string | undefined)[], prompts: string[] = [], at = 0): Promise<string> =>
-  checkedSearch(s, { ask: () => ask, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => at }).run({ query: 'q' }, { task: ask })
+  checkedSearch(s, { ask: () => ask, write: agreeing(async p => { prompts.push(p); return verdicts.shift() }), since: 0, now: () => at }).run({ query: 'q' }, { task: ask })
 
 describe('c16b (a): a fit stays a fit', () => {
   const ASK = '요즘 국내 핀테크 인수합병 소식 6건만'
   it('4 fits in round 1; round 2 judges only the new rows with the held ones as context; a judge that "forgets" held rows cannot lower the count', async () => {
     const s = search([
-      page('q', [row(1, '페이원, 송금앱 머니톡 인수'), row(2, '핀뱅크, 결제 대행사 합병'), row(3, '토큰랩, 보안 스타트업 인수'), row(4, '카드사, 간편결제 지분 인수'), row(5, '핀테크 업계 전망')]),
-      page('핀테크 M&A 계약', [row(6, '대출 플랫폼 렌딩원 피인수'), row(7, '자산관리 앱 웰스온 인수 완료'), row(8, '핀뱅크·결제 대행사 합병 승인', 'other.example')]),
+      page('q', [told(1, '페이원, 송금앱 머니톡 인수'), told(2, '핀뱅크, 결제 대행사 합병'), told(3, '토큰랩, 보안 스타트업 인수'), told(4, '카드사, 간편결제 지분 인수'), row(5, '핀테크 업계 전망')]),
+      page('핀테크 M&A 계약', [told(6, '대출 플랫폼 렌딩원 피인수'), told(7, '자산관리 앱 웰스온 인수 완료'), told(8, '핀뱅크·결제 대행사 합병 승인', 'other.example')]),
     ])
     const prompts: string[] = []
     // Round 2's items: 1-4 held, 5-7 the new rows. It leaves held row 1 out of "keep", calls it a listing, and groups new 7 (row 8) with held 2.
@@ -56,11 +60,11 @@ describe('c16b (a): a fit stays a fit', () => {
     const ask = '요즘 국내 핀테크 인수합병 소식 6건만', stop = new AbortController()
     const s = search([page('q', [row(1, '페이원 인수')]), page('w', [row(2, '핀뱅크 합병')]), page('z', [row(3, 'x')])])
     let calls = 0
-    const write = async (): Promise<string | undefined> => {
+    const write = agreeing(async (): Promise<string | undefined> => {
       if (++calls === 1) return '{"keep":[1],"asked":6,"search":"w"}'
       setTimeout(() => stop.abort(), 50)
       return new Promise<string | undefined>(() => undefined)
-    }
+    })
     const started = Date.now()
     const out = await checkedSearch(s, { ask: () => ask, write, since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask, signal: stop.signal })
     expect(Date.now() - started).toBeLessThan(500)
@@ -116,7 +120,7 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
   it('judgedItems reads holds and open; with no holds field the old behaviour stands (no loop for it)', async () => {
     const items = [{ text: 'a 1원' }, { text: 'b 22원' }]
     // c17a: holds is quoted evidence; a number naming no item and a quote that is not in its item (forged) both hold nothing.
-    const v = await judgedItems('x', items, async () => '{"keep":[1,2],"holds":{"1":{"p":"99원"},"2":{"p":"22원"},"9":{"p":"x"}},"points":["p"],"open":1}', 1000, { tried: [] })
+    const v = await judgedItems('x', items, agreeing(async () => '{"keep":[1,2],"holds":{"1":{"p":"99원"},"2":{"p":"22원"},"9":{"p":"x"}},"points":["p"],"open":1}'), 1000, { tried: [] })
     expect(v?.holds).toEqual([2])
     expect(v?.evidence).toEqual({ 2: { p: '22원' } })
     expect(v?.open).toBe(1)
@@ -129,7 +133,7 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
 
   it('team path: a fact that states the value goes before one only about it', async () => {
     const facts = [{ text: '제주 감귤 축제 준비 한창', url: 'https://a.example/1', site: 'a' }, { text: '제주 감귤 축제 12월 6일 개막', url: 'https://b.example/2', site: 'b' }]
-    const out = await kindChecked({ facts }, '제주 감귤 축제 언제 열려?', async () => '{"keep":[1,2],"holds":{"2":{"개막일":"12월 6일 개막"}},"points":["개막일"]}', 1000)
+    const out = await kindChecked({ facts }, '제주 감귤 축제 언제 열려?', agreeing(async () => '{"keep":[1,2],"holds":{"2":{"개막일":"12월 6일 개막"}},"points":["개막일"]}'), 1000)
     expect(out!.facts.map(f => f.url)).toEqual(['https://b.example/2', 'https://a.example/1'])
   })
 })
@@ -173,8 +177,8 @@ describe('c16b r2: a later search whose page states the value in its own words, 
 // that unchecked prose appended as if it were an item; the list stays the checked rows, short and said so.
 describe('c16b r3: page words never join a counted list', () => {
   it('page words judged to hold an item: only the checked row is listed, the shortfall is data, the page prose is not passed on', async () => {
-    const s = search([page('q', [row(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
-    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"대전 북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
+    const s = search([page('q', [told(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
+    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
     expect(urls(out)).toEqual(['https://books.example/3'])
     expect(out).toContain('1 of the 2 asked for were found')
     expect(out).not.toContain('대전 북토크 둘')

@@ -8,6 +8,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { checkedDesk } from '../src/main/desk-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 // stack-16 merge checks: c16b (held rows, holds) + c16a (one writer for helpers, writer time from the due) + c16c (missing kind) meet on
 // the anonymous hire_members path. Wordings are in no harness row: 강릉/속초/양양 서핑 파도, 대구 미세먼지, 판교 카페 영업시간.
@@ -66,7 +67,7 @@ async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel
     if (options.signal?.aborted) throw new Error('aborted')
     return { answer: `${town}은 이번 주말 파도가 1m 안팎이에요. [${town} 파도 예보](${PAGE[town]})`, steps: [], fellBack: false }
   }
-  const write = quickModel(quick, opts)
+  const write = agreeing(quickModel(quick, opts))
   const engine = { id: 'claude', quick: async (prompt: string) => write(prompt) } as unknown as TurnKit['engine']
   let heard: (() => void) | undefined
   const said = opts.steer === undefined ? undefined : new Promise<void>(resolve => { heard = resolve })
@@ -75,7 +76,7 @@ async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel
   const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => ask, nativeFor: async () => undefined, toolsFor: async one => [...team.tools(one, kit), search], alive: async () => true }
   const since = Date.now(), stop = new AbortController()
   if (opts.stopAt !== undefined) setTimeout(() => stop.abort(), opts.stopAt)
-  const hire: AgentTool = mergingHire(team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!, async signal => helperAnswer({ ask, members: (await listTasks(paths)).find(t => t.state === 'running')?.team?.members, since, write: (prompt: string) => write(prompt), due: since + (opts.answerMs ?? 28_000), signal: signal ?? stop.signal }))
+  const hire: AgentTool = mergingHire(team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!, async signal => helperAnswer({ ask, members: (await listTasks(paths)).find(t => t.state === 'running')?.team?.members, since, write: agreeing((prompt: string) => write(prompt)), due: since + (opts.answerMs ?? 28_000), signal: signal ?? stop.signal }))
   return { paths, hire, models, quick, searches, since, stop }
 }
 const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`, topic: town, brief: `${town} 이번 주말 서핑 파도 높이`, lookup: true }))
@@ -83,7 +84,7 @@ const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`
 describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
   it('a fact the judge says holds the value leads the writer data and the host fallback; a nothing part with no short name uses latestName', async () => {
     const facts = [{ text: '대구는 미세먼지 이야기가 많아요.', url: 'https://blog.example/daegu', site: '블로그' }, { text: '대구 오늘 미세먼지는 보통(42㎍/㎥)이에요.', url: 'https://air.example/daegu', site: '에어코리아' }]
-    const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', async () => JSON.stringify({ keep: [1, 2], holds: { 2: { 농도: '보통(42㎍/㎥)' } }, points: ['농도'], asked: 1 }))
+    const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', agreeing(async () => JSON.stringify({ keep: [1, 2], holds: { 2: { 농도: '보통(42㎍/㎥)' } }, points: ['농도'], asked: 1 })))
     expect(judged!.facts.map(f => f.url)).toEqual(['https://air.example/daegu', 'https://blog.example/daegu'])
     const at = new Date().toISOString()
     const m = (id: string, role: string, data: TeamMember['data']): TeamMember => ({ id, parentId: null, depth: 1, role, topic: role, brief: `${role} 조사`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: id, hiredAt: at, result: 'x', data })
@@ -104,7 +105,7 @@ describe('stack-16: missing on the team path (c16c inside c16a)', () => {
     const log: { kind: string; at: number; prompt: string }[] = []
     const at = new Date().toISOString()
     const helpers: TeamMember[] = ['강릉', '속초', '고성'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: `s${i}`, hiredAt: at, result: `${town}은 파도 1m예요. [예보](${PAGE[town]})`, sources: [PAGE[town]!] }))
-    const out = await helperAnswer({ ask: '강릉 속초 고성 파도 각각', members: helpers, since: Date.now() - 1000, write: quickModel(log, { missing: 2 }), due: Date.now() + 20_000 })
+    const out = await helperAnswer({ ask: '강릉 속초 고성 파도 각각', members: helpers, since: Date.now() - 1000, write: agreeing(quickModel(log, { missing: 2 })), due: Date.now() + 20_000 })
     expect(log.map(l => l.kind)).toEqual(['write', 'check', 'write', 'check'])
     expect(log[1]!.prompt).toContain('"missing": the person\'s ask names parts')
     const rows = tableRows(out)
@@ -155,7 +156,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     const parts: TeamMember[] = ['강릉', '속초'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: `s${i}`, hiredAt: at, result: 'x', data: { facts: [{ text: `${town} 파도 1m예요.`, url: PAGE[town]!, site: '서핑 예보' }] } }))
     setTimeout(() => ctl.abort(), 100)
     const began = Date.now()
-    await writtenReport({ ask: '강릉 속초 파도', members: parts, helpers: true, write: quickModel(log, { checkMs: 10_000 }), due: Date.now() + 20_000, signal: ctl.signal })
+    await writtenReport({ ask: '강릉 속초 파도', members: parts, helpers: true, write: agreeing(quickModel(log, { checkMs: 10_000 })), due: Date.now() + 20_000, signal: ctl.signal })
     expect(Date.now() - began).toBeLessThan(1000)
   })
 

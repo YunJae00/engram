@@ -120,12 +120,27 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
     // all its cited prose): evidence is per point, not per page. A judged lookup (m.proof set, empty too) shows a page's verified quotes,
     // not the prose cited to it; its own prose stands only on a page it read whole itself and only when it names no point the judge found
     // stated nowhere; every such point is said as not found.
+    // c18a (cause V, T1: "부산 … 날씨는 이번엔 못 찾았어요" beside outcomes=부산:found, every judge quote rejected by an exact-substring
+    // check): a first-hand read is evidence. The helper's own words stand on a page it or the host opened and read (m.sources less results
+    // pages; the host's page opens go through the helper's own open_page and keepSources), and a point they state there is found. A point is
+    // said as not found only when no read text holds it (the lookup's m.missing, after its pages were opened and its quotes read against
+    // them, less what a read page's words state). With one point asked, any words on a read page are of that point. Words cited only to a
+    // search row it saw (a title, a snippet) leave the row unless a quote held there; a held row shows its quotes (c17a r3).
     if (m.proof) {
-      const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(url => url.replace(/\/$/, '')))
-      const unstated = (text: string): boolean => (m.missing ?? []).some(point => text.includes(pointName(point)))
-      facts.splice(0, facts.length, ...facts.filter(f => own.has(f.url.replace(/\/$/, '')) && !unstated(f.text)))
-      for (const one of m.proof) if (one.url && !facts.some(f => f.url === one.url && f.text.includes(one.quote))) facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url })
-      if (m.missing?.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${m.missing.map(notFoundLine).join(' ')}` }
+      const key = (url: string): string => url.replace(/\/$/, '')
+      const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(key))
+      facts.splice(0, facts.length, ...facts.filter(f => own.has(key(f.url))))
+      const asked = new Set([...m.proof.map(one => one.point), ...(m.missing ?? [])].filter(point => point !== 'kind'))
+      const missing = (m.missing ?? []).filter(point => !facts.some(f => asked.size === 1 || f.text.includes(pointName(point))))
+      // c18a r2 (review r1 #2: "무게 1.2kg" cited to a page dropped that page's verified "배터리 58Wh"): a page's fact covers the points
+      // it states, not the page: a verified quote stays unless a fact on its page already states that point.
+      const states = (f: { text: string }, one: { point: string; quote: string }): boolean => one.point === 'kind' || asked.size === 1 || f.text.includes(pointName(one.point)) || f.text.includes(one.quote)
+      for (const one of m.proof) {
+        if (!one.url || facts.some(f => key(f.url) === key(one.url) && states(f, one))) continue
+        const label = facts.find(f => key(f.url) === key(one.url))?.label
+        facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url, ...(label ? { label } : {}) })
+      }
+      if (missing.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${missing.map(notFoundLine).join(' ')}` }
     }
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })

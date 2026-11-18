@@ -35,9 +35,9 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
     const verdicts = ['{"keep":[1],"unsure":[2],"search":"b"}', '{"keep":[1,3],"unsure":[2,4],"search":"c"}', '{"keep":[1,2],"unsure":[3,4],"search":"d"}']
     const out = await checkedSearch(s, { ask: () => ASK, write: async () => verdicts.shift(), since: 0, now: () => t }).run({ query: 'a' }, { task: ASK })
     // Round 3 lists the held rows sure first: [1, 3, 2 (unsure), 4 (unsure), 5].
-    // 7 s: a round fits (7 + 6 <= 20); 14 s: still (14 + 6 <= 20); 21 s: no more.
+    // c18a: a round fits when this lookup's own measured round (7 s here) does: 7 s: 7 + 7 <= 20; 14 s: 14 + 7 > 20, no more.
     expect(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS).toBe(20_000)
-    expect(s.queries).toEqual(['a', 'b', 'c'])
+    expect(s.queries).toEqual(['a', 'b'])
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3'])
     expect(out).toContain('2 of the 4 asked for were found. Lead with the items')
     expect(out).not.toContain('may not be quite')

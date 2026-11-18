@@ -9,6 +9,7 @@ import { askNow, routeAsk } from '../src/main/desk-lane.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 // stack-17 merge checks: c17b (route vs meaning of a correction, memory waits for the whole turn, step idle bound) + c17a (evidenced points,
 // host-side page open, one helper due) + c17c (summary keeps job subjects, made-from in a sentence). Wordings are in no harness row:
@@ -24,14 +25,14 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
   const history = [{ role: 'user', text: '청주 내일 날씨 어때?' }, { role: 'assistant', text: '청주는 내일 맑고 낮 최고 13도예요.' }]
   const message = '아니 그거 말고 춘천으로'
   // A stand-in judge that reads its Ask the way the prompt says: points from what is asked, the place from the later words.
-  const judge = (prompts: string[]) => async (prompt: string): Promise<string> => {
+  const judge = (prompts: string[]) => agreeing(async (prompt: string): Promise<string> => {
     prompts.push(prompt)
     const ask = JSON.parse(prompt.split('\n').find(line => line.startsWith('Ask: '))!.slice(5)) as string
     const later = /changed it: (.*)/.exec(ask)?.[1] ?? ask, place = ['춘천', '청주'].find(one => later.includes(one))
     const items = JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string }[]
     const hit = items.find(item => place && item.text.includes(place))
     return JSON.stringify({ keep: items.map(item => item.n), asked: 1, search: '', points: /날씨/.test(ask) ? ['내일 날씨'] : [], holds: hit ? { [hit.n]: { '내일 날씨': hit.text.split(' — ')[1] } } : {} })
-  }
+  })
   it('the route is the earlier lookup, the judge reads the earlier ask with the later words holding, and only the 춘천 row is shown', async () => {
     expect(routeAsk(message, history)).toBe('청주 내일 날씨 어때?')
     const meant = askNow(message, history), prompts: string[] = []
@@ -39,7 +40,7 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
       '- 청주 내일 날씨 — https://weather.example/cheongju — 청주 내일 맑음, 낮 최고 13도 — 11월 19일',
       '- 춘천 내일 날씨 — https://weather.example/chuncheon — 춘천 내일 흐림, 낮 최고 8도 — 11월 19일',
     ]) }
-    const out = await checkedSearch(search, { ask: () => meant, write: judge(prompts), since: 0, now: () => 0 }).run({ query: '춘천 내일 날씨' }, { task: meant })
+    const out = await checkedSearch(search, { ask: () => meant, write: agreeing(judge(prompts)), since: 0, now: () => 0 }).run({ query: '춘천 내일 날씨' }, { task: meant })
     expect(prompts[0]).toContain('청주 내일 날씨 어때?')
     expect(prompts[0]).toContain('그거 말고 춘천으로')
     expect(prompts[0]).toContain('the later words hold')
@@ -123,7 +124,7 @@ describe('stack-17: the step idle bound never cuts a lookup waiting on a host-si
       JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { 요금: '성인 1회 4,500원' } } }),
     ]
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => page(String(args['query']), ['- 목동 수영장 이용 안내 — https://pool.example/mokdong — 목동 수영장 소식 — 11월 2일']) }
-    const tool = checkedSearch(search, { ask: () => '목동 수영장 자유수영 요금', write: async () => verdicts.shift(), due: () => Date.now() + 120_000,
+    const tool = checkedSearch(search, { ask: () => '목동 수영장 자유수영 요금', write: agreeing(async () => verdicts.shift()), due: () => Date.now() + 120_000,
       read: async url => { opened.push(url); await tick(STEP_IDLE_MS + 15_000); return '목동 수영장 요금\n자유수영 성인 1회 4,500원' } })
     let observed = ''
     const { sdk, interruptions } = hostToolSdk(async function* (call) {
@@ -182,10 +183,10 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     const members = [part('m1', '하윤', '스타벅스', '스타벅스는 이번 주 겨울 딸기 라떼를 냈어요.', 'https://menu.example/sb'), part('m2', '다인', '투썸', '투썸은 이번 주 밤 케이크를 냈어요.', 'https://menu.example/ts'), part('m3', '로운', '메가커피', '메가커피는 이번 주 새 메뉴가 없어요.', 'https://menu.example/mg')]
     const body = (names: string[]) => `스타벅스는 ${names[0]}이 봤는데 겨울 딸기 라떼가 나왔어요. [a](https://menu.example/sb)\n투썸은 ${names[1]}이 봤는데 밤 케이크가 나왔어요. [b](https://menu.example/ts)\n메가커피는 ${names[2] ? `${names[2]}가 봤는데 ` : ''}새 메뉴가 없어요. [c](https://menu.example/mg)`
     const calls: string[] = []
-    const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
+    const write = agreeing((prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
       calls.push(prompt)
       resolve(prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : JSON.stringify({ message: `스타벅스랑 투썸은 신메뉴가 나왔고 메가커피는 없어요.\n\n${body(prompt.includes('Your earlier draft was') ? ['하윤', '다인', '로운'] : ['하윤', '다인'])}`, kept: ['f1', 'f2', 'f3'] }))
-    }, 1_500))
+    }, 1_500)))
     const pending = writtenReport({ ask: '스타벅스 투썸 메가커피 이번 주 신메뉴 하윤 다인 로운한테 나눠서 알아봐줘', members, write })
     await vi.runAllTimersAsync()
     const out = await pending
@@ -203,12 +204,12 @@ describe('stack-17: "멈춰" during a summary repair (c17c) ends it at once', ()
     await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
     await recordFacts(paths, TEAM_MEMORY, ['스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (하윤, 2026-11-18)', '투썸 신메뉴 조사 → 밤 케이크 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
     const stop = new AbortController(), calls: string[] = []
-    const write = async (prompt: string): Promise<string> => {
+    const write = agreeing(async (prompt: string): Promise<string> => {
       calls.push(prompt)
       if (calls.length === 1) return '오늘은 하윤, 다인이 카페 두 곳 신메뉴를 봤어요.'
       setTimeout(() => stop.abort(), 50)
       return new Promise<string>(() => undefined)
-    }
+    })
     const began = Date.now()
     await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write, signal: stop.signal })
     expect(Date.now() - began).toBeLessThan(3000)
@@ -245,7 +246,7 @@ describe('stack-17: a job said only in filler words is still checked in the summ
       await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
       const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', fixed = '오늘은 하윤이 주말 소식을 찾았고, 다인은 스타벅스 신메뉴를 봤어요.'
       const drafts = [left, fixed], calls: string[] = []
-      const write = async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : drafts.shift() ?? '' }
+      const write = agreeing(async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : drafts.shift() ?? '' })
       expect(await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write })).toBe(fixed)
       expect(calls[1]).toContain('주말 소식')
       expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])

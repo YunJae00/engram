@@ -7,6 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 // c17a on the anonymous split, as ipc wires it (hire_members → mergingHire → helperAnswer, each helper's search_web through checkedSearch):
 // (B) one due for helpers: a helper is due one reserve before the writer's due (its draft + one check), not LEAD_ANSWER_MS on top of
@@ -30,7 +31,7 @@ async function lane(tag: string, opts: { searchMs: number; judgeMs: number; mode
     searches.push({ town, at: Date.now() - since, query: q }); await tick(opts.searchMs)
     return results(q, [`- ${town} 케이블카 소식 ${n} — https://news.example/${n} — ${town} 관광 이야기 — 11월 2일`, `- ${town} 케이블카 요금 안내 ${n} — ${PAGE(town)}/${n} — 대인 왕복 2만 3천 원 — 11월 20일`])
   } }
-  const write = async (prompt: string): Promise<string> => {
+  const write = agreeing(async (prompt: string): Promise<string> => {
     if (prompt.includes('In "holds", for each item')) {
       quick.push({ kind: 'judge', at: Date.now() - since }); await tick(opts.judgeMs)
       const round = quick.filter(q => q.kind === 'judge').length, items = JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string }[]
@@ -44,7 +45,7 @@ async function lane(tag: string, opts: { searchMs: number; judgeMs: number; mode
     const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { id: string; text: string; link: string }[] }[]
     const rows = data.filter(p => p.facts?.length).map(p => ({ part: p.part, fact: p.facts![0]! }))
     return JSON.stringify({ message: ['세 곳 요금이에요.', '', '| 도시 | 요금 | 출처 |', '|---|---|---|', ...rows.map(r => `| ${r.part} | ${r.fact.text} | ${r.fact.link} |`)].join('\n'), kept: rows.map(r => r.fact.id) })
-  }
+  })
   const run: Run = async (deps, prompt, options = {}) => {
     options.onStart?.(); models.push(prompt.slice(0, 20))
     const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', town = TOWNS.find(name => part.includes(name)) ?? '목포'
