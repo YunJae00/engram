@@ -1,6 +1,6 @@
 import type { Note } from './schema.js'
 
-export interface LineageGraph {
+interface LineageGraph {
   byId: Map<string, Note>
   supersededBy: Map<string, string[]>
 }
@@ -60,7 +60,7 @@ export function chainOf(graph: LineageGraph, id: string): Note[] {
   return chain.sort((a, b) => Date.parse(a.front.created) - Date.parse(b.front.created))
 }
 
-export interface ChronologyInversion {
+interface ChronologyInversion {
   newerId: string
   olderId: string
 }

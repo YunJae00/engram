@@ -24,7 +24,7 @@ export function turnHelpers(members: readonly TeamMember[] | undefined, since: n
   return (members ?? []).filter(m => m.parentId === null && !m.botId && Date.parse(m.hiredAt) >= since - 1000 && m.review?.note !== TAKEN_OFF)
 }
 
-export function helperData(helpers: readonly TeamMember[]): Record<string, unknown> {
+function helperData(helpers: readonly TeamMember[]): Record<string, unknown> {
   const gaps = helpers.filter(m => !brought(m))
   return {
     parts: helpers.filter(brought).map(m => ({ name: m.role, part: clip(m.brief.split('\n')[0]!.trim(), 160), result: clip(m.result!.trim(), 900), ...(m.sources?.length ? { sources: m.sources.slice(0, 4) } : {}) })),
@@ -32,7 +32,7 @@ export function helperData(helpers: readonly TeamMember[]): Record<string, unkno
   }
 }
 
-export function leadRewritePrompt(ask: string, data: Record<string, unknown>): string {
+function leadRewritePrompt(ask: string, data: Record<string, unknown>): string {
   return [
     'You fix a message a person reads in a chat with their team, written from the results the helpers below brought back. Korean stays Korean, in the same polite -요 form.',
     'Keep its form (a table stays a table, a list a list) and every link exactly as written; change only what the problems name, in as few words as it takes. Add no fact that is not in the results, no address of your own, nothing about tools or searching, no question and no closing offer.',

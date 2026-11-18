@@ -12,7 +12,7 @@ function isMachineWritten(note: Note): boolean {
 
 const RESOLVABLE = new Set(['conflict', 'merge', 'supersede'])
 
-export interface ResolvableCard {
+interface ResolvableCard {
   card: Card
   notes: Note[]
 }

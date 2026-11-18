@@ -7,7 +7,7 @@ import type { SkillCandidate, SkillDraft } from './skills.js'
 import { scriptLanguage } from './task-proposal.js'
 import type { VaultPaths } from './vault.js'
 
-export interface Study {
+interface Study {
   id: string
   botId: string
   what: string

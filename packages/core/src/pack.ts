@@ -6,7 +6,7 @@ import type { Note } from './schema.js'
 import { noteTitle } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-export interface PackOptions {
+interface PackOptions {
   query?: string
   now?: Date
 }

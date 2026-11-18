@@ -9,4 +9,3 @@ export async function tmpVaultRoot(prefix: string): Promise<string> {
   return mkdtemp(join(TMP_ROOT, `${prefix}-`))
 }
 
-export const LIVE_TIMEOUT_MS = 480_000

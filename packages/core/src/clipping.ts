@@ -1,4 +1,4 @@
-export interface Clip {
+interface Clip {
   url: string
   title: string
   description: string
@@ -40,7 +40,7 @@ export function parseHtmlClip(url: string, html: string): Clip {
   return { url, title, description: decodeEntities(description), text }
 }
 
-export function clipToMarkdown(clip: Clip): string {
+function clipToMarkdown(clip: Clip): string {
   return [`# ${clip.title}`, '', `> ${clip.url}`, '', clip.description, '', clip.text, ''].join('\n')
 }
 

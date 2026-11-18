@@ -7,7 +7,7 @@ import { noteTitle, parseNote } from './schema.js'
 import { buildIndex, searchIndex, searchIndexStrict, type SearchHit } from './search.js'
 import type { VaultPaths } from './vault.js'
 
-export interface FileDelta {
+interface FileDelta {
   upserts: Note[]
   removed: string[]
 }

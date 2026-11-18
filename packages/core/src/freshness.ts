@@ -9,9 +9,9 @@ const WINDOW_DAYS: Record<DecayLevel, number | null> = {
 
 const IMMINENT_RATIO = 0.2
 
-export type Freshness = 'fresh' | 'aging' | 'stale' | 'disputed'
+type Freshness = 'fresh' | 'aging' | 'stale' | 'disputed'
 
-export const FRESHNESS_BADGE: Record<Freshness, string> = {
+const FRESHNESS_BADGE: Record<Freshness, string> = {
   fresh: '🟢',
   aging: '🟡',
   stale: '🔴',

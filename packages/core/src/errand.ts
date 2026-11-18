@@ -93,7 +93,7 @@ export function stripNoteIds(text: string): string {
   return text.replace(/\s*\((?:id:\s*)?n-[0-9a-z]+-[0-9a-z]{4,8}\)/gi, '').replace(/\(\s*\)/g, '')
 }
 
-export function cleanUrls(raw: string[] | undefined): string[] {
+function cleanUrls(raw: string[] | undefined): string[] {
   const out: string[] = []
   for (const one of raw ?? []) {
     const url = String(one).trim()
@@ -166,9 +166,6 @@ export async function loadErrandState(paths: VaultPaths): Promise<ErrandState | 
   }
 }
 
-export async function clearErrandState(paths: VaultPaths): Promise<void> {
-  await writeFile(stateFile(paths), JSON.stringify({ phase: 'done' })).catch(() => undefined)
-}
 
 async function call(deps: ErrandDeps, prompt: string, schema: object | undefined, signal?: AbortSignal): Promise<string> {
   return collectResult(deps.engine, {

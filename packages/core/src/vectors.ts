@@ -9,7 +9,7 @@ import type { VaultPaths } from './vault.js'
 const META_FILE = 'vectors.json'
 const BIN_FILE = 'vectors.bin'
 
-export const EMBED_CHARS = 800
+const EMBED_CHARS = 800
 
 export function embedTextOf(note: Note): string {
   return `${noteTitle(note)}\n${note.body.slice(0, EMBED_CHARS)}`

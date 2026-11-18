@@ -27,7 +27,7 @@ export interface Card {
   held?: string
 }
 
-export interface CardInput {
+interface CardInput {
   cardType: CardType
   targets: string[]
   rationale: string
@@ -43,7 +43,7 @@ function cardFile(paths: VaultPaths, id: string): string {
   return join(cardsDir(paths), `${id}.md`)
 }
 
-export function cardIdFor(input: CardInput): string {
+function cardIdFor(input: CardInput): string {
   const digest = createHash('sha1')
     .update([input.cardType, ...input.targets, input.proposed ?? ''].join('\n'))
     .digest('hex')
@@ -151,7 +151,7 @@ export async function hasOpenCardFor(paths: VaultPaths, targets: string[]): Prom
   return (await listCards(paths)).find((c) => c.status === 'proposed' && targetSetKey(c.targets) === key)
 }
 
-export interface ApproveOptions {
+interface ApproveOptions {
   choice?: 'A' | 'B' | 'both'
   action?: 'keep' | 'retire'
   actor?: VerdictActor
@@ -376,7 +376,7 @@ export async function rejectCard(
   return card
 }
 
-export const COUNTEREXAMPLE_LIMIT = 20
+const COUNTEREXAMPLE_LIMIT = 20
 
 export async function appendCounterexample(paths: VaultPaths, entry: string, now: Date): Promise<void> {
   const agentsPath = join(paths.workspace, 'AGENTS.md')

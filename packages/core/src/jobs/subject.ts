@@ -1,5 +1,5 @@
 
-export interface TopicGroup {
+interface TopicGroup {
   ids: string[]
   subject: string | null
 }

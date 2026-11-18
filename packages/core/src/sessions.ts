@@ -89,7 +89,6 @@ export async function parseCodexSpan(span: string): Promise<{ turns: SessionTurn
   return { turns, consumed }
 }
 
-export const MIN_TURNS_TO_CONSIDER = 4
 const MAX_TURNS_PER_ASK = 40
 const MAX_CHARS_PER_TURN = 1_500
 

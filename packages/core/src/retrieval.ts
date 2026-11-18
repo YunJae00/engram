@@ -2,10 +2,10 @@ import { collectResult, extractJson, type Engine, type EngineCwd } from './engin
 import type { SearchHit } from './search.js'
 
 export const WEAK_HIT_COUNT = 3
-export const EXPANSION_BUDGET_MS = 15_000
+const EXPANSION_BUDGET_MS = 15_000
 export const MAX_EXPANDED_QUERIES = 5
 
-export function expansionPrompt(question: string): string {
+function expansionPrompt(question: string): string {
   return [
     'We are running a full-text search (BM25-style) over a personal note vault. Produce 3-5 search queries so that notes recording the same subject in DIFFERENT words are also retrieved: synonyms, technical terms in English, adjacent keywords.',
     'Do not repeat the question verbatim. Each query is a bag of 2-6 keywords.',

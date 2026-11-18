@@ -2,12 +2,12 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { normalizeCapture } from './parsers.js'
 
-export interface CaptureResult {
+interface CaptureResult {
   file: string
   duplicate: boolean
 }
 
-export type CaptureOrigin = 'user' | 'session'
+type CaptureOrigin = 'user' | 'session'
 
 const ORIGIN_MARKER = '<!-- engram:origin='
 

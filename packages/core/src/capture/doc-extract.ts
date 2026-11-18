@@ -3,8 +3,8 @@ import { extname } from 'node:path'
 import { readPackage, validatePackage, type DocumentPackage } from '../document-package.js'
 import { DOCUMENT_BYTES, DOCUMENT_EXTENSIONS } from '../document-tools.js'
 
-export type ExtractableKind = 'docx' | 'xlsx' | 'pptx' | 'pdf' | 'hwpx' | 'text'
-export interface DocumentExtractOptions { minLength?: number; onLimit?(message: string): void; unbounded?: boolean; bytes?: Buffer; signal?: AbortSignal }
+type ExtractableKind = 'docx' | 'xlsx' | 'pptx' | 'pdf' | 'hwpx' | 'text'
+interface DocumentExtractOptions { minLength?: number; onLimit?(message: string): void; unbounded?: boolean; bytes?: Buffer; signal?: AbortSignal }
 
 const TEXT_EXTS = new Set(['.txt', '.md', '.csv', '.log', '.json'])
 

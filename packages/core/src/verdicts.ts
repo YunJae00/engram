@@ -1,12 +1,12 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { trimJsonlIfHuge } from './receipts.js'
 import { dirname, join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-export type CardVerdictKind = 'approved' | 'rejected' | 'edited' | 'answered-in-text'
+type CardVerdictKind = 'approved' | 'rejected' | 'edited' | 'answered-in-text'
 export type VerdictActor = 'user' | 'librarian'
 
-export interface CardVerdictEvent {
+interface CardVerdictEvent {
   at: string
   cardId: string
   cardType: string
@@ -27,21 +27,3 @@ export async function recordVerdict(paths: VaultPaths, event: Omit<CardVerdictEv
   await trimJsonlIfHuge(file)
 }
 
-export async function readVerdictLedger(paths: VaultPaths): Promise<CardVerdictEvent[]> {
-  try {
-    const raw = await readFile(join(paths.cache, LEDGER), 'utf8')
-    return raw
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line) as CardVerdictEvent
-        } catch {
-          return null
-        }
-      })
-      .filter((e): e is CardVerdictEvent => e !== null && typeof e.cardId === 'string')
-  } catch {
-    return []
-  }
-}

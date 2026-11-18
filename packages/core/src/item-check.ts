@@ -2,9 +2,9 @@ import type { AgentTool } from './agent-loop.js'
 import { askedCount } from './search-template.js'
 import { deadOf, isSearchPage, LINK_CHECK_MS, TEAM_ANSWER_MS } from './team-hire-tools.js'
 
-export type ItemJudgment = { keep: number[]; unsure: number[]; same: number[][]; lists: number[]; names: Record<string, string>; listing: number[]; outside: number[]; secondhand: number[]; asked?: number | null; search?: string; holds?: number[]; evidence?: Record<number, Record<string, string>>; quotes?: Record<number, Record<string, string>>; points?: string[]; kind?: string; open?: number }
-export type Wants = { points: string[]; kind?: string }
-export type JudgedItem = { text: string; link?: string; title?: string }
+type ItemJudgment = { keep: number[]; unsure: number[]; same: number[][]; lists: number[]; names: Record<string, string>; listing: number[]; outside: number[]; secondhand: number[]; asked?: number | null; search?: string; holds?: number[]; evidence?: Record<number, Record<string, string>>; quotes?: Record<number, Record<string, string>>; points?: string[]; kind?: string; open?: number }
+type Wants = { points: string[]; kind?: string }
+type JudgedItem = { text: string; link?: string; title?: string }
 const norm = (text: string): string => text.replace(/\s+/g, ' ').trim()
 const flat = (text: string): string => text.toLowerCase().replace(/(\d),(?=\d{3}(?!\d))/g, '$1').replace(/(\d+)\.0+(?!\d)/g, '$1').replace(/(\d)\s*(?:°\s*c|℃|°|도)/giu, '$1°')
 const SPLIT = /[\s,;:!?·'"“”‘’()[\]{}<>~—–\-/|*_`#]+/gu
@@ -67,8 +67,8 @@ export function evidenced(quote: string, item: JudgedItem, ask: string, value: b
   if (inOrder(need, squash(body))) return true
   return !(title && inOrder(need, squash(title))) && inOrder(need, squash(`${title} ${body}`))
 }
-export type Claim = { point: string; quote: string; kind?: string }
-export const STATED_MS = 2000
+type Claim = { point: string; quote: string; kind?: string }
+const STATED_MS = 2000
 export async function stated(claims: readonly Claim[], write?: (prompt: string, ms: number) => Promise<string | undefined>, ms = STATED_MS): Promise<Set<number> | undefined> {
   if (!write || !claims.length) return undefined
   const prompt = [
@@ -195,7 +195,7 @@ function merged(st: Held, judged: readonly Row[], verdict: ItemJudgment, live: (
   for (const n of judgedNs.filter(n => verdict.keep.includes(n) || (single && !!verdict.evidence?.[n]))) { if (!st.held.some(row => row.url === at(n).url)) st.held.push(at(n)); prove(n) }
   st.unsure = judgedNs.filter(n => verdict.unsure.includes(n)).map(at)
 }
-export interface CheckedSearchOptions {
+interface CheckedSearchOptions {
   ask(): string
   write?: (prompt: string, ms: number) => Promise<string | undefined>
   alive?: (url: string, signal: AbortSignal) => Promise<boolean>

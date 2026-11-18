@@ -18,7 +18,7 @@ export class WhisperUnavailableError extends Error {
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin'
 const MODEL_FILE = 'ggml-base.bin'
 
-export async function ensureWhisperModel(modelsDir: string, url = MODEL_URL): Promise<string> {
+async function ensureWhisperModel(modelsDir: string, url = MODEL_URL): Promise<string> {
   const modelPath = join(modelsDir, MODEL_FILE)
   try {
     await access(modelPath)

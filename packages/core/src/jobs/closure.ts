@@ -11,7 +11,7 @@ import type { JobSpec } from './runner.js'
 const LOOP_CAP = 20
 const CONCLUSION_CAP = 10
 
-export interface ClosureInput {
+interface ClosureInput {
   loops: Note[]
   conclusions: Note[]
 }

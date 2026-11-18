@@ -6,7 +6,7 @@ import type { VaultPaths } from '../vault.js'
 import { withPrompt } from './prompts.js'
 import type { JobSpec } from './runner.js'
 
-export const J11_INSTRUCTION = [
+const J11_INSTRUCTION = [
   "Below is a stretch of a work session the user just had with an AI assistant. Pick out ONLY what will be needed again later and turn it into notes.",
   "",
   "**Most stretches contain nothing worth keeping. That is normal.** When there is nothing, output {\"notes\": []} — an empty result is not a failure.",
@@ -33,7 +33,7 @@ export const J11_INSTRUCTION = [
   "- Write in the language the user was writing in.",
 ].join('\n')
 
-export interface HarvestedNote {
+interface HarvestedNote {
   title: string
   body: string
 }

@@ -7,7 +7,7 @@ import { readNote, writeNote } from './notes.js'
 import { parseNote } from './schema.js'
 import type { TeamSync } from './sync.js'
 
-export interface ConflictResolution {
+interface ConflictResolution {
   cards: Card[]
   preservedBoth: string[]
 }

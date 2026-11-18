@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/pr
 import { dirname, join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-export const JSONL_TRIM_BYTES = 256 * 1024
+const JSONL_TRIM_BYTES = 256 * 1024
 
 export async function trimJsonlIfHuge(file: string, maxBytes: number = JSONL_TRIM_BYTES): Promise<void> {
   try {
@@ -17,9 +17,9 @@ export async function trimJsonlIfHuge(file: string, maxBytes: number = JSONL_TRI
   }
 }
 
-export type RecallSurface = 'chat' | 'mcp-search' | 'mcp-context' | 'mcp-trace'
+type RecallSurface = 'chat' | 'mcp-search' | 'mcp-context' | 'mcp-trace'
 
-export interface RecallReceipt {
+interface RecallReceipt {
   at: string
   surface: RecallSurface
   ids: string[]

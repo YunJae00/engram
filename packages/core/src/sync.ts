@@ -10,7 +10,7 @@ export interface SyncStatus {
   behind: number
 }
 
-export interface PullResult {
+interface PullResult {
   pulled: boolean
   conflicts: string[]
 }

@@ -6,9 +6,9 @@ import type { SkillCandidate, SkillDraft } from './skills.js'
 import type { VaultPaths } from './vault.js'
 
 export interface ActivityStep { app: string; title: string; start: string; end: string }
-export interface UsedApp { app: string; label: string; ms: number; days: number; lastAt: string }
-export interface HabitStep { app: string; label: string; titles: string[] }
-export interface HabitChain { key: string; steps: HabitStep[]; times: string[] }
+interface UsedApp { app: string; label: string; ms: number; days: number; lastAt: string }
+interface HabitStep { app: string; label: string; titles: string[] }
+interface HabitChain { key: string; steps: HabitStep[]; times: string[] }
 
 const PRIVATE = '(private)'
 const TITLE_SPLIT = /\s+[-|—–]\s+/

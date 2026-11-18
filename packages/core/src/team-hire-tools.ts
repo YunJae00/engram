@@ -4,12 +4,12 @@ import { communityPost } from './search-template.js'
 import { datedText, logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 export const TEAM_TOKEN_RESERVE = 45_000
-export const HIRE_MAX_PER_CALL = 4
-export const TEAM_PLAN_OK = ['이대로 진행', 'Go ahead as planned']
-export const TEAM_PLAN_FIX = ['고칠 점 말할게', 'I want changes']
-export const TEAM_PLAN_YES = /^\s*(이대로 진행(해|해줘|해주세요)?|go ahead as planned|go ahead|응|네|예|좋아|좋아요|진행해|진행해줘|yes|ok|okay)\s*[.!~]*\s*$/i
+const HIRE_MAX_PER_CALL = 4
+const TEAM_PLAN_OK = ['이대로 진행', 'Go ahead as planned']
+const TEAM_PLAN_FIX = ['고칠 점 말할게', 'I want changes']
+const TEAM_PLAN_YES = /^\s*(이대로 진행(해|해줘|해주세요)?|go ahead as planned|go ahead|응|네|예|좋아|좋아요|진행해|진행해줘|yes|ok|okay)\s*[.!~]*\s*$/i
 const CODING = /코딩|코드|개발|프로그램|앱\s*(을|를)?\s*만들|웹\s*사이트|\b(cod(e|ing)|develop\w*|implement\w*|program\w*|app|website|software|repo(sitory)?)\b/i
-export const MEMBER_RULE = 'Do only your part, and only what it asks: no optional extras. Never wait with a shell sleep or by polling memory; when a tool cannot run now, use another source or report what you have. You may hire helpers only if your part clearly has separable pieces; review what they return before you report. Report the result in at most 2000 characters, then the files you made by path. You do not talk to the person: when only they can answer, call ask_person once and stop.'
+const MEMBER_RULE = 'Do only your part, and only what it asks: no optional extras. Never wait with a shell sleep or by polling memory; when a tool cannot run now, use another source or report what you have. You may hire helpers only if your part clearly has separable pieces; review what they return before you report. Report the result in at most 2000 characters, then the files you made by path. You do not talk to the person: when only they can answer, call ask_person once and stop.'
 export const MEMBER_BLOCKED = /^(new_bot|agents|assign|agents_now|schedule|keep_in_mind|keep_how_to|offer_study|study_findings|report_result_check)$/
 export const SCREEN_TOOL = /^(app_|desktop_|open_app|look_desktop|read_desktop|list_windows|excel_|word_|ppt_|outlook_|compose_live_document|edit_live_document|read_live_document)/
 const TOKEN_REFUSAL = 'The task token budget is nearly used. Do not hire. Finish with what exists and close with what is done, what is missing and what comes next.'
@@ -65,7 +65,7 @@ const newTeam = (): TaskTeam => ({ members: [], hires: 0, maxHires: TEAM_MAX_HIR
 const cut = (text: string, max: number) => text.length > max ? text.slice(0, max) : text
 const DOC_FILE = /(?:^|[\s("'`])((?:[~.]?\/|[A-Za-z]:\\)?[^\s"'`()<>]+\.(?:pdf|docx?|xlsx?|pptx?|csv|md|txt|html?|json|png|jpe?g|zip))(?=$|[\s)"'`.,])/gi
 
-export function bigPlan(goal: string, members: readonly { role: string; brief: string }[], flagged: boolean): boolean {
+function bigPlan(goal: string, members: readonly { role: string; brief: string }[], flagged: boolean): boolean {
   return flagged || members.length > 3 || CODING.test([goal, ...members.flatMap(m => [m.role, m.brief])].join('\n'))
 }
 
@@ -212,7 +212,7 @@ const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포�
 const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
 const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title, url]) => nameLike(title!) && !hostPiece(title!, url!)).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim()]))
 const hostPiece = (words: string, url: string): boolean => { try { const name = words.trim().toLowerCase(); return /^[\w.-]+$/.test(name) && new URL(url).hostname.toLowerCase().includes(name) } catch { return false } }
-export const givenName = (words: string, url: string): boolean => nameLike(words) && !hostPiece(words, url)
+const givenName = (words: string, url: string): boolean => nameLike(words) && !hostPiece(words, url)
 export function placeNamed(text: string, members: readonly TeamMember[], korean = false, hosts = false): string {
   const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
   const unnamed = (words: string, url: string): boolean => PLACE.test(words.trim()) || hosts && (HOSTISH.test(words.trim()) || /…|\.{3,}/.test(words) || hostPiece(words, url) || cutTitle(words, url))
@@ -383,7 +383,7 @@ function saidOnce(answer: string, job: string): string {
   return kept.length === more.length ? plain : [first.trim(), ...kept.map(half => half.trim())].join('\n\n---\n\n')
 }
 const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|네|다섯)\s*(?:개|가지|건|편)(?![가-힣]*월)/iu
-export const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
+const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
 const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
 const ITEM_MARK = /^(?:[-*•·]|\d{1,2}[.)])\s/
 const datesIn = (line: string): string[] => (line.match(new RegExp(DATED_LINE.source, 'g')) ?? []).map(day => day.replace(/\s+/g, ''))

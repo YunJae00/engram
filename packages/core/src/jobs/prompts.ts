@@ -29,7 +29,7 @@ const SECTIONS_FOR: Record<JobKind, string[]> = {
   J13: [LANGUAGE, SCHEMA, PROHIBITIONS],
 }
 
-export function extractSection(agentsMd: string, heading: string): string {
+function extractSection(agentsMd: string, heading: string): string {
   const start = agentsMd.indexOf(heading)
   if (start === -1) return ''
   const next = agentsMd.indexOf('\n## ', start + heading.length)
@@ -38,7 +38,7 @@ export function extractSection(agentsMd: string, heading: string): string {
 
 const COUNTEREXAMPLES_IN_PROMPT = 10
 
-export function capCounterexamples(section: string, limit = COUNTEREXAMPLES_IN_PROMPT): string {
+function capCounterexamples(section: string, limit = COUNTEREXAMPLES_IN_PROMPT): string {
   if (!section) return section
   const lines = section.split('\n')
   const total = lines.filter((l) => l.trimStart().startsWith('- ')).length

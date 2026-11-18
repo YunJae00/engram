@@ -1,10 +1,10 @@
-export interface ChatMessage {
+interface ChatMessage {
   speaker: string
   time: string
   text: string
 }
 
-export interface ParsedCapture {
+interface ParsedCapture {
   kind: 'slack' | 'kakao' | 'plain'
   messages: ChatMessage[]
 }

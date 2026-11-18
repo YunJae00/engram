@@ -83,7 +83,7 @@ function scoreTarget(
   }
 }
 
-export function boundedCandidates(targets: Note[], corpus: Note[], cap: number): Note[] {
+function boundedCandidates(targets: Note[], corpus: Note[], cap: number): Note[] {
   const targetIds = new Set(targets.map((n) => n.front.id))
   const pool = corpus.filter((n) => !targetIds.has(n.front.id))
   if (pool.length <= cap) return pool
@@ -472,7 +472,7 @@ export function stripBriefBody(result: string): string {
   return (fenced ? fenced[1]! : body).trim()
 }
 
-export interface BriefCard {
+interface BriefCard {
   id: string
   cardType: CardType
   title: string
@@ -543,7 +543,7 @@ function groupByTargetOverlap(cards: Card[]): Card[][] {
   return groups.map((g) => g.cards)
 }
 
-export interface BriefLoop {
+interface BriefLoop {
   id: string
   title: string
   due_at?: string

@@ -38,7 +38,7 @@ import { findMergeClusters } from './cluster.js'
 import { readAgentsMd } from './prompts.js'
 import { JobRunner, type JobFailure, type RunReport, type RunnerOptions, type JobSpec } from './runner.js'
 
-export interface SweepState {
+interface SweepState {
   last_sweep?: string
   last_j7?: string
   last_digest?: string
@@ -70,14 +70,14 @@ async function saveState(paths: VaultPaths, state: SweepState): Promise<void> {
   await writeFile(join(paths.cache, 'state.json'), JSON.stringify(state, null, 2))
 }
 
-export interface SweepOptions extends RunnerOptions {
+interface SweepOptions extends RunnerOptions {
   full?: boolean
   ingest?: import('../ingest.js').IngestOptions
   autonomy?: import('./librarian.js').Autonomy
   skipBrief?: boolean
 }
 
-export interface SweepReport extends RunReport {
+interface SweepReport extends RunReport {
   deltaCount: number
   briefWritten: boolean
 }

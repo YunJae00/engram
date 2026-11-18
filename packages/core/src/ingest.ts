@@ -70,7 +70,7 @@ function parseUrlFile(content: string): string | null {
   return /^https?:\/\/\S+$/.test(bare) ? bare : null
 }
 
-export interface IngestResult {
+interface IngestResult {
   file: string
   converted: boolean
 }

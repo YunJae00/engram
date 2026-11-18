@@ -8,7 +8,7 @@ import { frontmatterSchema, type NoteFrontmatter } from './schema.js'
 import { serializeNote } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-export interface ImportScan {
+interface ImportScan {
   files: string[]
   totalBytes: number
 }
@@ -37,7 +37,7 @@ export async function scanImportFolder(folder: string): Promise<ImportScan> {
   return { files: files.sort(), totalBytes }
 }
 
-export interface AbsorbState {
+interface AbsorbState {
   pending: string[]
   total: number
 }
@@ -57,7 +57,7 @@ export async function saveAbsorbState(paths: VaultPaths, state: AbsorbState): Pr
   await writeFile(join(paths.cache, ABSORB_FILE), JSON.stringify(state))
 }
 
-export interface ImportReport {
+interface ImportReport {
   imported: number
   queued: number
 }

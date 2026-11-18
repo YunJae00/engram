@@ -7,19 +7,19 @@ const DUE_CAP = 3
 const COLD_DAYS = 14
 const TITLE_MAX = 70
 
-export interface StandupEntry {
+interface StandupEntry {
   folder: string
   last: string
   daysAgo: number
   open: number
 }
 
-export interface StandupDue {
+interface StandupDue {
   title: string
   overdue: boolean
 }
 
-export interface Standup {
+interface Standup {
   entries: StandupEntry[]
   due: StandupDue[]
 }
@@ -28,7 +28,7 @@ function trim(text: string): string {
   return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text
 }
 
-export interface ActiveFolder {
+interface ActiveFolder {
   folder: string
   notes: Note[]
   last: Note

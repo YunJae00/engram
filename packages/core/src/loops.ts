@@ -4,9 +4,9 @@ const DAY = 86_400_000
 
 const WEEK_DAYS = 7
 
-export const LOOP_URGENCIES = ['overdue', 'today', 'this-week', 'later', 'no-deadline'] as const
+const LOOP_URGENCIES = ['overdue', 'today', 'this-week', 'later', 'no-deadline'] as const
 
-export type LoopUrgency = (typeof LOOP_URGENCIES)[number]
+type LoopUrgency = (typeof LOOP_URGENCIES)[number]
 
 const URGENCY_RANK: Record<LoopUrgency, number> = {
   overdue: 0,

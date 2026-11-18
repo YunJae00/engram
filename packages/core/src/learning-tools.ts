@@ -48,7 +48,7 @@ export function keepHowToTool(deps: { save(name: string, draft: SkillDraft): Pro
   }
 }
 
-export interface ChatTurns { name: string; turns: { role: 'user' | 'assistant'; text: string; at?: string }[] }
+interface ChatTurns { name: string; turns: { role: 'user' | 'assistant'; text: string; at?: string }[] }
 const SHOWN_HITS = 6
 const HIT_CHARS = 280
 

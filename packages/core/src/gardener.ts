@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readNote, writeNote } from './notes.js'
 import { noteTitle } from './schema.js'
@@ -9,7 +9,7 @@ const SHELF_AFTER_MS = 90 * 86_400_000
 const GARDEN_CAP = 20
 const LEDGER = 'garden-ledger.jsonl'
 
-export interface GardenEvent {
+interface GardenEvent {
   at: string
   id: string
   title: string
@@ -61,21 +61,3 @@ export async function sweepGarden(paths: VaultPaths, notes: Note[], now: Date = 
   return events
 }
 
-export async function countGardenEvents(paths: VaultPaths, sinceMs: number): Promise<number> {
-  try {
-    const raw = await readFile(ledgerFile(paths), 'utf8')
-    return raw
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line) as GardenEvent
-        } catch {
-          return null
-        }
-      })
-      .filter((event): event is GardenEvent => event !== null && Date.parse(event.at) >= sinceMs).length
-  } catch {
-    return 0
-  }
-}

@@ -1,10 +1,10 @@
 export type QuickText = (prompt: string, ms?: number) => Promise<string | undefined>
-export const PROBLEM_KINDS = ['contradicts', 'unsaid', 'asks', 'dropped', 'overlap', 'missing', 'register'] as const
+const PROBLEM_KINDS = ['contradicts', 'unsaid', 'asks', 'dropped', 'overlap', 'missing', 'register'] as const
 export type ProblemKind = typeof PROBLEM_KINDS[number]
 export interface WrittenProblem { kind: ProblemKind; quote: string; why: string; lines?: string[] }
 export const CHECK_MIN_MS = 1000
 
-export interface CheckInput {
+interface CheckInput {
   data: unknown
   ask: string
   rewrite?: boolean
@@ -62,7 +62,7 @@ const within = async <T>(work: Promise<T>, ms: number, signal?: AbortSignal): Pr
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort) }
 }
 
-export async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number, signal?: AbortSignal): Promise<WrittenProblem[] | undefined> {
+async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number, signal?: AbortSignal): Promise<WrittenProblem[] | undefined> {
   return readProblems(await within(check(checkPrompt(input, draft), ms), ms, signal), input.rewrite || input.askConstraints)
 }
 
@@ -93,7 +93,7 @@ export function quotedUnits(units: readonly { text: string }[], quote: string): 
   return whole.length ? whole : units.flatMap((u, i) => { const w = words(u.text); return w.length >= 4 && q.includes(w) ? [i] : [] })
 }
 type Problem = WrittenProblem | ShapeProblem
-export function repairPrompt(input: CheckInput, units: readonly { text: string }[], problems: readonly Problem[], allowed: ReadonlySet<number>): string {
+function repairPrompt(input: CheckInput, units: readonly { text: string }[], problems: readonly Problem[], allowed: ReadonlySet<number>): string {
   return [
     'You fix a message before a person reads it in a chat. A check found the problems below in it. Fix each one by changing as little as it takes; everything else stays exactly as it is.',
     'The message is given in numbered units (a sentence, or a whole list item, table row or heading). Answer with JSON only: {"replace": {"<unit number>": "<its new text>"}, "insert_after": {"<unit number>": ["<new line>", …]}}. A unit that should go is replaced with "". "insert_after" adds whole new lines after the line that unit is on ("0": before the first line).',
@@ -151,7 +151,7 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
   const text = noEmptyFences(shown.join('\n')).replace(/\n{3,}/g, '\n\n').trim()
   return text && text !== draft.trim() ? text : undefined
 }
-export async function scopedRepair(quick: QuickText, input: CheckInput, draft: string, problems: readonly Problem[], ms: number, signal?: AbortSignal): Promise<string | undefined> {
+async function scopedRepair(quick: QuickText, input: CheckInput, draft: string, problems: readonly Problem[], ms: number, signal?: AbortSignal): Promise<string | undefined> {
   const units = messageUnits(draft), allowed = new Set(problems.flatMap(p => p.kind === 'missing' ? [] : quotedUnits(units, p.quote)))
   return spliced(draft, await within(quick(repairPrompt(input, units, problems, allowed), ms), ms, signal), allowed, problems.some(p => ADDS.has(p.kind)), JSON.stringify(input.data))
 }
@@ -168,7 +168,7 @@ export function withoutSentences(text: string, problems: readonly Problem[]): st
 }
 const noEmptyFences = (text: string): string => text.replace(/^[ \t]*```[^\n`]*\n(?:[ \t]*\n)*[ \t]*```[ \t]*$\n?/gm, '').replace(/\n{3,}/g, '\n\n').trim()
 
-export function inOneRegister(text: string, problems: readonly Problem[], data: unknown): string {
+function inOneRegister(text: string, problems: readonly Problem[], data: unknown): string {
   const units = messageUnits(text), flagged = new Set(problems.filter(p => p.kind === 'register').flatMap(p => quotedUnits(units, p.quote)))
   if (!flagged.size) return text
   const held = words(JSON.stringify(data) ?? ''), cut = new Set<number>(), framed = new Map<number, string>()
@@ -189,7 +189,7 @@ export function inOneRegister(text: string, problems: readonly Problem[], data: 
   }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-export interface Written {
+interface Written {
   text: string
   outcome: CheckOutcome
   problems: readonly Problem[]

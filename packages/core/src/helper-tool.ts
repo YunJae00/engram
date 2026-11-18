@@ -4,7 +4,7 @@ import { contextExcerpt } from './context-excerpt.js'
 const HELPERS_MAX = 3
 const FOUND_CHARS = 3_000
 
-export const HELPER_TOOL = 'look_in_parallel'
+const HELPER_TOOL = 'look_in_parallel'
 
 export function helpersTool(deps: { look(question: string, index: number, signal?: AbortSignal): Promise<string> }): AgentTool {
   return {

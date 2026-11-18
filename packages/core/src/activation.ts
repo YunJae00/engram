@@ -71,7 +71,7 @@ export function fadingMemories(notes: Note[], now: Date = new Date(), cap = 3): 
     .map((entry) => entry.note)
 }
 
-export interface ActivationHit {
+interface ActivationHit {
   id: string
   score: number
   via: string
@@ -85,7 +85,7 @@ const SALIENCE_BOOST = 1.5
 const RECENT_RECALL_BOOST = 1.2
 const RECENT_RECALL_DAYS = 7
 
-export interface SpreadOptions {
+interface SpreadOptions {
   hops?: number
   limit?: number
 }

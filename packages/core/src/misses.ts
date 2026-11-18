@@ -21,7 +21,7 @@ export async function recordRecallMiss(paths: VaultPaths, query: string, now: Da
   await appendFile(join(paths.cache, MISS_FILE), JSON.stringify(entry) + '\n')
 }
 
-export interface RepeatedMiss {
+interface RepeatedMiss {
   query: string
   count: number
   last: string

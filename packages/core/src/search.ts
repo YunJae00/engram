@@ -5,7 +5,7 @@ import { noteTitle } from './schema.js'
 const CJK_RE = /[぀-ヿ㄰-㆏一-鿿가-힯]/
 const SPLIT_RE = /[\n\r\p{Z}\p{P}]+/u
 
-export function cjkTokenize(text: string): string[] {
+function cjkTokenize(text: string): string[] {
   const out: string[] = []
   for (const token of text.split(SPLIT_RE)) {
     if (!token) continue

@@ -31,7 +31,7 @@ export function vaultPaths(root: string): VaultPaths {
   }
 }
 
-export interface InitVaultOptions {
+interface InitVaultOptions {
   git?: boolean
   provider?: BinaryProvider
 }

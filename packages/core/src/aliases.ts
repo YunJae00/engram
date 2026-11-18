@@ -37,7 +37,7 @@ export function parseAliasGroups(text: string): string[][] {
   return groups
 }
 
-export function parseUmbrellaTerms(text: string): string[] {
+function parseUmbrellaTerms(text: string): string[] {
   const terms: string[] = []
   let inUmbrella = false
   for (const line of text.split('\n')) {

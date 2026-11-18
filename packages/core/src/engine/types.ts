@@ -24,7 +24,7 @@ export class PrivatePathError extends Error {
   }
 }
 
-export function assertEngineCwd(dir: string): asserts dir is EngineCwd {
+function assertEngineCwd(dir: string): asserts dir is EngineCwd {
   const segments = dir.split(/[\\/]+/)
   if (segments.includes('private')) throw new PrivatePathError(dir)
 }
