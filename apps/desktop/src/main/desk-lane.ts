@@ -509,22 +509,27 @@ function withoutLines(lines: readonly string[], gone: Set<number>): string {
 }
 
 const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
-const REPLY_NOTE = 'Only on the build that finishes what the person asked: one short line for the chat, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."), what you made in a few words. A build that passes with this line ends the turn with it and every file made so far, so nothing is read back after it. Leave it out while another file is still to be made.'
+const REPLY_NOTE = 'One short line for the chat, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."), what you made in a few words.'
+const MORE_NOTE = 'true only when this ask still needs another file after this one. Otherwise leave it out: a build that passes ends the turn with every file made so far, so nothing is read back after it.'
 const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
-const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply'))
+const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply' && key !== 'more'))
 const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
+/** The build's own text that may stand in a Korean line: a string that is Korean itself, so its Latin words are names inside it, not English. */
+const ownKorean = (value: unknown): string[] => typeof value === 'string' ? (/[가-힣]/.test(value) ? [value] : []) : value && typeof value === 'object' ? Object.values(value).flatMap(ownKorean) : []
 /** The plain line the host says for a build, from the build itself: its title and its slide or sheet count. */
 export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean): string {
+  // A title the model wrote in English ("Club Introduction") is not said in a Korean thread: the line goes without it.
+  const said = (title: string): string => !korean || (ownKorean(title).length && plainWords(title) === title) ? title : ''
   const list = (key: string): Record<string, unknown>[] => Array.isArray(args[key]) ? (args[key] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object') : []
   if (tool === 'ppt_build') {
-    const slides = list('slides'), title = textOf(slides[0]?.['title']) || textOf(args['saveAs']).replace(/\.pptx$/i, '')
+    const slides = list('slides'), title = said(textOf(slides[0]?.['title']) || textOf(args['saveAs']).replace(/\.pptx$/i, ''))
     return korean ? `${title ? `${title}, ` : '발표 자료를 '}${slides.length}장으로 만들었어요.` : `Made ${title ? `"${title}", ` : 'the deck, '}${slides.length} slides.`
   }
   if (tool === 'word_write') {
-    const title = textOf(args['title']) || textOf(list('blocks').find(block => block['kind'] === 'title')?.['text']) || textOf(args['saveAs']).replace(/\.docx$/i, '')
+    const title = said(textOf(args['title']) || textOf(list('blocks').find(block => block['kind'] === 'title')?.['text']) || textOf(args['saveAs']).replace(/\.docx$/i, ''))
     return korean ? `${title ? `${title} ` : ''}문서로 만들었어요.` : `Made the document${title ? ` "${title}"` : ''}.`
   }
-  const sheets = list('sheets').length || 1, title = textOf(args['name']).replace(/\.xlsx$/i, '')
+  const sheets = list('sheets').length || 1, title = said(textOf(args['name']).replace(/\.xlsx$/i, ''))
   return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
 }
 /** The model's own reply when it reads right in this thread (its language, at most two sentences, no technical words); else none. */
@@ -542,14 +547,14 @@ export function closingBuilds(tools: readonly AgentTool[], korean: boolean): Age
     const schema = tool.argsSchema as { properties?: Record<string, unknown> }
     const given: AgentTool = {
       ...tool,
-      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE } } },
+      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE }, more: { type: 'boolean', description: MORE_NOTE } } },
       run: (args, context) => tool.run(withoutReply(args), context),
     }
     return closingTool(given, async (out, args) => {
-      // The model's reply is its word that the ask is finished: a build without one (another file is still to come) goes back to it.
-      if (!receiptOf(out) || !textOf(args['reply'])) return undefined
+      // A passed build closes by default, so a fast finish never hangs on an optional argument; only an explicit `more` keeps the turn open.
+      if (!receiptOf(out) || args['more'] === true) return undefined
       const built = withoutReply(args)
-      return { said: out, answer: buildReply(args['reply'], korean, JSON.stringify(built)) ?? builtLine(tool.name, built, korean) }
+      return { said: out, answer: buildReply(args['reply'], korean, ownKorean(built).join(' ')) ?? builtLine(tool.name, built, korean) }
     })
   })
 }

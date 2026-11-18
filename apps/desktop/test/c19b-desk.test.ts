@@ -158,13 +158,13 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     expect(result.answer.split('\n')[0]).toBe('Galaxy Buds 소개 자료 2장 만들었어요.')
   })
 
-  // Round 2 (r1 #5): only the model knows whether the ask needs another file; its reply is that word. A build without one goes back to it.
-  it('a build without a reply does not end the turn: the next file is made, and the last build closes with every file', async () => {
+  // Round 3 (r2 #1): a passed build closes by default; only an explicit `more` (another file still to come) keeps the turn open.
+  it('a build marked more does not end the turn: the next file is made, and the last build closes with every file', async () => {
     const files = [{ artifact: 'p1', markdownLink: '[동아리 소개.pptx](engram-artifact:p1)' }, { artifact: 'w1', markdownLink: '[동아리 소개.docx](engram-artifact:w1)' }]
     const fake = (name: string, made: Record<string, unknown>): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify(made) })
     let second = false
     const engine = brain(async job => {
-      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동아리 소개' }] })
+      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동아리 소개' }], more: true })
       await pause(400)
       await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동아리 소개', reply: '동아리 소개 발표 자료랑 문서 만들었어요.' })
       second = true
@@ -176,9 +176,26 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     expect(result.steps.map(step => step.tool)).toEqual(['ppt_build', 'word_write'])
     expect(result.answer.startsWith('동아리 소개 발표 자료랑 문서 만들었어요.')).toBe(true)
     for (const one of files) expect(result.answer).toContain(one.markdownLink)
-    const alone = await run(deckTools(), { slides: SLIDES })
-    expect(alone.read.calls).toBe(1)
-    expect(alone.result.answer.startsWith('다시 읽어 보고 고쳤어요.')).toBe(true)
+  })
+
+  it('a passed build with no reply and no more still ends the turn on the host line, nothing read back', async () => {
+    for (const args of [{ slides: SLIDES }, { slides: SLIDES, reply: '' }, { slides: SLIDES, more: false }]) {
+      const { result, read, after } = await run(deckTools(), args)
+      expect(result.answer.split('\n')[0]).toBe('신제품 소개, 3장으로 만들었어요.')
+      expect(read.calls).toBe(0)
+      expect(after).toBe(0)
+    }
+  })
+
+  // Round 3 (r2 #2): the host line and the reply only carry build text that is Korean itself; an English title the model chose stays out.
+  it('an English title from the build never reaches a Korean line', async () => {
+    const slides = [{ title: 'Quarterly Kickoff' }, { title: '팀 소개', bullets: ['새 멤버'] }]
+    const { result } = await run(deckTools(), { slides, reply: 'Quarterly Kickoff 자료 2장 만들었어요.' })
+    expect(result.answer.split('\n')[0]).toBe('발표 자료를 2장으로 만들었어요.')
+    expect(builtLine('word_write', { title: 'Weekly Notes' }, true)).toBe('문서로 만들었어요.')
+    expect(builtLine('file_create_workbook', { name: 'budget_2027.xlsx', sheets: [{}] }, true)).toBe('파일을 시트 1개로 만들었어요.')
+    expect(builtLine('ppt_build', { slides: [{ title: 'Galaxy Buds 소개' }] }, true)).toBe('Galaxy Buds 소개, 1장으로 만들었어요.')
+    expect(builtLine('ppt_build', { slides: [{ title: 'Quarterly Kickoff' }] }, false)).toBe('Made "Quarterly Kickoff", 1 slides.')
   })
 
   it('an audit refusal goes back to the model, which keeps working', async () => {
