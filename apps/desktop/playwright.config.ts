@@ -7,7 +7,6 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   workers: 1,
   fullyParallel: false,
-  // Retry in a fresh worker so a disconnected inspector cannot reuse a frozen app.
   retries: process.env['CI'] ? 1 : 0,
   reporter: [['list']],
   use: { trace: 'retain-on-failure' },
