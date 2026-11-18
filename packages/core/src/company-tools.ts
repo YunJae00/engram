@@ -743,20 +743,41 @@ const outcome = (job: DoneJob): string => {
   return first && /[요다][.!]?$/u.test(first) && Array.from(first).length <= 90 && !/…$/u.test(first) ? first : ''
 }
 // c17c (cause S, C10: "신기능 세 곳을 조사했는데" for 노션·슬랙·리니어 jobs, and the check said clean): a summary names what each job was about.
-// A job's own words are the whole words of its "did" that no other job's "did" holds (its subject: the company, place or topic that sets
-// it apart); a text that says none of them folded the job into a count.
-// Jobs with no word of their own (the same job twice) are not checked. The record's words, no list of wordings.
+// A job's words are the whole words of its "did" (its subject: the company, place or topic); a text that says none of them folded the job
+// into a count. The record's words, no list of wordings.
+// c17c r2/r3 (review: "쿠팡" beside "쿠팡이츠", then "쿠팡 배송 정책" beside "쿠팡 배송 정책 변경", where one job's words are all inside
+// another's): a spoken word is a record word only whole, with nothing but particles after it ("쿠팡이" is 쿠팡, "쿠팡이츠" is not), and a
+// run of spoken words that are all another job's words and hold one this job lacks speaks of that job ("쿠팡 배송 정책 변경" is not
+// "쿠팡 배송 정책"). Runs end at punctuation, a list mark or a joining particle ("…정책이랑 …변경"), so two jobs said side by side are both said.
+const PARTICLES = /^(?:에서|에게|한테|으로|이랑|하고|까지|부터|이나|라는|쪽|이|가|은|는|을|를|의|에|도|만|와|과|랑|로|나|엔|선|요)*$/u
+const JOINS = /(?:이랑|하고|랑|와|과)$/u
 function unnamedSubjects(text: string, jobs: readonly DoneJob[]): string[] {
-  // c17c r2 (review #2: "쿠팡 조사" beside "쿠팡이츠 조사" had no word of its own, and "쿠팡이츠만 조사했어요" passed): words are compared
-  // whole, and a word is said only where it is not part of another job's longer word ("쿠팡" inside "쿠팡이츠" is not "쿠팡").
-  // A word of the record ending in a particle ("노션의") is also matched without it.
   const tokens = (job: DoneJob): string[] => job.did.split(/[\s·,()/]+/u).filter(word => word.length >= 2 && !JOB_FILLER.test(word))
+  // A word of the record ending in a particle ("노션의") is also matched without it.
   const stem = (word: string): string => word.length >= 3 && /[의은는이가을를에도와과랑]$/u.test(word) ? word.slice(0, -1) : word
+  const wordsOf = (job: DoneJob): string[] => [...new Set(tokens(job).map(stem))]
+  // "|" stands for a break: no record word matches it.
+  const spoken = text.replace(/[.,!?;:·/()\n"“”'‘’]/gu, ' | ').split(/\s+/u).filter(Boolean)
+  const tail = (token: string, word: string): string | undefined => token.startsWith(word) && PARTICLES.test(token.slice(word.length)) ? token.slice(word.length) : undefined
   return [...new Set(jobs.filter(job => {
-    const others = new Set(jobs.filter(other => other.did !== job.did).flatMap(tokens).map(stem))
-    const own = [...new Set(tokens(job).map(stem))].filter(word => !others.has(word))
-    const said = (word: string): boolean => [...others].filter(other => other.length > word.length && other.includes(word)).reduce((rest, other) => rest.split(other).join(' '), text).includes(word)
-    return own.length > 0 && !own.some(said)
+    const mine = wordsOf(job), others = jobs.filter(other => other.did !== job.did).map(wordsOf)
+    if (!mine.length) return false
+    const theirs = new Set<number>()
+    for (const words of others) {
+      let run: number[] = []
+      const close = (): void => { if (run.some(i => words.some(word => !mine.includes(word) && tail(spoken[i]!, word) !== undefined))) run.forEach(i => theirs.add(i)); run = [] }
+      spoken.forEach((token, i) => {
+        const hit = words.map(word => tail(token, word)).find(rest => rest !== undefined)
+        if (hit === undefined) return close()
+        run.push(i)
+        if (JOINS.test(hit)) close()
+      })
+      close()
+    }
+    // A word no other job holds is enough; a job with none of its own is said by any of its words outside another job's run.
+    const own = mine.filter(word => !others.some(words => words.includes(word)))
+    const sought = own.length ? own : mine
+    return !spoken.some((token, i) => !theirs.has(i) && sought.some(word => tail(token, word) !== undefined))
   }).map(thingOf))]
 }
 const doneAs = (job: DoneJob): string => job.working ? '하고 있어요' : job.unfinished ? '다 못 끝냈어요' : '했어요'

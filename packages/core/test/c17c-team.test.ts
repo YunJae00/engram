@@ -159,3 +159,32 @@ test('a job whose subject is part of another job\'s word is still checked: namin
   expect(calls[1]).toContain('쿠팡 수수료')
   expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
 })
+
+// c17c r3 (review #3): one job's words all inside another's ("배민 광고 요금" beside "배민 광고 요금 인상") left the first with no word of its own,
+// and it went unchecked. Saying only the longer one is missing the shorter; both said side by side, or apart, pass.
+async function nested(dids: [string, string]) {
+  const paths = await initVault(await tmpVaultRoot('c17c-r3'), { git: false })
+  await createBot(paths, { name: '엔그램' })
+  const staff = staffTool(paths, () => undefined)
+  await staff.run({ add: [{ name: '하은', role: '리서치 담당' }, { name: '준', role: '리서치 담당' }] }, { task: '' })
+  await recordFacts(paths, TEAM_MEMORY, [`${dids[0]} → 못 찾았어요 (하은, 2026-11-18)`, `${dids[1]} → 못 찾았어요 (준, 2026-11-18)`], new Date('2026-11-18T01:00:00.000Z'))
+  return { paths, bots: await loadBots(paths), now: new Date(2026, 10, 18, 10) }
+}
+test('a job whose words are all inside another job\'s is still checked: naming only the longer one is missing', async () => {
+  setReportLog(line => logged.push(line))
+  const { paths, bots, now } = await nested(['배민 광고 요금 조사', '배민 광고 요금 인상 조사'])
+  const half = '오늘은 하은이랑 준이 배민 광고 요금 인상을 봤는데 새로 나온 게 없었어요.'
+  const both = '오늘은 하은이 배민 광고 요금이랑 준이 배민 광고 요금 인상을 봤는데 둘 다 새로 나온 게 없었어요.'
+  const { write, calls } = model([half, both], [none])
+  expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(both)
+  expect(calls[1]).toContain('배민 광고 요금')
+  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
+})
+test('nested jobs said in separate sentences both pass the first time', async () => {
+  setReportLog(line => logged.push(line))
+  const { paths, bots, now } = await nested(['쿠팡 배송 정책 조사', '쿠팡 배송 정책 변경 조사'])
+  const apart = '오늘 하은은 쿠팡 배송 정책을 봤어요. 준은 쿠팡 배송 정책 변경을 봤는데 둘 다 새로 나온 게 없었어요.'
+  const { write } = model([apart], [none])
+  expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(apart)
+  expect(logged).toEqual([expect.stringMatching(/^summary=clean /)])
+})
