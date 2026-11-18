@@ -251,6 +251,16 @@ describe('stack-19: fixes after the branch results', () => {
     expect(line).not.toContain('never open on today')
   })
 
+  it('a shorter rewrite that dropped a fact of the earlier ask is repaired inside the shorter form, not by putting the earlier reply back', async () => {
+    const earlier = '"오후에 전화 못 받아서 죄송해요"를 정중한 영어 한 줄로 써줘', last = 'I am very sorry that I missed your phone call this afternoon.'
+    const short = 'Sorry I missed your call.', fixed = 'Sorry I missed your call this afternoon.'
+    const prompts: string[] = [], checks = [problems({ kind: 'dropped', quote: short, why: '오후가 빠졌어요' }), problems()]
+    const quick = async (prompt: string): Promise<string> => { prompts.push(prompt); return prompt.includes(CHECK) ? checks.shift()! : prompt.includes(REPAIR) ? JSON.stringify({ replace: { 1: fixed } }) : JSON.stringify({ form: 'shorter', was: last, reply: short }) }
+    expect(await reshapeAsk('좀 더 짧게', last, quick, earlier)).toBe(fixed)
+    expect(prompts.find(p => p.includes(REPAIR))).toContain('a shorter or simpler form stays shorter than the earlier reply in the data')
+    expect(prompts).toHaveLength(4)
+  })
+
   it('a closing build keeps the model\'s own two-sentence answer, the choice it took and the person\'s own file name included', async () => {
     const ask = 'fixtures/budget.csv로 월별 지출 엑셀 만들고 차트도 넣어줘'
     const reply = 'budget.csv 월별 지출 합계를 엑셀로 만들었어요. 추이를 보기 좋게 막대 차트로 넣었어요.'
