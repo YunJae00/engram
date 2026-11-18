@@ -1296,9 +1296,10 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
 function helperLead(parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
   const name = (m: TeamMember): string => partName(m, topics) || m.role, found = parts.filter(m => !atWork(m) && !!m.data?.facts.length)
   const late = parts.filter(atWork), list = (ms: readonly TeamMember[]): string => ms.map(name).join('·')
-  // A part that found some points and not others (m.missing) is named with the points it did not find ("픽셀 11 출시일").
-  const whole = found.filter(m => !m.missing?.length), misses = [...parts.filter(m => !atWork(m) && !m.data?.facts.length).map(name), ...found.filter(m => m.missing?.length).map(m => `${name(m)} ${m.missing!.map(pointName).join('·')}`)]
-  if (!late.length && !misses.length) return parts.length > 1 ? `${list(found)} 다 찾았어요.` : ''
+  // stack-18 (merge check: "원주 운영시간은 못 찾았어요" in the lead and again in 원주's own sentence): a part that found some points and not
+  // others says what it did not find in its own sentence (helperParts' notFoundLine), so the lead leaves it out and never counts it as whole.
+  const partial = found.filter(m => m.missing?.length), whole = found.filter(m => !partial.includes(m)), misses = parts.filter(m => !atWork(m) && !m.data?.facts.length).map(name)
+  if (!late.length && !misses.length) return parts.length < 2 || !whole.length ? '' : partial.length ? `${josa(list(whole), '은', '는')} 다 찾았어요.` : `${list(whole)} 다 찾았어요.`
   const rest = [...(misses.length ? [`${josa(misses.join('·'), '은', '는')} 못 찾았어요`] : []), ...(late.length ? [`${josa(list(late), '은', '는')} 아직 찾는 중이에요`] : [])].join('. ')
   return whole.length ? `${josa(list(whole), '은', '는')} 찾았고, ${rest}.` : `${rest}.`
 }
