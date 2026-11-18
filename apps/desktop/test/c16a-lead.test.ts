@@ -33,10 +33,11 @@ async function lane(tag: string, ask: string, opts: { steer?: number; delay?: nu
   const paths = await vault(tag)
   const created = await createTask(paths, ask, 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
-  const models: string[] = [], quick: string[] = [], prompts: string[] = []
+  const models: string[] = [], quick: string[] = [], prompts: string[] = [], signals = new Map<string, AbortSignal>()
   const run: Run = async (_deps, prompt, options = {}) => {
     options.onStart?.(); models.push(prompt.slice(0, 20)); prompts.push(`${options.persona ?? ''}\n${prompt}`)
     const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', city = Object.keys(PAGE).find(name => part.includes(name)) ?? '도쿄'
+    if (options.signal) signals.set(city, options.signal)
     await new Promise(resolve => setTimeout(resolve, opts.delay ?? 0))
     return { answer: `${city}은 엔화 약세로 원화 환산 경비가 작년보다 10% 줄었어요. [${city} 환율 소식](${PAGE[city]})`, steps: [], fellBack: false }
   }
@@ -50,7 +51,7 @@ async function lane(tag: string, ask: string, opts: { steer?: number; delay?: nu
   const since = Date.now()
   // The lane's wiring (ipc.ts): hire_members wrapped so its hand-back of accepted lookups is the team writer's answer.
   const hire: AgentTool = mergingHire(team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!, async signal => helperAnswer({ ask, members: (await listTasks(paths)).find(t => t.state === 'running')?.team?.members, since, write: (prompt: string) => write(prompt), due: since + 28_000, signal }))
-  return { paths, hire, models, quick, prompts }
+  return { paths, hire, models, quick, prompts, signals }
 }
 
 describe('c16a: one writer for the helpers\' answer (cause M)', () => {
@@ -237,6 +238,17 @@ describe('c16a r2: review findings', () => {
     const member = (await listTasks(paths))[0]!.team!.members.find(m => m.id === gone)!
     expect(member).toMatchObject({ state: 'released', review: { ok: false, note: TAKEN_OFF } })
     expect(member.result).toBeUndefined()
+  })
+
+  it('c16a r3 (Codex r2 #2): a part the person replaces mid-work stops working at once, not only leaves the answer', async () => {
+    const { hire, signals } = await lane('halt', '삿포로 나고야 후쿠오카 환율 영향 각각 알아봐줘', { steer: 10, delay: 300 })
+    const back = JSON.parse(await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })) as { members: { id: string; role: string }[] }
+    expect(signals.get('후쿠오카')?.aborted).toBe(false)
+    const out = await hire.run({ stop: [back.members.find(m => m.role === '후쿠오카')!.id], members: [] }, { task: '' })
+    // Its own control was aborted (a part that ends by itself is never aborted, as 도쿄 shows).
+    expect(signals.get('후쿠오카')!.aborted).toBe(true)
+    expect(signals.get('도쿄')!.aborted).toBe(false)
+    expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['도쿄', '오사카'])
   })
 
   it('#3: a stop with nothing new waits for the rest and answers over them alone', async () => {

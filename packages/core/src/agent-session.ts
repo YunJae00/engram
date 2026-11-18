@@ -209,7 +209,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
       if (said.length) renew()
-      if (closing && !composing && !said.length && !observation.startsWith('that did not work') && (tool.closesOn?.(observation) ?? true)) {
+      // c16a r3: a reply its tool confirms as the whole answer (closesOn) closes whatever ran before it; only calls after it keep the turn open.
+      const whole = tool.closesOn?.(observation)
+      if (closing && (whole ?? !composing) && !said.length && !observation.startsWith('that did not work')) {
+        if (whole) composing = false
         closeLines.push(observation)
         held ??= []
         const mark = startedCalls
