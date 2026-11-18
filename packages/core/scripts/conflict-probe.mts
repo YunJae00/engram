@@ -1,16 +1,3 @@
-// Does the §3.5 rule actually change what the engine calls a conflict?
-//
-// A real vault produced 11 open conflict cards. Reading all of them, 8 were the
-// same shape — an earlier snapshot of ongoing work against a later one ("not
-// fixed yet" vs "fixed", "automation absent" vs "automation landed") — and only
-// 3 were claims that cannot both be true at a single point in time. The
-// instruction never drew that line, and §3 said the fallback under uncertainty
-// was a conflict card, so the model was doing exactly as told.
-//
-// This replays the REAL pairs through J3 under the old rulebook and the new one
-// and counts. A rule that reads well and changes nothing is worth nothing.
-//
-// Nothing is written: the job's prompt is run directly, `apply` never called.
 import { readFile } from 'node:fs/promises'
 import { AGENTS_MD_V1 } from '../src/agents-template.js'
 import { createEngine } from '../src/engine/registry.js'
@@ -23,7 +10,6 @@ import { vaultPaths } from '../src/vault.js'
 const paths = vaultPaths(process.env['ENGRAM_VAULT'] ?? 'C:/Users/ykwon060/Engram')
 const engine = createEngine('claude')
 
-// The pairs that produced a conflict card, straight off disk.
 const PAIRS = [
   ['n-ms6wzzk9-8ep11u', 'n-mrx7y2ky-7m0eea'],
   ['n-ms6vzor3-1bwm4i', 'n-mrxl0hby-ey851y'],
@@ -37,16 +23,8 @@ const PAIRS = [
   ['n-ms6wkxw4-of8d59', 'n-ms6vv77t-h9f5b5'],
 ]
 
-// The rulebook as it stands in this vault today, so "before" is the instruction
-// that actually produced those cards — not a reconstruction of it.
 const OLD_RULES = await readFile(`${paths.workspace}/AGENTS.md`, 'utf8')
 
-// ONE call per rulebook, with the whole set as delta-vs-corpus — the shape the
-// sweep actually runs. Asking pair-by-pair was the first attempt and it was
-// dishonest: the old rulebook only re-raised 3 of the 10 conflicts it had
-// really produced, because a pair seen alone is a different question from a
-// pair seen among sixty notes. A baseline that cannot reproduce the bug cannot
-// measure the fix.
 async function conflictsRaised(rules: string, delta: Note[], corpus: Note[]): Promise<string[][]> {
   const job = buildJ3(paths, rules, delta, corpus, new Date())
   let text = ''
@@ -71,7 +49,6 @@ async function conflictsRaised(rules: string, delta: Note[], corpus: Note[]): Pr
 
 const title = (n: Note) => (n.body.split('\n').find((l) => l.startsWith('#')) ?? n.front.id).replace(/^#+\s*/, '')
 
-// Newer note of each pair is the "delta"; the older is the standing corpus.
 const newer: Note[] = []
 const older: Note[] = []
 for (const [a, b] of PAIRS) {

@@ -5,7 +5,6 @@ import { checkPrompt, readProblems } from '../src/written-check.js'
 import { nearMissSlide, officeTools, type OfficeOp } from '../src/office-tools.js'
 import { officeWriteUnverified } from '../src/office-verification.js'
 
-// c15c (cause D). Wordings here are not the harness's: an allergy and a film, not a knee and lunch; 장점/단점, not 결정/할 일.
 describe('a remembered fact carries the rule for when it belongs (H1 class)', () => {
   const memory = '- 어머니가 해산물 알레르기가 있으시다'
   it('the memory lines and the conversation lines both carry it, for any fact', () => {
@@ -84,7 +83,6 @@ describe('ppt_build takes a near-miss input as meant (D3 class)', () => {
       { tool: 'ppt_build', args: { saveAs: '교육 계획.pptx' }, observation: JSON.stringify({ completeReadback: true, artifact: 'a1', path: '/x/교육 계획.pptx', slides: 2 }) },
     ]
     expect(officeWriteUnverified(steps)).toBeUndefined()
-    // A failure of the build itself (after the input was handed over) is not marked as nothing built.
     const failing = officeTools({ run: async () => { throw new Error('disk full') } }).find(one => one.name === 'ppt_build')!
     expect(await failing.run({ slides: [{ title: '표지' }] }, { task: 'x' }).catch((e: Error) => e.message)).toBe('disk full')
   })

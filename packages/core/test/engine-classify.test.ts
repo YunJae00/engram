@@ -23,9 +23,6 @@ function engineOf(events: EngineEvent[]): Engine {
   }
 }
 
-// Four failures needed four sentences and got one opaque string. The whole
-// point of classification is that a user over their usage limit is never told
-// to re-authenticate, and a dead token is never retried 2N times in silence.
 describe('classifyEngineError', () => {
   it('reads a usage limit as quota, whatever wording the CLI used', () => {
     expect(classifyEngineError('Error: 429 Too Many Requests')).toBe('quota')
@@ -49,7 +46,6 @@ describe('classifyEngineError', () => {
   })
 
   it('reads a call WE ended for slowness as timeout, not crash (RELY-3)', () => {
-    // A hang gets its own sentence and its own response: retry next run.
     expect(classifyEngineError('claude exited null: [engram] timed out after 300000ms', null)).toBe('timeout')
     expect(classifyEngineError('[engram] stalled: no output for 120000ms')).toBe('timeout')
     expect(classifyEngineError('job timeout after 300000ms')).toBe('timeout')
@@ -61,16 +57,12 @@ describe('classifyEngineError', () => {
     expect(classifyEngineError('claude exited 1: something opaque', 1)).toBe('crash')
   })
 
-  // A non-zero exit with unreadable stderr is still a crash — reporting it as
-  // "unknown" would render as a shrug with no action attached.
   it('falls back to the exit code before giving up', () => {
     expect(classifyEngineError('', 1)).toBe('crash')
     expect(classifyEngineError('something odd happened')).toBe('unknown')
     expect(classifyEngineError('something odd happened', 0)).toBe('unknown')
   })
 
-  // Precedence matters: a 429 body often also says "please try again", and an
-  // auth failure often arrives over a socket. The most actionable wins.
   it('prefers quota over auth and auth over network when both appear', () => {
     expect(classifyEngineError('401 unauthorized: rate limit exceeded')).toBe('quota')
     expect(classifyEngineError('fetch failed: 403 unauthorized')).toBe('auth')

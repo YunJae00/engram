@@ -2,13 +2,6 @@ import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-// What the comets did, kept where a person can read it back: every step on
-// a page, every picture sent to a brain, every question answered at a
-// control that would commit, every wall met, and what each step read back,
-// so a run that went wrong can be followed afterwards. One line per event, one file
-// per day, inside the vault so it travels with the notes and never leaves
-// the machine on its own.
-
 export type AuditKind = 'step' | 'result' | 'look' | 'approval' | 'wall'
 
 export interface AuditEntry {
@@ -23,9 +16,7 @@ export interface AuditEntry {
 
 const DIR = 'audit'
 const DETAIL_CAP = 200
-// What a step read back is longer than what it did, and still only its head.
 const RESULT_CAP = 30_000
-// A value after a secret's name never reaches the file, whatever page it came from.
 const SECRET = /((?:password|passwd|pwd|passcode|pin|otp|secret|token|api[_ -]?key|비밀번호|인증번호)\s*["']?\s*[:=]\s*["']?)[^\s"',;]+/gi
 
 export function redactSecrets(text: string): string {
@@ -52,7 +43,6 @@ export async function appendAudit(paths: VaultPaths, entry: Omit<AuditEntry, 'at
   await appendFile(join(dir, `${dayOf(at)}.jsonl`), JSON.stringify(line) + '\n', 'utf8')
 }
 
-// A day's entries, oldest first; a day with no file is an empty day.
 export async function readAudit(paths: VaultPaths, day: string): Promise<AuditEntry[]> {
   try {
     const text = await readFile(join(auditDir(paths), `${day}.jsonl`), 'utf8')
@@ -65,7 +55,6 @@ export async function readAudit(paths: VaultPaths, day: string): Promise<AuditEn
   }
 }
 
-// The days that have entries, newest first.
 export async function auditDays(paths: VaultPaths): Promise<string[]> {
   try {
     return (await readdir(auditDir(paths)))

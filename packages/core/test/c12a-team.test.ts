@@ -6,8 +6,6 @@ import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// c12a: the data contract closed (a part with nothing to show is the host's line), and person-facing text made from data, never from the
-// job title or a date field put before a text that already says it. Wordings here are not the harness's.
 const NOW = new Date('2026-11-18T03:00:00Z')
 const at = new Date(NOW.getTime() - 5_000).toISOString()
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
@@ -18,7 +16,6 @@ const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMem
 }
 const links = (text: string): string[] => [...text.matchAll(/\]\((https?:[^)]+)\)/g)].map(one => one[1]!)
 
-// A2: 지아 read LINE's page and ended with no report (cut, no block); 민준 and 하율 brought data.
 const LINE_PAGE = 'https://linecorp.com/ko/pr/news'
 function split(): TeamMember[] {
   const kakao = settled(member({ id: 'm1', role: '민준', brief: '이번 달 카카오톡 업데이트 조사', topic: '카카오톡' }), block({ facts: [{ text: '카카오톡에 채팅방 폴더 정리 기능이 생겼어요.', url: 'https://www.kakaocorp.com/page/detail/11234', date: '11월 6일' }] }))
@@ -32,13 +29,11 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   const parts = split()
   expect(parts[1]!.data).toBeUndefined()
   const prompt = reportPrompt(ASK, parts, new Map(), { now: NOW })
-  // The writer never gets the part to describe, and is told to leave that teammate out.
   expect(prompt).not.toContain('"name":"지아"')
   expect(prompt).not.toContain('"missing"')
   expect(prompt).toContain('Do not mention 지아 at all')
   const kept = ['f1', 'f2']
   const good = '이번 달엔 카카오톡이랑 텔레그램에 새 기능이 나왔어요.\n\n카카오톡은 민준이 봤는데 채팅방 폴더 정리 기능이 생겼어요. [카카오](https://www.kakaocorp.com/page/detail/11234)\n\n텔레그램은 하율이 봤는데 그룹 통화 인원이 늘었어요. [텔레그램](https://telegram.org/blog/group-calls-2026)'
-  // "라인은 새 소식이 없어요" with no link: the writer invented a finding for a part that has none. Refused, by the name, not the words.
   const invented = good.replace('\n\n텔레그램은', '\n\n라인은 지아가 봤는데 새 소식이 없어요.\n\n텔레그램은')
   expect(reportCheck(JSON.stringify({ message: invented, kept }), parts)).toMatchObject({ refused: 'missing-said' })
   const lines: string[] = []
@@ -46,15 +41,12 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   try {
     const refused = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: invented, kept }), timeoutMs: 500, now: NOW })
     expect(refused).toBe(mergedReport(parts))
-    // c13a: each part's outcome is on the line too. c15b: a refused draft is a fallback once its one repair has no time (500 ms here).
     expect(lines.at(-1)).toMatch(/^writer=fallback:missing-said ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
     const shown = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: good, kept }), timeoutMs: 500, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=accepted ms=\d+/)
-    // The writer's message, then the host's rule-7 line for 지아 with where they looked. All three parts are linked.
     expect(shown.split('\n\n').at(-1)).toBe(`라인(지아): 이번엔 끝까지 못 봤어요. 보던 곳은 [linecorp.com](${LINE_PAGE})`)
     expect(shown.match(/지아/g)).toHaveLength(1)
     expect(links(shown)).toEqual(['https://www.kakaocorp.com/page/detail/11234', 'https://telegram.org/blog/group-calls-2026', LINE_PAGE])
-    // Late and absent writers are logged too.
     await writtenReport({ ask: ASK, members: parts, write: () => new Promise(() => {}), timeoutMs: 20, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=late /)
     await writtenReport({ ask: ASK, members: parts, now: NOW })
@@ -67,13 +59,8 @@ test('B1: a hand-off\'s fallback leads with who made what from whose find, never
   const writer = settled(member({ id: 'm2', role: '지아', lookup: undefined, writer: true, title: '인스타 문구 2개 쓰기', brief: handoffBrief('인스타 문구 2개 써줘', '하율', giver.result!, giver.brief) }), block({ items: ['국물 한 숟갈에 부산이 다 들어 있어요', '줄 서도 아깝지 않은 한 그릇'] }))
   const shown = mergedReport([giver, writer])
   expect(shown).not.toMatch(/쓰기|찾기|인스타 문구 2개/)
-  // c17c (cause S, C6): no "(지아, …)" tag and no count. c17c r2 (rule 5): the items first, then whose they are and whose find, closed by
-  // that find's page.
   expect(shown.split('\n')).toEqual(['1. 국물 한 숟갈에 부산이 다 들어 있어요', '2. 줄 서도 아깝지 않은 한 그릇', '지아가 하율이 찾은 부산 맛집으로 만든 거예요. [busan.example.kr](https://busan.example.kr/eat/77)'])
-  // The giver's own bubble (posted before the writer finishes): no job title either.
-  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(mergedReport([giver])).toBe('하율이 찾아보니 해운대 전포 돼지국밥집이 줄 서는 곳이에요. [busan.example.kr](https://busan.example.kr/eat/77)')
-  // A part's name from the person's words when the lead gave none, without its time or its doing word.
   expect(['다음 달 대전 보드게임 모임 일정', '이번 주 광주 날씨 알아봐', '지난달 판교 밋업 정리'].map(topicOf)).toEqual(['대전 보드게임 모임 일정', '광주 날씨', '판교 밋업'])
 })
 
@@ -99,27 +86,19 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   const yearOnly = { text: '대전 보드게임 페스타 2026이 열려요.', url: 'https://festa.example.kr/2026', site: 'festa.example.kr', date: '2026' }
   const prompts: string[] = []
   const checked = await kindChecked({ facts: [listing, yearOnly] }, brief, async prompt => { prompts.push(prompt); return '{"keep":[1,2],"lists":[1,2],"names":{"1":"보드게임 카페 모임","2":"보드게임 페스타"}}' })
-  // One call, the same one that judges kind; no word list in it.
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('"lists"')
   expect(checked!.facts.map(f => [f.listing, f.name])).toEqual([[true, '보드게임 카페 모임'], [true, '보드게임 페스타']])
   expect(listingPages(checked)).toEqual([listing.url, yearOnly.url])
   expect(itemsPrompt(listingPages(checked))).toContain(listing.url)
-  // The extra round brings two dated items: they take the pages' place, one per line in the fallback.
   const more = reportData(block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }] }), { brief })
   const whole = withItems(checked!, more)
-  // round 3: the pages are never taken out; they follow the items as where the full list is.
   expect(whole.facts.map(f => [f.url, f.rest])).toEqual([['https://board.example.kr/daejeon/1206', undefined], ['https://board.example.kr/daejeon/1220', undefined], [listing.url, true], [yearOnly.url, true]])
   const m = member({ id: 'm1', role: '서아', brief, topic: topicOf(brief), state: 'done', data: whole })
-  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(mergedReport([m]).split('\n')).toEqual(['- 서아가 찾아보니 12월 6일 둔산동에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)', '전체 목록은 여기 있어요. [board.example.kr](https://board.example.kr/daejeon/schedule) · [festa.example.kr](https://festa.example.kr/2026)'])
-  // No time left (no extra round): the listing stays, labeled as not taken apart, never as an item of the list.
   const as = member({ id: 'm1', role: '서아', brief, state: 'done', data: { facts: [checked!.facts[0]!] } })
-  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 여러 건이 한 페이지에 모여 있어요\. \[/)
   expect(reportPrompt(brief, [as])).toContain('"listPage":true')
-  // A writer message that runs one teammate's two items and links into one line is found (link positions, not words).
-  // c18b: a rule of shape: it goes to the scoped repair as `soft`, never a refusal.
   const run = JSON.stringify({ message: '서아가 찾았어요. 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206), 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
   const ran = reportCheck(run, [m])
   expect('soft' in ran ? ran.soft.map(one => one.refused) : []).toContain('one-line')
@@ -149,13 +128,10 @@ test('A1 contract: the stand-in report is written under the same rule from what 
   expect(prompt).toContain('이번 달 라인 업데이트 조사')
 })
 
-// --- c12a round 2 (Codex r1). Wordings are not the harness's. ---
-
 test('r2 B2: a model number or a price sharing a digit with the date does not count as the date being stated', () => {
   expect(datedText({ text: '아이폰 18 가격은 11만 원이에요.', date: '11월 18일' })).toBe('아이폰 18 가격은 11만 원이에요 (11월 18일).')
   expect(datedText({ text: '갤럭시 S27 사전예약은 27만 명이 했어요.', date: '3월 27일' })).toBe('갤럭시 S27 사전예약은 27만 명이 했어요 (3월 27일).')
   expect(datedText({ text: '맥북 14인치 13 대가 남았어요.', date: '2027.1.13' })).toBe('맥북 14인치 13 대가 남았어요 (2027.1.13).')
-  // Stated as a date in any form: shown once.
   for (const text of ['3월 27일 오후에 문을 열어요.', '2027.1.13에 공개돼요.', '4월 2~6일 전시가 열려요.']) expect(datedText({ text, date: text.startsWith('2027') ? '2027년 1월 13일' : text.startsWith('3월') ? '3월 27일' : '4월 2일~6일' })).toBe(text)
 })
 
@@ -175,32 +151,23 @@ test('r2/r3 B3: a round that takes only part of a listing page, even one claimin
   const page = { text: '울산 러닝 크루 페이지에 모임 네 개가 있어요.', url: 'https://run.example.kr/ulsan', site: '런크루', listing: true as const }
   const other = { text: '포항 러닝 크루 목록에 모임이 여럿 있어요.', url: 'https://run.example.kr/pohang', site: '런크루', listing: true as const }
   const one = { text: '1월 9일 태화강에서 저녁 러닝이 있어요.', url: 'https://run.example.kr/ulsan/0109', site: '런크루', date: '1월 9일' }
-  // The teammate's own claim (an unknown "whole" field) is not data the host acts on.
   for (const extra of [{}, { whole: [page.url, other.url] }]) {
     const more = reportData(block({ facts: [one], ...extra }), { brief: '울산 러닝 모임' })
     const data = withItems({ facts: [page, other] }, more)
     expect(data.facts.map(f => [f.url, f.rest])).toEqual([[one.url, undefined], [page.url, true], [other.url, true]])
     const shown = mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data })]).split('\n')
-    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
     expect(shown).toEqual(['나래가 찾아보니 1월 9일 태화강에서 저녁 러닝이 있어요. [런크루](https://run.example.kr/ulsan/0109)', '전체 목록은 여기 있어요. [런크루](https://run.example.kr/ulsan) · [런크루](https://run.example.kr/pohang)'])
   }
-  // A round that gave nothing leaves the pages labeled as not taken apart.
   expect(withItems({ facts: [page] }, undefined).facts).toEqual([page])
   expect(mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: { facts: [page] } })])).toContain('여러 건이 한 페이지에 모여 있어요.')
 })
 
-// --- c12a round 3 (Codex r2). Wordings are not the harness's. ---
-
 test('r3 B2: a date is matched as a date: a clock time, a word about now or a month/day swap does not hide it', () => {
-  // Clock time sharing the date's numbers.
   expect(datedText({ text: '사진전 개막식은 오후 3시 12분에 해요.', date: '3월 12일' })).toBe('사진전 개막식은 오후 3시 12분에 해요 (3월 12일).')
   expect(datedText({ text: '행사가 오전 9시 25분에 시작해요.', date: '9월 25일' })).toBe('행사가 오전 9시 25분에 시작해요 (9월 25일).')
-  // A word about now is not the event's day.
   expect(datedText({ text: '오늘 확인해 보니 재즈 공연 표가 남아 있어요.', date: '1월 30일' })).toBe('오늘 확인해 보니 재즈 공연 표가 남아 있어요 (1월 30일).')
   expect(datedText({ text: '이번 주말에 플리마켓이 열려요.', date: '5월 17일' })).toBe('이번 주말에 플리마켓이 열려요 (5월 17일).')
-  // The same numbers in the other roles (6월 4일 vs 4월 6일).
   expect(datedText({ text: '6월 4일에 접수가 끝나요.', date: '4월 6일' })).toBe('6월 4일에 접수가 끝나요 (4월 6일).')
-  // Stated as a date in any form: once.
   for (const [text, date] of [['수영 대회는 8월 2일부터 4일까지 해요.', '8월 2~4일'], ['공개일은 2027.1.13.', '2027년 1월 13일'], ['Opens Mar 5 in Busan.', '3월 5일'], ['접수 마감은 7/21이에요.', '7월 21일'], ['10월 3일 오후 2시에 열려요.', '10월 3일']] as const) expect(datedText({ text, date })).toBe(text)
 })
 

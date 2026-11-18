@@ -14,16 +14,11 @@ import { loadNotes } from '../src/notes.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// The tacit-knowledge glossary: names only the user knows are the same thing
-// (demo = workspace) must bridge search, and teaching is transitive.
-
 describe('alias glossary (workspace/aliases.md)', () => {
   it('parses only list lines, dropping 1-char and duplicate terms', () => {
     const groups = parseAliasGroups(
       ['# Aliases', '', 'prose = not a group', '- demo = workspace = Demo', '- a = 우리회사', '- 단독'].join('\n'),
     )
-    // 'prose = not a group' is not a `- ` line; 'Demo' dupes 'demo';
-    // 'a' is too short so its line has one usable term and is dropped.
     expect(groups).toEqual([['demo', 'workspace']])
   })
 
@@ -33,9 +28,7 @@ describe('alias glossary (workspace/aliases.md)', () => {
     expect(await addAliasGroup(paths, ['WORKSPACE', '우리회사'])).toEqual(['demo', 'workspace', '우리회사'])
     const groups = await loadAliasGroups(paths)
     expect(groups).toEqual([['demo', 'workspace', '우리회사']])
-    // Human-editable: the file itself carries the group as a plain list line.
     expect(await readFile(aliasesPath(paths), 'utf8')).toContain('- demo = workspace = 우리회사')
-    // Under 2 usable terms teaches nothing.
     expect(await addAliasGroup(paths, ['solo'])).toBeNull()
   })
 
@@ -50,11 +43,8 @@ describe('alias glossary (workspace/aliases.md)', () => {
     const expanded = expandQueryWithAliases('demo 미팅 정리', groups)
     expect(expanded).toContain('workspace')
     expect(expanded).toContain('우리회사')
-    // Latin terms need word boundaries: "ai" must not fire inside "maintain".
     expect(expandQueryWithAliases('maintain the plan', [['ai', '인공지능']])).toBe('maintain the plan')
-    // CJK terms match by substring (particles attach without spaces).
     expect(expandQueryWithAliases('우리회사의 결정', groups)).toContain('demo')
-    // No mention → query untouched.
     expect(expandQueryWithAliases('배포 정책', groups)).toBe('배포 정책')
   })
 

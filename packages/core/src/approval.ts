@@ -1,10 +1,5 @@
 import { createHash } from 'node:crypto'
 
-// An approval the person gave once and asked to stand: the same procedure,
-// posting to the same site, filling the same fields. Named by a fingerprint
-// of those three - never by what was typed, so a rule that let today's entry
-// through lets tomorrow's through and nothing else.
-
 export interface GatedAction {
   routineId: string
   kind: 'submit'
@@ -42,7 +37,6 @@ export function ruleCovers(rules: readonly ApprovalRule[], action: GatedAction):
   return rules.find((r) => r.fingerprint === want && r.routineId === action.routineId && r.host === action.host.toLowerCase()) ?? null
 }
 
-// A row read back from disk, or nothing.
 export function parseRule(value: unknown): ApprovalRule | null {
   if (typeof value !== 'object' || value === null) return null
   const r = value as Record<string, unknown>

@@ -16,7 +16,6 @@ function chain(prefix: string, groups: number): { communities: string[][]; title
     for (const id of ids) titles.set(id, `${prefix} ${['하나', '둘', '셋', '넷'][Number(id.slice(-1))]}`)
     for (const a of ids) for (const b of ids) if (a < b) link(a, b)
     communities.push(ids)
-    // one edge to the previous group — dense inside, joined across
     if (g > 0) link(`${prefix}${g - 1}-0`, `${prefix}${g}-0`)
   }
   return { communities, titles, adj }
@@ -49,8 +48,6 @@ describe('four linked clusters sharing one dominant word', () => {
     expect(merge({ aliases: [['Quokka', 'Wombat']], umbrella: ['zebra'] })).toHaveLength(4)
   })
 
-  // A declaration is permission to merge, not a command: the clusters must
-  // still be linked and the word must still be what each pile is about.
   it('does not merge clusters the link graph never joined', () => {
     const loose = chain('PROJECT', 3)
     loose.adj.delete('PROJECT0-0')

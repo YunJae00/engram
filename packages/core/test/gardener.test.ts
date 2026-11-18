@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { gardenCandidates } from '../src/gardener.js'
 import type { Note } from '../src/schema.js'
 
-// The gardener shelves only what its three conditions ALL prove abandoned:
-// fast-decay by declaration, old, and unrecalled for a season. Everything the
-// user might still be leaning on is structurally out of reach.
-
 const NOW = new Date('2026-08-05T09:00:00Z')
 const OLD = '2026-04-01T00:00:00.000Z'
 let n = 0

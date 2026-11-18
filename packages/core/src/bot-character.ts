@@ -2,7 +2,6 @@ export const ORBS = ['orb-violet', 'orb-blue', 'orb-teal', 'orb-green', 'orb-amb
 
 export type OrbId = (typeof ORBS)[number]
 
-// Legacy faces: no longer drawn, kept so stored picks stay valid.
 export const CHARACTERS = [
   '01-bean-tilt', '02-cloud', '03-cashew', '04-lobe', '05-squircle', '06-triangle', '07-oval', '08-knob',
   '09-pill', '10-comma', '11-peanut', '12-crescent', '13-donut', '14-drop', '15-hourglass', '16-diamond',
@@ -35,7 +34,6 @@ export function fnv1a(id: string): number {
 
 const validId = (id: unknown): id is string => typeof id === 'string' && id.trim() !== ''
 
-// The previous orb is skipped once so two chats made in a row never share an orb.
 export function defaultCharacter(id: unknown, previousIndex?: number): OrbId {
   if (!validId(id)) return FALLBACK_CHARACTER
   let index = fnv1a(id) % ORBS.length
@@ -47,7 +45,6 @@ export function characterIndex(character: CharacterId): number {
   return ORBS.indexOf(orbOf(character))
 }
 
-// Each property is read once, so a hostile getter cannot change a value after it was checked.
 function storedCharacter(avatar: unknown): CharacterId | null | undefined {
   try {
     if (typeof avatar !== 'object' || avatar === null || Array.isArray(avatar)) return undefined
@@ -60,7 +57,6 @@ function storedCharacter(avatar: unknown): CharacterId | null | undefined {
   }
 }
 
-// A stored pick wins (a legacy face shows as its orb); legacy drawings, photos and empty avatars hash the real id; malformed picks fall back.
 export function resolveCharacter(id: unknown, avatar: unknown): OrbId {
   const stored = storedCharacter(avatar)
   if (stored) return orbOf(stored)
@@ -68,7 +64,6 @@ export function resolveCharacter(id: unknown, avatar: unknown): OrbId {
   return defaultCharacter(id)
 }
 
-// Time plus 16 random bits; a taken suffix moves to the next free one, and a full millisecond refuses.
 export function newBotId(taken: ReadonlySet<string>, now: Date, random = Math.random()): string {
   const start = Math.floor(random * 0xffff)
   for (let step = 0; step <= 0xffff; step++) {

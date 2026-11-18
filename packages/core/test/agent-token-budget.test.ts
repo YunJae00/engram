@@ -103,8 +103,6 @@ it('preserves collected values and unavailable items in a budget stop answer', a
   expect(result.answer).toContain('Movie B: Not verified — HTTP 403')
 })
 
-
-// perf146: a member's time box. Past it no tool starts, the model is told to report, and the turn says it was cut short.
 it('starts no tool after the session deadline and passes the model tier to the engine', async () => {
   const said: string[] = []
   let hint: unknown
@@ -124,7 +122,6 @@ it('starts no tool after the session deadline and passes the model tier to the e
   expect(result.answer).toContain('Seoul 12C')
 })
 
-// perf146 r2: a member that waited in line for its turn had its time used up before it started.
 it('counts the session deadline from when the engine starts working, not from the wait in line', async () => {
   let ran = 0, began = false
   const engine = { runTools: async (job: ToolSessionJob) => {

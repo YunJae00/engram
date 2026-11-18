@@ -5,18 +5,12 @@ import { routineTask } from './routine-task.js'
 import type { TurnStep } from './routine-record.js'
 import type { VaultPaths } from './vault.js'
 
-// How a finished task was done: the addresses it started from and the steps
-// that worked. A later task that asks for much the same thing starts from
-// them as hints, instead of finding its way again: where it started, and the
-// steps that worked.
-
 interface Playbook { goal: string; urls: string[]; method: string[]; at: string; count?: number }
 
 const KEEP = 50
 const MIN_STEPS = 3
 const SHOWN_STEPS = 30
 const SIMILAR = 0.5
-// Asked in other words, a task this close in meaning is the same kind of task.
 const SIMILAR_MEANING = 0.75
 
 const file = (paths: VaultPaths) => join(paths.cache, 'task-playbooks.json')
@@ -39,7 +33,6 @@ async function readPlaybooks(paths: VaultPaths): Promise<Playbook[]> {
   }
 }
 
-// The most similar earlier record, if any is similar enough.
 function closest(playbooks: Playbook[], goal: string): number {
   let best = -1, score = SIMILAR
   playbooks.forEach((one, i) => {
@@ -56,7 +49,6 @@ export function recordPlaybook(paths: VaultPaths, goal: string, steps: TurnStep[
     try { task = routineTask(goal, steps) } catch { return false }
     if (task.method.length < MIN_STEPS) return false
     const kept = await readPlaybooks(paths)
-    // The same kind of task done again replaces its earlier record and counts up.
     const earlier = closest(kept, task.goal)
     const count = earlier >= 0 ? (kept[earlier]!.count ?? 1) + 1 : 1
     if (earlier >= 0) kept.splice(earlier, 1)
@@ -71,7 +63,6 @@ export function recordPlaybook(paths: VaultPaths, goal: string, steps: TurnStep[
   return next
 }
 
-// By words first; failing that, by meaning when a measure of it is at hand.
 export type MeaningScores = (text: string, candidates: string[]) => Promise<number[] | null>
 export async function findPlaybook(paths: VaultPaths, goal: string, meaning?: MeaningScores): Promise<Playbook | undefined> {
   const playbooks = await readPlaybooks(paths)
@@ -93,7 +84,6 @@ export function playbookContext(playbook: Playbook): string {
   ].join('\n')
 }
 
-// Per site, the latest task finished there: what each place is used for, in the person's own words.
 export async function learnedPlaces(paths: VaultPaths): Promise<Map<string, string>> {
   const learned = new Map<string, string>()
   for (const one of (await readPlaybooks(paths)).sort((a, b) => b.at.localeCompare(a.at))) for (const url of one.urls) {

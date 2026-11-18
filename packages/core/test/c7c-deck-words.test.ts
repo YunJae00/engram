@@ -5,8 +5,6 @@ import JSZip from 'jszip'
 import { fileWorkTools } from '../src/file-work.js'
 import { readPackage } from '../src/document-package.js'
 
-// grokbar cycle 7 (stack6-50519116) D5: one slide title took 45.1 s of 30, 28 s of it the model copying slide XML. The words of a deck are
-// read as an outline and replaced by slide number, with no XML in either call.
 const P = 'http://schemas.openxmlformats.org/presentationml/2006/main', A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 const RUN = '<a:rPr lang="en-US" sz="2600" b="1" dirty="0"><a:solidFill><a:srgbClr val="1F3B5B"/></a:solidFill></a:rPr>'
@@ -22,7 +20,6 @@ async function deck() {
   const rels = (xml: string) => `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${xml}</Relationships>`
   zip.file('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/></Types>')
   zip.file('_rels/.rels', rels(rel('root', 'officeDocument', 'ppt/presentation.xml')))
-  // The deck shows its slides in the order of the list, not of the file names: slide 3 is the third entry.
   zip.file('ppt/presentation.xml', `<p:presentation xmlns:p="${P}" xmlns:r="${R}"><p:sldIdLst>${SLIDES.map((_, at) => `<p:sldId id="${256 + at}" r:id="rId${at + 2}"/>`).join('')}</p:sldIdLst></p:presentation>`)
   zip.file('ppt/_rels/presentation.xml.rels', rels(SLIDES.map((_, at) => rel(`rId${at + 2}`, 'slide', `slides/slide${at + 1}.xml`)).join('')))
   SLIDES.forEach(([title, lines], at) => zip.file(`ppt/slides/slide${at + 1}.xml`, slide(title, lines)))
@@ -54,7 +51,6 @@ it('replaces a slide title by slide number and words: one file, other parts byte
   const before = await readPackage(input.bytes), after = await readPackage(await readFile(output.path))
   for (const [name, bytes] of before) if (name !== 'ppt/slides/slide3.xml') expect(after.get(name), name).toEqual(bytes)
   const xml = after.get('ppt/slides/slide3.xml')!.toString()
-  // Only the two texts differ: the title's run keeps its formatting, and the words are escaped.
   expect(xml).toBe(slide('핵심 지표', ['매출 &amp; 이익 &lt;전년 대비&gt;', '신규 고객 수', '3 / 5']))
   expect(xml).toContain(`${RUN}<a:t>핵심 지표</a:t>`)
   const again = await call('file_read_package', { path: output.path, outline: true })
@@ -69,7 +65,6 @@ it('refuses a text that is missing or there twice, a slide that is not there and
   await expect(edit([{ slide: 3, text: '없는 줄', with: '새 줄' }])).rejects.toThrow(/no text that reads exactly.*Nothing was written/)
   await expect(edit([{ slide: 4, text: '같은 줄', with: '새 줄' }])).rejects.toThrow(/2 times.*Nothing was written/)
   await expect(edit([{ slide: 9, with: '새 제목' }])).rejects.toThrow(/5 slides.*Nothing was written/)
-  // One good edit beside a bad one: the batch is refused whole.
   await expect(edit([{ slide: 3, with: '핵심 지표' }, { slide: 3, text: '없는 줄', with: '새 줄' }])).rejects.toThrow(/Nothing was written/)
   await expect(edit([{ slide: 3, with: '핵심 지표' }, { part: 'ppt/slides/slide1.xml', expectedSha256: 'a'.repeat(64), before: 'x', after: 'y' }])).rejects.toThrow(/slide edit/)
   await expect(edit([{ slide: 3, with: '<a:t>두\n줄</a:t>' }])).rejects.toThrow(/one line/)
@@ -80,7 +75,6 @@ it('refuses a text that is missing or there twice, a slide that is not there and
 it('goes through the same read gate as the XML form: a file the person did not open to it is refused, with nothing written', async () => {
   const input = await deck(), call = caller(async () => false)
   await expect(call('file_read_package', { path: input.path, outline: true })).rejects.toThrow()
-  // No read in this session means no revision to edit from, whatever hash is offered.
   await expect(call('file_edit_package', { sourcePath: input.path, expectedSha256: 'a'.repeat(64), name: '3분기 실적 보고.pptx', edits: [{ slide: 3, with: '핵심 지표' }] })).rejects.toThrow()
   await expect(call('file_edit_package', { sourcePath: join(root, '..', 'elsewhere.pptx'), expectedSha256: 'a'.repeat(64), name: 'elsewhere.pptx', edits: [{ slide: 1, with: '핵심 지표' }] })).rejects.toThrow()
   expect(await written()).toHaveLength(0)
@@ -91,19 +85,16 @@ it('keeps outline and slide edits to decks', async () => {
   const input = await deck(), call = caller()
   const outline = await call('file_read_package', { path: input.path, outline: true })
   await expect(call('file_read_package', { path: input.path, outline: true, part: 'ppt/slides/slide3.xml' })).rejects.toThrow(/outline/)
-  // The XML form still works on the same file, unchanged.
   const part = await call('file_read_package', { path: input.path, part: 'ppt/slides/slide3.xml' })
   const output = await call('file_edit_package', { sourcePath: input.path, expectedSha256: outline.sha256, name: 'copy.pptx', edits: [{ part: 'ppt/slides/slide3.xml', expectedSha256: part.partSha256, before: '<a:t>주요 지표</a:t>', after: '<a:t>핵심 지표</a:t>' }] })
   expect((await readPackage(await readFile(output.path))).get('ppt/slides/slide3.xml')!.toString()).toContain('핵심 지표')
 })
 
-// Round 2: the outline is the readback of an edited deck only when it is the whole deck.
 it('says an outline is the whole deck only when it shows every character of text in every content part', async () => {
   const input = await deck(), call = caller()
   const whole = await call('file_read_package', { path: input.path, outline: true })
   expect(whole.completeReadback).toBe(true)
   expect(whole.textParts).toBeUndefined()
-  // A slide with text the outline cannot show (here outside any paragraph run it knows) is not a whole read, and the parts to read are named.
   const zip = await JSZip.loadAsync(input.bytes)
   const xml = await zip.file('ppt/slides/slide2.xml')!.async('string')
   zip.file('ppt/slides/slide2.xml', xml.replace('</p:spTree>', `<p:graphicFrame><a:graphic xmlns:x="${A}"><x:t>숨은 글</x:t></a:graphic></p:graphicFrame></p:spTree>`))

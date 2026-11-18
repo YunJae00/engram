@@ -8,10 +8,8 @@ import { dateLine, periodSpans } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// c13a: causes T and H (team side) and the team side of J. Wordings are not the harness's: 피그마 / 캔바 / 미로 updates, 대전 공연,
-// 부산 전시, teammates 하람 / 이든 / 소율.
-const WED = new Date(2026, 10, 18, 10, 0) // a Wednesday; this week began Monday 11월 16일
-const SAT = new Date(2026, 10, 21, 15, 0) // the Saturday of that week
+const WED = new Date(2026, 10, 18, 10, 0)
+const SAT = new Date(2026, 10, 21, 15, 0)
 const at = new Date(WED.getTime() - 5_000).toISOString()
 const member = (over: Partial<TeamMember> & Pick<TeamMember, 'id' | 'role' | 'brief'>): TeamMember => ({ parentId: null, depth: 1, botId: `bot-${over.id}`, lookup: true, background: true, state: 'done', sessionKey: `s-${over.id}`, hiredAt: at, ...over })
 const fact = (text: string, url: string, date?: string) => ({ text, url, site: new URL(url).host, ...(date ? { date } : {}) })
@@ -22,12 +20,9 @@ test('no process sentence: the host\'s rendering of a two-teammate job is the it
   const canva = member({ id: 'm2', role: '이든', brief: '이번 주 캔바 업데이트 조사', topic: '캔바', data: { facts: [fact('캔바가 표 데이터로 차트를 만드는 기능을 냈어요.', 'https://www.canva.com/newsroom/1', '11월 18일')] } })
   for (const parts of [[figma, canva], [{ ...figma, topic: undefined }, { ...canva, topic: undefined }]]) {
     const text = mergedReport(parts), lines = text.split('\n').filter(line => line.trim())
-    // Structure, not phrases: every line is an item (a link on it) or a part's row label; the first line is never a sentence of its own.
     for (const line of lines) expect(LINK.test(line) || /^\S+\(\S+\):$/.test(line), line).toBe(true)
     expect(LINK.test(lines[0]!) || /^\S+\(\S+\):$/.test(lines[0]!)).toBe(true)
-    // Each teammate is named once, as attribution in parentheses.
     for (const who of ['하람', '이든']) expect(text.match(new RegExp(`\\(${who}[):]`, 'g'))).toHaveLength(1)
-    // No number of things anywhere the data did not hold.
     expect(text.replace(/\]\([^)]*\)/g, ']').replace(/\d+월 \d+일/g, '')).not.toMatch(/\d/)
   }
 })
@@ -46,12 +41,9 @@ test('rule 7\'s "still looking" is the writer\'s only while a part is at work; a
   const found = member({ id: 'm1', role: '소율', brief: '이번 주 미로 업데이트 조사', data: { facts: [fact('미로 Agents가 보드를 요약해 줘요.', 'https://miro.com/changelog/agents')] } })
   const json = (message: string) => JSON.stringify({ message, kept: ['f1'] })
   const link = '[미로](https://miro.com/changelog/agents)'
-  // Nothing is at work: a message that still says it is being looked into is refused.
   expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toMatchObject({ refused: 'still' })
-  // c13a r2: rule 12 has no exemption: the data holding "Agents" does not let 에이전트 through; the name kept as written passes.
   expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toMatchObject({ refused: 'jargon' })
   expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}`), [found])).toHaveProperty('text')
-  // The cause: the writer is told to keep a name as the data writes it, and its own example holds none of the words.
   const prompt = reportPrompt('미로 이번 주 업데이트', [found])
   expect(prompt).toContain('stays exactly as the data writes it')
   expect(prompt.split('Data: ')[0]).not.toMatch(/에이전트|세션|토큰|프롬프트|런타임|컨텍스트/)
@@ -62,7 +54,6 @@ test('each part has one outcome, from its state and data', () => {
   expect(partOutcome(member({ id: 'a', role: '하람', brief: 'x', state: 'working' }))).toBe('working')
   expect(partOutcome(member({ id: 'a', role: '하람', brief: 'x', data: { facts: [], nothing: {} } }))).toBe('nothing-in-period')
   expect(partOutcome(member({ id: 'a', role: '하람', brief: 'x', data: { facts: [fact('a', 'https://a.example')] } }))).toBe('found')
-  // A teammate that hands back data and ended with none is not finished, whatever prose it left.
   expect(partOutcome(member({ id: 'a', role: '하람', brief: 'x', result: '보고 있었는데' }))).toBe('unfinished')
   expect(partOutcome(member({ id: 'a', role: '하람', brief: 'x', state: 'released', result: 'Failed: it was stopped.' }))).toBe('unfinished')
 })
@@ -83,12 +74,10 @@ test('the record says a part that ended with nothing was not finished, and the s
   await employeeWriteBack(paths, { botId: haram.id, brief: '이번 주 피그마 업데이트 조사', result: '', title: '이번 주 피그마 업데이트 조사' }, WED)
   await employeeWriteBack(paths, { botId: eden.id, brief: '이번 주 캔바 업데이트 조사', result: '', title: '이번 주 캔바 업데이트 조사', data: { facts: [], nothing: {} } }, WED)
   expect((await teamRecord(paths)).facts.map(f => f.text)).toEqual(['이번 주 피그마 업데이트 조사 → 다 못 끝냈어요 (하람, 2026-11-18)', '이번 주 캔바 업데이트 조사 → 새로 나온 게 없었어요 (이든, 2026-11-18)'])
-  // 이든 has since left the team; 소율 is at work on a part right now.
   const soyul = { id: 'bot-s', name: '소율', purpose: '조사', label: '조사 담당' }
   const live: DelegatedTask = { id: 't', goal: 'g', botId: 'chief', state: 'waiting', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team: { members: [member({ id: 's', role: '소율', brief: '이번 주 미로 업데이트 조사', title: '이번 주 미로 업데이트 조사', botId: 'bot-s', state: 'working' })], hires: 1, maxHires: 8, maxDepth: 3, big: false } }
   const bots = [{ id: 'chief', name: '엔그램', purpose: '', primary: true }, { ...haram, label: '조사 담당' }, soyul] as never
   const asked: string[] = []
-  // A writer that says the unfinished part found nothing new is refused; the host's own summary stands.
   const said = await teamSummary(paths, { bots, tasks: [live], message: '이번 주 팀 뭐 했는지 알려줘', now: WED, write: async prompt => { asked.push(prompt); return '이번 주엔 하람이 본 피그마 쪽은 새 소식이 없었어요. 이든이 본 캔바도 없었고 소율은 미로를 보고 있어요.' } })
   const record = JSON.parse(asked[0]!.split('Record: ')[1]!) as Record<string, unknown>[]
   expect(record.find(job => job['who'] === '하람')).toMatchObject({ unfinished: true, nothing: false })
@@ -111,31 +100,23 @@ test('a listing page ("부산 전시 일정 모음") is judged by meaning and ne
 })
 
 test('the period searched matches the period asked, by date arithmetic, and the host\'s own date line is no period', () => {
-  // "이번 주" on a Wednesday began on Monday: the week button, which reaches back to before Monday.
   const week = periodSpans('이번 주 피그마 업데이트', WED).find(span => span.name === '이번 주')!
   expect(periodSince(week.from, WED)).toBe('week')
-  // "이번 주말" on its Saturday: the reach starts a day early, so Friday's forecast is inside it.
   const weekend = periodSpans('이번 주말 대전 공연', SAT).find(span => span.name === '이번 주말')!
   expect(periodSince(weekend.from, SAT)).toBe('week')
-  // "이번 달" on the 18th: a month.
   expect(periodSince(periodSpans('이번 달 캔바 소식', WED)[0]!.from, WED)).toBe('month')
-  // A teammate's task opens with the host's "Today is …" line: read as the person's word it was "today" (one day). Taken out, it is not.
   const task = `${dateLine('이번 주 미로 업데이트 조사', WED)}\nYour part:\n이번 주 미로 업데이트 조사`
   expect(newsPeriod(task)).toBe('day')
   expect(newsPeriod(task.replace(HOST_TODAY, ' '))).toBe('week')
-  // c13a r2: a fact's date is its own day, so no lead where dates are checked: the weekend show (its own day Saturday) is a find, a
-  // Friday item is not, and on a Wednesday last Sunday's launch is not this week's; a coming Friday (no year written) is this week's.
   const sat = fact('대전 야외 공연은 비 소식에 실내로 옮겨요.', 'https://news.example/1', '11월 21일'), fri = fact('대전 공연 할인 행사가 끝났어요.', 'https://news.example/2', '11월 20일')
   expect(inAskedPeriod({ facts: [sat, fri] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [sat] })
   const sun = fact('캔바가 새 영상 편집기를 냈어요.', 'https://www.canva.com/newsroom/9', '11월 15일'), mon = fact('캔바 표 기능이 나왔어요.', 'https://www.canva.com/newsroom/10', '11월 16일'), coming = fact('캔바 행사가 금요일에 열려요.', 'https://www.canva.com/newsroom/11', '11월 20일')
   expect(inAskedPeriod({ facts: [sun, mon, coming] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [mon, coming] })
   expect(inAskedPeriod({ facts: [sun] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: { latest: sun } })
-  // c13a r3: the period ends too: next Monday's item (no year written, or with one) is not this week's, and alone it is no "latest".
   const nextMon = fact('캔바 새 요금제가 나와요.', 'https://www.canva.com/newsroom/12', '11월 23일'), nextYear = fact('캔바 연례 행사 일정이 나왔어요.', 'https://www.canva.com/newsroom/13', '2026년 11월 23일')
   expect(inAskedPeriod({ facts: [mon, nextMon, nextYear] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [mon] })
   expect(inAskedPeriod({ facts: [nextMon] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: {} })
   expect(inAskedPeriod({ facts: [sun, nextMon] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: { latest: sun } })
-  // The weekend's Sunday is its last day and inside it; the Monday after is not.
   const sunShow = fact('대전 공연 마지막 회차예요.', 'https://news.example/3', '11월 22일'), monShow = fact('대전 공연 추가 회차가 열려요.', 'https://news.example/4', '11월 23일')
   expect(inAskedPeriod({ facts: [sat, sunShow, monShow] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [sat, sunShow] })
 })
@@ -148,15 +129,12 @@ test('stack-13 (c13a r3 #1): a part added by a steer after the deadline answer i
     member({ id: 'm2', role: '이든', brief: brief('캔바'), topic: '캔바', state: 'working' }),
   ] }
   const job = { id: 't9', goal: '피그마, 캔바 이번 주 업데이트 알아봐줘', botId: 'lead', state: 'waiting', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team } as DelegatedTask
-  // At the deadline 이든 is still at work: labeled in the answer made then.
   expect(markLate(job)).toEqual(['m2'])
   lateShown(job)
-  // Then "미로도 넣어줘" while 이든 still works.
   const steer = plainSteer('미로도 넣어줘', [job], 'lead')!
   expect(steerSplit(job, steer, at)?.ids).toEqual(['m3'])
   const added = job.team!.members[2]!
   expect(added.late).toBe(true)
-  // Both end: the report after holds the late part and the added one; nothing is owed after it.
   Object.assign(job.team!.members[1]!, { state: 'done', data: { facts: [fact('캔바가 표로 차트를 만드는 기능을 냈어요.', 'https://www.canva.com/newsroom/1', '11월 18일')] } })
   Object.assign(added, { state: 'done', data: { facts: [fact('미로에 회의 요약이 생겼어요.', 'https://miro.com/changelog/1', '11월 17일')] } })
   const after = employeesReport(job)!

@@ -73,7 +73,6 @@ describe('prompt budget per layer', () => {
   })
 })
 
-// QA145 S12/S19: what the extractor wrote when it answered the chat instead of the job.
 describe('qa145 memory pollution', () => {
   it('keeps nothing from a reply that is an answer, not a list of facts', () => {
     const derailed = '# 도구를 사용하겠습니다\n<execute>\n<command>date</command>\n</execute>\n지금 **오후 2시 정도**예요.\n## COMET-REMEMBER\n- 채팅 이름은 기다릴게요'
@@ -87,7 +86,6 @@ describe('qa145 memory pollution', () => {
     for (const junk of ['스프린트 마감 바뀌면 알려줄게', '팀 코드명(은하수)을 문서에 포함시킬 것', '표로 정리해 드릴게요.', '초안을 다시 만들어 드리겠습니다', '코드명도 문서에 넣어 주세요', "I'll let you know when the deadline moves"])
       expect(scopeFacts(`- everyone: ${junk}`, [], '기억해 줘. 우리 팀 코드명은 은하수야.')).toEqual({ shared: [], own: [] })
     expect(scopeFacts('- everyone: 스프린트 마감 바뀌면 알려줄게\n- everyone: 팀 코드명은 은하수다\n- everyone: 다음 스프린트 마감은 11월 25일이다', []).shared).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
-    // The same wording is kept when the person set it as a standing rule.
     expect(scopeFacts('- everyone: 보고서에는 팀 코드명을 포함시킬 것', [], '앞으로 보고서에는 항상 팀 코드명을 넣어 줘').shared).toEqual(['보고서에는 팀 코드명을 포함시킬 것'])
     expect(scopeFacts('- everyone: 보고서는 표로 받는 걸 좋아한다\n- everyone: 결정: 배포는 목요일 오후에만 한다', []).shared).toHaveLength(2)
   })
@@ -114,12 +112,9 @@ describe('qa145 memory pollution', () => {
 
   it('qa146: an outdated line deletes only what a kept line about the same subject replaces', () => {
     const deadline = ['다음 스프린트 마감은 11월 25일이다']
-    // The codex repro: an unrelated new fact must not take the deadline with it.
     expect(scopeFacts('- everyone: 팀 코드명은 은하수다\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline, '우리 팀 코드명은 은하수야.')).toEqual({ shared: ['팀 코드명은 은하수다'], own: [] })
     expect(scopeFacts('- everyone: 다음 스프린트 마감은 11월 27일이다\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline).outdated).toEqual(deadline)
-    // The kept line copied without its quotes or full stop is still that line.
     expect(scopeFacts('- everyone: 프로젝트 코드명은 은하호다\n- outdated: 출시 제품의 코드명은 북극성이다.', ['출시 제품의 코드명은 "북극성"이다']).outdated).toEqual(['출시 제품의 코드명은 "북극성"이다'])
-    // A line that only talks about the discarded value is not a replacement, and is not kept.
     expect(scopeFacts('- everyone: TeStCode는 오타이므로 사용 금지\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline)).toEqual({ shared: [], own: [] })
   })
 
@@ -132,7 +127,6 @@ describe('qa145 memory pollution', () => {
   it('qa146 r3: an outdated line cannot remove the same property of another named project', () => {
     const other = ['은하호 프로젝트의 출시일은 11월 28일이다']
     expect(scopeFacts('- everyone: 별빛 프로젝트의 출시일은 12월 5일이다\n- outdated: 은하호 프로젝트의 출시일은 11월 28일이다', other)).toEqual({ shared: ['별빛 프로젝트의 출시일은 12월 5일이다'], own: [] })
-    // An owner given without a name still matches.
     expect(scopeFacts('- everyone: 프로젝트 출시일은 12월 5일이다\n- outdated: 은하호 프로젝트의 출시일은 11월 28일이다', other).outdated).toEqual(other)
   })
 
@@ -140,10 +134,8 @@ describe('qa145 memory pollution', () => {
     expect(scopeFacts('- everyone: 앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다\n- everyone: 사용자메모 파일은 workspace 폴더에 있다', [], '파일을 만들어 줘')).toEqual({ shared: [], own: [] })
     expect(scopeFacts('- everyone: Office app cannot delete archived files', [], '보고서를 정리해 줘')).toEqual({ shared: [], own: [] })
     expect(scopeFacts('- everyone: Office app cannot delete archived files', [])).toEqual({ shared: [], own: [] })
-    // An ordinary fact about the person is kept whatever they typed this turn, in either language.
     for (const fact of ['Their preferred pronouns are she/her', 'Preferred name: Yun', 'Their time zone is KST', '사용자의 시간대는 KST다', '11월 지출 합계는 120만원이다'])
       expect(scopeFacts(`- everyone: ${fact}`, [], '보고서를 정리해 줘').shared).toEqual([fact])
-    // What the person said themselves stays, a file they placed included.
     const told: [string, string][] = [
       ['사용자의 팀 이름은 은하수입니다', '기억해 줘. 우리 팀 이름은 은하수야.'],
       ['다음 스프린트 마감은 11월 25일이다', '스프린트 마감이 11월 25일로 바뀌었어'],

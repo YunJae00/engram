@@ -25,7 +25,6 @@ interface Grant {
 
 const DEFAULT_TTL_MS = 10 * 60_000
 
-// One instance belongs to the application, not to a chat or native helper.
 export class DesktopControlLease {
   private readonly now: () => number
   private readonly makeToken: () => string
@@ -46,7 +45,7 @@ export class DesktopControlLease {
 
   private changed(): void {
     try { this.onChange?.() }
-    catch { /* An observer cannot interrupt revocation or native action cleanup. */ }
+    catch { }
   }
 
   private pause(reason: string): void {
@@ -77,7 +76,6 @@ export class DesktopControlLease {
     const expiresAt = this.deadline()
     const nonce = this.makeToken()
     if (typeof nonce !== 'string' || !nonce) throw new Error('A control token could not be created.')
-    // A caller-supplied token source must not resurrect an earlier grant.
     const token = `${nonce}:${++this.epoch}`
     this.grant = { token, lane, name, active: false, expiresAt }
     this.paused = null
@@ -140,8 +138,6 @@ export class DesktopControlLease {
       this.assertActive(token, lane)
       return result
     } finally {
-      // Revoking or resetting the grant cannot cancel already dispatched native
-      // work. Keep its slot occupied until settlement to prevent overlap.
       this.inFlight = false
     }
   }

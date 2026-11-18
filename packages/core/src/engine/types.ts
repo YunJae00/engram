@@ -5,8 +5,6 @@ export { classifyEngineError, type EngineErrorKind } from './classify.js'
 export type EngineId = 'claude' | 'codex' | 'mock'
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
-// How far a comet may act on its own: commands without asking, after one
-// approval, after each approval, or only reading and planning.
 export type PermissionMode = 'auto' | 'once' | 'each' | 'plan'
 export const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'once', 'each', 'plan']
 export const DESKTOP_TOOL_ISOLATION_MESSAGE = 'This connection cannot safely run selected-app tools yet. Use a connection with an isolated tool session, or turn off Computer access for this chat.'
@@ -14,20 +12,9 @@ export const DESKTOP_TOOL_ISOLATION_MESSAGE = 'This connection cannot safely run
 export interface EngineDetection {
   installed: boolean
   loggedIn: boolean
-  // Set to false ONLY when the probe could not reach a verdict (it timed out,
-  // as opposed to being refused). Absent means conclusive: an adapter that
-  // cannot time out — the mock, a test stub — says nothing and is believed.
-  //
-  // Callers must not treat an inconclusive detection as "this engine is gone".
-  // Detection re-runs every 10 minutes for the life of the process, so a single
-  // slow probe on a busy or just-woken machine would otherwise retire a working
-  // engine, which is what users experience as the connection dropping by itself.
   conclusive?: boolean
 }
 
-// Physical privacy barrier: the ONLY directory an engine may ever
-// see is workspace/. The branded type forces call sites through engineCwd(),
-// and adapters re-assert at spawn time.
 export type EngineCwd = string & { readonly __engineCwd: 'engineCwd' }
 
 export class PrivatePathError extends Error {
@@ -48,12 +35,12 @@ export function engineCwd(paths: { workspace: string; privateDir: string }): Eng
 }
 
 export const ENGINE_BUDGETS = {
-  probe: 10_000, // claude --version
-  authStatus: 15_000, // claude auth status
-  speech: 45_000, // nudge speechwriter
-  ping: 60_000, // boot ping
-  job: 300_000, // librarian jobs
-  chat: 300_000, // chat upper bound (signal cancels sooner)
+  probe: 10_000,
+  authStatus: 15_000,
+  speech: 45_000,
+  ping: 60_000,
+  job: 300_000,
+  chat: 300_000,
 } as const
 
 export interface EngineJobInput {
@@ -62,78 +49,33 @@ export interface EngineJobInput {
   prompt: string
   imagePaths?: string[]
   workdir: EngineCwd
-  // Total-duration budget. Unset = the adapter's default (job tier).
   timeoutMs?: number
-  // Stdout-silence budget: a call that stops producing for this long is hung
-  // and gets killed even inside its total budget. Unset = off.
   idleTimeoutMs?: number
-  // Cancellation: abort → tree kill + silent end (no error event — a cancel
-  // is the caller's decision, not a failure).
   signal?: AbortSignal
-  // Data-in→JSON-out jobs (the librarian J1..J8) never need to read files or
-  // run tools. When set, adapters bar their CLI from tool use so the model
-  // answers only from the material embedded in the prompt (structural safety +
-  // token savings). Adapters with no tool concept (mock) ignore it.
   disallowTools?: boolean
-  // Selected-app jobs require a verified boundary against inherited runtime
-  // tools. An adapter without that boundary must reject before starting.
   requireToolIsolation?: boolean
-  // Read-only jobs (image transcription) may read workspace files but must
-  // never write or execute. Ignored when disallowTools is set.
   readOnly?: boolean
-  // Semantic speed hint, not a model name — core never learns model ids
-  // (same philosophy as BinaryProvider). 'fast' asks the adapter for its
-  // cheap tier and 'smart' for its mid judgment tier; each adapter resolves
-  // the actual value from its own ENGRAM_{FAST,SMART}_MODEL_* env override
-  // (with at most a vendor-alias fallback), and adapters without a configured
-  // model for a tier ignore the hint and keep their default — so a hint can
-  // never break an engine. Unset = the engine's own default model (chat).
   modelHint?: 'fast' | 'smart'
-  // Hard output contract for structured steps. An adapter that can ask its
-  // runtime for a schema-shaped answer does; one that cannot ignores this and
-  // relies on the prompt's own instructions.
   jsonSchema?: object
-  // Upper bound on generated tokens, for adapters that can enforce one.
   maxTokens?: number
 }
 
 export type EngineEvent =
   | { type: 'token'; text: string }
   | { type: 'result'; text: string }
-  // `kind` is the adapter's own reading of WHY, made where the stderr and the
-  // exit code still exist. Optional so a hand-rolled engine (tests, mock) can
-  // stay a two-field object; collectResult classifies the message when absent.
   | { type: 'error'; message: string; kind?: EngineErrorKind; retryAfterMs?: number }
 
 export interface Engine {
-  // A session opened ahead for a comet shaped like `job`, in `job.native.cwd`,
-  // whether one is already waiting, and the folder the next comet should take.
   warm?(job: ToolSessionJob): Promise<void>
   spareReady?(): boolean
-  // A short answer from a runtime kept open, opened ahead with warmQuick.
   warmQuick?(workdir: string): Promise<void>
   quick?(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string>
   claimWorkFolder?(channel: string, fallback: string): string
   readonly id: EngineId
-  // True only when selected-app jobs cannot call inherited runtime tools.
   readonly desktopToolIsolation?: boolean
-  // Multimodal CLI: can read an image file in the workspace and transcribe it.
-  // Ingest prefers such an engine over local OCR (hybrid image pipeline).
   readonly vision?: boolean
   detect(): Promise<EngineDetection>
-  // Authoritative, uncached "is this login usable right now?" — asked of the
-  // CLI itself, not of a file on disk, because only the CLI knows whether the
-  // token expired or was silently refreshed. THREE answers, and the third one
-  // matters: `null` means the CLI could not be asked (old version without the
-  // subcommand, spawn failure). Callers must treat null as "unknown" and leave
-  // the last known state alone — "cannot ask" is never "logged out".
   run(job: EngineJobInput): AsyncIterable<EngineEvent>
-  // Optional warm chat lane (chat-session.ts): one long-lived process, many
-  // turns — the per-question cold boot paid once. Adapters without it simply
-  // omit it and chat rides run() as always; callers MUST keep that fallback.
-  // Optional tool session: the brain is handed the tools and runs the whole
-  // turn itself, calling back into them. A brain without it is driven one
-  // step at a time by the agent loop.
   runTools?(job: ToolSessionJob): Promise<ToolSessionResult>
 }
 
@@ -141,22 +83,16 @@ export interface ToolSessionCall {
   name: string
   description: string
   argsSchema: object
-  // Words, or words with a picture the brain is to look at.
   run(args: Record<string, unknown>): Promise<string | { text: string; image?: { data: string; mimeType: string } }>
 }
 
 export interface NativeDecision { behavior: 'allow' | 'deny'; message?: string; updatedInput?: Record<string, unknown> }
 
-// The runtime's own hands (read, write, shell, web), with the host deciding
-// each move and hearing of each one.
 export interface NativeTools {
   cwd: string
-  // Folders the runtime may also read from.
   readRoots: string[]
-  // The person's workspace folder: a relative path they name is under it.
   workspace?: string
   mode?: PermissionMode
-  // Commands may already run without asking: chosen, or approved for this comet.
   ready?(): boolean
   decide(name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<NativeDecision>
   onCall?(name: string, input: Record<string, unknown>): void
@@ -165,49 +101,32 @@ export interface NativeTools {
 
 export interface ToolSessionJob {
   onUsage?(tokens: number): void
-  // Called once the session has its turn (any wait in line is over) and starts working.
   onStart?(): void
-  // The runtime's own tools, when the host hands them over.
   native?: NativeTools
   onContextReset?(): void
   model?: string
-  // The tier to run this session on (see EngineJob.modelHint); unset is the work model.
   modelHint?: 'fast' | 'smart'
   effort?: ReasoningEffort
   workdir: EngineCwd
-  // Standing instructions, the same for every turn of a session.
   system: string
-  // This turn: who is speaking and what they want.
   prompt: string
-  // The conversation so far, for a session that is only now opening.
   opening?: string
-  // Turns with the same key may share one session.
   sessionKey?: string
   tools: ToolSessionCall[]
   maxCalls: number
   signal?: AbortSignal
-  // The reply as it is written, and the word that what came so far was
-  // said before a tool call and is not the reply.
   onToken?(text: string): void
-  // `tool` names the call that starts, when the engine already knows it.
   onReset?(dropDraft?: boolean, tool?: string): void
-  // Host-only activity, without private reasoning or unfinished tool arguments.
   onProgress?(): void
-  // An engine that can put the person's words into its running turn, as
-  // their own message, hands over how; null once the turn is over.
   onSteerable?(steer: ((said: string[]) => Promise<boolean>) | null): void
 }
 
 export interface ToolSessionResult {
   answer: string
   error?: string
-  // c11b r2: words the model wrote before a tool call and never followed with any after it. They are notes, not the answer:
-  // runToolSession asks for the answer once more instead of showing them.
   note?: string
 }
 
-// Base for every classified engine failure, so a caller that only wants to
-// branch on `kind` does not need to know the subclasses.
 export class EngineCallError extends Error {
   constructor(
     message: string,
@@ -218,11 +137,7 @@ export class EngineCallError extends Error {
   }
 }
 
-// Raised when a CLI reports a rate/usage limit (429). The sweep defers the
-// remainder and substitutes the next installed engine.
 export class QuotaError extends EngineCallError {
-  // retryAfterMs: the CLI's own "resets at / retry after" when its message
-  // carried one — the backoff gate uses it verbatim instead of guessing.
   constructor(
     message = 'engine quota exhausted',
     readonly retryAfterMs?: number,
@@ -232,9 +147,6 @@ export class QuotaError extends EngineCallError {
   }
 }
 
-// Raised when the CLI's login is gone or unusable. Distinct from QuotaError
-// because the remedy is different (log in vs. wait) and because retrying is
-// pointless: an expired token does not become valid on the second attempt.
 export class AuthError extends EngineCallError {
   constructor(message = 'engine is not logged in') {
     super(message, 'auth')
@@ -242,8 +154,6 @@ export class AuthError extends EngineCallError {
   }
 }
 
-// Raised when the provider took the request and failed on its side. Retrying
-// at once meets the same failure, so callers wait before the next call.
 export class OutageError extends EngineCallError {
   constructor(message = 'the AI provider is not answering') {
     super(message, 'outage')
@@ -251,8 +161,6 @@ export class OutageError extends EngineCallError {
   }
 }
 
-// Drains an engine run and returns the final text. Token events accumulate
-// as a fallback for engines that never emit an explicit result.
 export async function collectResult(engine: Engine, job: EngineJobInput): Promise<string> {
   assertEngineCwd(job.workdir)
   let tokens = ''
@@ -261,8 +169,6 @@ export async function collectResult(engine: Engine, job: EngineJobInput): Promis
     if (event.type === 'token') tokens += event.text
     else if (event.type === 'result') result = event.text
     else if (event.type === 'error') {
-      // Trust the adapter's reading when it made one; fall back to reading the
-      // message for engines that emit a bare error event.
       const kind = event.kind ?? classifyEngineError(event.message)
       if (kind === 'quota') throw new QuotaError(event.message, event.retryAfterMs)
       if (kind === 'auth') throw new AuthError(`[${engine.id}] ${event.message}`)
@@ -271,15 +177,10 @@ export async function collectResult(engine: Engine, job: EngineJobInput): Promis
     }
   }
   const text = result ?? tokens
-  // A CLI that printed a login prompt and exited 0 lands here. It is not an
-  // auth verdict on its own (a model can legitimately answer nothing), so it
-  // stays a crash — the health check asks the CLI directly for the auth truth.
   if (text.trim().length === 0) throw new EngineCallError(`[${engine.id}] empty engine result`, 'crash')
   return text
 }
 
-// Engines answer with prose around JSON more often than not — cut the first
-// balanced JSON value out of the text.
 export function extractJson(text: string): unknown {
   const cleaned = text.replace(/```(?:json)?/g, '')
   const start = cleaned.search(/[{[]/)

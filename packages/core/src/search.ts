@@ -24,9 +24,6 @@ const OPTIONS = {
   tokenize: cjkTokenize,
 }
 
-// J7's merge-dedup pairing calibrated its score threshold on plain whitespace
-// tokens; bigram inflation would shift every score, so it opts out (no
-// `tokenize` key at all — minisearch falls back to its default tokenizer).
 const PLAIN_OPTIONS = {
   fields: OPTIONS.fields,
   storeFields: OPTIONS.storeFields,
@@ -57,9 +54,6 @@ export function buildIndex(notes: Note[], opts: { cjkNgrams?: boolean } = {}): M
   return index
 }
 
-// Identical index, inserted in yielding chunks so building over a large corpus
-// (a whole vault) hands control back to the event loop instead of blocking it
-// for hundreds of ms. Search results are the same as buildIndex.
 export async function buildIndexAsync(
   notes: Note[],
   opts: { cjkNgrams?: boolean } = {},

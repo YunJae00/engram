@@ -9,7 +9,6 @@ it('hands words sent mid-turn to the brain with the next tool result, once, and 
   expect(text).toContain('First answer them in one short line')
 })
 
-// grokbar c3 T1/H6: the host answers words said mid-work in one line at once; the model must not write a second one.
 it('tells the brain the person was already answered when the host replied, for an addition, a replacement and a remark', () => {
   const text = withSteer('page read', ['아 대구도 추가해'], true)
   expect(text.startsWith('page read')).toBe(true)

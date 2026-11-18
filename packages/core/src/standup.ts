@@ -9,7 +9,6 @@ const TITLE_MAX = 70
 
 export interface StandupEntry {
   folder: string
-  // The newest conclusion born in that folder, and how many days ago.
   last: string
   daysAgo: number
   open: number
@@ -22,8 +21,6 @@ export interface StandupDue {
 
 export interface Standup {
   entries: StandupEntry[]
-  // Loops due today or past due, overdue first — the "start here" answer.
-  // Empty when nothing presses: the standup does not invent urgency.
   due: StandupDue[]
 }
 
@@ -37,8 +34,6 @@ export interface ActiveFolder {
   last: Note
 }
 
-// The folders with a conclusion in the last two weeks, newest-first. A cold
-// folder is history, not a resume point.
 export function activeFolders(notes: Note[], now: Date): ActiveFolder[] {
   const byFolder = new Map<string, Note[]>()
   for (const n of notes) {
@@ -65,8 +60,6 @@ export function composeStandup(notes: Note[], now: Date = new Date()): Standup {
       daysAgo: daysOpen(last, now),
       open: openLoops(list, now).length,
     }))
-  // openLoops already sorts most-urgent-first, so the first DUE_CAP pressing
-  // loops are the right ones and overdue naturally leads.
   const due = openLoops(notes, now)
     .map((n) => ({ n, urgency: loopUrgency(n, now) }))
     .filter(({ urgency }) => urgency === 'today' || urgency === 'overdue')

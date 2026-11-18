@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// Dev launcher: runs the TypeScript CLI through tsx. M8 replaces this with a
-// bundled build — user-facing behaviour must stay identical.
 import { register } from 'tsx/esm/api'
 
 register()

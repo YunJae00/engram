@@ -3,11 +3,6 @@ import { trimJsonlIfHuge } from './receipts.js'
 import { dirname, join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-// Record notification outcomes and increase snooze intervals for repeatedly deferred types.
-//
-// A jsonl ledger, not frontmatter: these are app-behaviour events, not
-// memories — they never enter the vault's notes, views or sync.
-
 export type NudgeAction = 'shown' | 'answered' | 'later' | 'copied'
 
 export interface NudgeEvent {
@@ -17,8 +12,6 @@ export interface NudgeEvent {
 }
 
 const LEDGER = 'nudge-ledger.jsonl'
-// Judge on recent behaviour only — the user who ignored stale cards all of
-// March may care in July.
 const WINDOW = 30
 
 function ledgerFile(paths: VaultPaths): string {
@@ -51,17 +44,13 @@ export async function readNudgeLedger(paths: VaultPaths): Promise<NudgeEvent[]> 
   }
 }
 
-// How much longer than the base snooze this card type should stay quiet after
-// a "later", judged on its recent record: answering keeps the multiplier at
-// 1; waving away most of the last WINDOW showings doubles it; waving away
-// nearly all of them (and at least five) sends it to a day.
 export function snoozeMultiplier(events: NudgeEvent[], cardType: string): number {
   const recent = events.filter((e) => e.cardType === cardType).slice(-WINDOW)
   const shown = recent.filter((e) => e.action === 'shown').length
   const later = recent.filter((e) => e.action === 'later').length
-  if (shown < 3) return 1 // too little history to hold a grudge
+  if (shown < 3) return 1
   const ignoreRate = later / shown
-  if (ignoreRate >= 0.9 && later >= 5) return 6 // 4h → 24h
-  if (ignoreRate >= 0.6) return 2 // 4h → 8h
+  if (ignoreRate >= 0.9 && later >= 5) return 6
+  if (ignoreRate >= 0.6) return 2
   return 1
 }

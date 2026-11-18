@@ -2,9 +2,6 @@ import { collectResult, extractJson, type Engine, type EngineCwd } from './engin
 import type { SearchHit } from './search.js'
 
 export const WEAK_HIT_COUNT = 3
-// Expansion is a rescue attempt, not the answer. It runs a whole extra
-// generation ahead of the real one, so it gets a short leash and the
-// caller's cancel.
 export const EXPANSION_BUDGET_MS = 15_000
 export const MAX_EXPANDED_QUERIES = 5
 
@@ -44,8 +41,6 @@ export async function expandQueries(
   }
 }
 
-// Primary (lexical) hits keep their order and rank first; expansion hits
-// join by descending score, deduped, up to `cap` total.
 export function unionHits(primary: SearchHit[], expanded: SearchHit[][], cap: number): SearchHit[] {
   const seen = new Set(primary.map((h) => h.id))
   const out = primary.slice(0, cap)

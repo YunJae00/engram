@@ -24,7 +24,6 @@ it('retains collected values even after more than eight later observations', () 
   expect(checkpoint.recentResults).toHaveLength(8)
 })
 
-// QA 0.8.142 B9: redacting the serialized text could eat a JSON escape.
 it('stays valid JSON when a labelled secret ends in a character JSON escapes', () => {
   const checkpoint = resumeCheckpoint('use the token ab12\\ for the deploy', { answer: 'token ab12\\ worked', steps: [{ tool: 'read', args: { q: 'token ab12\\' }, observation: 'saw ab12\\ "quoted"' }], fellBack: false, incomplete: 'Retry ab12\\' })!
   expect(checkpoint).not.toContain('ab12')

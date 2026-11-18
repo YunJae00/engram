@@ -1,13 +1,3 @@
-// Synthetic-vault benchmark for the core note pipeline.
-//
-//   node scripts/bench.mjs            # from packages/core
-//   BENCH_N=500 node scripts/bench.mjs
-//
-// Generates a deterministic vault of BENCH_N (~1KB) notes under
-// tmp/bench-vault-<N> (reused if already present) and times the hot paths:
-// full loadNotes, NoteStore.open, the legacy buildIndex+query path, the
-// incremental store.search, and a single store.applyFile. Pure Node; the core
-// TypeScript is loaded through tsx's ESM loader (already a devDependency).
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,8 +23,6 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const tmpRoot = join(scriptDir, '..', '..', '..', 'tmp')
 const vaultDir = join(tmpRoot, `bench-vault-${N}`)
 const notesDir = join(vaultDir, 'workspace', 'notes')
-// NoteStore.open and loadNotes only read paths.notes, so a minimal shape is
-// enough — no git init or full vault scaffold needed for a bench.
 const paths = { notes: notesDir }
 
 const BASE = Date.parse('2026-01-01T00:00:00Z')
@@ -80,7 +68,7 @@ async function ensureVault() {
   } catch {
     existing = []
   }
-  if (existing.length === N) return false // reuse
+  if (existing.length === N) return false
   const writes = []
   for (let i = 0; i < N; i++) writes.push(writeFile(join(notesDir, `${noteId(i)}.md`), makeMarkdown(i)))
   await Promise.all(writes)
@@ -109,7 +97,6 @@ async function main() {
 
   const search = await timed(() => store.search(QUERY))
 
-  // Rewrite one note's body on disk (untimed), then time the incremental fold.
   const changeId = noteId(0)
   const changePath = join(notesDir, `${changeId}.md`)
   const current = store.get(changeId)

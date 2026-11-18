@@ -3,12 +3,6 @@ import type { PageMove, WebCourier } from './errand.js'
 import { findOf, pageReport, str } from './page-report.js'
 import { makeMove, pageEachTool } from './page-each.js'
 
-// The hands a comet has on an open page: press, type into a search box,
-// choose from a list, scroll, hover, a key. They move around a page the way
-// a person does and read what came up; none of them commits anything - a
-// control that would submit, save, send or buy is refused, and the person
-// is told what it is.
-
 const PAGE_STEPS_MAX = 12
 
 interface PageToolDeps {
@@ -18,7 +12,6 @@ interface PageToolDeps {
 export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] {
   const readOpen = courier.readOpen
   if (!readOpen) return []
-  // What came of a move: the page as it now stands, or why it did not move.
   const after = async (move: PageMove, what: string, args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> => {
     if (move.committed) context.onCommitted?.()
     const signal = context.signal
@@ -37,10 +30,6 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     }
     if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length && !page.downloads?.length)
       return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`
-    // A move that seemed to change nothing is only a dead end when the page
-    // did not answer it either. A dialog that opened, or a field the page has
-    // marked as wrong, IS the answer: that is what to deal with next, and the
-    // move is tried again after - which the page report says in its own words.
     const answered = Boolean(page.dialog) || Boolean(page.faults?.length) || Boolean(page.downloads?.length)
     const still =
       move.changed === false && !answered
@@ -164,9 +153,6 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
       },
     })
   }
-  // Several known moves on one form in one call: each goes through the same
-  // hands and guards as its own tool, the page is read once at the end, and
-  // the first move that does not go as asked stops the rest.
   const { press, typeText, choose, pressKey } = courier
   if (press && typeText && choose && pressKey) {
     tools.push({
@@ -205,7 +191,6 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
           done.push(what)
         }
         const outcome = await after(last!.move, `${done.length} moves`, args, context)
-        // The whole report, not a delta: the list of moves made travels with it.
         return {
           text: `Done in order: ${done.join('; ')}.\n${typeof outcome === 'string' ? outcome : outcome.text}`,
           ...(allMoved && typeof outcome !== 'string' && outcome.observedAfterAction === true ? { observedAfterAction: true } : {}),

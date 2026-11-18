@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { activityLine, preferenceAsk, preferences, PREFERENCE_ACTIONS, widens, type PreferenceAsk, type PreferenceHost } from '../src/preferences-tools.js'
 
-// A host that only records what was asked of it.
 function fakeHost(over: Partial<PreferenceHost> = {}) {
   const calls: string[] = []
   const state = { connected: false, rules: [] as { kind: 'ask-first' | 'allow'; target: string }[] }
@@ -67,7 +66,6 @@ describe('each removed setting is one plain Korean sentence', () => {
       const said = await chat.say('bot-1', message)
       expect(said).toBe(reply)
       expect(calls).toEqual(did)
-      // One short answer, in Korean apart from a site or file name.
       expect(said!.replace(/naver\.com|engram-logs-1|\(https:\/\/[^)]*\)/g, '')).toMatch(HANGUL_ONLY)
     })
   }
@@ -121,7 +119,6 @@ describe('narrowing is done at once, widening is asked about once', () => {
       expect(calls).toEqual([])
       expect(await chat.say('c', '응')).toBe(done)
       expect(calls).toEqual([call])
-      // The yes was used: a second one is an ordinary message again.
       expect(await chat.say('c', '응')).toBeUndefined()
       expect(calls).toEqual([call])
     })
@@ -165,24 +162,19 @@ describe('narrowing is done at once, widening is asked about once', () => {
     const { chat, calls } = setup()
     const tool = chat.tool('c', () => true)
     expect(await tool.run({ do: 'app', name: '엑셀', on: true }, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
-    // Calling again does not answer the question.
     expect(await tool.run({ do: 'app', name: '엑셀', on: true }, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
     expect(calls).toEqual([])
     expect(await chat.say('c', '네')).toBe('엑셀을 다시 쓸게요.')
-    // Narrowing through the tool is done at once.
     expect(await tool.run({ do: 'app', name: '카카오톡', on: false }, { task: '' })).toBe('카카오톡은 이제 쓰지 않을게요.')
-    // No `on`: reads as off, and an ask-first rule is kept, never dropped.
     expect(await tool.run({ do: 'app_activity' }, { task: '' })).toBe('앱 활동은 이제 참고하지 않을게요.')
     expect(await tool.run({ do: 'ask_first', name: 'naver.com' }, { task: '' })).toBe('naver.com에서는 제출하기 전에 항상 먼저 여쭤볼게요.')
     expect(await tool.run({ do: 'ask_first', name: 'naver.com', on: false }, { task: '' })).toBe('naver.com에서 먼저 여쭤보는 규칙을 없앨까요?')
     expect(await tool.run({ do: 'format_disk' }, { task: '' })).toBe('그건 여기서 바꿀 수 없어요.')
     expect(calls).toEqual(['app:excel:엑셀:true', 'app:kakaotalk:카카오톡:false', 'learning:activity:false', 'rule:ask-first:naver.com:true'])
-    // Its line is the whole answer in a Korean conversation only.
     expect((tool.closes as (args: Record<string, unknown>) => boolean)({})).toBe(true)
     expect((chat.tool('c', () => false).closes as (args: Record<string, unknown>) => boolean)({})).toBe(false)
   })
 
-  // Codex cap (sm r3): a model's call set the question, and any later "응" installed a standing allow for a site or sent the notes to a repository.
   it('a model\'s call cannot start a standing allow or a backup connection; the person\'s own sentence still can', async () => {
     const { chat, calls } = setup()
     const tool = chat.tool('c', () => true)
@@ -193,7 +185,6 @@ describe('narrowing is done at once, widening is asked about once', () => {
     expect(backup).toBe('백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 https://github.com/someone/else 로 연결해줘"라고 말씀해 주세요.')
     expect(await chat.say('c', '네')).toBeUndefined()
     expect(calls).toEqual([])
-    // The sentence each line names is one this module takes, asks about by site or repository, and does on yes.
     expect(await chat.say('c', 'evil.example.com에서는 묻지 말고 제출해')).toBe('evil.example.com에서는 묻지 않고 바로 제출해도 될까요?')
     expect(calls).toEqual([])
     expect(await chat.say('c', '응')).toBe('evil.example.com에서는 묻지 않고 제출할게요.')
@@ -201,13 +192,11 @@ describe('narrowing is done at once, widening is asked about once', () => {
     expect(calls).toEqual(['rule:allow:evil.example.com:true'])
   })
 
-  // Codex cap (sm r3): a log export or a GitHub connection said nothing until it had finished.
   it('names the first step at once for the sentences whose work can take seconds, and for no other', async () => {
     const { chat } = setup()
     expect(chat.opening('c', '로그 내보내줘')).toBe('로그 모아서 내보낼게요.')
     expect(chat.opening('c', '깃허브에 백업해줘')).toBe('지금 깃허브에 백업할게요.')
     for (const quick of ['컴퓨터 켜면 자동으로 실행 꺼줘', '다크 모드로 바꿔', '응', '1년은 몇 초야?', '깃허브 백업 https://github.com/me/notes 로 연결해줘']) expect(chat.opening('c', quick)).toBeUndefined()
-    // The yes to the connection question is where the connecting starts; a yes to any other question is quick.
     await chat.say('c', '깃허브 백업 https://github.com/me/notes 로 연결해줘')
     expect(chat.opening('other', '응')).toBeUndefined()
     expect(chat.opening('c', '아니')).toBeUndefined()

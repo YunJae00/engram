@@ -140,7 +140,6 @@ describe('ranking and rendering', () => {
     await recordFacts(paths, 'bot-e', ['행사 일정은 11월 20일이다'], T1)
     const later = await recordFacts(paths, 'bot-e', ['행사 일정은 12월 4일이다'], T2)
     expect(later).toEqual({ added: 1, touched: 0 })
-    // Said together, even a long shared subject is two facts.
     const together = await recordFacts(paths, 'bot-e', ['다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'], T2)
     expect(together).toEqual({ added: 2, touched: 0 })
     expect((await loadBotMemory(paths, 'bot-e')).facts.map((f) => f.text)).toEqual(['행사 일정은 11월 20일이다', '행사 일정은 12월 4일이다', '다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'])
@@ -199,7 +198,6 @@ describe('qa146: a correction replaces', () => {
     await recordFacts(paths, 'bot-c', ['할 일: 지민호가 API 문서를 2026년 12월 1일까지 작업합니다'], T2)
     await recordFacts(paths, 'bot-c', ['할 일: 민호가 API 문서를 2026년 12월 1일까지 작업합니다(담당자 이름은 "민호"가 맞고, 이전에 써둔 "지민호"는 읽기 오류입니다)'], T2)
     await recordFacts(paths, 'bot-c', ['할 일: 민호가 API 문서를 2026년 12월 3일까지 작업합니다(2026-11-16 사용자가 지정, 이전 12월 1일을 대체)'], T2)
-    // The file with 북극성 in its name and the other event on 11월 28일 are different subjects and stay.
     expect(await texts(paths, 'bot-c')).toEqual([
       '"사용자메모-북극성.txt" 파일은 workspace 폴더에 있다',
       '킥오프 행사는 11월 28일이다',
@@ -226,7 +224,6 @@ describe('qa146: a correction replaces', () => {
   it('qa146 r2: a correction given as only the new fact replaces the old value of the same property', () => {
     const settle = (lines: string[]) => settleFacts(lines.map((text) => ({ text }))).map((f) => f.text)
     expect(settle(['출시 제품의 코드명은 북극성이다', '프로젝트 코드명은 은하호다'])).toEqual(['프로젝트 코드명은 은하호다'])
-    // Another owner's code name, and properties that hold several values, are left alone.
     const apart = ['팀 코드명은 은하수다', '프로젝트 코드명은 은하호다', 'API 문서 담당은 민호다', '디자인 담당은 수아다', '이름은 윤재다', '팀 이름은 은하수다']
     expect(settle(apart)).toEqual(apart)
   })
@@ -235,7 +232,6 @@ describe('qa146: a correction replaces', () => {
     const settled = (...lines: string[]) => settleFacts(lines.map((text) => ({ text }))).map((fact) => fact.text)
     expect(settled('사용자의 팀 이름은 TeStCode다', '사용자의 팀 이름은 은하수다')).toEqual(['사용자의 팀 이름은 은하수다'])
     expect(settled('할 일: 지민호가 API 문서를 12월 3일까지 작업합니다', '할 일: 민호가 API 문서를 12월 3일까지 작업합니다')).toEqual(['할 일: 민호가 API 문서를 12월 3일까지 작업합니다'])
-    // Another property, another owner, another person or another task is another fact.
     for (const pair of [
       ['사용자의 팀 이름은 은하수다', '사용자의 팀 리더는 민호다'],
       ['민호의 역할은 백엔드다', '지수의 역할은 백엔드다'],

@@ -1,11 +1,7 @@
 import type { Note } from './schema.js'
 
-// Lineage graph from supersedes[] edges (newer → older). Append-mostly means
-// the chain IS the history.
-
 export interface LineageGraph {
   byId: Map<string, Note>
-  // olderId → newer ids that supersede it
   supersededBy: Map<string, string[]>
 }
 
@@ -23,7 +19,6 @@ export function buildLineage(notes: Note[]): LineageGraph {
   return { byId, supersededBy }
 }
 
-// Transitive closure over supersedes[] (this note's ancestry, oldest last).
 export function ancestorsOf(graph: LineageGraph, id: string): Note[] {
   const seen = new Set<string>()
   const out: Note[] = []
@@ -42,7 +37,6 @@ export function ancestorsOf(graph: LineageGraph, id: string): Note[] {
   return out
 }
 
-// Notes that (transitively) supersede this one, newest last.
 export function descendantsOf(graph: LineageGraph, id: string): Note[] {
   const seen = new Set<string>()
   const out: Note[] = []
@@ -59,7 +53,6 @@ export function descendantsOf(graph: LineageGraph, id: string): Note[] {
   return out
 }
 
-// Full chain through a note, oldest → newest (for the lineage strip UI).
 export function chainOf(graph: LineageGraph, id: string): Note[] {
   const self = graph.byId.get(id)
   if (!self) return []
@@ -72,7 +65,6 @@ export interface ChronologyInversion {
   olderId: string
 }
 
-// A supersedes B but happened before it → card ⑥ material.
 export function detectInversions(notes: Note[]): ChronologyInversion[] {
   const byId = new Map(notes.map((n) => [n.front.id, n]))
   const out: ChronologyInversion[] = []

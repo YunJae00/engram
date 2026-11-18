@@ -16,7 +16,7 @@ async function stageContent(sync: TeamSync, stage: 1 | 2 | 3, file: string): Pro
   try {
     return await sync.raw().raw(['show', `:${stage}:${file}`])
   } catch {
-    return null // e.g. added on both sides — no base
+    return null
   }
 }
 
@@ -45,7 +45,6 @@ export async function resolveConflicts(
     const ours = await stageContent(sync, 2, file)
     const theirs = await stageContent(sync, 3, file)
     if (ours === null || theirs === null) {
-      // add/delete conflict: keep whichever side still has content
       await sync.raw().raw(['checkout', ours !== null ? '--ours' : '--theirs', '--', file])
       await sync.raw().add([file])
       continue
@@ -62,7 +61,6 @@ export async function resolveConflicts(
       }
     }
 
-    // Unstick the merge with OUR side; the approved card lands the real merge.
     await sync.raw().raw(['checkout', '--ours', '--', file])
     await sync.raw().add([file])
 

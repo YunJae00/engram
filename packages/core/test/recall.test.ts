@@ -3,10 +3,6 @@ import { createNote, readNote, recordCoRecall, recordRecall } from '../src/notes
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// Recall reinforcement (Engram redesign): last_recalled stamps retrieval
-// WITHOUT counting as an edit — `updated` must stay untouched so the tidy
-// badge / sweep delta / re-ask guard never see a recall as new work.
-
 const NOW = new Date('2026-07-20T09:00:00Z')
 let paths: VaultPaths
 
@@ -31,7 +27,6 @@ describe('recordRecall (last_recalled)', () => {
     expect(await recordRecall(paths, note.front.id, new Date('2026-07-20T12:30:00Z'))).toBe(false)
     const reread = await readNote(paths, note.front.id)
     expect(reread.front.last_recalled).toBe(first.toISOString())
-    // …and after the hour it advances again.
     const later = new Date('2026-07-20T13:30:00Z')
     expect(await recordRecall(paths, note.front.id, later)).toBe(true)
     expect((await readNote(paths, note.front.id)).front.last_recalled).toBe(later.toISOString())
@@ -50,12 +45,11 @@ describe('recordCoRecall (Hebbian recall_links)', () => {
     expect(rb.front.recall_links?.[a.front.id]?.w).toBe(1)
     expect(ra.front.updated).toBe(a.front.updated)
 
-    // Within the hour the pair is throttled; after it, the weight grows.
     await recordCoRecall(paths, [a.front.id, b.front.id], new Date('2026-07-20T12:30:00Z'))
     expect((await readNote(paths, a.front.id)).front.recall_links?.[b.front.id]?.w).toBe(1)
     await recordCoRecall(paths, [a.front.id, b.front.id], new Date('2026-07-20T14:00:00Z'))
     const grown = (await readNote(paths, a.front.id)).front.recall_links?.[b.front.id]?.w ?? 0
-    expect(grown).toBeGreaterThan(1.9) // ~1 (barely decayed) + 1
+    expect(grown).toBeGreaterThan(1.9)
   })
 
   it('a solo recall wires nothing', async () => {

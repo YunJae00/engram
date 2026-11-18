@@ -92,8 +92,6 @@ describe('desktop consent questions in a tool session', () => {
     let actions = 0
     const engine = sessionBrain(async (job) => {
       expect(job.system).toContain(DESKTOP_TASK_RULE)
-      // Looking at the app first is what earns the question its place: a
-      // question raised after a desktop observation is never sent to search.
       await job.tools.find((one) => one.name === 'read_desktop')!.run({})
       const answer = await job.tools.find((one) => one.name === 'ask_person')!.run({ question: 'May I submit this change in the selected app?' })
       expect(answer).toContain('The question is with the person')

@@ -23,7 +23,6 @@ function normalizedUrl(value: string): string {
   return url.href
 }
 
-// Known destinations only: no clicks, field input, inferred links or automatic retries.
 export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) => void, emit?: (metric: HarnessMetric) => void): AgentTool {
   return {
     name: 'read_pages',

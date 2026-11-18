@@ -24,34 +24,18 @@ import type { VaultPaths } from '../vault.js'
 import { withPrompt, type JobKind } from './prompts.js'
 import type { JobSpec } from './runner.js'
 
-// J1~J8 job builders. Each returns a JobSpec whose apply()
-// parses the engine output and lands the effects through core operations.
-
 const digest = (text: string) => createHash('sha1').update(text).digest('hex').slice(0, 12)
 
 function noteSummary(n: Note) {
   return { id: n.front.id, title: noteTitle(n), status: n.front.status, excerpt: n.body.slice(0, 300) }
 }
 
-// Token diet: retrieved CANDIDATE notes are the bulk of J2/J3/J4 prompts, so
-// their excerpts are trimmed to 200 chars. Delta/target notes keep the full
-// 300 via noteSummary — they are few and carry the change under review.
 function candidateSummary(n: Note) {
   return { id: n.front.id, title: noteTitle(n), status: n.front.status, excerpt: n.body.slice(0, 200) }
 }
 
-// Retrieval-bounded candidate selection (the vault-size cost cliff). Prompts
-// used to embed the ENTIRE current corpus, so J2/J3/J4 grew linearly with the
-// vault. Instead we index the corpus once and keep only the notes a fulltext
-// query for each target actually retrieves — deterministic, capped, and never
-// including the targets themselves.
 const HITS_PER_TARGET = 15
 
-// One fulltext index per corpus SNAPSHOT (weakly keyed on the array): J2 runs
-// per fresh note, and a bulk capture used to rebuild the full index for every
-// single one — 23 dropped files meant 23 index builds. processCapture and
-// sweep both thread one corpus array through a run, so each run indexes once;
-// target exclusion moved from the pool to a result filter (same candidates).
 const corpusIndexCache = new WeakMap<Note[], ReturnType<typeof buildIndex>>()
 
 function indexFor(corpus: Note[]): ReturnType<typeof buildIndex> {
@@ -63,8 +47,6 @@ function indexFor(corpus: Note[]): ReturnType<typeof buildIndex> {
   return index
 }
 
-// The async index build (buildIndexAsync) yields while it runs; cache the
-// promise so 20+ J2 targets over one pool share a single build in flight.
 const corpusIndexAsyncCache = new WeakMap<Note[], Promise<ReturnType<typeof buildIndex>>>()
 
 function indexForAsync(corpus: Note[]): Promise<ReturnType<typeof buildIndex>> {
@@ -101,15 +83,9 @@ function scoreTarget(
   }
 }
 
-// Exported so sweep() can compute the (delta, corpus) retrieval once and share
-// it between J3 and J4 — both use the same inputs and the same cap, and the
-// index build + per-target search is the priciest CPU step of queueing a sweep.
 export function boundedCandidates(targets: Note[], corpus: Note[], cap: number): Note[] {
   const targetIds = new Set(targets.map((n) => n.front.id))
-  // A note is never a candidate for itself.
   const pool = corpus.filter((n) => !targetIds.has(n.front.id))
-  // Small vaults are unchanged: at or below the cap we send the whole pool and
-  // skip retrieval entirely.
   if (pool.length <= cap) return pool
   const index = indexFor(corpus)
   const bestScore = new Map<string, number>()
@@ -117,11 +93,6 @@ export function boundedCandidates(targets: Note[], corpus: Note[], cap: number):
   return rankCandidates(bestScore, pool, cap)
 }
 
-// Same selection as boundedCandidates, but the index builds in yielding chunks
-// and each target search hands control back to the event loop — so a sweep over
-// a whole vault (an 865ms index build plus dozens of ~140ms CJK searches) never
-// freezes the UI. Used on the sweep's large corpora; the sync form stays for the
-// small-input job builders and tests.
 export async function boundedCandidatesAsync(targets: Note[], corpus: Note[], cap: number): Promise<Note[]> {
   const targetIds = new Set(targets.map((n) => n.front.id))
   const pool = corpus.filter((n) => !targetIds.has(n.front.id))
@@ -150,14 +121,11 @@ function asCards(parsed: unknown): CardJson[] {
 function isSubstantialProposal(text: string | undefined): boolean {
   const t = (text ?? '').trim()
   if (t.length < 12) return false
-  if (/^\[[\s\S]*\]$/.test(t)) return false // pure bracket pointer
-  // a single short line naming a note id is a reference, not a body
+  if (/^\[[\s\S]*\]$/.test(t)) return false
   if (!t.includes('\n') && t.length < 80 && /n-[a-z0-9][a-z0-9-]*/i.test(t)) return false
   return true
 }
 
-// Judgment types where the model re-derives the same finding from the same
-// notes every sweep. stale/chronology are exempt: time itself changes them.
 const REASKABLE = new Set(['conflict', 'merge', 'supersede'])
 
 async function applyCards(paths: VaultPaths, kind: JobKind, cards: CardJson[], now: Date): Promise<string[]> {
@@ -167,7 +135,6 @@ async function applyCards(paths: VaultPaths, kind: JobKind, cards: CardJson[], n
       effects.push(`ignored: replacement body too thin (${(card.proposed ?? '').trim().slice(0, 40) || 'empty'})`)
       continue
     }
-    // Engines hallucinate ids — only ever act on notes that really exist.
     const existing: string[] = []
     const targetNotes: Note[] = []
     for (const target of card.targets ?? []) {
@@ -184,10 +151,6 @@ async function applyCards(paths: VaultPaths, kind: JobKind, cards: CardJson[], n
       effects.push(`ignored: targets already superseded ${gone.map((n) => n.front.id).join(', ')} (${card.cardType})`)
       continue
     }
-    // Answered memory: same finding on unchanged notes = the user already
-    // decided this once; only a real BODY edit after that decision re-opens
-    // it (editedSinceResolution — the librarian's own frontmatter surgery on
-    // neighbours must not resurrect settled questions).
     if (REASKABLE.has(card.cardType)) {
       const prior = await findResolvedTwin(paths, card.cardType as CardType, existing)
       if (prior && !(await editedSinceResolution(paths, prior))) {
@@ -195,11 +158,6 @@ async function applyCards(paths: VaultPaths, kind: JobKind, cards: CardJson[], n
         continue
       }
     }
-    // One pair of notes, one question. A conflict says only "these disagree",
-    // while a supersede or merge arrives with a body the user can approve, so
-    // when a pair already has an open card the conflict is the redundant one —
-    // and two entries for one decision means answering either leaves the other
-    // looking unanswered.
     if (card.cardType === 'conflict') {
       const open = await hasOpenCardFor(paths, existing)
       if (open) {
@@ -251,9 +209,6 @@ export function buildJ1(
         'If it is a conditional reminder ("next time I do X, …"), record that X as "triggers":["X"] (1–3 keywords, 2–24 chars each) so the memory resurfaces when the topic comes up again.\n' +
         'If the capture holds work of mine that is not finished, add "open_loop":true — things I said I would do, replies/submissions/calls still to send, deferred decisions, open questions, and **lists of not-yet-handled items** (a backlog, what is left, a checklist, an audit result — anything whose title or body says incomplete). Do not demote a list to reference material just because it is a list; several things to do is more of an open loop, not less. Do not set it on facts, definitions, pure reference, finished work, or work that has passed to someone else. When unsure, leave it off — a false positive comes back every morning as noise.\n' +
         'Add "due_at":"YYYY-MM-DD" only when the deadline is written in the content. Never invent a date.',
-      // The provenance markers are bookkeeping between writeCapture and this
-      // job — stripped here so no engine is ever tempted to copy one into a
-      // memory's body. The frontmatter fields below read the RAW content.
       { file, content: stripProvenanceMarkers(content) },
     ),
     async apply(result) {
@@ -270,19 +225,11 @@ export function buildJ1(
       }
       if (!parsed.body) throw new Error('J1: engine result has no body')
       const validUntil = parseValidUntil(parsed.valid_until)
-      // A deadline only means something on an open loop (AGENTS.md §1), so a
-      // due_at the engine attached to a plain fact is dropped rather than
-      // written as a field nothing will ever read.
       const openLoop = parsed.open_loop === true
       const dueAt = openLoop ? parseDueAt(parsed.due_at) : undefined
       const chosen = DECAY_LEVELS.includes(parsed.decay as DecayLevel) ? (parsed.decay as DecayLevel) : 'slow'
-      // evergreen ignores verified_until in freshnessOf — a dated note must decay
       const decay = validUntil && chosen === 'evergreen' ? 'fast' : chosen
       const sourceRel = join('sources', file)
-      // Claim the scrap BEFORE writing anything: rename is atomic, so when the
-      // same inbox file was enqueued twice (capture pipeline + sweep drain
-      // racing), the loser lands here after the winner moved it and must skip
-      // instead of absorbing the capture a second time.
       try {
         await rename(join(paths.inbox, file), join(paths.sources, file))
       } catch (err) {
@@ -316,9 +263,6 @@ export function buildJ1(
             triggers: triggers.length > 0 ? triggers : undefined,
             open_loop: openLoop ? true : undefined,
             due_at: dueAt,
-            // Carried from the capture file, not inferred: origin decides
-            // whether the librarian may later tidy this note without asking,
-            // and context says which folder the memory came from.
             origin: readOrigin(content) === 'session' ? 'session' : undefined,
             context: readContext(content),
           },
@@ -326,9 +270,6 @@ export function buildJ1(
         )
         return [`note created: ${note.front.id} (${note.front.type}/${note.front.decay})`, `original moved: inbox/${file} → ${sourceRel}`]
       } catch (err) {
-        // Give the claim back so the scrap stays retryable in inbox. When the
-        // restore ALSO fails the capture is stranded in sources/ where no
-        // retry path looks — the surfaced failure must say where the content is.
         try {
           await rename(join(paths.sources, file), join(paths.inbox, file))
         } catch {
@@ -342,14 +283,6 @@ export function buildJ1(
   }
 }
 
-// J2 candidate widening: fulltext retrieval alone misses paraphrases (the
-// index is lexical), so the pool is the union of (a) fulltext top-30 for the
-// target, (b) the 10 most recently updated notes — capture bursts are
-// topically related — and (c) up to 10 recent same-type notes. Hub notes are
-// excluded: they are synthesized FROM the link graph, never link targets.
-// The non-hub pool and its recency order are per-CORPUS, not per-note — cache
-// them on the corpus array so a run's 20+ J2 builds share one pool identity
-// (which in turn lets boundedCandidates share one fulltext index).
 const j2PoolCache = new WeakMap<Note[], { pool: Note[]; byRecency: Note[] }>()
 
 async function j2Candidates(target: Note, current: Note[]): Promise<Note[]> {
@@ -364,7 +297,6 @@ async function j2Candidates(target: Note, current: Note[]): Promise<Note[]> {
   }
   const self = target.front.id
   const picked = new Map<string, Note>()
-  // boundedCandidates excludes the target structurally (targets param).
   for (const n of await boundedCandidatesAsync([target], cached.pool, 30)) picked.set(n.front.id, n)
   for (const n of cached.byRecency.filter((c) => c.front.id !== self).slice(0, 10)) picked.set(n.front.id, n)
   for (const n of cached.byRecency.filter((c) => c.front.id !== self && c.front.type === target.front.type).slice(0, 10)) {
@@ -386,8 +318,6 @@ export async function buildJ2(paths: VaultPaths, agentsMd: string, target: Note,
       { note: { id: target.front.id, body: target.body }, candidates },
     ),
     async apply(result) {
-      // Accept both the new {id,reason} objects and the legacy bare-id strings
-      // (older AGENTS.md counterexamples may steer a model to the old shape).
       const parsed = extractJson(result) as { links?: (string | { id?: string; reason?: string })[] }
       const entries = (parsed.links ?? [])
         .map((l) => (typeof l === 'string' ? { id: l, reason: '' } : { id: l.id ?? '', reason: (l.reason ?? '').trim() }))
@@ -410,7 +340,7 @@ export function buildJ3(paths: VaultPaths, agentsMd: string, delta: Note[], corp
   return {
     kind: 'J3',
     disallowTools: true,
-    modelHint: 'default', // judgment job — contradiction calls stay on the smart model
+    modelHint: 'default',
     inputKey: digest(deltaIds.join(',')),
     ...withPrompt(
       agentsMd,
@@ -435,7 +365,7 @@ export function buildJ4(paths: VaultPaths, agentsMd: string, delta: Note[], corp
   return {
     kind: 'J4',
     disallowTools: true,
-    modelHint: 'default', // judgment job — supersede proposals must be real bodies
+    modelHint: 'default',
     inputKey: digest(deltaIds.join(',')),
     ...withPrompt(
       agentsMd,
@@ -481,7 +411,7 @@ export function buildJ6(paths: VaultPaths, agentsMd: string, targets: Note[], no
       for (const estimate of parsed.estimates ?? []) {
         if (!targets.some((t) => t.front.id === estimate.id)) continue
         const note = await readNote(paths, estimate.id)
-        if (note.front.timeline === 'pinned') continue // never touch pinned
+        if (note.front.timeline === 'pinned') continue
         note.front.happened_at = estimate.happened_at
         note.front.timeline = 'inferred'
         note.front.updated = now.toISOString()
@@ -504,7 +434,7 @@ export function buildJ7(
   return {
     kind: 'J7',
     disallowTools: true,
-    modelHint: 'default', // judgment job — merged bodies must be real bodies
+    modelHint: 'default',
     inputKey: digest(clusterIds.map((ids) => ids.join(',')).join(';')),
     ...withPrompt(
       agentsMd,
@@ -536,9 +466,6 @@ export function looksLikeBriefRefusal(text: string): boolean {
   return ko.test(text) || en.test(lower)
 }
 
-// Content-only: the engine returns just the brief markdown. Some engines still
-// wrap the whole answer in a ```markdown fence — unwrap it so it renders as a
-// brief, not a code block. (Shared with J10's weekly digest.)
 export function stripBriefBody(result: string): string {
   const body = result.trim()
   const fenced = body.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/)
@@ -552,20 +479,14 @@ export interface BriefCard {
   related?: number
 }
 
-// The J8 brief names at most this many freshly-created cards — a bounded,
-// human-scannable list even when a big sweep raises dozens of proposals.
 const BRIEF_CARDS_CAP = 10
 
-// Primary target note title for a card. new-note cards carry no target, so
-// their title comes from the proposed body's first line; a missing/deleted
-// target falls back to the card id (never throws).
 async function cardBriefTitle(paths: VaultPaths, card: Card): Promise<string> {
   const primary = card.targets[0]
   if (primary) {
     try {
       return noteTitle(await readNote(paths, primary))
     } catch {
-      /* target note gone — fall through to the proposed body / id */
     }
   }
   for (const line of (card.proposed ?? '').split('\n')) {
@@ -575,21 +496,12 @@ async function cardBriefTitle(paths: VaultPaths, card: Card): Promise<string> {
   return card.id
 }
 
-// Cards CREATED during a sweep, for the J8 brief input. Diffs the
-// current card list against the ids present before the sweep ran, folds cards
-// that touch the same notes into one issue line (lead = most consequential
-// type), keeps a deterministic capped slice, and resolves the lead card's
-// primary target title. Core owns this diff — main's activity stream computes
-// its own independently.
 const BRIEF_TYPE_RANK: CardType[] = ['conflict', 'supersede', 'merge', 'stale', 'chronology', 'new-note']
 
 export async function newCardsForBrief(paths: VaultPaths, before: Set<string>): Promise<BriefCard[]> {
   return briefCardsFrom(paths, (await listCards(paths)).filter((card) => !before.has(card.id)))
 }
 
-// Every question still waiting on the user, for a brief written outside a
-// sweep. The sweep asks "what appeared just now"; a brief the user asked for
-// has to answer "what is waiting", which includes yesterday's unanswered card.
 export async function pendingCardsForBrief(paths: VaultPaths): Promise<BriefCard[]> {
   return briefCardsFrom(paths, await listCards(paths, 'proposed'))
 }
@@ -607,8 +519,6 @@ async function briefCardsFrom(paths: VaultPaths, source: Card[]): Promise<BriefC
   return cards
 }
 
-// Connected components over shared targets. Targetless cards (new-note) each
-// stand alone. Deterministic: components keep first-seen card order.
 function groupByTargetOverlap(cards: Card[]): Card[][] {
   const groups: { targets: Set<string>; cards: Card[] }[] = []
   for (const card of cards) {
@@ -621,7 +531,6 @@ function groupByTargetOverlap(cards: Card[]): Card[][] {
       groups.push({ targets: new Set(card.targets), cards: [card] })
       continue
     }
-    // merge every group this card bridges into the first one
     const [head, ...rest] = hits
     head!.cards.push(card)
     for (const t of card.targets) head!.targets.add(t)
@@ -643,16 +552,12 @@ export interface BriefLoop {
 }
 
 const BRIEF_LOOPS_CAP = 12
-// Enough of a note to find the next step in (a ticket id, a PR number, the
-// first unchecked line) without pasting whole backlogs into the prompt.
 const BRIEF_LOOP_EXCERPT = 420
 
 function briefLoop(note: Note, now: Date): BriefLoop {
   const entry: BriefLoop = {
     id: note.front.id,
     title: noteTitle(note),
-    // Drop the title line and blank lines; keep the substance, in order, so
-    // the top of a prioritised backlog is what survives the cap.
     excerpt: note.body
       .replace(/^#.*$/m, '')
       .split('\n')
@@ -668,13 +573,6 @@ function briefLoop(note: Note, now: Date): BriefLoop {
   return entry
 }
 
-// Open loops for the J8 brief, split the way the brief reads. `loops` is what
-// this morning actually asks of the user — overdue, due today, and the undated
-// intentions that would otherwise rot unseen; concatenating those buckets in
-// urgency order preserves the openLoops() sort exactly. `upcoming` is the
-// rolling week ahead. The 'later' bucket is deliberately in neither: a deadline
-// eleven days out is not a morning concern, and it arrives in `upcoming` on its
-// own once the rolling window reaches it.
 export function openLoopsForBrief(notes: Note[], now: Date): { loops: BriefLoop[]; upcoming: BriefLoop[] } {
   const grouped = groupOpenLoops(notes, now)
   const urgent = [...grouped.overdue, ...grouped.today, ...grouped['no-deadline']]
@@ -684,9 +582,6 @@ export function openLoopsForBrief(notes: Note[], now: Date): { loops: BriefLoop[
   }
 }
 
-// The J8 instruction: a short, human brief in the vault notes' language, in the
-// exact three-section shape. Kept as a named constant so the format contract is
-// testable and stays byte-identical across builds.
 export const J8_INSTRUCTION = [
   "This is the first thing the user reads in the morning. Write what THEY have to do, not what the librarian did. Output markdown only, 220 words or fewer.",
   "Keep the three section headings in English exactly as written below — the app chrome is English and these headings are part of the screen. Do not translate them. Write the CONTENT in the language of the vault notes.",
@@ -720,13 +615,11 @@ export function buildJ8(paths: VaultPaths, agentsMd: string, summary: unknown, n
   return {
     kind: 'J8',
     disallowTools: true,
-    modelHint: 'default', // the daily brief is user-facing prose — smart model
+    modelHint: 'default',
     inputKey: `${date}:${digest(JSON.stringify(summary))}`,
     ...withPrompt(agentsMd, 'J8', J8_INSTRUCTION, summary),
     async apply(result) {
       const body = stripBriefBody(result)
-      // Never persist an apology/refusal as the brief — fail so the runner logs
-      // it and the board's Today sheet keeps the last good brief (or its empty state).
       if (!body || looksLikeBriefRefusal(body)) throw new Error('J8: engine returned a refusal instead of brief markdown')
       const file = join(paths.views, `brief-${date}.md`)
       await writeFile(file, body + '\n')
@@ -735,7 +628,6 @@ export function buildJ8(paths: VaultPaths, agentsMd: string, summary: unknown, n
   }
 }
 
-// Helpers shared by sweep/capture pipelines.
 export async function listInbox(paths: VaultPaths): Promise<string[]> {
   try {
     return (await readdir(paths.inbox)).filter((f) => !f.startsWith('.')).sort()
@@ -755,10 +647,6 @@ export function imminentOrStale(notes: Note[], now: Date): Note[] {
   })
 }
 
-// Per-sweep J5 cap: keep only the `cap` notes whose verification is furthest
-// gone. Missing verified_until = never verified = oldest; ties break by id.
-// Whatever is dropped stays stale and re-qualifies on the next sweep, so J5's
-// cost stays constant without ever losing a note.
 export function oldestStale(stale: Note[], cap: number): Note[] {
   return [...stale]
     .sort((a, b) => {

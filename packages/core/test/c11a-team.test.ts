@@ -6,12 +6,10 @@ import { dataText, settleMember, sourceName } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// c11a: teammates hand back data; one writer pass writes the message; the host checks only structure. Wordings here are not the harness's.
 const NOW = new Date('2026-11-18T03:00:00Z')
 const at = new Date(NOW.getTime() - 5_000).toISOString()
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const member = (over: Partial<TeamMember> & Pick<TeamMember, 'id' | 'role' | 'brief'>): TeamMember => ({ parentId: null, depth: 1, botId: `bot-${over.id}`, lookup: true, background: true, state: 'hired', sessionKey: `s-${over.id}`, hiredAt: at, ...over })
-// The teammate's answer goes through the same settle the runner uses, with the report parsed by reportData.
 const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMember => {
   settleMember(m, { answer, sources, report: reportData(answer, m, sources, true) ?? null }, NOW.toISOString(), true)
   return m
@@ -30,7 +28,6 @@ test('a split research ask: each part is data, site names come from the host, an
   const parts = messengers()
   expect(parts.map(m => m.state)).toEqual(['done', 'done', 'done'])
   expect(parts[1]!.empty).toBe(true)
-  // Never the plain word "출처", never a piece of the host as a name: the host's own naming, else the host.
   expect(parts.flatMap(m => [...m.data!.facts, ...(m.data!.nothing?.latest ? [m.data!.nothing.latest] : [])]).map(f => f.site)).toEqual(['카카오', 'linecorp.com', 'telegram.org'])
   const prompt = reportPrompt(ASK, parts, new Map(), { now: NOW })
   expect(prompt).not.toMatch(/더라고요|네요|in every sentence|exactly their name and a colon/)
@@ -57,7 +54,6 @@ test('the structure check refuses a name-and-colon stack, a missing teammate, a 
 test('a handoff that makes copy: the shown list is exactly the writer\'s items, never their chat prose or a draft aside', async () => {
   const giver = settled(member({ id: 'm1', role: '민준', brief: '해운대 근처 부산 맛집 찾기', then: { botId: 'bot-m2', who: '지아', brief: '인스타 문구 2개 써' } }), block({ facts: [{ text: '해운대 시장 안 꼼장어 골목이 요즘 줄 서는 곳이에요.', url: 'https://www.visitbusan.net/food/123', site: '비짓부산' }] }))
   const brief = handoffBrief('인스타 문구 2개 써', '민준', giver.result!, giver.brief)
-  // The next teammate reads the giver's shown facts with their page, not the rows they read.
   expect(brief).toContain('해운대 시장 안 꼼장어 골목이 요즘 줄 서는 곳이에요. — https://www.visitbusan.net/food/123')
   const raw = '좋아요, 써 볼게요! 😏 아니 이건 빼고 — 첫 줄은 이렇게 하더라고요!\n' + block({ items: ['1. 해운대 시장 꼼장어 골목, 줄 서도 아깝지 않은 한 끼 🔥', '바닷바람 맞고 꼼장어 한 접시, 이게 부산이지'], note: '꼼장어 쪽으로 잡아 봤어요.' })
   const copy = settled(member({ id: 'm2', role: '지아', brief, lookup: undefined, writer: true }), raw)
@@ -67,7 +63,6 @@ test('a handoff that makes copy: the shown list is exactly the writer\'s items, 
   expect(shown.match(/^\d+\. /gm)).toHaveLength(2)
   expect(shown).not.toMatch(/아니 이건 빼고|더라고요|써 볼게요/)
   expect(shown).toContain('지아')
-  // A writer message that changes an item is refused, and the host's plain rendering stands.
   const bent = JSON.stringify({ message: '지아가 민준이 찾은 꼼장어 골목으로 두 개 썼어요.\n\n1. 해운대 시장 꼼장어 골목, 줄 서도 아깝지 않은 한 끼 🔥 아니 이건 빼고\n2. 바닷바람 맞고 꼼장어 한 접시, 이게 부산이지', kept: [] })
   expect(await writtenReport({ ask: '민준이 찾은 부산 맛집으로 지아가 인스타 문구 2개 써', members: [giver, copy], write: async () => bent, timeoutMs: 500, now: NOW })).toBe(shown)
 })
@@ -86,7 +81,6 @@ test('a list job: a search-page-only item never reaches the writer, and the writ
   const shown = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f3'] }), timeoutMs: 500, now: NOW })
   expect(shown).not.toMatch(/코미디|프런트엔드/)
   expect(links(shown)).toHaveLength(2)
-  // Kept says the comedy show stays, but the message leaves its link out: refused (the count follows kept, not the prose).
   expect(checkedReport(JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), [meetups])).toBeUndefined()
 })
 
@@ -108,7 +102,6 @@ test('fallback: a writer that misses its time leaves a neutral rendering, still 
   for (const name of ['민준', '지아', '하율']) expect(shown).toContain(name)
   expect(links(shown)).toEqual(['카카오', 'linecorp.com', 'telegram.org'])
   expect(shown).not.toMatch(/더라고요|네요[.!]|출처/)
-  // A part still at work is labeled (GROKBOT rule 7), and one that gave no report is labeled, its prose never parsed into items.
   const loose = member({ id: 'm4', role: '도윤', brief: '이번 달 왓츠앱 업데이트 조사', topic: '왓츠앱' })
   settled(loose, '왓츠앱은 11월 9일에 채널 기능이 나왔더라고요! https://blog.whatsapp.com/x')
   expect(loose.data).toBeUndefined()
@@ -141,8 +134,6 @@ test('reportData: prose with no block is no data; a writer\'s items are cut to t
   expect(reportData(block({ items: ['하나', '둘', '셋'] }), { brief: '문구 2개 써', writer: true })!.items).toEqual(['하나', '둘'])
 })
 
-// --- c11a round 2 (review r1). Wordings are not the harness's. ---
-
 test('r2: inner words a page used never reach the person: plain at the data boundary, refused when the writer adds them', () => {
   const m = settled(member({ id: 'm1', role: '소희', brief: '이번 주 고객센터 툴 신기능 조사', topic: '고객센터 툴' }), block({ facts: [{ text: '상담 AI 에이전트와 프롬프트 편집기가 나왔고, 대화 세션 기록이 길어졌어요.', url: 'https://helpdesk.example.kr/blog/new', site: '헬프데스크' }], note: '컨텍스트가 길어진 게 눈에 띄어요.' }))
   const jargon = /에이전트|세션|토큰|프롬프트|런타임|컨텍스트/
@@ -164,9 +155,7 @@ test('r2: a hand-off whose receiver brought no data keeps the giver\'s sourced f
   const text = mergedReport([giver, receiver])
   expect(text).toContain('향수 팝업 전시')
   expect(text).toContain('(https://popup.example.kr/seongsu/77)')
-  // c13a: the receiver's line says it did not get there, and whose part it is.
   expect(text).toMatch(/못[^\n]*\(윤서\)/)
-  // A writer message that drops the giver's part is refused: the giver is a part of its own again.
   expect(checkedReport(JSON.stringify({ message: '윤서가 문장을 못 끝냈어요.', kept: [] }), [giver, receiver])).toBeUndefined()
 })
 
@@ -187,10 +176,7 @@ test('r2: the kind asked is judged once where the data comes in, so the host\'s 
   expect(text).toContain('내추럴 와인')
   expect(text).toContain('부르고뉴')
   expect(text).not.toContain('정비')
-  // Nothing of the kind: a part that found nothing for it, not the wrong item.
   expect((await kindChecked({ facts: facts.slice(1, 2).concat(facts[1]!) }, brief, async () => '{"keep":[]}'))?.nothing).toEqual({})
-  // No model, a late one or a broken answer: nothing is judged by wording, the teammate's own judgment stands (stack-11, c11a r3 #2);
-  // one fact is checked too, whatever the ask's wording (c12a round 2: a lone page that lists several is judged by meaning, not by the ask).
   expect(await kindChecked({ facts }, brief)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual({ facts })
@@ -201,8 +187,6 @@ test('r2: the kind asked is judged once where the data comes in, so the host\'s 
   await kindChecked({ facts: facts.slice(0, 1) }, brief, async () => { asked = true; return '{"keep":[1]}' })
   expect(asked).toBe(true)
 })
-
-// --- c11a round 3 (review r2). Wordings are not the harness's. ---
 
 test('r3: tool names, ids and paths in a teammate\'s data never reach the person; a page address is left whole', () => {
   const m = settled(member({ id: 't', role: '하린', brief: '이번 주 사내 위키 개편 소식 조사' }), block({ facts: [{ text: 'fetch_page_text 호출로 보니 task-9be1c 기록은 ~/notes/wiki_log.md, /private/var/x/run.json에 있고 개편은 금요일이에요.', url: 'https://wiki.example.kr/news/re_design', site: '위키소식' }], note: 'open_url 결과는 /home/me/out/에 남겼어요.' }))
@@ -228,9 +212,7 @@ test('r3 → stack-11: with no answer from the kind check, no item is dropped by
     settleMember(m, { answer: 'x', report: data ?? null }, NOW.toISOString(), true)
     const text = mergedReport([m])
     expect(text).toContain('둔산동')
-    // Shares no word with the job, and is exactly what was asked: never dropped by a guess.
     expect(text).toContain('카탄')
-    // The wrong-kind item the teammate brought stays for the writer pass to judge (writtenReport's kept), not for a word match.
     expect(text).toContain('온천')
   }
   const other = [{ text: '가나 행사', url: 'https://a.example/1', site: 'A' }, { text: '다라 행사', url: 'https://a.example/2', site: 'A' }]

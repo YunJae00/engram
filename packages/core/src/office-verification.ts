@@ -5,11 +5,8 @@ import { evidenceFault } from './work-evidence.js'
 
 const WRITES = new Set(['excel_write', 'ppt_build', 'ppt_edit', 'word_write', 'word_edit'])
 const READS = new Set(['excel_read', 'ppt_read', 'word_read'])
-// What the host says when an Office command was refused because its application is not open: nothing was touched, so there is nothing to read back.
 export const OFFICE_CLOSED = 'Nothing was changed: the application is not open and is not started for this.'
-// How a refused build's result starts (deck-audit.ts describeDeckFindings): returned, not thrown, and nothing is saved.
 const BUILD_REFUSED = 'The deck does not read clean yet'
-// c15c: how a builder's refusal before any file exists starts, thrown (ppt_build's input checks, the host's garbled-words check in office-agent.ts).
 export const NOTHING_BUILT = 'Nothing was built'
 const REFUSED_BEFORE_WRITE = /^(?:that did not work:\s*)?Nothing was built\b/
 export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout: inspect those only when the request is about them, and never mention a check nobody asked for. A new file from word_write, ppt_build or file_create_workbook is saved and compared by the host itself and its receipt is that readback: answer with its link at once, and read it again only when the person asked for the content to be checked.'
@@ -18,7 +15,7 @@ function receipt(step: AgentLoopStep): Record<string, unknown> | undefined {
   try {
     const value = JSON.parse(step.observation)
     if (value && typeof value === 'object' && !Array.isArray(value) && !value.error && value.truncated !== true && value.reobserveRequired !== true && value.observationMayBeStale !== true) return value
-  } catch { /* Failed tools have no structured receipt. */ }
+  } catch { }
   return undefined
 }
 
@@ -56,10 +53,8 @@ export function officeReadEvidence(step: AgentLoopStep): boolean {
   return covered.length > 0 && Array.isArray(rows) && rows.every(Array.isArray) && rows.reduce((n, row) => n + row.length, 0) === covered.length
 }
 
-// This gate proves fresh readback coverage, not correctness of the model's assessment.
 export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefined {
   const pending = new Map<string, Set<string>>()
-  // Writes with no receipt (the call threw, or was not read back), with what is known of the file: the path it reported, else the name asked for.
   const unknown: { tool: string; file?: string }[] = []
   const named = (step: AgentLoopStep, result?: Record<string, unknown>): string[] =>
     [result?.['path'], step.args['saveAs']].filter((one): one is string => typeof one === 'string' && !!one.trim()).map(one => one.trim().normalize('NFC').toLowerCase())
@@ -68,15 +63,7 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
     const result = receipt(step)
     const key = result && identity(step.tool, result)
     if (WRITES.has(step.tool)) {
-      // A composed file (word_write, ppt_build) is saved and compared byte for byte by the host, with no application involved: its receipt is the
-      // readback. Counted as unread, every new document ended "Not verified as complete" and was continued for minutes (grokbar D2: 317 s).
-      // A later build the host read back replaces what an earlier call of the same builder left unknown only when it is the same file, made again.
-      // c3c r3: it cleared every unknown write of that builder, so a ppt_build that may have left part of a.pptx passed on b.pptx's read-back.
-      // A write that names no file cannot be shown to be the same one, and stays unread.
       if (result?.['completeReadback'] === true && typeof result['artifact'] === 'string') {
-        // c3c review r3: the name asked for counted beside the path saved, so a build asked as a.pptx but saved as a-2.pptx cleared a.pptx.
-        // The file read back is the one at the reported path (the name asked for only when no path is reported); two paths must be the
-        // same path, and a bare name is matched against the saved file's own name.
         const file = named(step, result)[0]
         const stem = (one: string): string => one.replaceAll('\\', '/').replace(/^.*\//, '').replace(/\.[^.]+$/, '')
         const same = (one: string): boolean => one === file || ((!/[\\/]/.test(one) || !/[\\/]/.test(file!)) && stem(one) === stem(file!))
@@ -84,8 +71,6 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
         continue
       }
       if (step.observation.includes(OFFICE_CLOSED)) continue
-      // grokbar D3: a deck the host refused to build ("does not read clean yet") wrote nothing, yet counted as an unread write; the good build
-      // after it never cleared that, and a finished deck was re-read for 309 s.
       if (step.observation.startsWith(BUILD_REFUSED) || REFUSED_BEFORE_WRITE.test(step.observation)) continue
       if (!key) { const file = named(step, result)[0]; unknown.push({ tool: step.tool, ...(file ? { file } : {}) }); continue }
       const needed = pending.get(key) ?? new Set<string>()
@@ -112,7 +97,6 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
 
 export function checkOfficeResult(result: AgentLoopResult): AgentLoopResult {
   if (result.asked || result.incomplete) return result
-  // Coverage and supported arithmetic checks are separate from task and layout verification.
   const incomplete = evidenceFault(result.steps) ?? officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
   return incomplete ? { ...result, incomplete, answer: `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${result.answer}` } : result
 }

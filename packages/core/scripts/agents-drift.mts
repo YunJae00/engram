@@ -1,9 +1,3 @@
-// Do the librarian's rules in a real vault still match the ones the code ships?
-//
-// vault.ts writes AGENTS.md with flag:'wx' — create-if-absent — and never
-// touches it again. The comment above that line calls the file "app-managed IP
-// (the librarian's rules, owned by the code)", so the question is whether a
-// vault created months ago is still running the rules this build believes it is.
 import { AGENTS_MD_V1 } from '../src/index.js'
 import { readFile } from 'node:fs/promises'
 

@@ -93,7 +93,6 @@ describe('approval dismisses overlapping pending cards', () => {
     await approveCard(paths, conflict.id, { choice: 'both' }, LATER)
     expect((await listCards(paths, 'proposed')).map((c) => c.id)).toEqual([supersede.id])
 
-    // …and the surviving question still resolves into a real supersede chain.
     await approveCard(paths, supersede.id, {}, new Date(LATER.getTime() + 60_000))
     expect((await readNote(paths, old.front.id)).front.status).toBe('superseded')
     expect((await readNote(paths, fresh.front.id)).front.supersedes).toContain(old.front.id)
@@ -107,8 +106,6 @@ describe('approval dismisses overlapping pending cards', () => {
       { cardType: 'supersede', targets: [shared.front.id], rationale: 'r', proposed: '# 요금제\n\n프로 요금제는 월 7만원임.' },
       NOW,
     )
-    // The human rewrites the note itself — the pending proposal now argues
-    // about content that is gone.
     const edited = await readNote(paths, shared.front.id)
     edited.body = '# 요금제\n\n요금제를 전면 개편해 티어를 셋으로 나눔.'
     edited.front.updated = LATER.toISOString()
@@ -135,7 +132,6 @@ describe('supersede approval reuses an existing identical note', () => {
         cardType: 'supersede',
         targets: [old.front.id],
         rationale: '더 이상 참이 아님',
-        // the engine copied the newer note's body, with different wrapping
         proposed: '# rate limit 상향\n\n분당 600으로   상향됨.\n',
         job: 'J4',
       },
@@ -143,7 +139,7 @@ describe('supersede approval reuses an existing identical note', () => {
     )
     const notesBefore = (await loadNotes(paths)).length
     await approveCard(paths, card.id, {}, LATER)
-    expect((await loadNotes(paths)).length).toBe(notesBefore) // no duplicate note
+    expect((await loadNotes(paths)).length).toBe(notesBefore)
     expect((await readNote(paths, old.front.id)).front.status).toBe('superseded')
     expect((await readNote(paths, fresh.front.id)).front.supersedes).toContain(old.front.id)
   })
@@ -192,7 +188,6 @@ describe('issuance guards (no re-asking answered questions)', () => {
     )
     expect(effects.join()).toMatch(/already answered/)
     expect(await listCards(paths, 'proposed')).toHaveLength(0)
-    // and the notes were NOT re-disputed
     expect((await readNote(paths, a.front.id)).front.status).toBe('current')
   })
 
@@ -213,13 +208,10 @@ describe('issuance guards (no re-asking answered questions)', () => {
     const corpus = await loadNotes(paths)
     const job = buildJ3(paths, 'AGENTS', corpus, corpus, LATER)
     const effects = await job.apply!(
-      // Target order reversed on purpose: it is the same pair either way.
       cardsJson([{ cardType: 'conflict', targets: [fresh.front.id, old.front.id], rationale: '자동화 유무가 상충함' }]),
     )
     expect(effects.join()).toMatch(/an open card already covers/)
     expect(await listCards(paths, 'proposed')).toHaveLength(1)
-    // …and the notes were not dragged into `disputed` over a question that is
-    // already being asked in a more useful form.
     expect((await readNote(paths, old.front.id)).front.status).toBe('current')
   })
 
@@ -233,14 +225,12 @@ describe('issuance guards (no re-asking answered questions)', () => {
       NOW,
     )
     await approveCard(paths, settled.id, { choice: 'both' }, LATER)
-    // a neighbour answer now touches note b again (frontmatter only)
     const neighbour = await createCard(
       paths,
       { cardType: 'conflict', targets: [b.front.id, c.front.id], rationale: '8h vs 12h' },
       new Date(LATER.getTime() + 30_000),
     )
     await approveCard(paths, neighbour.id, { choice: 'both' }, new Date(LATER.getTime() + 60_000))
-    // re-deriving the FIRST finding must still be recognized as answered
     const corpus = await loadNotes(paths)
     const job = buildJ3(paths, 'AGENTS', corpus, corpus, new Date(LATER.getTime() + 120_000))
     const effects = await job.apply!(
@@ -293,12 +283,10 @@ describe('dead conflict cards release their disputed pin', () => {
     const old = await createNote(paths, { body: '# rate limit\n\n분당 60 요청 제한임.' }, NOW)
     const fresh = await createNote(paths, { body: '# rate limit 상향\n\n분당 600으로 상향됨.' }, NOW)
     const corpus = await loadNotes(paths)
-    // J3 finds the conflict → both notes disputed, conflict card pending
     await buildJ3(paths, 'AGENTS', corpus, corpus, NOW).apply!(
       JSON.stringify({ cards: [{ cardType: 'conflict', targets: [old.front.id, fresh.front.id], rationale: '수치 상충' }] }),
     )
     expect((await readNote(paths, fresh.front.id)).front.status).toBe('disputed')
-    // the user answers the SIBLING supersede card instead
     const supersede = await createCard(
       paths,
       { cardType: 'supersede', targets: [old.front.id], rationale: 'r', proposed: '# 완전히 새로운 본문\n\n다른 내용임.' },
@@ -306,7 +294,7 @@ describe('dead conflict cards release their disputed pin', () => {
     )
     await approveCard(paths, supersede.id, {}, LATER)
     expect((await readNote(paths, old.front.id)).front.status).toBe('superseded')
-    expect((await readNote(paths, fresh.front.id)).front.status).toBe('current') // released
+    expect((await readNote(paths, fresh.front.id)).front.status).toBe('current')
     const conflict = (await listCards(paths)).find((c) => c.cardType === 'conflict')
     expect(conflict?.status).toBe('dismissed')
     expect(conflict?.resolved).toBeTruthy()
@@ -347,7 +335,7 @@ describe('supersede approval reuses a REPHRASED twin (house style rewrite)', () 
     )
     const notesBefore = (await loadNotes(paths)).length
     await approveCard(paths, card.id, {}, LATER)
-    expect((await loadNotes(paths)).length).toBe(notesBefore) // no duplicate
+    expect((await loadNotes(paths)).length).toBe(notesBefore)
     expect((await readNote(paths, fresh.front.id)).front.supersedes).toContain(old.front.id)
     expect((await readNote(paths, old.front.id)).front.status).toBe('superseded')
   })
@@ -377,10 +365,10 @@ describe('supersede approval reuses a REPHRASED twin (house style rewrite)', () 
     )
     const notesBefore = (await loadNotes(paths)).length
     await approveCard(paths, supersede.id, {}, LATER)
-    expect((await loadNotes(paths)).length).toBe(notesBefore) // no duplicate
+    expect((await loadNotes(paths)).length).toBe(notesBefore)
     const kept = await readNote(paths, fresh.front.id)
     expect(kept.front.supersedes).toContain(old.front.id)
-    expect(kept.front.status).toBe('current') // dispute released with the dead conflict card
+    expect(kept.front.status).toBe('current')
     expect((await readNote(paths, old.front.id)).front.status).toBe('superseded')
   })
 

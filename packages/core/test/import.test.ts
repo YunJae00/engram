@@ -43,17 +43,14 @@ describe('bulk import (M7 acceptance)', () => {
     expect(report.imported).toBe(500)
     expect(progress.at(-1)).toBe(500)
 
-    // originals untouched (copy import)
     expect(await folderDigest(source)).toBe(digestBefore)
 
-    // every import is a valid, searchable note immediately
     const notes = await loadNotes(paths)
     expect(notes.length).toBe(500)
     const index = buildIndex(notes)
     expect(searchIndex(index, 'topic-marker-337')[0]?.title).toContain('Legacy note 337')
     expect(searchIndex(index, 'topic-marker-42').length).toBeGreaterThan(0)
 
-    // absorb queue carries all of them; the sweep drains in batches
     const state = await loadAbsorbState(paths)
     expect(state.pending).toHaveLength(500)
     expect(state.total).toBe(500)

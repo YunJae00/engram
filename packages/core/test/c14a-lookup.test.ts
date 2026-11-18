@@ -3,8 +3,6 @@ import { checkedSearch, judgedItems, LOOKUP_RESERVE_MS, WIDEN_MS } from '../src/
 import { TEAM_ANSWER_MS } from '../src/team-hire-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
 
-// c14a (cause K: R3 3 of 5 at 14.3 s and H6 2 of 3 at 6.1 s, each with an off-kind row kept). A counted list looks further on the one
-// deadline instead of a fixed 15 s and one extra round; a row the judge cannot tell is no fit; the shortfall is data. No harness wording.
 const ASK = '요즘 국내 바이오 스타트업 인수합병 소식 4개'
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (n: number, title: string): string => `- ${title} — https://news.example/${n} — 인수합병 — 11월 ${n}일`
@@ -20,7 +18,6 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
       page('바이오 스타트업 인수합병', [row(1, '젠큐어, 바이오벤처 셀로직 인수'), row(2, '메디노바, 진단 스타트업 합병 완료'), row(3, '바이오 업계, 인수합병 바람 부나'), row(4, '바이오 투자 혹한기 계속')]),
       page('바이오벤처 M&A 인수', [row(5, '하이젠, AI 신약 스타트업 품었다'), row(6, '오가닉스, 플랫폼 기업 지분 100% 인수')]),
     ])
-    // Round 2 is judged with the rows held: [1, 2, 3 (unsure), 5, 6].
     const verdicts = ['{"keep":[1,2],"unsure":[3],"same":[],"search":"바이오벤처 M&A 인수"}', '{"keep":[1,2,4,5],"unsure":[3],"same":[],"search":""}']
     const out = await checkedSearch(s, { ask: () => ASK, write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: '바이오 스타트업 인수합병' }, { task: ASK })
     expect(s.queries).toEqual(['바이오 스타트업 인수합병', '바이오벤처 M&A 인수'])
@@ -30,12 +27,9 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
 
   it('keeps looking past one extra round while time is left; a slow clock stops it at the deadline; c15a: unsure rows are never shown', async () => {
     let t = 0
-    // Each search takes 7 s of the clock: the rounds end once the next would run past the answer deadline less the writing reserve.
     const s = search([page('a', [row(1, '알파바이오, 베타랩 인수'), row(2, '바이오 M&A 시장 전망')]), page('b', [row(3, '감마젠, 델타 합병'), row(4, '업계 재편 신호')]), page('c', [row(5, '엡실론, 제타 지분 인수')])], () => { t += 7_000 })
     const verdicts = ['{"keep":[1],"unsure":[2],"search":"b"}', '{"keep":[1,3],"unsure":[2,4],"search":"c"}', '{"keep":[1,2],"unsure":[3,4],"search":"d"}']
     const out = await checkedSearch(s, { ask: () => ASK, write: async () => verdicts.shift(), since: 0, now: () => t }).run({ query: 'a' }, { task: ASK })
-    // Round 3 lists the held rows sure first: [1, 3, 2 (unsure), 4 (unsure), 5].
-    // c18a: a round fits when this lookup's own measured round (7 s here) does: 7 s: 7 + 7 <= 20; 14 s: 14 + 7 > 20, no more.
     expect(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS).toBe(20_000)
     expect(s.queries).toEqual(['a', 'b'])
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3'])
@@ -83,7 +77,6 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
   })
 })
 
-// c14a r3: whether a later round's item is an entry already in hand is the judge's "same", never a shared page.
 describe('kindChecked with entries in hand', () => {
   it('drops only the item judged the same as one in hand, keeps a different one on the same page, and renumbers lists and names', async () => {
     const { kindChecked, withItems } = await import('../src/company-tools.js')
@@ -98,7 +91,6 @@ describe('kindChecked with entries in hand', () => {
     const out = await kindChecked(more, '광주 겨울 공연 일정', async prompt => { seen = prompt; return '{"keep":[1,2,3,4],"same":[[1,2]],"lists":[4],"names":{"3":"국악 발표회","4":"공연 모음"}}' }, 1000, inHand)
     expect(seen).toContain('"n":1,"text":"광주 시립 합창단 송년 음악회 12월 20일"')
     expect(out?.facts.map(f => [f.text, f.name ?? '', f.listing ?? false])).toEqual([['광주 청소년 국악 발표회 1월 10일', '국악 발표회', false], ['광주 겨울 공연 모음', '공연 모음', true]])
-    // A shared page alone never merges two entries.
     const merged = withItems({ facts: [...inHand, { text: '겨울 공연 목록', url: 'https://hall.example.kr/list', site: '시립', listing: true }] }, { facts: [out!.facts[0]!] })
     expect(merged.facts.map(f => f.text)).toEqual(['광주 시립 합창단 송년 음악회 12월 20일', '광주 청소년 국악 발표회 1월 10일', '겨울 공연 목록'])
   })

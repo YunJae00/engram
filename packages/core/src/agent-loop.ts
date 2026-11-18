@@ -10,59 +10,30 @@ import { checkOfficeResult } from './office-verification.js'
 import type { WebPage } from './errand.js'
 import type { HarnessMetric } from './harness-metrics.js'
 
-// The comet's working loop: think → pick ONE tool → run it → look at what
-// came back, a handful of times, then answer. Open-ended agent loops drift,
-// so every wall here is load-bearing: the menu is tiny, the choice is
-// schema-forced, the state lives in this code (the model sees only the last
-// few observations), and every guard ends in a graceful wrap-up — never a
-// dead end.
-
-// What every tool is told besides its arguments: the words the person
-// actually used. A small model paraphrases the request into tidy English and
-// then searches a vault written in another language; with the original ask in
-// hand, code can fall back to it instead of the model having to notice.
 export interface AgentToolContext {
   task: string
   signal?: AbortSignal
-  // Host observations only; model arguments cannot supply verification evidence.
   steps?: readonly AgentLoopStep[]
-  // Host receipt channel for the text-only loop, never a model argument.
   onObservedAfterAction?(): void
   onCommitted?(): void
-  // Everything the loop has read so far this turn. A tool that fills in a form
-  // needs it: what goes into a website has to come from something that was
-  // actually read, never from the model's own head.
   read?: string
 }
 
-// What a tool hands back: words, and sometimes a picture for a brain that
-// can see one (a page drawn on a canvas has no words to give).
 export interface ToolOutcome {
   text: string
   image?: { data: string; mimeType: string }
   page?: WebPage
-  // The host successfully reread the page after this action.
   observedAfterAction?: boolean
-  // The action committed something that cannot be taken back.
   committed?: boolean
 }
 
 export interface AgentTool {
   name: string
-  // One line for the menu — what it does and when to pick it.
   description: string
-  // JSON schema for this tool's args, embedded into the step schema.
   argsSchema: object
   run(args: Record<string, unknown>, context: AgentToolContext): Promise<string>
-  // The same call for a brain that can take a picture; the words alone go
-  // to one that cannot.
   runRich?(args: Record<string, unknown>, context: AgentToolContext): Promise<ToolOutcome>
-  // Its reply is the answer to the person: a tool session ends the turn with it when no other call ran beside it.
-  // shortcut: the step loop (brains without a tool session) ignores this and writes its own answer; honor it there if such a brain becomes the primary's.
-  // A function decides per call from its arguments (assign closes only when it does not wait).
   closes?: true | ((args: Record<string, unknown>) => boolean)
-  // c16a: a call that may close is decided again on its reply: the turn ends on it only when this says so (hire_members closes on the
-  // team's one written answer, never on results the lead still has to act on).
   closesOn?: (observation: string) => boolean
 }
 
@@ -77,81 +48,36 @@ export interface AgentLoopOptions {
   tokenBudget?: number
   onUsage?(tokens: number): void
   waitingForPerson?(): boolean
-  // Called before an offered tool starts, including calls whose receipt never arrives.
   onToolStart?(name: string): void
-  // What the person wrote while this turn was working, handed over once at
-  // the next tool result, so the work can take it in without stopping.
   takeSteer?(): string[]
   onSteerable?(steer: ((messages: string[]) => Promise<boolean>) | null): void
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
   attachmentContext?: string
-  // One line of identity ("You are <name>... charter: ...") carried at the
-  // top of every prompt the loop sends.
   persona?: string
-  // The conversation so far. Without it a follow-up ("did you finish?") has
-  // no subject, and the loop answers it from whatever the vault happened to
-  // return — measured, and exactly as baffling as it sounds.
   history?: { role: 'user' | 'assistant'; text: string; at?: string; attachments?: string[] }[]
-  // What this comet remembers about the person, rendered once by the caller
-  // before the turn; the same bytes ride in every prompt of the turn.
   memory?: string
-  // The skills this vault holds, as a name+description index. Carried in the
-  // prompt so the model knows what it can open; the bodies cost nothing until
-  // open_skill asks for one.
   skills?: { name: string; description: string }[]
-  // What a previous turn left unfinished, when this turn is a continuation of
-  // it: the model is told to resume from the last confirmed state and not
-  // repeat work already done, rather than starting the long job over.
   resume?: string
-  // Guided: the loop narrows the menu each step, seeds what it knows, nudges
-  // and budgets tightly - the hand-holding a small on-device model needs to
-  // finish a job. Off, the model sees every tool and plans for itself.
   guided?: boolean
-  // A key under which a brain may keep one session open across turns.
   session?: string
-  // What is already on screen when the turn starts: the address of the page
-  // the browser is holding, and whatever stands in front of it. A person
-  // begins a turn looking at their screen; without this the loop begins with
-  // its eyes shut and goes looking for a page it already has open.
   onScreen?: string
-  // The runtime's own tools, governed by the host.
   native?: NativeTools
-  // One narration line per step ("search_memory: deploy decisions") — the
-  // chat thread relays these while the loop works.
   onStep?(line: string): void
-  // What each step actually came back with. Nothing in the product listens to
-  // this; the probes do, because a loop can only be fixed from what its tools
-  // said, not from what it did next.
   onObservation?(tool: string, observation: string): void
-  // The answer as it is being written, a few words at a time; a reset says
-  // the words so far were thinking aloud before a tool call, not the answer.
   onToken?(text: string): void
   onReset?(dropDraft?: boolean, tool?: string): void
   maxCalls?: number
-  // A tool session's model tier, for work that needs speed more than depth; an engine without that tier ignores it.
   modelHint?: 'fast' | 'smart'
-  // A turn that only looks things up and reports: its tool session runs without the browser-work receipts (collect_results).
   lookup?: boolean
-  // A turn with what it needs already in its prompt, or one small call to make: it runs without long thinking, like a lookup.
   light?: boolean
-  // A short ask whose reply shape the host's turn note owns (one line, one fact, small talk): its session gets no work rules.
   short?: boolean
-  // Wall-clock share of a tool session: past it no new tool call starts and the model is told to report what it has.
   deadlineMs?: number
-  // The tool session has its turn and starts working: time limits count from here, not from the wait in line.
   onStart?(): void
-  // The host already answered words said mid-turn with a line of its own: the model takes them in without writing another.
   steerReplied?: boolean
-  // c11b: the host's check of the finished answer against the ask's shape (a count, a link and a date per item): a gap it names gets one
-  // more round, with the draft and the gap said, and its calls and time again. undefined: the answer stands. c12b: it may wait on a quick
-  // model's verdict on the items (desktop fast-lane itemCheck); a stop does not wait for it.
   recheck?(answer: string): string | undefined | Promise<string | undefined>
-  // c11b r3: the same check on the answer that is delivered, whatever rounds ran: a line that says what it still lacks, put under it.
   shortfall?(answer: string): string | undefined
-  // c12b r3: the host's own steps on the answer before it goes out (a verdict, link checks, a rewrite). They run inside the turn, so
-  // words said while they run rewrite the answer like any other late words, and the rewrite goes through them again.
   deliver?(answer: string): Promise<string>
 }
 
@@ -161,9 +87,6 @@ export interface AgentLoopStep {
   args: Record<string, unknown>
   observation: string
   observedAfterAction?: boolean
-  // Put there before the model was asked anything, rather than chosen. The
-  // difference matters: a seeded fact must not make the opening move look
-  // like work already under way.
   seeded?: boolean
 }
 
@@ -172,34 +95,20 @@ export interface AgentLoopResult {
   budgetExhausted?: boolean
   answer: string
   steps: AgentLoopStep[]
-  // Two broken outputs in a row forced the plain-answer path.
   fellBack: boolean
-  // Set when a guard ended the loop early; the answer still wraps up with
-  // whatever the steps gathered.
   stopped?: 'calls' | 'repetition' | 'oscillation'
-  // The loop ended by putting a question to the person.
   asked?: boolean
-  // Ways forward the person can pick from, beside the question in answer.
-  // Empty or absent when the question is free text.
   options?: string[]
-  // A move a tool asked for that was never made. Measured: pushed to act, a
-  // small model may instead ANNOUNCE that it acted. The caller states the
-  // truth alongside the answer rather than letting the claim stand.
   pending?: string
-  // A model-planned phase still lacks a result checkpoint.
   incomplete?: string
 }
 
 const MAX_CALLS = 6
-// A brain that plans for itself is given room to: more moves, longer
-// answers.
 const OPEN_MAX_CALLS = 12
 const OPEN_TOKENS = 1_200
 
 const CALL_TIMEOUT_MS = 180_000
 const SCHEMA_STRIKES = 2
-// Tools that only look. A move into one of these can be made on the model's
-// behalf; anything that writes, posts or runs still waits for a person.
 const READ_ONLY = new Set(['open_page', 'read_open_page', 'read_note', 'search_memory', 'search_web'])
 
 function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
@@ -208,19 +117,12 @@ function sameArgs(a: Record<string, unknown>, b: Record<string, unknown>): boole
 
 
 
-
-// What this turn has actually READ - a note, a page - as opposed to what the
-// loop has said to itself along the way. The difference decides what may be
-// typed into a website: told that the procedure is called "work log upload",
-// the model typed that name into the log as the day's work, and it passed a
-// check that counted the loop's own scaffolding as reading.
 const CONTENT_TOOLS = new Set(['read_pages', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'look_in_parallel'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
   return [...said(history), ...steps.filter((step) => CONTENT_TOOLS.has(step.tool)).map((step) => step.observation)].join('\n')
 }
 
-// The person's own recent words, which a blank may be filled from.
 export function said(history: AgentLoopOptions['history']): string[] {
   return (history ?? [])
     .filter((turn) => turn.role === 'user')
@@ -255,9 +157,6 @@ function callKey(step: ParsedStep): string {
   return `${step.tool} ${JSON.stringify(step.args)}`
 }
 
-// The pending call, parsed. A small model reliably FINDS the procedure and
-// then describes running it instead of running it; the host turns this into a
-// one-tap offer rather than demanding the model be cleverer than it is.
 export function parsePendingCall(pending: string | undefined): { tool: string; args: Record<string, unknown> } | null {
   if (!pending) return null
   const match = /call ([a-z_]+) with (\{.*\})/i.exec(pending)
@@ -271,9 +170,6 @@ export function parsePendingCall(pending: string | undefined): { tool: string; a
   }
 }
 
-// The two ways a small model gets stuck: hammering one call, and bouncing
-// between two. Both read as progress from inside the loop, so the guard
-// compares the recent call hashes instead.
 export function detectLoop(keys: string[]): 'repetition' | 'oscillation' | null {
   const n = keys.length
   if (n >= 2 && keys[n - 1] === keys[n - 2]) return 'repetition'
@@ -283,10 +179,6 @@ export function detectLoop(keys: string[]): 'repetition' | 'oscillation' | null 
 }
 
 async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
-  // A password the person typed does not come back out. The answer is kept
-  // with the thread, so repeating it there would outlive the moment it was
-  // needed - and it was never needed here, since nothing signs in on their
-  // behalf.
   return withoutSecrets(await answerText(deps, task, steps, options), task)
 }
 
@@ -306,27 +198,14 @@ async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopSte
 
 export { carriedSteps, pickTools }
 
-// A tool call is a name and a few arguments; a note body is the one thing
-// that needs room. The answer is a few short sentences by its own rule, and
-// letting either run to the transport's default ceiling is a minute of a
-// CPU-bound machine's time for nothing.
 const STEP_TOKENS = 320
-// A step that writes - a filled form, a note - carries a paragraph in its
-// arguments, and a paragraph of Korean is most of 320 tokens by itself: the
-// JSON was cut short and the form was run with the blank still empty.
 const WRITING_TOOLS = new Set(['run_procedure', 'propose_note', 'propose_edit', 'propose_file'])
 const WRITING_TOKENS = 640
 const ANSWER_TOKENS = 400
 function stepBudget(tools: AgentTool[]): number {
   return tools.some((t) => WRITING_TOOLS.has(t.name)) ? WRITING_TOKENS : STEP_TOKENS
 }
-// A read a tool asked for is made without asking the model - reading costs
-// nothing and needs nobody's permission, and a step spent confirming a call
-// the tool already named is a whole prompt evaluation on a CPU-bound machine.
-// Capped per turn and never repeated with the same arguments, so a front page
-// that keeps pointing at itself cannot spin.
 const AUTO_READS = 3
-// Below this an answer is a shrug, not something worth a card.
 const NOTE_MIN = 80
 
 async function writeDown(deps: AgentLoopDeps, task: string, text: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<void> {
@@ -351,7 +230,6 @@ async function followRead(
   const next = parsePendingCall(suggestedMove(steps) ?? undefined)
   if (!next || !READ_ONLY.has(next.tool) || followed.count >= AUTO_READS) return false
   if (steps.some((s) => s.tool === next.tool && sameArgs(s.args, next.args))) return false
-  // From every tool it has, not just this step's menu.
   const tool = deps.tools.find((t) => t.name === next.tool)
   if (!tool) return false
   followed.count++
@@ -376,8 +254,6 @@ async function agentLoop(
 ): Promise<AgentLoopResult> {
   if (deps.tools.some((tool) => isDesktopTool(tool.name)) && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   deps = { ...deps, tools: desktopScopeTools(deps.tools) }
-  // Chosen per step, not once: an empty vault search is what earns the web
-  // tools their place on the menu.
   const conversed = (options.history?.length ?? 0) > 0
   const guided = options.guided !== false
   const available = textStepTools(deps.tools)
@@ -387,7 +263,6 @@ async function agentLoop(
   const steps: AgentLoopStep[] = []
   const keys: string[] = []
   let strikes = 0
-  // The one-time push from "describing the next call" to "making it".
   let nudged = false
   const followed = { count: 0 }
   const wrapUp = async (stopped?: AgentLoopResult['stopped'], fellBack = false): Promise<AgentLoopResult> => ({
@@ -397,18 +272,11 @@ async function agentLoop(
     ...(stopped ? { stopped } : {}),
     ...(suggestedMove(steps) ? { pending: suggestedMove(steps)! } : {}),
   })
-  // Before the model is asked anything: is this a job they already showed it?
-  // A colleague checks that first, every time, and it costs no thinking.
   const knows = deps.tools.find((one) => one.name === 'find_procedure')
   if (knows) {
     const observation = await knows
       .run({ task }, { task, ...(options.signal ? { signal: options.signal } : {}) })
       .catch(() => '')
-    // Only when it really knows the job. Announcing "I was never shown this"
-    // at the top of every conversation taught the model to answer that to
-    // anything, including "write this down for me".
-    // A brain that plans for itself is not told what it cannot do: read as
-    // an instruction, that line made a capable model refuse to look.
     const quiet = /^found /.test(observation)
       ? observation
       : guided && observation.startsWith('NOTHING-TAUGHT')
@@ -437,10 +305,6 @@ async function agentLoop(
         ...(options.signal ? { signal: options.signal } : {}),
       })
     } catch (err) {
-      // A call that hung or died must not throw away what the loop already
-      // gathered — measured: a browser and a model sharing a tight machine
-      // timed a whole turn out after real work had been done. With nothing
-      // gathered the caller hears the real error, as it should.
       if (options.signal?.aborted || steps.length === 0) throw err
       const reason = withoutSecrets(err instanceof Error ? err.message : String(err), task).slice(0, 1200)
       const result = await wrapUp('calls').catch(() => ({ answer: 'The task did not finish.', steps, fellBack: false, stopped: 'calls' as const }))
@@ -449,22 +313,14 @@ async function agentLoop(
     options.onMetric?.({ kind: 'model', operation: 'step', ms: Math.round(performance.now() - modelStarted) })
     const parsed = parseStep(raw, tools)
     if (!parsed) {
-      // A broken shape gets one more try; two in a row means this model is
-      // not going to speak JSON today — answer plainly instead of dead-ending.
       strikes++
       if (strikes >= SCHEMA_STRIKES) return wrapUp(undefined, true)
       continue
     }
     strikes = 0
     if (parsed.tool === 'answer') {
-      // Measured: with everything gathered, a small model writes out the call
-      // it should make instead of making it. One nudge — never more, or a
-      // stubborn model would never be allowed to finish — turns the
-      // description back into the action. Nothing is posted by this: the
-      // person still approves at the submit gate.
       const pending = suggestedMove(steps)
       if (await followRead(deps, task, steps, options, followed)) continue
-      // Asked for a note and about to end in prose: the same one nudge.
       const unwritten =
         guided && asksForNote(task) && !steps.some((s) => WRITING_TOOLS.has(s.tool)) && deps.tools.some((t) => t.name === 'propose_note')
       if (guided && (pending || unwritten) && !nudged) {
@@ -481,14 +337,7 @@ async function agentLoop(
       const text = parsed.args['text']
       const unfinished = pending ? { pending } : {}
       if (typeof text === 'string' && text.trim()) {
-        // Asked for a note, nudged once, and still answering in prose: the
-        // prose is the note. Writing it down is the mechanical part, and the
-        // loop does it - the person still approves the card (measured: two
-        // notes merged into a good answer twice running, and no note either
-        // time).
         if (unwritten && text.trim().length >= NOTE_MIN) await writeDown(deps, task, text, steps, options)
-        // Prose that is really "A or B?" is a question with choices, and is
-        // handed over as one so the person taps instead of typing.
         const choice = choiceQuestion(text)
         if (choice) return { answer: withoutSecrets(text, task), steps, fellBack: false, asked: true, options: choice.options }
         return { answer: withoutSecrets(text, task), steps, fellBack: false, ...unfinished }
@@ -505,8 +354,6 @@ async function agentLoop(
     const toolStarted = performance.now()
     try {
       observation = await tool.run(parsed.args, { task, steps: steps.slice(), read: readSoFar(steps, options.history), onObservedAfterAction: () => { observedAfterAction = true }, onCommitted: () => { committed = true }, ...(options.signal ? { signal: options.signal } : {}) })
-      // A question to the person IS the answer: carrying on would mean
-      // guessing at exactly the thing it just said it does not know.
       const ask = parseAsk(observation)
       if (ask) {
         steps.push({ tool: parsed.tool, args: desktopStepArgs(parsed.tool, parsed.args), observation })

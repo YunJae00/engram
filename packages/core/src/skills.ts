@@ -14,16 +14,13 @@ const PROCEDURE_RE = /함정|주의|방법|절차|규칙|패턴|체크|반드시
 const MIN_NOTES = 3
 const CANDIDATE_CAP = 2
 const MAX_AUTO_SKILLS = 8
-// How-tos learned from kept work accumulate; the shortlist ranks them per task.
 const MAX_LEARNED_SKILLS = 60
-// Scripts a how-to carries, beside its SKILL.md.
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$/
 const FILE_CAP = 20_000
 const FILES_KEPT = 4
 const BODY_CAP = 6_000
 const OPEN_BYTES = 100_000
 const DESC_CAP = 200
-// Secrets and identities never leave the vault inside a skill file.
 const PRIVACY_RE = /[\w.+-]+@[\w-]+\.[a-z]{2,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]+|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}/i
 
 export interface SkillLedgerEntry {
@@ -32,12 +29,10 @@ export interface SkillLedgerEntry {
   distilledAt: string
   sourceHash?: string
   source?: 'turn'
-  // Successful-turn usage is a ranking hint, not proof of relevance or correctness.
   used?: number
   lastUsedAt?: string
   verifiedChecks?: number
   lastVerifiedAt?: string
-  // The user edited the installed file — it is theirs now, never rewritten.
   userOwned?: boolean
 }
 export type SkillsLedger = Record<string, SkillLedgerEntry>
@@ -86,7 +81,6 @@ function sourceHash(notes: Note[]): string {
   return skillContentHash(JSON.stringify(notes.map(note => [note.front.id, note.front.updated, note.body]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))))
 }
 
-// Edits and superseded replacements invalidate older distillations.
 function changedAt(note: Note): string {
   return note.front.updated > note.front.created ? note.front.updated : note.front.created
 }
@@ -103,7 +97,6 @@ function proceduresByFolder(notes: Note[]): Map<string, Note[]> {
   return byFolder
 }
 
-// Redistill recurring procedures only when their source evidence changes.
 export function skillCandidates(notes: Note[], ledger: SkillsLedger): SkillCandidate[] {
   const byFolder = proceduresByFolder(notes)
   const autoOwned = Object.values(ledger).filter((entry) => entry.userOwned !== true).length
@@ -124,7 +117,6 @@ export function skillCandidates(notes: Note[], ledger: SkillsLedger): SkillCandi
     .slice(0, CANDIDATE_CAP)
 }
 
-// Return slugs whose source evidence has changed.
 export function staleSkills(ledger: SkillsLedger, notes: Note[]): string[] {
   const byFolder = proceduresByFolder(notes)
   const stale: string[] = []
@@ -196,7 +188,6 @@ export async function recordSkillUse(paths: VaultPaths, result: AgentLoopResult)
   }
   for (const [name, body] of opened) {
     const openedAt = result.steps.findIndex(step => step.tool === 'open_skill' && step.args['name'] === name)
-    // A fresh check is a ranking hint, not proof that a skill caused task success.
     const checks = result.steps.slice(openedAt + 1).filter(step => step.tool === 'verify')
     const verified = checks.length > 0 && checks.every(step => {
       try {
@@ -208,7 +199,6 @@ export async function recordSkillUse(paths: VaultPaths, result: AgentLoopResult)
   }
 }
 
-// The engine's contract: refuse loudly or answer structurally — never pad.
 export function distillPrompt(candidate: SkillCandidate): string {
   const evidence = candidate.notes
     .slice(0, 12)
@@ -234,10 +224,6 @@ export interface SkillDraft {
   body: string
 }
 
-// Learning from doing, not only from notes: when the person keeps a turn that
-// worked, its moves are distilled into a how-to the comet can read next time a
-// task of the same kind comes up - the general lesson, beside the routine that
-// replays the exact path. The gate is strict so a one-off is not enshrined.
 export function turnSkillPrompt(goal: string, stepLines: string[], scripts: { name: string; text: string }[] = []): string {
   return [
     `You distill a reusable how-to from ONE task the assistant just completed for the person. The goal was: "${goal}". Below is what it did, in order.`,
@@ -259,9 +245,6 @@ export function turnSkillPrompt(goal: string, stepLines: string[], scripts: { na
   ].join('\n\n')
 }
 
-// The engine either refuses ({"skip": true}) or answers structurally - prose,
-// half-JSON or a stub reads as a refusal. Shared by every distillation path so
-// the contract is one thing, not three.
 export function parseSkillDraft(raw: string | null): SkillDraft | null {
   if (!raw) return null
   try {
@@ -276,9 +259,6 @@ export function parseSkillDraft(raw: string | null): SkillDraft | null {
   }
 }
 
-// A skill sourced from a kept turn rather than a notes folder. Its slug is kept
-// in a separate namespace so a how-to learned by doing never collides with one
-// distilled from a folder of the same name.
 export function turnSkillCandidate(name: string, goal: string): SkillCandidate {
   return { slug: `turn--${skillContentHash(JSON.stringify([name, goal])).slice(0, 24)}`, folder: 'Kept tasks', notes: [], source: 'turn' }
 }
@@ -312,13 +292,11 @@ export interface InstallResult {
   reason?: 'user-owned' | 'privacy' | 'too-long' | 'limit'
 }
 
-// Skills stay portable with the vault, independent of the selected engine.
 export function skillsDir(paths: VaultPaths): string {
   return join(paths.workspace, '.engram', 'skills')
 }
 
 function frontMatter(content: string): { name?: string; description?: string; body: string } {
-  // Accept plain YAML delimiters only; metadata must never select an executable parser.
   if (!/^---\r?\n/.test(content)) return { body: content.trim() }
   const parsed = matter(content, { language: 'yaml' })
   return { description: typeof parsed.data['description'] === 'string' ? parsed.data['description'] : undefined, body: parsed.content.trim() }
@@ -349,7 +327,6 @@ export interface SkillCard {
   description: string
 }
 
-// Advertise names and descriptions; load bodies only on demand.
 export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
   const dir = skillsDir(paths)
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -361,18 +338,16 @@ export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
     try {
       const { description } = frontMatter(content)
       if (description) cards.push({ name: entry.name, description: description.replace(/\s+/g, ' ').trim().slice(0, DESC_CAP) })
-    } catch { /* Invalid metadata is not advertised as an available skill. */ }
+    } catch { }
   }
   return cards.sort((a, b) => (a.name < b.name ? -1 : 1))
 }
 
-// Reference paths must stay within the named skill's directory.
 export async function readSkillFile(paths: VaultPaths, name: string, path?: string): Promise<string | null> {
   const content = await skillContent(paths, name, path ?? 'SKILL.md')
   return content === null ? null : path === undefined ? frontMatter(content).body : content
 }
 
-// Serialize ledger changes; a changed file hash transfers ownership to the user.
 const installs = new Map<string, Promise<unknown>>()
 async function withSkillLedger<T>(paths: VaultPaths, work: () => Promise<T>): Promise<T> {
   const key = ledgerFile(paths)
@@ -421,8 +396,6 @@ async function installOne(
   return { installed: true }
 }
 
-// Copy only skills recorded by this vault. Preserve legacy sources and all
-// destination conflicts; another vault or a user may still depend on them.
 export async function migrateSkillsHome(home: string, paths: VaultPaths): Promise<number> {
   const legacy = join(home, '.claude', 'skills')
   const ledger = await readSkillsLedger(paths)
@@ -440,7 +413,6 @@ export async function migrateSkillsHome(home: string, paths: VaultPaths): Promis
   return moved
 }
 
-// The brief's receipt: skills distilled/refreshed in the window.
 export function countRecentSkills(ledger: SkillsLedger, sinceMs: number): number {
   return Object.values(ledger).filter(
     (entry) => entry.userOwned !== true && Date.parse(entry.distilledAt) >= sinceMs,

@@ -1,5 +1,3 @@
-// What would a Claude session actually receive? Print it verbatim — this text
-// is injected before every prompt, so its size and usefulness are the product.
 import { buildContextBlock } from '../src/context-block.js'
 import { loadNotes } from '../src/notes.js'
 import { vaultPaths } from '../src/vault.js'

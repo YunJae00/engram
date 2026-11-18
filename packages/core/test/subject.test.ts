@@ -18,13 +18,11 @@ function adjOf(edges: Edge[]): Map<string, Set<string>> {
 
 const clique = (ids: string[]): Edge[] => ids.flatMap((a, i) => ids.slice(i + 1).map((b): Edge => [a, b]))
 
-// A community: ids `${prefix}1..n` carrying the given titles.
 function community(prefix: string, titles: string[]): { ids: string[]; titles: Map<string, string> } {
   const ids = titles.map((_, i) => `${prefix}${i + 1}`)
   return { ids, titles: new Map(ids.map((id, i) => [id, titles[i]!])) }
 }
 
-// Synthetic titles share one dominant topic across two connected communities.
 const TOPIC_PRIMARY = community('a', [
   'Workspace draft create',
   'Workspace draft rename',
@@ -43,7 +41,6 @@ const TOPIC_SECONDARY = community('b', [
   'Workspace filter select',
 ])
 
-// A bare project prefix must not merge otherwise distinct topics.
 const PROJECT_LOCALE = community('i', [
   'PROJECT locale choose',
   'PROJECT locale reset',
@@ -82,7 +79,6 @@ const titleOf = (id: string): string => {
   throw new Error(`no title for ${id}`)
 }
 
-// Dense internal links and sparse connections between communities.
 const EDGES: Edge[] = [
   ...ALL.flatMap((c) => clique(c.ids)),
   ['a1', 'b1'], ['a2', 'b2'], ['a3', 'b1'],
@@ -98,13 +94,12 @@ describe('mergeBySubject', () => {
     const merged = mergeBySubject(COMMUNITIES, titleOf, ADJ)
     const topic = merged.find((g) => g.ids.includes('a1'))!
     expect([...topic.ids].sort()).toEqual([...TOPIC_PRIMARY.ids, ...TOPIC_SECONDARY.ids].sort())
-    // ...and names it, so the boundary change carries a label with it.
     expect(topic.subject).toBe('Workspace')
   })
 
   it('never merges clusters that only share a project prefix', () => {
     const merged = mergeBySubject(COMMUNITIES, titleOf, ADJ)
-    expect(merged).toHaveLength(5) // 6 communities, exactly one merge
+    expect(merged).toHaveLength(5)
     for (const cluster of [PROJECT_LOCALE, PROJECT_MESSAGES, PROJECT_ACCESS, PROJECT_EXPORT]) {
       const group = merged.find((g) => g.ids.includes(cluster.ids[0]!))!
       expect([...group.ids].sort()).toEqual([...cluster.ids].sort())
@@ -178,9 +173,6 @@ function noteOf(id: string, title: string, derived: string[]): Note {
 }
 
 describe('linkComponents with the subject merge', () => {
-  // Merging BEFORE the size filter is the point: two halves of one subject that
-  // each fall under HUB_MIN_NOTES would otherwise both be dropped and the topic
-  // would never get a hub at all.
   it('merges two same-subject communities into one topic that earns a hub', () => {
     const notes = [
       ...TOPIC_PRIMARY.ids.map((id, i) =>

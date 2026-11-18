@@ -41,7 +41,6 @@ function makeNote(id: string, body: string, verified_until?: string): Note {
   }
 }
 
-// The input payload is always the LAST fenced json block buildJobPrompt emits.
 function payloadOf(prompt: string): Record<string, unknown> {
   const blocks = [...prompt.matchAll(/```json\n([\s\S]*?)\n```/g)]
   const last = blocks[blocks.length - 1]
@@ -51,31 +50,22 @@ function payloadOf(prompt: string): Record<string, unknown> {
 
 describe('J5 per-sweep cap (oldest verified_until first)', () => {
   it('caps at 40, choosing the oldest; undefined verified_until sorts oldest', () => {
-    // n-00..n-04: never verified (undefined) → oldest of all.
-    // n-05..n-44: verified further and further into the future as the index
-    // grows, so the newest (largest index) should be the first dropped.
     const stale: Note[] = []
     for (let i = 0; i < 5; i++) stale.push(makeNote(`n-${String(i).padStart(2, '0')}`, `# note ${i}`))
     for (let i = 5; i < 45; i++) {
-      // Strictly ascending valid timestamps (Jan 1 2026 + i days).
       const vu = new Date(Date.UTC(2026, 0, 1) + i * 86_400_000).toISOString()
       stale.push(makeNote(`n-${String(i).padStart(2, '0')}`, `# note ${i}`, vu))
     }
-    // Feed them shuffled to prove the ordering is by verified_until, not input order.
     const shuffled = [...stale].reverse()
 
     const batch = oldestStale(shuffled, 40)
     const ids = batch.map((n) => n.front.id)
 
     expect(batch).toHaveLength(40)
-    // The 5 never-verified notes come first, sorted by id.
     expect(ids.slice(0, 5)).toEqual(['n-00', 'n-01', 'n-02', 'n-03', 'n-04'])
-    // The 5 newest-verified (n-40..n-44) are the ones dropped.
     for (const dropped of ['n-40', 'n-41', 'n-42', 'n-43', 'n-44']) expect(ids).not.toContain(dropped)
-    // Defined ones that survive are in ascending verified_until order.
     expect(ids.slice(5, 10)).toEqual(['n-05', 'n-06', 'n-07', 'n-08', 'n-09'])
 
-    // And buildJ5 actually ships exactly those 40 notes.
     const job = buildJ5({} as VaultPaths, '', batch, NOW)
     const stalePayload = payloadOf(job.prompt)['stale'] as { id: string }[]
     expect(stalePayload).toHaveLength(40)
@@ -99,9 +89,7 @@ describe('J7 deterministic pre-pairing', () => {
   })
 
   it('incremental seeds: a pair forms only when a changed note seeds it', async () => {
-    // Neither dupe changed → no seed reaches the pair, so nothing clusters.
     expect(await findMergeClusters(notes, [], [])).toHaveLength(0)
-    // One side changed → seeding it still finds its old twin across the index.
     const seeded = await findMergeClusters(notes, [], [notes.find((n) => n.front.id === 'dup-a')!])
     expect(seeded).toHaveLength(1)
     expect(seeded[0]!.map((n) => n.front.id).sort()).toEqual(['dup-a', 'dup-b'])
@@ -115,7 +103,6 @@ describe('J7 deterministic pre-pairing', () => {
     const ids = payloadClusters.flat().map((c) => c.id).sort()
     expect(ids).toEqual(['dup-a', 'dup-b'])
     for (const absent of ['u-deploy', 'u-price', 'u-hiring']) expect(ids).not.toContain(absent)
-    // 200-char excerpt contract per note.
     expect(payloadClusters[0]![0]).toHaveProperty('excerpt')
   })
 })
@@ -123,7 +110,6 @@ describe('J7 deterministic pre-pairing', () => {
 describe('sweep skips J7 when there are no candidate clusters', () => {
   it('no engine J7 call is made, yet last_j7 still advances', async () => {
     const paths = await initVault(await tmpVaultRoot('j7-skip'), { git: false })
-    // Two unrelated current notes → no near-dupe cluster.
     await createNote(paths, { id: 'n-a-0001', body: '# 배포\n\nCI로 배포한다.', happened_at: '2026-06-01' }, NOW)
     await createNote(paths, { id: 'n-b-0001', body: '# 요금제\n\n프로 요금제 월 5만원.', happened_at: '2026-06-02' }, NOW)
 
@@ -146,7 +132,6 @@ describe('sweep skips J7 when there are no candidate clusters', () => {
     await sweep(paths, [engine], { now: () => NOW })
 
     expect(invoked).not.toContain('J7')
-    // Weekly cadence is still respected even though J7 was skipped.
     expect(typeof (await loadState(paths)).last_j7).toBe('string')
   }, 30_000)
 })

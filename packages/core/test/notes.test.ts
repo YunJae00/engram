@@ -86,8 +86,6 @@ describe('note operations (append-mostly)', () => {
   })
 
   it('exposes no delete/remove API (append-mostly contract)', () => {
-    // unlinkNotes edits frontmatter links; it never deletes a file, so the
-    // contract here is strictly about delete/remove.
     const names = Object.keys(notesApi)
     expect(names.filter((n) => /delete|remove/i.test(n))).toEqual([])
   })

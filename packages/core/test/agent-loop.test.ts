@@ -63,13 +63,10 @@ describe('runAgentLoop — dispatch', () => {
       { tool: 'search_memory', args: { query: 'deploy decisions' }, observation: 'observation from search_memory' },
     ])
     expect(lines).toEqual(['search_memory: deploy decisions'])
-    // The second call saw what the first one found, and who it is.
     expect(prompts[1]).toContain('observation from search_memory')
     expect(prompts[1]).toContain('Deploy keeper')
   })
 
-  // A brain that plans for itself sees every tool, is not told what it
-  // cannot do, and is given room to answer.
   it('unguided, the model sees every tool and no seeded refusal', async () => {
     const tools = Array.from({ length: 7 }, (_, i) => tool(`t${i}`))
     const finder = tool('find_procedure', async () => 'NOTHING-TAUGHT')
@@ -148,7 +145,6 @@ describe('runAgentLoop — guards (a 2B model WILL wander)', () => {
     const result = await runAgentLoop(d, 'anything')
     expect(result.stopped).toBe('repetition')
     expect(result.answer).toBe('wrapped up')
-    // the hammering was caught before the second identical run
     expect(search.calls).toHaveLength(1)
   })
 
@@ -187,9 +183,6 @@ describe('runAgentLoop — guards (a 2B model WILL wander)', () => {
   })
 })
 
-// The measured failure that made this necessary: a 2B picked the right tool
-// and called it with an empty object. A flat schema allows that; branching
-// per tool does not.
 describe('a tool that names the next call gets it acted on', () => {
   it('lifts "call X with {...}" out of the transcript into its own line', async () => {
     const finder = tool('find_procedure', async () => 'found "Daily log" (id: rt-1). call run_procedure with {"id": "rt-1", "slots": {}}')
@@ -219,7 +212,6 @@ describe('read_note', () => {
       steps: [{ kind: 'open', url: 'https://portal.example/' }, { kind: 'read' }],
     })
     const read = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'read_note')!
-    // Measured: the model asks for "n-rt-…" when the id is already "rt-…".
     expect(await read.run({ id: `n-${routine.id}` }, CTX)).toContain('Portal notices')
     expect(await read.run({ id: 'n-nope-1' }, CTX)).toContain('no note with id')
   })
@@ -276,16 +268,11 @@ describe('read_note', () => {
         'the procedure stopped: nothing was filled in for entry — look for what belongs there (search_memory)',
     }).find((t) => t.name === 'run_procedure')!
     const said = await run.run({ id: routine.id }, { task: 'the work log for today, filled from the vault' })
-    // And the way back in: looking something up and never returning to the
-    // procedure leaves the job one step from done.
     expect(said).toContain(`call run_procedure with {"id": "${routine.id}"`)
     expect(said).toContain('"entry": "<the words you found')
   })
 })
 
-// The bug this exists to prevent: the menu was cut by array order, so the web
-// tools were never shown at all. What replaced it follows the work rather than
-// a word list, because a word list decides for the model.
 describe('pickTools — which five the model is shown', () => {
 
   it('sets writing aside while a procedure waits one field short', () => {
@@ -293,7 +280,6 @@ describe('pickTools — which five the model is shown', () => {
       { tool: 'run_procedure', args: {}, observation: 'the blank is still empty: nothing was filled in for entry' },
     ]
     const shown = pickTools(all(), 'fill the log', steps).map((t) => t.name)
-    // Nothing has been looked up yet, so looking leads.
     expect(shown[0]).toBe('search_memory')
     expect(shown).not.toContain('propose_note')
     const afterLooking = pickTools(
@@ -438,7 +424,6 @@ describe('the one nudge', () => {
     })
     const { deps: d } = await deps('loop-nudge', [finder, runner], engine)
     const result = await runAgentLoop(d, 'post the log')
-    // The nudge turned the description into the call.
     expect(runner.calls).toEqual([{ id: 'rt-1', slots: {} }])
     expect(result.steps.some((s) => s.tool === 'note-to-self')).toBe(true)
   })
@@ -459,8 +444,6 @@ describe('the one nudge', () => {
     const result = await runAgentLoop(d, 'post the log')
     expect(result.answer).toBe('the person should run it')
     expect(runner.calls).toEqual([])
-    // …and the caller is told the work is still waiting, because a model that
-    // was pushed to act sometimes claims it did.
     expect(result.pending).toContain('run_procedure')
   })
 })
@@ -484,9 +467,7 @@ describe('an outstanding call survives the steps taken to prepare it', () => {
     })
     const { deps: d } = await deps('loop-outstanding', [finder, search, runner], engine)
     const result = await runAgentLoop(d, 'post the log')
-    // The reminder was still there after the lookup…
     expect(prompts[2]).toContain('Suggested next move: call run_procedure')
-    // …and gone once the call had been made, so the answer stands unqualified.
     expect(prompts[3]).not.toContain('Suggested next move')
     expect(result.pending).toBeUndefined()
     expect(runner.calls).toEqual([{ id: 'rt-1', slots: {} }])
@@ -499,7 +480,6 @@ describe('the step schema pins the arguments of each tool', () => {
     const engine = new MockEngine({ 'COMET-STEP': '{"tool": "answer", "args": {"text": "ok"}}' })
     const paths = await initVault(await tmpVaultRoot('loop-schema'), { git: false })
     const tools = cometTools({ paths, retrieve: async () => [] })
-    // Capture what the loop asks the engine to constrain decoding with.
     const spy = {
       id: engine.id,
       detect: () => engine.detect(),
@@ -555,11 +535,7 @@ describe('cometTools — every write ends in a card', () => {
     const tools = cometTools({ paths, retrieve: async () => [] })
     const find = tools.find((t) => t.name === 'find_procedure')!
     expect(await find.run({ task: 'upload the weekly report' }, CTX)).toContain('found "Weekly report upload"')
-    // Nothing matches: the shelf is shown, each row carrying the call to make,
-    // because a small model copies a template and stalls on a description.
     const miss = await find.run({ task: 'water the plants' }, CTX)
-    // The shelf is shown, and the answer says to go and do the job on the
-    // site rather than to wait for anybody.
     expect(miss).toContain('nothing written down matches')
     expect(miss).toContain('Weekly report upload')
     expect(miss).toContain('run_procedure')
@@ -576,8 +552,6 @@ describe('cometTools — every write ends in a card', () => {
       ],
     })
     const find = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'find_procedure')!
-    // Asked in another language entirely, which is exactly when word overlap
-    // and a cold embedder both come up empty.
     const found = await find.run({ task: '오늘 업무일지 올리기' }, CTX)
     expect(found).toContain('nothing written down matches')
     expect(found).toContain('Post the daily work log')
@@ -601,7 +575,6 @@ describe('cometTools — every write ends in a card', () => {
     expect(await search.run({ query: 'deploys' }, CTX)).toContain('[Deploy decision] (id: n-1) Fridays only.')
     const miss = await search.run({ query: 'nothing' }, CTX)
     expect(miss).toContain('nothing in the vault')
-    // and it says what to do about it, rather than reading as a dead end
     expect(miss).toContain('try again')
   })
 })
@@ -618,7 +591,6 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
           text: '홈 뉴스 로그인',
           links: Array.from({ length: 12 }, (_, i) => ({ text: `메뉴 ${i}`, url: `https://thin.example/${i}` })),
         }
-      // Short, but the whole answer — the shape that was being thrown away.
       if (url === 'https://notice.example/short')
         return { url, title: '공지', text: '9월 2일부터 VPN 주소가 바뀝니다. 배포 신청은 9월 12일까지입니다.', links: [] }
       return { url, title: 'One', text: `the page said something useful. ${'detail '.repeat(80)}` }
@@ -637,13 +609,10 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
   it('names no engine and no site — the model supplies the address', async () => {
     const paths = await initVault(await tmpVaultRoot('tools-free'), { git: false })
     const names = cometTools({ paths, retrieve: async () => [], courier }).map((t) => t.name)
-    // Nothing in the toolbox decides WHERE to look.
     expect(names).not.toContain('web_search')
     expect(names).not.toContain('search_site')
     expect(names).not.toContain('research')
     expect(names).toEqual(expect.arrayContaining(['open_page', 'read_open_page', 'search_web']))
-    // Typing and clicking on a page it merely found are not on offer: acting
-    // belongs to a procedure it was shown, replayed and gated.
     expect(names).not.toContain('type_into')
     expect(names).not.toContain('click_on')
     const offline = cometTools({ paths, retrieve: async () => [] }).map((t) => t.name)
@@ -658,10 +627,7 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
     expect(answer).toContain('the page said something useful')
     expect(await open.run({ url: 'naver' }, CTX)).toContain('full web address')
     expect(await open.run({ url: 'https://walled.example/' }, CTX)).toContain('sign in')
-    // Furniture is a page of links, not merely a short one: a notice can be
-    // two sentences and still be the whole answer.
     expect(await open.run({ url: 'https://thin.example/' }, CTX)).toContain('mostly links')
-    // Asked for again, the list is what was wanted: it comes as its links.
     const listed = await open.run({ url: 'https://thin.example/' }, CTX)
     expect(listed).toContain('a list of links')
     expect(listed).toContain('메뉴 3 — https://thin.example/3')
@@ -701,13 +667,11 @@ describe('cometTools — the web, given as freedoms rather than destinations', (
     expect(found).toContain(saved.id)
 
     const run = tools.find((t) => t.name === 'run_procedure')!
-    // What goes in the blank has to come from something read this turn.
     const having = { ...CTX, read: 'the release notes say we shipped it on Thursday' }
     expect(await run.run({ id: saved.id, slots: { summary: 'shipped it' } }, having)).toBe('the procedure finished')
     expect(calls).toEqual([{ id: saved.id, slots: { summary: 'shipped it' } }])
     expect(await run.run({}, CTX)).toContain('needs the procedure id')
 
-    // And a value out of nowhere never reaches the website.
     calls.length = 0
     const invented = await run.run({ id: saved.id, summary: '없음' }, { ...CTX, read: 'nothing of the sort' })
     expect(calls).toEqual([])
@@ -726,16 +690,12 @@ describe('propose_edit and propose_file — writing is always a proposal', () =>
     expect(cards).toHaveLength(1)
     expect(cards[0]!.cardType).toBe('supersede')
     expect(cards[0]!.targets).toEqual([note.front.id])
-    // The note body itself is untouched until the person approves.
     expect((await readdir(paths.notes)).length).toBe(1)
     expect(await edit.run({ id: 'n-does-not-exist', body: 'x' }, CTX)).toContain('nothing to edit')
   })
 
 })
 
-
-// The answer is written from what travelled to it, so what travels matters:
-// a look-up that found nothing must never push out the page that answered.
 describe('carriedSteps', () => {
   const barren = (tool: string) => ({ tool, args: {}, observation: 'nothing in the vault' })
   const finding = (tool: string, text: string) => ({ tool, args: {}, observation: text.padEnd(300, ' .') })
@@ -763,10 +723,6 @@ describe('carriedSteps', () => {
   })
 })
 
-// A follow-up ("what was that date again?") is answered from the turn before
-// it. The conversation has to be in front of the model, above the rule that
-// tells it to read it, or the loop goes looking and asks for what the person
-// was just told.
 describe('a follow-up sees the conversation', () => {
   it('puts the earlier turns in the prompt, above the rules', async () => {
     const prompts: string[] = []
@@ -787,13 +743,10 @@ describe('a follow-up sees the conversation', () => {
     expect(prompt).toContain('it changes on the 2nd')
     expect(prompt.indexOf('it changes on the 2nd')).toBeLessThan(prompt.indexOf('Tools:'))
     expect(prompt).toContain('call answer with it')
-    // And answering leads the menu, where a small model reaches first.
     expect(prompt.indexOf('- answer:')).toBeLessThan(prompt.indexOf('- search_memory:'))
   })
 
   it('still leads with the answer when a saved-job check was seeded first', async () => {
-    // The check before the first model call puts a fact in the record. It is
-    // not a move, and counting it as one hid the conversation behind a search.
     const prompts: string[] = []
     const engine = new MockEngine({
       'COMET-STEP': (prompt) => {
@@ -825,9 +778,7 @@ describe('find_procedure: a shared verb is not a match', () => {
       steps: [{ kind: 'open', url: 'https://portal.example/log' }, { kind: 'type', target: { text: 'Entry' }, text: '{{entry}}' }],
     })
     const find = cometTools({ paths, retrieve: async () => [] }).find((t) => t.name === 'find_procedure')!
-    // The work log's verb alone does not make a weekly report the work log.
     expect(await find.run({ task: '주간 보고서 사이트에 올리기' }, CTX)).toContain('nothing written down matches')
-    // The subject named is enough, whatever the verb's ending.
     expect(await find.run({ task: '오늘 업무일지 올려줘' }, CTX)).toContain('found "업무일지 올리기"')
     expect(await find.run({ task: '포털 공지 확인해줘' }, CTX)).toContain('found "포털 공지 확인"')
   })
@@ -857,7 +808,6 @@ describe('a blank is filled from the ask, and keeps what it was shown when the a
     const told = await run.run({ id: routine.id, slots: { Room: '회의실 C' } }, { task: '회의실 C 내일 오후 3시로 예약해줘', read: '' })
     expect(told).toContain('booked')
     expect(seen[0]).toEqual({ Room: '회의실 C', When: '내일 10시' })
-    // A value from nowhere - not the ask, not a page - is still refused.
     const refused = await run.run({ id: routine.id, slots: { Room: '회의실 Z', When: '모레' } }, { task: '회의실 예약해줘', read: '' })
     expect(refused).toContain('nowhere in anything you have read')
   })
@@ -910,7 +860,6 @@ describe('progressive-disclosure skills reach the comet', () => {
     const prompt = stepPrompt('deploy it', [], [], undefined, undefined, undefined, true, skills)
     expect(prompt).toContain('engram-sample: When deploying the sample service')
     expect(prompt).toContain('open_skill')
-    // The index is names and descriptions only — never the how-to body.
     expect(prompt).not.toContain('- verify')
   })
 

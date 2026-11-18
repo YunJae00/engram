@@ -1,20 +1,12 @@
 import type { AgentLoopOptions } from './agent-loop.js'
 import { contextExcerpt } from './context-excerpt.js'
 
-// The latest turns always travel; earlier ones join, newest first, while
-// there is room, so what was found before - an address, a value, an answer -
-// is still in front of a fresh session. The person's words keep more room
-// than the comet's own.
 const HISTORY_TURNS = 4
 const HISTORY_ROOM = 32_000
 const HISTORY_CHARS = 8_000
 const HISTORY_REQUEST_CHARS = 6000
 
-// Requests older than the recent window still carry the rules of work that
-// continues days later; the first request and the latest ones fit first.
 const EARLIER_REQUESTS_CHARS = 12000
-// Suggested replies are the comet's guesses, not the person's words; sent back
-// they would let an invented value pass as already in the conversation.
 const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
 export function withoutReplies(text: string): string {
   if (!REPLIES_OPEN.test(text)) return text
@@ -56,8 +48,6 @@ function recentTurns(history: NonNullable<AgentLoopOptions['history']>): string[
   return lines
 }
 
-// c15c (cause D, H1: a lunch pick tied to a trip's bad knee): memory and earlier turns rode along with no word on when they belong, so the
-// model used every fact it had. One rule, by meaning, for any fact and any ask: wherever remembered facts or earlier turns enter a prompt.
 export const RELEVANCE_RULE = 'A fact you remember or that was said earlier goes into an answer only when the current ask is about that thing (a follow-up that points back at it is about it, and uses all of it) or when the answer would be wrong or unsafe without it; otherwise it is neither used nor mentioned.'
 
 export function conversation(history: AgentLoopOptions['history']): string[] {

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { kindChecked, withItems } from '../src/company-tools.js'
 import { judgedItems, setJudgeLog } from '../src/item-check.js'
 
-// stack-15. Wordings are not the harness's: 별빛 도서관 개관, 수원 제과점 개업.
 describe('c15a r3 #1: a first-hand fact with the very same words as a second-hand one in hand still takes its place', () => {
   it('the official page replaces the blog, word for word the same sentence', async () => {
     const old = { text: '별빛 도서관은 3월 2일 개관해요', url: 'https://blog.example/old', site: '블로그' }

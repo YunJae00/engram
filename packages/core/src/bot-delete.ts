@@ -4,7 +4,6 @@ import type { VaultPaths } from './vault.js'
 import { loadBots } from './bots.js'
 import { loadBotMemory } from './bot-memory.js'
 
-// Counts for the delete confirmation: routines and facts go with the bot; archived chats stay on disk.
 export async function deleteSummary(paths: VaultPaths, id: string): Promise<{ routines: number; facts: number; archivedChats: number }> {
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) throw new Error('invalid comet id')
   const bot = (await loadBots(paths)).find((b) => b.id === id)

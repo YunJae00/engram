@@ -8,10 +8,6 @@ import { frontmatterSchema, type NoteFrontmatter } from './schema.js'
 import { serializeNote } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-// Bulk import: recursive .md/.txt collection, COPY only —
-// originals are never touched. Imported notes are searchable immediately;
-// absorption (linking, dating, dedup) happens gradually via the sweep queue.
-
 export interface ImportScan {
   files: string[]
   totalBytes: number
@@ -66,9 +62,6 @@ export interface ImportReport {
   queued: number
 }
 
-// Folder-name → note type inference: a vault exported from another tool
-// usually encodes the type in its directory names (en + ko synonyms). Explicit
-// frontmatter always wins; unmapped folders stay 'imported'.
 const FOLDER_TYPES: Array<[RegExp, string]> = [
   [/^troubleshootings?$|^트러블슈팅$/i, 'troubleshooting'],
   [/^decisions?$|^결정$/i, 'decision'],
@@ -82,14 +75,12 @@ const FOLDER_TYPES: Array<[RegExp, string]> = [
 
 export function inferTypeFromFolder(relPath: string): string | null {
   const parts = relPath.split(/[\\/]/)
-  if (parts.length < 2) return null // file at the import root — no folder to read
+  if (parts.length < 2) return null
   const segment = parts[0]!
   for (const [pattern, type] of FOLDER_TYPES) if (pattern.test(segment)) return type
   return null
 }
 
-// Existing frontmatter is mapped onto the schema; missing fields are filled.
-// Files without frontmatter come in verbatim as the note body.
 export async function runImport(
   paths: VaultPaths,
   folder: string,
@@ -125,10 +116,6 @@ export async function runImport(
   return { imported: done, queued: state.pending.length }
 }
 
-// One-time repair for vaults imported before folder-type inference existed:
-// 'imported' notes whose source folder maps to a known type are reclassified.
-// `updated` stays untouched on purpose — a metadata correction must not push
-// the note back into the next sweep's delta.
 export async function reclassifyImported(paths: VaultPaths): Promise<number> {
   let changed = 0
   for (const note of await loadNotes(paths)) {

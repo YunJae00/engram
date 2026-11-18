@@ -1,8 +1,3 @@
-// A question put to the person, with the ways forward beside it. Small
-// models write "do you want A or B?" as prose and the person types an answer
-// back; offered as choices to tap, the same question is settled in one touch
-// and the answer lands in the thread as their own words.
-
 import { normalizeProse } from './prose.js'
 
 export interface Ask {
@@ -14,9 +9,6 @@ const OPTIONS_MIN = 2
 const OPTIONS_MAX = 4
 const OPTION_CHARS = 40
 
-// A choice that hands the work back is not a way forward. Offered "cancel"
-// beside "the deploy note", a person who delegated the job so as not to think
-// about it is being asked to think about it again.
 const NOT_FORWARD =
   /^(cancel|never ?mind|forget it|skip( it)?|stop|no|not|none|nothing|do it (myself|yourself)|i('ll| will) do it( myself)?|later|취소|그만|됐어요?|나중에|직접 할게요?|아니요?|없음|몰라요?)[.!]?$/i
 
@@ -51,7 +43,7 @@ export function parseAsk(observation: string): Ask | null {
     try {
       const parsed = JSON.parse(body) as Partial<Ask>
       if (typeof parsed.question === 'string') return parsed.question.trim() ? { question: normalizeProse(parsed.question.trim()), options: cleanOptions(parsed.options) } : null
-    } catch { /* Older observations used a plain-text question. */ }
+    } catch { }
   }
   const split = body.lastIndexOf(`\n${OPTIONS_HEAD}`)
   const question = normalizeProse((split < 0 ? body : body.slice(0, split)).trim())
@@ -68,11 +60,6 @@ export function parseAsk(observation: string): Ask | null {
   return { question, options }
 }
 
-// A prose answer that is really a question with two to four alternatives in
-// it: "the staging one or the production one?" or "A, B, or C?".
-// Only the last sentence counts, only when every alternative is short, and
-// anything that does not fit that shape exactly stays prose - a wrong chip
-// is worse than no chip.
 const ALTERNATIVES = /^(.{1,120}?)\s*(?:,|:)?\s*(?:or|아니면)\s+(.{1,60}?)\?$/i
 
 export function choiceQuestion(text: string): Ask | null {
@@ -83,10 +70,6 @@ export function choiceQuestion(text: string): Ask | null {
   const match = ALTERNATIVES.exec(last)
   if (!match) return null
   const head = match[1]!
-  // "X, A, B" - the alternatives are the trailing comma list; "would you
-  // like A" - the alternative is what follows the last verb-ish word, which
-  // no rule can find, so only the comma-separated and the "A or B" shapes are
-  // accepted.
   const parts = head.split(/,\s*/)
   const opener = parts[0]!
   const lead = opener.includes(':') ? opener.slice(opener.lastIndexOf(':') + 1).trim() : opener.split(/\s+/).slice(-3).join(' ')
@@ -95,8 +78,6 @@ export function choiceQuestion(text: string): Ask | null {
   return { question: last, options }
 }
 
-// The question as the person reads it in the thread: the ways forward follow it as plain lines to answer by typing, never as buttons.
-// One the question already names is not said twice.
 export function askText(question: string, options: string[] = []): string {
   const said = question.toLowerCase()
   const rest = options.filter(one => !said.includes(one.toLowerCase()))

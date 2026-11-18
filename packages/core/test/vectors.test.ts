@@ -13,9 +13,6 @@ import type { Note } from '../src/schema.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// The semantic index is model-agnostic pure math — exercised end to end with
-// tiny synthetic vectors (dim 3), no model anywhere near the tests.
-
 function note(id: string, body: string): Note {
   return {
     front: {
@@ -45,7 +42,6 @@ describe('vector index', () => {
     const back = await loadVectorIndex(paths, 'test-model')
     expect(back?.ids).toEqual(['a'])
     expect([...back!.vectors]).toEqual([1, 0, 0])
-    // A different model id must NOT reuse these vectors.
     expect(await loadVectorIndex(paths, 'other-model')).toBeNull()
   })
 
@@ -117,9 +113,6 @@ describe('hybridMerge (RRF)', () => {
     expect(merged.map((h) => h.id)).toEqual(['meaning'])
   })
 
-  // The golden-set regression (scripts/eval-retrieval.mts): CJK bigram
-  // overlap puts junk at lexical rank 1 while the true answer sits at
-  // semantic rank 1 with a strong cosine. Rank-only fusion buried it.
   it('a strong semantic rank-1 outvotes a junk lexical rank-1 the semantic channel never saw', () => {
     const merged = hybridMerge(
       [lex('bigram-junk', 0), lex('other-junk', 1)],

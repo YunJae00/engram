@@ -1,7 +1,6 @@
 import type { WebPage } from './errand.js'
 import { pageReport, PAGE_TEXT_CAP } from './page-report.js'
 
-// Only the model's transport is compacted; evidence retains the complete report.
 export function pageDelta() {
   let previous: WebPage | undefined
   let deltas = 0

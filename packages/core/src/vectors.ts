@@ -9,8 +9,6 @@ import type { VaultPaths } from './vault.js'
 const META_FILE = 'vectors.json'
 const BIN_FILE = 'vectors.bin'
 
-// What gets embedded per note: the title plus the head of the body — notes
-// are short and front-loaded, and a fixed slice keeps embed cost flat.
 export const EMBED_CHARS = 800
 
 export function embedTextOf(note: Note): string {
@@ -33,7 +31,6 @@ export interface VectorIndex {
   dim: number
   ids: string[]
   digests: string[]
-  // Row-major Float32: vectors[i] starts at i*dim.
   vectors: Float32Array
 }
 
@@ -44,10 +41,10 @@ export function emptyVectorIndex(model: string, dim: number): VectorIndex {
 export async function loadVectorIndex(paths: VaultPaths, model: string): Promise<VectorIndex | null> {
   try {
     const meta = JSON.parse(await readFile(join(paths.cache, META_FILE), 'utf8')) as VectorMeta
-    if (meta.model !== model) return null // model switched — the index is void
+    if (meta.model !== model) return null
     const raw = await readFile(join(paths.cache, BIN_FILE))
     const vectors = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4)
-    if (vectors.length !== meta.ids.length * meta.dim) return null // torn write
+    if (vectors.length !== meta.ids.length * meta.dim) return null
     return { ...meta, vectors }
   } catch {
     return null
@@ -61,15 +58,11 @@ export async function saveVectorIndex(paths: VaultPaths, index: VectorIndex): Pr
   await writeFile(join(paths.cache, META_FILE), JSON.stringify(meta))
 }
 
-// Notes whose embedding is missing or whose content changed since it was
-// made — the incremental work list for the background indexer.
 export function staleForEmbedding(notes: Note[], index: VectorIndex): Note[] {
   const have = new Map(index.ids.map((id, i) => [id, index.digests[i]!]))
   return notes.filter((n) => have.get(n.front.id) !== embedDigestOf(n))
 }
 
-// Unit-normalize in place-ish (returns a copy when scaling is needed) so the
-// query scan can be a pure dot product — cosine without per-row norms.
 function normalized(vector: Float32Array): Float32Array {
   let norm = 0
   for (let i = 0; i < vector.length; i++) norm += vector[i]! * vector[i]!
@@ -80,10 +73,6 @@ function normalized(vector: Float32Array): Float32Array {
   return out
 }
 
-// Fold freshly-embedded rows in (replacing stale rows) and drop rows whose
-// notes no longer exist. Rows are stored UNIT-NORMALIZED (models emit unit
-// vectors already; this is the defensive guarantee the dot-product scan
-// relies on). Returns a NEW index.
 export function applyEmbeddings(
   index: VectorIndex,
   updates: { id: string; digest: string; vector: Float32Array }[],
@@ -107,7 +96,7 @@ export function applyEmbeddings(
 
 export interface SemanticHit {
   id: string
-  score: number // cosine similarity
+  score: number
 }
 
 export function cosineTopK(index: VectorIndex, query: Float32Array, k: number): SemanticHit[] {
@@ -124,22 +113,11 @@ export function cosineTopK(index: VectorIndex, query: Float32Array, k: number): 
   return hits.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k)
 }
 
-// Reciprocal-rank fusion: lexical and cosine scores live on incompatible
-// scales, so ranks are fused — but the semantic vote scales with the cosine.
-// A rank is only "first among what this channel saw": CJK bigram overlap can
-// put a junk note at lexical rank 1 while the true answer sits at semantic
-// rank 1 with a strong cosine, and pure rank fusion buries it. So
-// near-paraphrase evidence (≥ SEMANTIC_STRONG) outvotes any single lexical
-// rank, a barely-above-floor match stays a hint below lexical, and a note
-// found by BOTH channels still rises above either alone. Calibrated against
-// scripts/eval-retrieval.mts (apps/desktop).
 const RRF_K = 60
 const LEXICAL_WEIGHT = 1.0
 const SEMANTIC_WEIGHT_MIN = 0.6
 const SEMANTIC_WEIGHT_MAX = 1.5
-// Above this cosine a hit reads as "same subject, other words" for bge-m3.
 const SEMANTIC_STRONG = 0.65
-// Cosine floor: below this the "match" is noise, not meaning.
 export const SEMANTIC_MIN_SCORE = 0.35
 
 function semanticWeight(score: number): number {

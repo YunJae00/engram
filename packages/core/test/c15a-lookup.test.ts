@@ -3,8 +3,6 @@ import { checkedSearch, judgedItems } from '../src/item-check.js'
 import { kindChecked } from '../src/company-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
 
-// c15a (cause K, R3: three rows that were not funding news filled five, the loop ended 8 s into a 20 s deadline; cause L, R2: a café post
-// and a wiki cited where news pages existed). Wordings are in no harness row.
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (n: number, title: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — x — 11월 ${n}일`
 function search(outs: string[]): AgentTool & { queries: string[] } {
@@ -24,7 +22,6 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
     const verdicts = ['{"keep":[1,2],"unsure":[3,4],"asked":4,"search":""}', '{"keep":[1,2],"unsure":[3,4],"asked":4,"search":"제약 바이오 지분 인수 계약"}', '{"keep":[1,2,5,6],"unsure":[3,4],"asked":4,"search":""}']
     const out = await checkedSearch(s, { ask: () => ASK, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => 0 }).run({ query: '바이오 기업 인수' }, { task: ASK })
     expect(s.queries).toEqual(['바이오 기업 인수', '제약 바이오 지분 인수 계약'])
-    // The retry is told every search already run.
     expect(prompts[1]).toContain('unlike every search already run ("바이오 기업 인수")')
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/5', 'https://news.example/6'])
     expect(out).toContain('They hold the 4 asked for: list 4 of them.')
@@ -46,7 +43,6 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
       expect(out, ask).toContain(`They hold the ${n} asked for: list ${n} of them.`)
       expect(urls(out), ask).not.toContain('https://news.example/1')
     }
-    // The judge's "asked" is parsed: a number, null, or absent.
     const items = [{ text: 'a' }, { text: 'b' }]
     expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":3}', 1000, { tried: [] }))?.asked).toBe(3)
     expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":null}', 1000, { tried: [] }))?.asked).toBeNull()
@@ -57,7 +53,6 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
     const rows = [row(1, '하늘폰 X 출시일 정리 - 위키', 'wiki.example'), row(2, '하늘전자, 하늘폰 X 12월 5일 출시', 'news.example')]
     const out = await checkedSearch(search([page('하늘폰 X 출시일', rows)]), { ask: () => '하늘폰 X 출시일 알려줘', write: async () => '{"keep":[1,2],"secondhand":[1],"asked":null}', since: 0, now: () => 0 }).run({ query: '하늘폰 X 출시일' }, { task: '' })
     expect(urls(out)).toEqual(['https://news.example/2', 'https://wiki.example/1'])
-    // The same on a teammate's facts.
     const data = await kindChecked({ facts: [{ text: '하늘폰 X는 12월 5일 출시 (카페 글)', url: 'https://cafe.example/9', site: '카페' }, { text: '하늘전자, 하늘폰 X 12월 5일 출시', url: 'https://news.example/2', site: '뉴스' }] }, '하늘폰 X 출시일', async () => '{"keep":[1,2],"secondhand":[1]}', 1000)
     expect(data?.facts.map(f => f.url)).toEqual(['https://news.example/2', 'https://cafe.example/9'])
   })
@@ -72,7 +67,6 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
     const merged = withItems({ facts: [blog] }, out, true)
     expect(merged.facts.map(f => f.url)).toEqual([city.url, other.url])
     expect(merged.facts.some(f => 'instead' in f)).toBe(false)
-    // In hand first-hand, the new one second-hand: the new one is that entry found again and goes, as before.
     const back = await kindChecked({ facts: [blog] }, '구립 도서관 개관 소식', async () => '{"keep":[1,2],"same":[[1,2]],"secondhand":[2]}', 1000, [city])
     expect(back?.facts).toEqual([])
   })
@@ -84,7 +78,6 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
     const write = async (): Promise<string | undefined> => {
       calls++
       if (calls === 1) return '{"keep":[1],"asked":4,"search":""}'
-      // The retry hangs; the person says stop 50 ms in.
       setTimeout(() => stop.abort(), 50)
       return new Promise<string | undefined>(() => undefined)
     }

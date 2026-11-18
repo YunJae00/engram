@@ -49,7 +49,6 @@ describe('J2 link enrichment stores per-link reasons', () => {
     const { paths, target, corpus } = await fixture('j2-roundtrip')
     const spec = await buildJ2(paths, '', target, corpus, NOW)
     await spec.apply(JSON.stringify({ links: [{ id: 'n-rel-0001', reason: '근거 노트' }] }))
-    // A second read from disk goes through parseNote — the reason must survive.
     const reread = await readNote(paths, 'n-target-0001')
     expect(reread.front.link_reasons?.['n-rel-0001']).toBe('근거 노트')
   })

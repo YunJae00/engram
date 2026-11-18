@@ -20,8 +20,6 @@ function cellName(row: number, col: number): string {
   return `${letters}${row}`
 }
 
-// Only a read-back formula identifies a total. Numeric coincidences are not evidence.
-// Other formulas and references outside this observation remain for the model to verify.
 export function arithmeticDiscrepancies(rows: unknown[][], range?: string, formulas?: unknown[][], checked?: Set<string>): Discrepancy[] {
   const box = area(range)
   const rectangular = (grid: unknown): grid is unknown[][] => Array.isArray(grid) && grid.length === box?.height && grid.every(row => Array.isArray(row) && row.length === box.width)
@@ -60,7 +58,6 @@ export function officeArithmeticFault(steps: AgentLoopStep[]): string | undefine
       const identity = JSON.stringify([value.workbook.toLowerCase(), value.sheet.toLowerCase()])
       const checked = new Set<string>()
       const current = arithmeticDiscrepancies(value.rows, value.range, value.formulas, checked)
-      // Partial or values-only reads cannot clear a formula finding.
       if (Array.isArray(value.formulas) && value.formulas.length === box.height && value.formulas.every((row: unknown) => Array.isArray(row) && row.length === box.width)) {
         for (let r = 0; r < box.height; r++) for (let c = 0; c < box.width; c++) {
           const cell = cellName(box.row + r, box.col + c)
@@ -70,7 +67,7 @@ export function officeArithmeticFault(steps: AgentLoopStep[]): string | undefine
       for (const fault of current) {
         faults.set(`${identity}:${fault.cell}`, `${value.workbook} / ${value.sheet} / ${fault.cell} shows ${fault.got}; its observed SUM formula evaluates to ${fault.expected}`)
       }
-    } catch { /* Failed reads cannot replace previous evidence. */ }
+    } catch { }
   }
   return faults.size ? `A read-back SUM result does not add up: ${[...faults.values()].slice(0, 5).join('; ')}. Verify the calculation and read the affected cells again before reporting completion.` : undefined
 }

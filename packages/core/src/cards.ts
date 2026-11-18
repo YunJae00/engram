@@ -7,15 +7,8 @@ import { createNote, loadNotes, mergeInto, readNote, retireNote, supersedeNote, 
 import { recordVerdict, type VerdictActor } from './verdicts.js'
 import type { VaultPaths } from './vault.js'
 
-// editedSinceResolution is part of the card contract librarian.ts imports from
-// here — the implementation moved to card-digests.js, the import path did not.
 export { editedSinceResolution } from './card-digests.js'
 
-// Review cards live in _views/cards/*.md with frontmatter
-// cardType/targets/rationale/proposed. Card ids hash their content, so the
-// same proposal never creates a second file (sweep idempotency).
-// 'dismissed' = resolved without the user answering: a sibling card about the
-// same notes was decided first, so this question became moot.
 export const CARD_TYPES = ['new-note', 'supersede', 'conflict', 'stale', 'merge', 'chronology', 'closure'] as const
 export type CardType = (typeof CARD_TYPES)[number]
 export type CardStatus = 'proposed' | 'approved' | 'rejected' | 'dismissed'
@@ -28,8 +21,6 @@ export interface Card {
   proposed: string
   status: CardStatus
   created: string
-  // When the card left 'proposed' (approve/reject/dismiss). Lets issuance
-  // tell "this finding was already answered" from "the notes changed since".
   resolved?: string
   target_digests?: Record<string, string>
   job?: string
@@ -63,18 +54,10 @@ function targetSetKey(targets: string[]): string {
   return [...targets].sort().join('\n')
 }
 
-// Returns the existing card untouched when the same proposal already exists.
-// Beyond the exact-id check, one PENDING question per (cardType, target set):
-// judgment jobs see the same pair from both notes' deltas and word the same
-// finding differently, which must not become two cards for the user.
 export async function createCard(paths: VaultPaths, input: CardInput, now: Date = new Date()): Promise<Card> {
   let id = cardIdFor(input)
   const prior = await readCardOrNull(paths, id)
   if (prior) {
-    // Identical content while pending (or resolved with untouched targets) is
-    // an idempotent replay — hand back the same file. But when a target was
-    // EDITED after the resolution, the question genuinely re-opened: mint a
-    // fresh file keyed on the prior resolution so replays stay idempotent.
     if (prior.status === 'proposed' || !(await editedSinceResolution(paths, prior))) return prior
     id = `${id}-r${(prior.resolved ?? prior.created).replace(/\D/g, '').slice(0, 12)}`
     const reopened = await readCardOrNull(paths, id)
@@ -98,8 +81,6 @@ export async function createCard(paths: VaultPaths, input: CardInput, now: Date 
     job: input.job,
   }
   await mkdir(cardsDir(paths), { recursive: true })
-  // Baseline for dismissOverlapping: only an approval that MOVES this content
-  // may kill the question later, so record it now, while the card is pending.
   await snapshotTargetDigests(paths, card)
   await writeCard(paths, card)
   return card
@@ -115,7 +96,6 @@ async function writeCard(paths: VaultPaths, card: Card): Promise<void> {
   await writeFile(cardFile(paths, id), matter.stringify(body, front))
 }
 
-// Stamp the one-attempt budget (see Card.held). Status stays 'proposed'.
 export async function holdCard(paths: VaultPaths, id: string, reason: string): Promise<void> {
   const card = await readCard(paths, id)
   card.held = reason.slice(0, 160)
@@ -151,11 +131,6 @@ export async function listCards(paths: VaultPaths, status?: CardStatus): Promise
   return cards
 }
 
-// "Already answered" memory: the latest non-pending card with the same
-// (cardType, target set). Judgment jobs re-derive the same finding from the
-// same notes every sweep — issuance compares target `updated` stamps against
-// this card's resolution time to drop re-asks while letting real edits
-// re-open the question. Stale cards are exempt (time itself changes them).
 export async function findResolvedTwin(
   paths: VaultPaths,
   cardType: CardType,
@@ -177,12 +152,8 @@ export async function hasOpenCardFor(paths: VaultPaths, targets: string[]): Prom
 }
 
 export interface ApproveOptions {
-  // conflict cards: which side survives
   choice?: 'A' | 'B' | 'both'
-  // stale cards: keep resets the clock, retire discards
   action?: 'keep' | 'retire'
-  // who decided — the verdict ledger separates the user's taste (training
-  // signal for a future style guide) from the librarian's own housekeeping.
   actor?: VerdictActor
 }
 
@@ -199,10 +170,6 @@ export async function approveCard(
       await createNote(paths, { body: card.proposed }, now)
       break
     case 'supersede': {
-      // The engine often proposes a replacement body copied from a newer note
-      // that already exists (J4 saw the old note's delta). Creating it again
-      // would add a duplicate the next sweep questions — point supersedes at
-      // the existing note instead.
       const existing = await findCurrentNoteForProposal(paths, card.proposed, card.targets)
       if (existing) {
         existing.front.supersedes = [...new Set([...existing.front.supersedes, ...card.targets])]
@@ -239,7 +206,6 @@ export async function approveCard(
       await mergeInto(paths, card.targets, card.proposed, now)
       break
     case 'chronology': {
-      // proposed = JSON [{id, happened_at}] — human-approved dates get pinned.
       const changes = JSON.parse(card.proposed) as { id: string; happened_at: string }[]
       for (const change of changes) {
         const note = await readNote(paths, change.id)
@@ -291,7 +257,6 @@ export async function answerCardWithText(
   if (card.status !== 'proposed') throw new Error(`card ${id} already ${card.status}`)
   const body = text.trim()
   if (!body) throw new Error('empty answer')
-  // Notes lead with a heading; a typed one-liner becomes its own title.
   const title = (body.split('\n')[0] ?? '').replace(/^#+\s*/, '').slice(0, 60)
   const headed = body.startsWith('#') ? body : `# ${title}\n\n${body}`
   await supersedeNote(paths, card.targets, { body: headed }, now)
@@ -300,8 +265,6 @@ export async function answerCardWithText(
   await snapshotTargetDigests(paths, card)
   await writeCard(paths, card)
   await dismissOverlapping(paths, card, now)
-  // A rewrite-from-scratch is the richest verdict of all: "the question was
-  // real, and here is the truth in my words."
   void recordVerdict(paths, { cardId: card.id, cardType: card.cardType, job: card.job, verdict: 'answered-in-text', actor: 'user' }, now)
   return card
 }
@@ -324,8 +287,6 @@ async function dismissOverlapping(paths: VaultPaths, resolved: Card, now: Date):
   for (const card of dismissedConflicts) await releaseDispute(paths, card, now)
 }
 
-// Un-dispute a dead conflict card's targets — unless another pending conflict
-// card still claims the note, or the resolution already retired it.
 async function releaseDispute(paths: VaultPaths, deadCard: Card, now: Date): Promise<void> {
   const stillClaimed = new Set(
     (await listCards(paths, 'proposed'))
@@ -341,7 +302,6 @@ async function releaseDispute(paths: VaultPaths, deadCard: Card, now: Date): Pro
       note.front.updated = now.toISOString()
       await writeNote(paths, note)
     } catch {
-      /* target gone — nothing to release */
     }
   }
 }
@@ -391,7 +351,6 @@ function normalizeBody(body: string): string {
 export async function updateCardProposed(paths: VaultPaths, id: string, proposed: string): Promise<Card> {
   const card = await readCard(paths, id)
   if (card.status !== 'proposed') throw new Error(`card ${id} already ${card.status}`)
-  // A rewrite is the richest verdict of all — "right question, wrong words".
   void recordVerdict(paths, { cardId: card.id, cardType: card.cardType, job: card.job, verdict: 'edited', actor: 'user' })
   card.proposed = proposed
   await writeCard(paths, card)
@@ -411,8 +370,6 @@ export async function rejectCard(
   card.resolved = now.toISOString()
   await snapshotTargetDigests(paths, card)
   await writeCard(paths, card)
-  // Rejecting a conflict finding means "not a real conflict" — the disputed
-  // status the finding pinned on its targets must lift with it.
   if (card.cardType === 'conflict') await releaseDispute(paths, card, now)
   await appendCounterexample(paths, `[${card.cardType}] ${reason}`, now)
   void recordVerdict(paths, { cardId: card.id, cardType: card.cardType, job: card.job, verdict: 'rejected', actor, reason }, now)

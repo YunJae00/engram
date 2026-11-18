@@ -1,23 +1,13 @@
 
 export interface TopicGroup {
   ids: string[]
-  // The shared subject that justified a merge — the word a person would use for
-  // the combined pile, and therefore the name it must be relabelled with.
-  // null when this topic is one community exactly as the graph found it.
   subject: string | null
 }
 
-// Ticket-shaped tokens ("TASK-244", "[ISSUE-12]") are identifiers, not subject
-// words — a cluster of tickets shares its project prefix by accident.
 const TICKET_RE = /^\[?[A-Z]+-\d+\]?$/
 const NUMBER_RE = /^\d+$/
-// Wrapping punctuation/symbols come off token edges ("[TASK-244]" →
-// "TASK-244", "'quotes'" → "quotes") but intra-token hyphens survive so the
-// ticket filter still sees its shape.
 const EDGE_TRIM_RE = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu
 
-// The meaningful words of a title, in order. Shared with the topic labeller so
-// a subject and a label are always read off the same tokens.
 export function titleTokens(title: string): string[] {
   return title
     .split(/\s+/)
@@ -25,37 +15,12 @@ export function titleTokens(title: string): string[] {
     .filter((token) => token.length >= 2 && !TICKET_RE.test(token) && !NUMBER_RE.test(token))
 }
 
-// Share of a community's titles a word must carry before it is what that
-// community is ABOUT rather than something it mentions.
 const DOMINANT_SHARE = 0.6
-// ...and it must carry at least two titles: one title is a coincidence.
 const MIN_SUBJECT_TITLES = 2
 const MAX_SUBJECT_COMMUNITIES = 2
 
-// Merge the communities that a person would call one topic, and say what the
-// merged topic is about.
-//
-// Two communities merge on a term only when all three hold:
-//   1. the term is dominant in BOTH (it is what each pile is about),
-//   2. the term appears in NO other community (it is distinctive, not a prefix),
-//   3. the link graph already joins them (an edge exists between the two).
-// (3) matters because communities come from different connected components too:
-// without it, two piles that never cite each other would fuse on a shared word
-// alone.
-//
-// Merging is transitive through union-find — {A,B} on one term and {B,C} on
-// another gives one topic — because each edge had to earn itself separately.
-// Deterministic throughout: terms are considered in sorted order and every tie
-// keeps the first.
-// What the vault has been TOLD about names, as opposed to what the counting can
-// guess. Both lists live in workspace/aliases.md and are human-editable.
 export interface SubjectKnowledge {
-  // Terms declared to mean the same thing. A dominant shared term that is
-  // aliased is allowed to merge any number of communities — this is what lets
-  // a project that grew past two dense clusters come back together.
   aliases?: string[][]
-  // Terms declared to span different things (ticket prefixes, repos, company
-  // names). Never a merge reason, however dominant.
   umbrella?: string[]
 }
 
@@ -65,11 +30,9 @@ export function mergeBySubject(
   adjacent: ReadonlyMap<string, ReadonlySet<string>>,
   known: SubjectKnowledge = {},
 ): TopicGroup[] {
-  // Case-folded for counting; the first original spelling is what we display.
   const display = new Map<string, string>()
   const dominant: Set<string>[] = []
   const titlesWith: Map<string, number>[] = []
-  // term → the communities it appears in at all, ascending
   const present = new Map<string, number[]>()
 
   communities.forEach((ids, c) => {
@@ -95,7 +58,6 @@ export function mergeBySubject(
     titlesWith.push(count)
   })
 
-  // Which community pairs the link graph already joins.
   const communityOf = new Map<string, number>()
   communities.forEach((ids, c) => {
     for (const id of ids) communityOf.set(id, c)
@@ -123,8 +85,6 @@ export function mergeBySubject(
     return root
   }
 
-  // Declared knowledge, if any. Absent, everything below behaves exactly as it
-  // did before — a vault that has never been told anything loses nothing.
   const umbrella = new Set((known.umbrella ?? []).map((t) => t.toLowerCase()))
   const named = new Set<string>()
   for (const group of known.aliases ?? []) for (const term of group) named.add(term.toLowerCase())
@@ -132,12 +92,7 @@ export function mergeBySubject(
   const claims: { term: string; at: number; score: number }[] = []
   for (const term of [...present.keys()].sort()) {
     const where = present.get(term)!
-    // Told this word spans different things → it can never justify a merge,
-    // no matter how dominant.
     if (umbrella.has(term)) continue
-    // Told this word names one thing → it may span any number of communities.
-    // Otherwise fall back to the old, cautious rule: exactly two, because
-    // beyond that the counting cannot tell a product from a prefix.
     const declared = named.has(term)
     if (!declared && where.length !== MAX_SUBJECT_COMMUNITIES) continue
     if (where.length < 2) continue
@@ -158,8 +113,6 @@ export function mergeBySubject(
     })
   }
 
-  // The merged topic's subject: whichever winning term covers the most titles.
-  // Claims are in sorted-term order, so an exact tie keeps the earlier term.
   const subjectOf = new Map<number, { term: string; score: number }>()
   for (const claim of claims) {
     const root = find(claim.at)

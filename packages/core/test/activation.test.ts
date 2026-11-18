@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { spreadActivation, triggeredNotes } from '../src/activation.js'
 import type { Note } from '../src/schema.js'
 
-// The brain-mimicking retrieval trio: activation spreads over links, Hebbian
-// synapses carry it further, salience makes memories come to mind first, and
-// trigger keywords fire prospective memories.
-
 const NOW = new Date('2026-07-22T09:00:00Z')
 
 function note(id: string, over: Partial<Note['front']> = {}): Note {
@@ -28,7 +24,6 @@ function note(id: string, over: Partial<Note['front']> = {}): Note {
 
 describe('spreadActivation', () => {
   it('reaches 2 hops along structural links, nearer notes scoring higher', () => {
-    // a(seed) — b — c — d : d is 3 hops out, beyond the default reach.
     const corpus = [
       note('a'),
       note('b', { derived_from: ['a'] }),
@@ -42,9 +37,8 @@ describe('spreadActivation', () => {
     expect(ids).toContain('c')
     expect(ids).not.toContain('d')
     expect(ids).not.toContain('island')
-    expect(ids).not.toContain('a') // seeds never re-surface
+    expect(ids).not.toContain('a')
     expect(hits.find((h) => h.id === 'b')!.score).toBeGreaterThan(hits.find((h) => h.id === 'c')!.score)
-    // via names the seed the activation flowed from
     expect(hits.find((h) => h.id === 'c')!.via).toBe('a')
   })
 
@@ -59,7 +53,6 @@ describe('spreadActivation', () => {
     ]
     const hits = spreadActivation(new Map([['a', 10]]), corpus, NOW)
     expect(hits[0]!.id).toBe('wired')
-    // …and a recall_links-only synapse works with NO structural link at all
     const hebbOnly = [note('a'), note('assoc', { recall_links: { a: { w: 5, at: NOW.toISOString() } } })]
     expect(spreadActivation(new Map([['a', 10]]), hebbOnly, NOW).map((h) => h.id)).toContain('assoc')
   })
@@ -84,7 +77,7 @@ describe('spreadActivation', () => {
     const fresh = hits.find((h) => h.id === 'fresh')!
     const stale = hits.find((h) => h.id === 'stale')
     if (stale) expect(fresh.score).toBeGreaterThan(stale.score)
-    else expect(fresh).toBeDefined() // year-old synapse may fade out entirely
+    else expect(fresh).toBeDefined()
   })
 })
 

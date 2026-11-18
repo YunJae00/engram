@@ -2,9 +2,6 @@ import { expect, it } from 'vitest'
 import { sessionShape } from '../src/agent-session-shape.js'
 import type { Engine, NativeTools } from '../src/engine/types.js'
 
-// grokbar D1/D5/F1: the comet searched the disk for "fixtures/meeting-notes.md", asked to leave the sandbox to move files, and asked
-// whether to make a copy of a deck it was told to change. The session rules now say where the person's paths are and which tools do it.
-// c13c: the Office and document rules go to a session offered document tools (sessionRules by capability).
 const DOC_TOOLS = ['file_read_package', 'file_edit_package', 'file_move'].map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
 it('tells a comet with its own tools where the workspace is and how files there and document files are read, moved and changed', () => {
   const native = (more: Partial<NativeTools> = {}): NativeTools => ({ cwd: '/vault/workspace/tasks/bot-1', readRoots: [], decide: async () => ({ behavior: 'allow' }), ...more })

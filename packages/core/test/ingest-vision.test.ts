@@ -6,7 +6,7 @@ import { prepareInboxItem, visionExtractor, VISION_MAX_BYTES } from '../src/inge
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-const PNG_BYTES = Buffer.from('89504e470d0a1a0a', 'hex') // magic only — content never parsed
+const PNG_BYTES = Buffer.from('89504e470d0a1a0a', 'hex')
 
 async function vaultWithImage(name: string) {
   const paths = await initVault(await tmpVaultRoot(name), { git: false })
@@ -53,7 +53,7 @@ describe('hybrid image ingest', () => {
         visionCalled = true
         return 'should not happen'
       },
-      visionMaxBytes: 4, // file is 8 bytes
+      visionMaxBytes: 4,
       ocr: async () => 'ocr text',
     })
     expect(visionCalled).toBe(false)
@@ -69,7 +69,6 @@ describe('visionExtractor', () => {
     vision: true,
     detect: async () => ({ installed: true, loggedIn: true }),
     async *run(job) {
-      // the transcription job must be read-only and name the workspace path
       expect(job.readOnly).toBe(true)
       expect(job.prompt).toContain('inbox/shot.png')
       yield { type: 'result', text: result() }

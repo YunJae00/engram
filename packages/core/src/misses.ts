@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
 const MISS_FILE = 'recall-misses.jsonl'
-const SCAN_TAIL = 400 // only the recent past matters
+const SCAN_TAIL = 400
 const REPEAT_THRESHOLD = 2
 
 interface Miss {
@@ -22,13 +22,11 @@ export async function recordRecallMiss(paths: VaultPaths, query: string, now: Da
 }
 
 export interface RepeatedMiss {
-  query: string // latest wording
+  query: string
   count: number
   last: string
 }
 
-// Gaps the user keeps reaching for: grouped by normalized key, most-missed
-// first. Only groups at/over the threshold are reported.
 export async function repeatedRecallMisses(paths: VaultPaths, limit = 3): Promise<RepeatedMiss[]> {
   let raw: string
   try {

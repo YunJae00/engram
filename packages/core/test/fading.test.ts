@@ -27,8 +27,6 @@ describe('fadingMemories', () => {
   const old = (id: string, extra: Partial<NoteFrontmatter> = {}) => note(id, 120, extra)
 
   it('surfaces a once-used long-quiet memory, skips the never-used and the vivid', () => {
-    // Practice makes memories durable (ACT-R): a note recalled twice fades
-    // only after a LONG silence — that is the physiology, not a bug.
     const usedDim = note('a-used', 365, {
       recall_count: 2,
       last_recalled: new Date(NOW.getTime() - 300 * 86_400_000).toISOString(),

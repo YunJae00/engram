@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { askText, choiceQuestion, cleanOptions, formatAsk, parseAsk } from '../src/ask.js'
 
-// Choices are ways forward the person taps; anything that hands the work back
-// is dropped, and a question with fewer than two real ways forward is free text.
 describe('cleanOptions', () => {
   it('keeps short distinct ways forward, at most four', () => {
     expect(cleanOptions(['Staging', 'Production', 'staging ', 'Both', 'Neither', 'Extra'])).toEqual(['Staging', 'Production', 'Both', 'Neither'])
@@ -60,7 +58,6 @@ describe('choiceQuestion', () => {
   })
 })
 
-// The thread has no choice buttons: the ways forward are read in the question itself and answered by typing.
 describe('askText', () => {
   it('puts the ways forward under the question as plain lines', () => {
     expect(askText('어느 쪽으로 할까요?', ['포털', '메일'])).toBe('어느 쪽으로 할까요?\n\n- 포털\n- 메일')

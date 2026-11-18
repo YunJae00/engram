@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { answersTheQuestion, asksForNote, deriveSearchTemplate, namesSubject, noteTitleFor, rankLinks, searchUrlFor } from '../src/search-template.js'
 
-// "Handle that" names nothing to handle. Looked up, it lands on whatever is
-// nearest; the only move that supplies the subject is asking for it.
 describe('noteTitleFor', () => {
   it('takes the asking off the request', () => {
     expect(noteTitleFor('이사 준비랑 집안일 합쳐서 할 일 목록 노트로 만들어줘')).toBe('이사 준비랑 집안일 합쳐서 할 일 목록')
@@ -37,9 +35,6 @@ describe('namesSubject', () => {
   })
 })
 
-// Naming search engines in code fixes the answer for everyone and can never
-// learn a company's own search. The shape is learned from one address the
-// person pastes — whichever search that happens to be.
 describe('deriveSearchTemplate', () => {
   it('learns the shape from a results address, whatever the site', () => {
     expect(deriveSearchTemplate('https://search.example.co.kr/search?query=ai+동향&where=web')).toBe(
@@ -76,9 +71,6 @@ describe('searchUrlFor', () => {
   })
 })
 
-// Measured: the comet followed the first link on a results page and landed on
-// the site's own browser promo. What separates a result from furniture is
-// whether it echoes the question.
 describe('rankLinks', () => {
   const links = [
     { text: '웨일 브라우저 다운로드', url: 'https://whale.example.com/ko/?wpid=theme1' },
@@ -100,8 +92,6 @@ describe('rankLinks', () => {
   })
 })
 
-// A question that names nothing lands on a page about something else, and a
-// colleague who writes that up has invented the job.
 describe('answersTheQuestion', () => {
   it('accepts a page that carries a word the question asked about', () => {
     expect(answersTheQuestion('deployment moves to Thursday afternoon', 'when is the deployment')).toBe(true)
@@ -112,7 +102,6 @@ describe('answersTheQuestion', () => {
   })
 
   it('sees past the ending glued on the end of a word', () => {
-    // What the person types and what the page says differ at the tail.
     expect(answersTheQuestion('공지사항: VPN 주소가 바뀝니다', '공지에서 VPN 주소 언제 바뀌어?')).toBe(true)
   })
 

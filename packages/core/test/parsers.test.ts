@@ -13,7 +13,7 @@ describe('chat paste parsers (golden)', () => {
     expect(parsed.messages).toHaveLength(3)
     expect(parsed.messages[0]).toMatchObject({ speaker: 'Jimin Park', time: '10:24 AM' })
     expect(parsed.messages[1]!.text).toContain('QA는 목요일까지')
-    expect(parsed.messages[1]!.text).toContain('스테이징은 오늘 오후에') // multi-line body preserved
+    expect(parsed.messages[1]!.text).toContain('스테이징은 오늘 오후에')
   })
 
   it('parses a KakaoTalk PC export with dates', async () => {

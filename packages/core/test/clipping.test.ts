@@ -23,7 +23,7 @@ describe('url clipping', () => {
     expect(clip.text).toContain('Faster sweeps & better cards.')
     expect(clip.text).toContain('Second paragraph.')
     expect(clip.text).not.toContain('alert')
-    expect(clip.text).not.toContain('Home | Docs') // article beats nav
+    expect(clip.text).not.toContain('Home | Docs')
   })
 
   it('clipUrl renders markdown via injected fetch', async () => {

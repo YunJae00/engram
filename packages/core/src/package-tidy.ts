@@ -1,8 +1,5 @@
 import JSZip from 'jszip'
 
-// A generated Office package can declare parts it never wrote. Office opens
-// it anyway, but a strict reader refuses it, so a file Engram made would be
-// refused by Engram's own copy step. Only declarations of absent parts go.
 export async function withoutMissingParts(data: Buffer): Promise<Buffer> {
   const zip = await JSZip.loadAsync(data)
   const types = zip.file('[Content_Types].xml')

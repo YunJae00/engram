@@ -40,8 +40,6 @@ export async function sweepGarden(paths: VaultPaths, notes: Note[], now: Date = 
   for (const candidate of gardenCandidates(notes, now)) {
     try {
       const note = await readNote(paths, candidate.front.id)
-      // Re-check against the FILE, not the index: a recall stamped between
-      // the index snapshot and now must win.
       if (note.front.status !== 'current') continue
       note.front.status = 'archived'
       note.front.updated = now.toISOString()
@@ -53,7 +51,7 @@ export async function sweepGarden(paths: VaultPaths, notes: Note[], now: Date = 
         reason: note.front.last_recalled === undefined ? 'never-recalled' : 'recall-cold',
       })
     } catch {
-      continue // a vanished or unreadable note is not the gardener's problem
+      continue
     }
   }
   if (events.length > 0) {
@@ -63,7 +61,6 @@ export async function sweepGarden(paths: VaultPaths, notes: Note[], now: Date = 
   return events
 }
 
-// The brief's receipt: how many notes went to the shelf in the window.
 export async function countGardenEvents(paths: VaultPaths, sinceMs: number): Promise<number> {
   try {
     const raw = await readFile(ledgerFile(paths), 'utf8')

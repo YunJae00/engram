@@ -3,11 +3,6 @@ import { readNudgeLedger, recordNudge, snoozeMultiplier, type NudgeEvent } from 
 import { initVault, type VaultPaths } from '../src/index.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// M9-4: silence is an answer, and now it is a REMEMBERED answer. The ledger
-// records every showing and what became of it; a card type the user keeps
-// waving away earns a longer snooze. These tests pin the thresholds and the
-// do-not-disturb boundaries.
-
 let paths: VaultPaths
 beforeEach(async () => {
   paths = await initVault(await tmpVaultRoot('notifications'), { git: false })
@@ -26,7 +21,6 @@ describe('the ledger', () => {
     const events = await readNudgeLedger(paths)
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ cardType: 'conflict', action: 'shown' })
-    // A torn write must not poison the history.
     const { appendFile } = await import('node:fs/promises')
     const { join } = await import('node:path')
     await appendFile(join(paths.cache, 'nudge-ledger.jsonl'), '{"broken\n')
@@ -50,7 +44,6 @@ describe('snoozeMultiplier — ignoring a type quiets it', () => {
     const always: NudgeEvent[] = []
     for (let i = 0; i < 6; i++) always.push(event('brief', 'shown'), event('brief', 'later'))
     expect(snoozeMultiplier(always, 'brief')).toBe(6)
-    // The grudge is per type — conflicts are unaffected by brief fatigue.
     expect(snoozeMultiplier(always, 'conflict')).toBe(1)
   })
 })

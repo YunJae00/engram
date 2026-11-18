@@ -21,7 +21,6 @@ describe('closureCandidates', () => {
   it('pairs open loops with session conclusions new since the last sweep', async () => {
     await loopOf('n-loop-a', '# 포팅 마무리\n\n다운로드 버튼 회귀 수정이 남음.')
     await conclusionOf('n-sess-a', '# 세션 결론\n\n다운로드 버튼 회귀 수정 완료, dev 배포까지 확인.')
-    // A session note from BEFORE the window is not "what just happened".
     await createNote(paths, { id: 'n-sess-old', body: '# 옛 결론\n\n무관.', origin: 'session' }, EARLIER)
     const all = [await readNote(paths, 'n-loop-a'), await readNote(paths, 'n-sess-a'), await readNote(paths, 'n-sess-old')]
     const picked = closureCandidates(all, new Set(), EARLIER.toISOString(), NOW)
@@ -65,14 +64,12 @@ describe('what a verdict may do', () => {
     await conclusionOf('n-done', '# 세션 결론\n\n리뷰 반영 완료, 머지됨.')
     const effects = await applyVerdict([{ loop: 'n-loop', closed_by: 'n-done', reason: '머지 명시' }])
     expect(effects[0]).toContain('closure proposed')
-    // The loop still asks — only the user's click may close it.
     expect((await readNote(paths, 'n-loop')).front.open_loop).toBe(true)
     const cards = await listCards(paths, 'proposed')
     expect(cards).toHaveLength(1)
     expect(cards[0]!.cardType).toBe('closure')
     expect(cards[0]!.targets).toEqual(['n-loop'])
     expect(cards[0]!.proposed).toBe('n-done')
-    // A re-run proposing the same closure lands on the same card, not a twin.
     await applyVerdict([{ loop: 'n-loop', closed_by: 'n-done', reason: '재실행' }])
     expect(await listCards(paths, 'proposed')).toHaveLength(1)
   })
@@ -87,8 +84,6 @@ describe('what a verdict may do', () => {
     ])
     expect(effects).toEqual(['no loops to close'])
     expect((await readNote(paths, 'n-loop')).front.open_loop).toBe(true)
-    // Evidence created BEFORE the loop cannot fulfil it: rebuild the pair with
-    // the conclusion older than the loop and assert the guard holds.
     const olderEvidence = await createNote(
       paths,
       { id: 'n-early', body: '# 이른 결론\n\n끝냈다.', origin: 'session' },

@@ -5,9 +5,6 @@ interface PriorOutput { name: string; path: string }
 const LINK = /\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g
 const MAX_OUTPUTS = 40
 
-// Files this conversation already saved, found from the links in earlier
-// answers: a later day's session can reopen its own work instead of guessing
-// where it went. The latest revision of each name wins; missing files drop out.
 export async function priorOutputs(directory: string, history: { role: string; text: string }[] | undefined): Promise<PriorOutput[]> {
   const latest = new Map<string, string>()
   for (const turn of history ?? []) {
@@ -22,7 +19,7 @@ export async function priorOutputs(directory: string, history: { role: string; t
   }
   const found: PriorOutput[] = []
   for (const [name, id] of [...latest].slice(-MAX_OUTPUTS)) {
-    try { found.push({ name, path: await resolveArtifact(directory, id) }) } catch { /* A removed or foreign file is not offered. */ }
+    try { found.push({ name, path: await resolveArtifact(directory, id) }) } catch { }
   }
   return found
 }

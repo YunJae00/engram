@@ -20,7 +20,6 @@ describe('studying a job', () => {
     }
     expect(calls).toBe(1)
     expect(await studyGuard({ ...tool, name: 'outlook_read' }, () => true).run({}, { task: 'x' })).toBe('ok')
-    // Records sit behind menus: moving through a page is allowed, its hands refuse what would keep anything.
     expect(await studyGuard({ ...tool, name: 'page_steps' }, () => true).run({}, { task: 'x' })).toBe('ok')
     studying = false
     expect(await guarded.runRich!({}, { task: 'x' })).toEqual({ text: 'ok' })

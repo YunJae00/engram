@@ -7,17 +7,11 @@ import type { SkillCandidate, SkillDraft } from './skills.js'
 import { scriptLanguage } from './task-proposal.js'
 import type { VaultPaths } from './vault.js'
 
-// A job a comet could not do because it does not know the person's way of
-// doing it is not guessed at: it offers to go and learn it - reading their
-// past work where it shows, changing nothing - and comes back with a how-to
-// for them to confirm before it does the job that way.
-
 export interface Study {
   id: string
   botId: string
   what: string
   where: string[]
-  // The job it is learning for, done again once the how-to is kept.
   ask: string
   state: 'offered' | 'studying' | 'review' | 'kept' | 'declined'
   at: string
@@ -27,9 +21,6 @@ export interface Study {
 const file = (paths: VaultPaths) => join(paths.cache, 'studies.json')
 const KEEP = 40
 
-// Keep the warm session's tool shape stable, but enforce study consent at execution.
-// Records sit behind menus, so moving through a site is allowed; the page's
-// hands refuse any press that would keep or send something while studying.
 const STUDY_READS = new Set([
   'search_memory', 'read_note', 'find_procedure', 'open_skill', 'find_skills',
   'open_page', 'search_web', 'read_open_page', 'read_pages', 'look', 'verify', 'wait_for',
@@ -77,7 +68,6 @@ export function studyCandidate(study: Study): SkillCandidate {
   return { slug: `study--${createHash('sha256').update(`${study.what}\n${study.ask}`).digest('hex').slice(0, 24)}`, folder: 'Learned by studying', notes: [], source: 'turn' }
 }
 
-// The turn that studies: what to learn, where it shows, and that nothing is changed.
 export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): string {
   const language = scriptLanguage(study.ask)
   return [

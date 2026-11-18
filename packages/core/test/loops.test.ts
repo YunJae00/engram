@@ -33,7 +33,6 @@ describe('open loops (does this memory still want something from me?)', () => {
   })
 
   it('a date-only deadline lasts the whole day, and is overdue the next day', () => {
-    // due_at lands on UTC midnight; NOW is already 09:00 on that day.
     expect(loopUrgency(today, NOW)).toBe('today')
     expect(loopUrgency(today, new Date('2026-07-26T23:59:00Z'))).toBe('today')
     expect(loopUrgency(today, new Date('2026-07-27T00:01:00Z'))).toBe('overdue')

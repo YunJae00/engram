@@ -4,10 +4,6 @@ import { contentWords } from './search-template.js'
 import { passesPrivacyLint, type InstallResult, type SkillDraft } from './skills.js'
 import { safeAddress } from './work-map.js'
 
-// What the comet keeps on its own while it works: a fact about the person or
-// where their work lives, a way of doing a job, and a look back at earlier
-// conversations. Each writes or reads only the person's own vault.
-
 const FACT_CAP = 300
 const FACTS_PER_CALL = 3
 
@@ -21,7 +17,6 @@ export function keepInMindTool(deps: { keep(lines: string[], scope: 'everyone' |
       const replaces = (Array.isArray(args['replaces']) ? args['replaces'] : []).filter((one): one is string => typeof one === 'string' && one.trim().length > 0).slice(0, FACTS_PER_CALL)
       const facts = (Array.isArray(args['facts']) ? args['facts'] : [args['facts']])
         .filter((one): one is string => typeof one === 'string')
-        // An address is kept without the session values a link can carry.
         .map(one => one.replace(/https?:\/\/[^\s)]+/g, address => safeAddress(address) ?? '').replace(/\s+/g, ' ').trim().slice(0, FACT_CAP))
         .filter(Boolean)
         .slice(0, FACTS_PER_CALL)
@@ -57,8 +52,6 @@ export interface ChatTurns { name: string; turns: { role: 'user' | 'assistant'; 
 const SHOWN_HITS = 6
 const HIT_CHARS = 280
 
-// Earlier conversations, by the words in them: what was asked and answered,
-// newest first among equally close ones.
 export function searchChatsTool(deps: { chats(): Promise<ChatTurns[]> }): AgentTool {
   return {
     name: 'search_chats',

@@ -5,7 +5,6 @@ const list = (items: unknown) => ({ type: 'array', items })
 const object = (properties: Record<string, unknown>) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false })
 const cards = (kind: string) => object({ cards: list(object({ cardType: { type: 'string', enum: [kind] }, targets: list(text), rationale: text, proposed: text })) })
 
-// Runtime-constrained output prevents a malformed answer from blocking first setup.
 export const INITIAL_FILING_SCHEMAS: Partial<Record<JobKind, unknown>> = {
   J2: object({ links: list(object({ id: text, reason: text })) }),
   J3: cards('conflict'),

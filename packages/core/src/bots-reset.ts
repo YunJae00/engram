@@ -76,7 +76,6 @@ async function countSchedules(file: string): Promise<number | undefined> {
   return count
 }
 
-// Writes through a fresh scratch name so no pre-existing *.tmp is ever overwritten or consumed.
 async function publish(target: string, data: string): Promise<void> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const scratch = `${target}.reset-${process.pid}-${randomBytes(4).toString('hex')}.tmp`
@@ -152,7 +151,6 @@ async function addResetNotice(paths: VaultPaths, folder: string, count: number |
   const key = `bots-reset:${folder}`
   if ((await readNotices(paths)).some(item => item.key === key)) return
   const text = `이전 대화는 백업 폴더에 있어요 (.engram/backups/${folder})` + (count !== undefined && count >= 1 ? ` 일정 ${count}개가 멈췄어요` : '')
-  // addNotice writes through the fixed notices.json.tmp, so a leftover of that name is copied aside and linked back.
   const leftover = join(paths.cache, 'notices.json.tmp')
   const kept = join(paths.cache, `notices.json.kept-${process.pid}-${randomBytes(4).toString('hex')}`)
   const saved = await copyFile(leftover, kept, constants.COPYFILE_EXCL).then(() => true, (error: unknown) => {

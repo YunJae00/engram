@@ -13,8 +13,6 @@ describe('writeCapture — repeats do not become duplicate memories', () => {
     await rm(inbox, { recursive: true, force: true })
   })
 
-  // The bug this exists for: one todo list captured five times in eight
-  // seconds became five notes, each linking into every project it named.
   it('folds a burst of identical captures into one inbox item', async () => {
     const text = '- bge search\n- Engram chronicle\n- sample-project UAT'
     const results = []
@@ -23,7 +21,6 @@ describe('writeCapture — repeats do not become duplicate memories', () => {
     expect(await readdir(inbox)).toHaveLength(1)
     expect(results[0]!.duplicate).toBe(false)
     expect(results.slice(1).every((r) => r.duplicate)).toBe(true)
-    // every caller is told which item holds their text
     expect(new Set(results.map((r) => r.file)).size).toBe(1)
   })
 
@@ -45,7 +42,7 @@ describe('writeCapture — repeats do not become duplicate memories', () => {
   it('captures again once the earlier item has been filed away', async () => {
     const text = 'a thought worth keeping'
     const first = await writeCapture(inbox, text)
-    await rm(join(inbox, first.file)) // the librarian filed it
+    await rm(join(inbox, first.file))
     const second = await writeCapture(inbox, text)
     expect(second.duplicate).toBe(false)
     expect(await readdir(inbox)).toHaveLength(1)

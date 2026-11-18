@@ -1,11 +1,3 @@
-// Every AGENTS.md this app has ever written, by content hash.
-//
-// vault.ts writes the file once (flag:'wx') and never again, so a vault's copy
-// is whichever version shipped the day it was created — unless the user edited
-// it. Those two cases look identical on disk, and only one of them is safe to
-// overwrite. Hashing every historical template tells them apart exactly: a file
-// that matches any past release is untouched app content; anything else is the
-// user's.
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 
@@ -29,8 +21,6 @@ for (const rev of revisions) {
   } catch {
     continue
   }
-  // The template is one backticked literal. Take everything between the first
-  // backtick after the `=` and the last backtick in the file.
   const start = source.indexOf('`', source.indexOf('AGENTS_MD_V1'))
   const end = source.lastIndexOf('`')
   if (start < 0 || end <= start) continue

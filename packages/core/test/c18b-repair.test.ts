@@ -9,9 +9,6 @@ import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 import { foreignRun, messageUnits, quotedUnits, repairedWrite, spliced, withoutSentences } from '../src/written-check.js'
 
-// c18b (cause F): a check named its problem precisely and was enforced by regeneration (a whole new answer, or the host's template after
-// two refusals). Now it is enforced by a scoped repair: only the units a problem names change, the rest stays verbatim and in order.
-// Wordings are not the harness's: a 영업팀 월간 회의, 울산/포항/경주 케이블카 요금, 민지 → 하늘 연말 이벤트 문구.
 const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
 const none = JSON.stringify({ problems: [] })
 const problems = (...list: Record<string, unknown>[]): string => JSON.stringify({ problems: list })
@@ -26,7 +23,6 @@ function model(answers: { check?: (string | undefined)[]; repair?: (string | und
 const logged: string[] = []
 afterEach(() => { logged.length = 0; setReportLog(() => undefined) })
 
-// --- the guard: a repair touches only what a problem names ---
 const MEETING = ['영업팀 11월 월간 회의를 주요 결정 위주로 정리했어요.', '', '주요 결정', '- 1월 신규 요금제 출시로 확정', '- 대리점 수수료는 동결', '- 지방 순회 설명회는 2월로 미룸', '', '미결', '- 판촉물 업체는 다음 주에 확정한다.'].join('\n')
 
 test('a repair that only inserts the missing part is spliced in, every other line byte-equal and in order', () => {
@@ -34,7 +30,6 @@ test('a repair that only inserts the missing part is spliced in, every other lin
   const insert = JSON.stringify({ insert_after: { [String(units.length - 2)]: ['', '담당자별 업무', '- 김하준: 견적 비교표, 11월 28일까지', '- 오세린: 대리점 공지, 12월 2일까지'] } })
   const out = spliced(MEETING, insert, new Set())!
   expect(out).toContain('담당자별 업무')
-  // Every draft line is still there, in its order.
   const kept = out.split('\n').filter(line => MEETING.split('\n').includes(line))
   expect(kept.filter(Boolean)).toEqual(MEETING.split('\n').filter(Boolean))
 })
@@ -42,7 +37,6 @@ test('a repair that only inserts the missing part is spliced in, every other lin
 test('a repair that rewrites a line no problem names is discarded', () => {
   const rewrite = JSON.stringify({ replace: { '1': '11월 회의 정리예요.' }, insert_after: { '4': ['담당자별 업무', '- 김하준: 견적 비교표'] } })
   expect(spliced(MEETING, rewrite, new Set())).toBeUndefined()
-  // A repair that restates a kept line as a new one is the draft said again, not a repair.
   expect(spliced(MEETING, JSON.stringify({ insert_after: { '0': ['- 대리점 수수료는 동결'] } }), new Set())).toBeUndefined()
   expect(spliced(MEETING, 'not json', new Set())).toBeUndefined()
 })
@@ -58,7 +52,6 @@ test('register: the copied 한다체 line becomes 해요체 and nothing else cha
   const out = await repairedWrite({ data: { source: '' }, ask: '회의록 정리해줘', parts: true, draft: MEETING, check: quick, due: Date.now() + 15_000, log: o => logged.push(o) })
   expect(out.text).toBe(MEETING.replace('- 판촉물 업체는 다음 주에 확정한다.', '- 판촉물 업체는 다음 주에 정해요.'))
   expect(out.outcome).toBe('repaired')
-  // The repair prompt names the only unit it may replace; no recheck is spent on a register finding.
   expect(calls.filter(p => p.includes(REPAIR))[0]).toContain(`Only these units may be replaced: [${at[0]! + 1}]`)
   expect(calls.filter(p => p.includes(CHECK))).toHaveLength(1)
 })
@@ -79,7 +72,6 @@ test('a shape finding never withholds the draft: no repair, no time or no model 
   expect((await repairedWrite({ data: {}, ask: 'a', draft: '초안이에요.', shape, check: model({}).quick, due: Date.now() + 10 })).outcome).toBe('kept')
 })
 
-// --- the team report: shape is repaired once or accepted, never the host's template ---
 const part = (id: string, role: string, brief: string, rest: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: '', ...rest })
 const SOURCE = 'https://event.example.com/winter'
 const minji = part('m1', '민지', '연말 이벤트 조사', { then: { botId: 'bot-m2', who: '하늘', brief: '이벤트 문구 2개' }, data: { facts: [{ text: '12월 20일 성수동 겨울 마켓이 열려요.', url: SOURCE, site: '이벤트' }] } })
@@ -104,7 +96,6 @@ test('an items-first draft whose repair fails is still shown items first (r3), n
   setReportLog(line => logged.push(line))
   const { quick } = model({ write: [json(OPENS_WITH_WORK)], repair: [undefined] })
   const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000 })
-  // The writer's own sentence is kept, after the items it is about.
   expect(out.split('\n')[0]).toBe(`1. ${ITEMS[0]}`)
   expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.')
   expect(out.indexOf('하늘이 민지가')).toBeGreaterThan(out.indexOf(ITEMS[1]!))
@@ -120,9 +111,7 @@ test('a draft with one contradicting sentence loses only that sentence', async (
   expect(out).toBe(`민지가 찾아보니 12월 20일 성수동 겨울 마켓이 열려요. [이벤트](${SOURCE})`)
 })
 
-// --- stack-18: whose a piece is, is in the answer itself, even after an ack that named giver and receiver (rule 7; H5/C6 in c18b's run) ---
 test('the made-from sentence stays in the answer, said once, whatever the ack said', () => {
-  // The host's rendering no longer reads the turn's earlier lines: whose it is is always said once.
   const told = mergedReport([minji, haneul])
   expect(told.match(/하늘이 민지가 찾은 [^\n]*만든 거예요\./g)).toHaveLength(1)
   expect(told).toContain(SOURCE)
@@ -137,7 +126,6 @@ test('with the ack in the turn, a writer draft without a made-from sentence gets
   expect(calls[0]).not.toContain('toldBefore')
 })
 
-// --- the host's fallback writes sentences ---
 const cable = (id: string, topic: string, text: string, url: string): TeamMember => part(id, `${topic}요금`, `${topic} 케이블카 요금`, { topic, data: { facts: [{ text, url, site: topic }] } })
 test('the helpers fallback: three parts with evidenced values are three sentences, each with its link, no label cells', () => {
   const out = mergedReport([
@@ -151,20 +139,16 @@ test('the helpers fallback: three parts with evidenced values are three sentence
   expect(out).not.toMatch(/^\|/m)
   expect(out).not.toMatch(/내용|출처|요금:/)
   expect(out).toContain('포항 요금은 12,000원으로 나와 있어요.')
-  // The long quote is said by its value, never whole.
   expect(out).not.toContain('운영되고 있다')
   expect(out).toContain('울산은 요금은 성인 기준 15,000원으로 나와 있어요.')
   expect(out).toContain('경주 케이블카는 성인 왕복 1만 원이에요.')
 })
 
-// c18b r2: comparing three things is a table even on one shared point (rule 5), the cells short values; a part's own sentence has no cell,
-// so a part that brought one keeps the parts in sentences (a table would show it as not found).
 test('r2: three 수영장 compared on one point (자유수영 요금) are a table; two things on it are sentences', () => {
   const pool = (id: string, topic: string, fee: string): TeamMember => part(id, topic, `${topic} 수영장 요금`, { topic, data: { facts: [{ text: `자유수영 요금: ${fee}`, url: `https://pool.example/${id}`, site: '구청' }] } })
   const three = mergedReport([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원'), pool('c', '성동', '5,000원')], new Map(), [], true)
   expect(three).toMatch(/^\| \| 자유수영 요금 \|$/m)
   expect(three).toContain('| 용산 | 3,500원 [구청](https://pool.example/b) |')
-  // A part that found nothing keeps the page it looked at, in the table and in sentences.
   const none = part('d', '강서', '강서 수영장 요금', { topic: '강서', sources: ['https://pool.example/gangseo'], data: { facts: [] } })
   expect(mergedReport([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원'), none], new Map(), [], true)).toMatch(/^\| 강서 \| 못 찾았어요 \[[^\]]+\]\(https:\/\/pool\.example\/gangseo\) \|$/m)
   expect(mergedReport([pool('a', '마포', '4,000원'), none], new Map(), [], true)).toMatch(/강서는 이번엔 못 찾았어요\. \[[^\]]+\]\(https:\/\/pool\.example\/gangseo\)/)
@@ -188,7 +172,6 @@ test('dates are said the Korean way and a value clause is never the whole quote'
   expect(valueOf('맑음')).toBe('맑음')
 })
 
-// --- D3: a built deck's result closes the question of whether it is done ---
 test('a deck build result lists what was checked: the slide count, every title and the audit result', () => {
   const line = deckChecked([{ title: '연간 채용 현황' }, { title: '분기별 입사자' }, { title: '내년 계획' }])
   expect(line).toContain('3 slides')
@@ -207,21 +190,16 @@ test('ppt_build and word_write: a built file returns the checked verdict in its 
   expect(doc.checked).toContain('2 blocks')
 })
 
-// --- r2: what a repair may write is bounded like what it may touch ---
 test('r2: a register-only repair that adds a line, or English the draft and data do not hold, is discarded and the draft stands', async () => {
   const draft = '인사팀 회의는 목요일에 해요.\n채용 공고는 다음 달에 올린다.'
   const register = problems({ kind: 'register', quote: '채용 공고는 다음 달에 올린다.', why: '한다체' })
   const fixLine = { replace: { '2': '채용 공고는 다음 달에 올려요.' } }
-  // An insertion where the fix is a replacement only.
-  // r3: the draft stands, but its flagged line is never shown in another register: copied from the notes, it is said as a quotation.
   const notes = { source: '- 채용 공고는 다음 달에 올린다.' }, quoted = '인사팀 회의는 목요일에 해요.\n"채용 공고는 다음 달에 올린다"라고 적혀 있어요.'
   const added = model({ check: [register], repair: [JSON.stringify({ ...fixLine, insert_after: { '2': ['채용 일정은 따로 정리해 둘게요.'] } })] })
   expect((await repairedWrite({ data: notes, ask: '회의 정리해줘', draft, check: added.quick, due: Date.now() + 15_000 })).text).toBe(quoted)
   expect(added.calls.find(p => p.includes(REPAIR))).toContain('Add no new lines')
-  // English of the repair's own in a Korean message.
   const english = model({ check: [register], repair: [JSON.stringify({ replace: { '2': 'We will post the job ad next month.' } })] })
   expect((await repairedWrite({ data: notes, ask: '회의 정리해줘', draft, check: english.quick, due: Date.now() + 15_000 })).text).toBe(quoted)
-  // The same fix without either lands.
   const clean = model({ check: [register], repair: [JSON.stringify(fixLine)] })
   expect((await repairedWrite({ data: {}, ask: '회의 정리해줘', draft, check: clean.quick, due: Date.now() + 15_000 })).text).toBe('인사팀 회의는 목요일에 해요.\n채용 공고는 다음 달에 올려요.')
 })
@@ -234,7 +212,6 @@ test('r2: English the data holds (a product name) is not foreign; a missing part
   expect(spliced('결정만 있어요.', JSON.stringify({ insert_after: { '1': ['할 일', '- 공지 발송'] } }), new Set(), false)).toBeUndefined()
 })
 
-// --- r2: whose part it is, is guaranteed by the host ---
 const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { data: { facts: [{ text, url, site: '도서관' }] } })
 test('r2: a draft that names nobody, its repair failed, still says whose find it was, in the sentence the link closes', async () => {
   const yuna = library('y', '유나', '주말에는 오후 5시까지 열어요.', 'https://lib.example/weekend')
@@ -248,15 +225,11 @@ test('r2: withEveryone names each unnamed teammate once, in their own sentence, 
   const yuna = library('y', '유나', '평일은 밤 9시까지예요.', 'https://lib.example/weekday'), taeo = library('t', '태오', '월요일은 쉬어요.', 'https://lib.example/closed')
   const text = '- 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)\n태오 말로는 월요일은 쉬어요. [도서관](https://lib.example/closed)'
   expect(withEveryone(text, [yuna, taeo])).toBe('- 유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)\n태오 말로는 월요일은 쉬어요. [도서관](https://lib.example/closed)')
-  // The sentence a link closes, not the first of its line.
   expect(withEveryone('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)', [yuna])).toBe('도서관 두 곳 다 봤어요. 유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)')
-  // A sentence that follows another one's link.
   expect(withEveryone('평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 월요일은 쉬어요. [도서관](https://lib.example/closed)', [yuna, taeo])).toBe('유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 태오가 찾아보니 월요일은 쉬어요. [도서관](https://lib.example/closed)')
-  // No sentence of theirs to open (a table row): one short sentence after the message.
   expect(withEveryone('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |', [yuna])).toBe('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |\n유나가 맡아서 했어요.')
 })
 
-// --- r3: what the person is owed holds when no repair lands (wordings not in the harness: 수목원 휴관일, 분기 예산 회의, 축제 슬로건) ---
 const garden = (id: string, role: string, text: string): TeamMember => part(id, role, '수목원 운영 조사', { data: { facts: [{ text, url: 'https://garden.example/hours', site: '수목원' }] } })
 test('r3: two teammates citing one page are each named before their own sentence, in any order', () => {
   const draft = '정기 휴관일은 매주 화요일이에요. [수목원](https://garden.example/hours)\n야간 개장은 금요일 저녁 9시까지예요. [수목원](https://garden.example/hours)'
@@ -266,7 +239,6 @@ test('r3: two teammates citing one page are each named before their own sentence
     expect(out[0]).toMatch(/^다온이 찾아보니 정기 휴관일/)
     expect(out[1]).toMatch(/^시우가 찾아보니 야간 개장/)
   }
-  // Both sentences on one line: each still gets its own name once.
   const one = withEveryone(draft.replace('\n', ' '), [b, a])
   expect(one).toMatch(/^다온이 찾아보니 정기 휴관일.*시우가 찾아보니 야간 개장/)
   expect(one.match(/찾아보니/g)).toHaveLength(2)
@@ -293,9 +265,6 @@ test('r3: items that come after a sentence about who made them are moved first; 
   expect(itemsFirst(ready, [slogan])).toBe(ready)
 })
 
-// --- r3 (review evidence request, D3): a deck turn run through the real loop with a scripted model. What can be shown offline is the
-// host's side: after a clean build the model's next prompt carries the closed verdict and no rule that asks for a read-back, and the host
-// takes the answer as complete (it never turns the turn back for a read). Whether the live model then still reads back is the harness's. ---
 test('r3 D3: a deck built clean is answered with no read-back asked by the host, and the build verdict is in what the model reads next', async () => {
   const tools = officeTools({ run: async () => ({ artifact: 'a1', path: '/out/분기 실적.pptx', markdownLink: '[분기 실적.pptx](engram-artifact:a1)', completeReadback: true }) })
   const read = { name: 'file_read_package', description: 'reads a package', argsSchema: { type: 'object' }, calls: 0, run: async () => { read.calls++; return '{}' } }
@@ -315,7 +284,6 @@ test('r3 D3: a deck built clean is answered with no read-back asked by the host,
   expect(result.steps.map(step => step.tool)).toEqual(['ppt_build'])
   expect(read.calls).toBe(0)
   expect(call).toBe(2)
-  // The prompt after the build: the verdict with every title, and the rule that a new deck's receipt is its readback.
   expect(prompts[1]).toContain('Checked before it was built and passed: 2 slides (1. 분기 실적 / 2. 지역별 매출)')
   expect(prompts[1]).toContain('its receipt is that readback')
 })

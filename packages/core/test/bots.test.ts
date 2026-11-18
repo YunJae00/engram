@@ -64,7 +64,6 @@ describe('bots — named colleagues with charters and their own conversations', 
     expect(named.length).toBeLessThanOrEqual(41)
     expect(named.endsWith('…')).toBe(false)
     expect(named).toBe('What is our deploy procedure, and who')
-    // qa143 S15: the first sentence is the name, not the whole message with an ellipsis.
     expect(titleFromMessage('팀 이름이랑 다음 워크숍 일정이 뭐였지? 기억나는 대로 알려줘.')).toBe('팀 이름이랑 다음 워크숍 일정이 뭐였지')
     expect(titleFromMessage('7 곱하기 8은?')).toBe('7 곱하기 8은')
     expect(titleFromMessage('What changed in 3.5 today? Tell me.')).toBe('What changed in 3.5 today')

@@ -1,7 +1,3 @@
-// c15b (cause L, R2): on a turn whose hire_members call brought helper results back, the lead model writes the answer itself from them,
-// and nothing read that text against those results or against what the ask said about the work ("각각 따로 조사시켜" with no sign it was
-// done that way; c14b R2 "셋 다 아직 출시 전" over a dated launch row). The same one meaning check every writer path has (written-check)
-// reads the lead's answer before delivery, with the helper results and the person's ask as data, and allows one rewrite in the time left.
 import type { AgentTool } from './agent-loop.js'
 import type { TeamMember } from './delegated-tasks.js'
 import { CUT_SHORT, notFoundLine, pointName, writtenReport } from './company-tools.js'
@@ -14,27 +10,20 @@ const LINK = /\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g
 const links = (text: string): string[] => [...text.matchAll(LINK)].map(m => m[1] ?? m[0])
 const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line))
 const rowKey = (row: string): string => (row.split('|')[1] ?? '').replace(/[*_`]/g, '').trim()
-/** A rewrite keeps the draft's form: every link it had and, row by row, every table row it had (round 2: a fix of one price came back as
- * one sentence without the comparison table and its links). A row is its subject (first cell) with the links on it, so a rewrite may change
- * a row's values but not drop the row, give its subject to another row or move its source onto another subject (round 3: 오사카 turned
- * into a second 도쿄 row that still carried 오사카's link, same row and link counts). The check reads meaning; this is the form it cannot see. */
 export const keepsForm = (draft: string, again: string): boolean => {
   const before = tableRows(draft), after = tableRows(again)
   return links(draft).every(url => links(again).includes(url)) && before.every(row => {
     const at = after.findIndex(r => rowKey(r) === rowKey(row) && links(row).every(url => links(r).includes(url)))
-    return at >= 0 && after.splice(at, 1).length === 1 // one rewrite row answers one draft row
+    return at >= 0 && after.splice(at, 1).length === 1
   })
 }
 const korean0 = (m: TeamMember): boolean => /[가-힣]/.test(m.brief)
 const brought = (m: TeamMember): boolean => !!m.result?.trim() && m.state !== 'failed' && !m.empty
 
-/** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's), less any it took
- * off at the person's change (c16a r2). */
 export function turnHelpers(members: readonly TeamMember[] | undefined, since: number): TeamMember[] {
   return (members ?? []).filter(m => m.parentId === null && !m.botId && Date.parse(m.hiredAt) >= since - 1000 && m.review?.note !== TAKEN_OFF)
 }
 
-/** What the check and the rewrite read: each helper's part and what it brought back, and the parts that brought nothing. */
 export function helperData(helpers: readonly TeamMember[]): Record<string, unknown> {
   const gaps = helpers.filter(m => !brought(m))
   return {
@@ -53,8 +42,6 @@ export function leadRewritePrompt(ask: string, data: Record<string, unknown>): s
   ].join('\n')
 }
 
-/** The lead's answer as it may be shown: checked against the helper results and the ask; one rewrite when the check finds problems. The
- * draft itself when nothing was found wrong, no verdict came in time, the rewrite failed or a stop came (never worse than before). */
 export async function checkedLead(input: {
   ask: string; helpers: readonly TeamMember[]; draft: string; quick: QuickText | undefined; due: number
   signal?: AbortSignal | undefined; now?: () => number; log?: (line: string) => void
@@ -67,8 +54,6 @@ export async function checkedLead(input: {
   const text = await checkedWrite({
     data, ask: input.ask, draft, askConstraints: true, check: quick, due: input.due, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}),
     log: (done, problems) => { outcome = done; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
-    // The rewrite is shown only when it is a message of the same kind: not empty, Korean when the draft was, no address nobody read, the
-    // draft's links and table kept.
     redo: async (note, ms) => {
       const again = (await quick(leadRewritePrompt(input.ask, data) + note, ms))?.replace(/^```\w*\n?|\n?```\s*$/g, '').trim()
       return again && (!korean || /[가-힣]/.test(again)) && again.length <= 2 * draft.length + 400 && links(again).every(url => known.has(url)) && keepsForm(draft, again) ? again : undefined
@@ -78,24 +63,10 @@ export async function checkedLead(input: {
   return text ?? draft
 }
 
-// --- c16a (cause M): one writer for every team answer ---
-// R1/R2 (stack15): after hire_members the lead model wrote a second full answer turn (~13 s on a 25k-character prompt), its table only
-// requested (MERGED_SHAPE), its meaning check (checkedLead) due before it started. The named team's answer already had one writer with a
-// guaranteed form, a check with time to run and one fallback voice (writtenReport); the helpers' answer now goes through that same writer.
-
-/** A helper as a part of the team's one answer: its row is its topic (the item, "서울"), its facts what it found, each with the page it
- * cites for it, so writtenReport, reportCheck and mergedReport read it like any part.
- * c16a r2 (review #1: a price and a release date from two pages came out as one fact under the first page): a lookup cites each fact
- * where it states it (LOOKUP_RULE), so the result is cut after each citation: every stretch of words ending at a link is a fact of that
- * page; words after the last link belong to the fact before them. Only the helper's own citations are read, never its words. With no
- * citation at all the whole result is one fact, of a page it read (its own before a results page). */
 export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap<string, ReadonlySet<string>> = new Map()): TeamMember[] {
   return helpers.map(m => {
     const topic = (m.topic || m.role).replace(/[|()[\]]/g, ' ').trim()
     if (!brought(m)) return { ...m, topic }
-    // stack-16 (T1/R2 in c16a's run: the cut-short note "(시간 한도에서 멈춤…)", "(no live source)" and raw search rows in the person's
-    // table): the result is the lead's record (the helper's words, then what it read, then the host's note). Only the helper's own words
-    // are read here; a value whose page did not open is labeled as unconfirmed in the person's words.
     const result = (m.said ?? m.result!.replace(CUT_SHORT, '')).split(NO_LIVE_SOURCE).join(korean0(m) ? '(미확인)' : '(unconfirmed)').trim(), korean = /[가-힣]/.test(result)
     const plain = (text: string): string => text.replace(/\s+/g, ' ').replace(/^[\s,.;:·—–)）-]+/u, '').trim()
     const facts: { text: string; url: string; label?: string }[] = []
@@ -104,7 +75,6 @@ export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap
       const text = plain(result.slice(from, hit.index).replace(/[(（]\s*$/u, ''))
       from = hit.index + hit[0].length
       if (text) facts.push({ text, url: hit[2] ?? hit[0], ...(hit[2] ? { label: hit[1] } : {}) })
-      // A link right after another adds no fact: the words before them were cited already.
     }
     const tail = plain(result.slice(from))
     if (tail && facts.length) facts[facts.length - 1]!.text += ` ${tail}`
@@ -112,33 +82,13 @@ export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap
       const url = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
       if (url && tail) facts.push({ text: tail, url })
     }
-    // c17a (cause E): a cell comes from evidenced points. With none of its own words left, the words its lookup's judge verified on each page
-    // (m.proof) are its facts; a point no page stated is said as not found on its row.
-    // c17a r2 (review #1: "내일 광주는 좋음이에요" cited to a page whose words verified nothing): when the lookup judged points, a fact
-    // stands only on a page with a verified quote, or on a page it opened and read whole itself (m.sources less results pages: open_page /
-    // read_pages, never a search row's headline); words cited to any other page are not evidence and leave the row.
-    // c17a r3 (review #1: a quote verified for 무게 let "배터리는 90Wh" through on the same page; #2: a judged lookup with no quote kept
-    // all its cited prose): evidence is per point, not per page. A judged lookup (m.proof set, empty too) shows a page's verified quotes,
-    // not the prose cited to it; its own prose stands only on a page it read whole itself and only when it names no point the judge found
-    // stated nowhere; every such point is said as not found.
-    // c18a (cause V, T1: "부산 … 날씨는 이번엔 못 찾았어요" beside outcomes=부산:found, every judge quote rejected by an exact-substring
-    // check): a first-hand read is evidence. The helper's own words stand on a page it or the host opened and read (m.sources less results
-    // pages; the host's page opens go through the helper's own open_page and keepSources), and a point they state there is found. A point is
-    // said as not found only when no read text holds it (the lookup's m.missing, after its pages were opened and its quotes read against
-    // them, less what a read page's words state). With one point asked, any words on a read page are of that point. Words cited only to a
-    // search row it saw (a title, a snippet) leave the row unless a quote held there; a held row shows its quotes (c17a r3).
     let still = m.missing
     if (m.proof) {
       const key = (url: string): string => url.replace(/\/$/, '')
       const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(key))
       facts.splice(0, facts.length, ...facts.filter(f => own.has(key(f.url))))
       const asked = new Set([...m.proof.map(one => one.point), ...(m.missing ?? [])].filter(point => point !== 'kind'))
-      // stack-18 (c18a r3 #1: "현재 주가는 4% 떨어졌어요" on a read page cleared the one point "주가: 원화 금액"): words being on a read page is
-      // not the point being stated. A point the lookup judged missing is cleared by the helper's own words only when the same blind meaning
-      // read every quote passes (item-check `stated`, run by helperAnswer) says they state it; else it is said as not found (rule 7).
       const missing = (m.missing ?? []).filter(point => !(facts.length && stating.get(m.id)?.has(point)))
-      // c18a r2 (review r1 #2: "무게 1.2kg" cited to a page dropped that page's verified "배터리 58Wh"): a page's fact covers the points
-      // it states, not the page: a verified quote stays unless a fact on its page already states that point.
       const states = (f: { text: string }, one: { point: string; quote: string }): boolean => one.point === 'kind' || asked.size === 1 || f.text.includes(pointName(one.point)) || f.text.includes(one.quote)
       for (const one of m.proof) {
         if (!one.url || facts.some(f => key(f.url) === key(one.url) && states(f, one))) continue
@@ -152,17 +102,12 @@ export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap
   })
 }
 
-/** The team's one answer over the helpers the lead hired on this turn, when every one of them is a lookup the host accepted: written by
- * writtenReport (quick writer, structural check, meaning check with the ask's own constraints, one repair, the host's table as fallback)
- * by the answer's due. Undefined when a helper is not such a lookup (it asks the person, failed, made a file): then the lead answers. */
 export async function helperAnswer(input: {
   ask: string; members: readonly TeamMember[] | undefined; since: number; write: QuickText | undefined; due: number; signal?: AbortSignal | undefined
 }): Promise<string | undefined> {
   const helpers = turnHelpers(input.members, input.since)
   if (!helpers.length || !helpers.every(m => m.lookup && !m.files?.length && m.review?.ok === true && m.state !== 'failed')) return undefined
-  // stack-18: the points each helper's lookup judged missing, offered with the helper's own words to the blind meaning read, in one call.
   const claims = helpers.flatMap(m => m.proof && m.said?.trim() ? (m.missing ?? []).filter(point => point !== 'kind').map(point => ({ id: m.id, point, quote: m.said!.replace(/\]\([^)]*\)/g, ']').slice(0, 600) })) : [])
-  // A stop ends the read at once (the writer below then ends on the signal too).
   const stop = new Promise<undefined>(resolve => { if (input.signal?.aborted) resolve(undefined); else input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
   const yes = claims.length ? await Promise.race([stated(claims, input.write), stop]) : undefined
   const stating = new Map<string, Set<string>>()
@@ -170,8 +115,6 @@ export async function helperAnswer(input: {
   return writtenReport({ ask: input.ask, members: helperParts(helpers, stating), helpers: true, due: input.due, ...(input.write ? { write: input.write } : {}), ...(input.signal ? { signal: input.signal } : {}) })
 }
 
-/** hire_members whose hand-back of accepted lookups is turned into the team's one answer (`answer`), which closes the lead's turn: the lead
- * model writes no second turn. Any other hand-back (a question, a steer, results to review) goes to the lead as before. */
 export function mergingHire(tool: AgentTool, answer: (signal: AbortSignal | undefined) => Promise<string | undefined>): AgentTool {
   const written = new Set<string>()
   const run = async (args: Record<string, unknown>, context: Parameters<AgentTool['run']>[1]): Promise<string> => {

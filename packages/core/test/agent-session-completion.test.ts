@@ -149,7 +149,6 @@ it.each([false, true])('a written document is not complete until it is read back
     { name: 'excel_write', description: 'write', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'book.xlsx', sheet: 'Sheet1', written: 4, saved: 'C:/book.xlsx' }) },
     { name: 'excel_read', description: 'read', argsSchema: {}, run: async () => JSON.stringify({ workbook: 'book.xlsx', sheet: 'Sheet1', range: 'A1:B2', rows: [[1, 2], [3, 4]] }) },
   ] }, 'Build the income statement')
-  // Generated but never read back → honestly marked not verified; read back → done.
   expect(!!result.incomplete).toBe(!reread)
   if (!reread) expect(result.incomplete).toContain('read back')
 })
@@ -236,8 +235,6 @@ it('finishes a blocked collection once without rewriting it as incomplete', asyn
   expect(result.stopped).toBeUndefined()
 })
 
-// QA 0.8.142 B5/B11 (codex p1 r4): a composed document or deck is attached in
-// the chat even when the answer forgets to quote its link, and only once.
 it('attaches word_write and ppt_build outputs the answer did not link, without repeating a linked one', () => {
   const doc = { markdownLink: '[report.docx](engram-artifact:11111111-2222-3333-4444-555555555555-report.docx)' }
   const deck = { markdownLink: '[deck.pptx](engram-artifact:11111111-2222-3333-4444-666666666666-deck.pptx)' }
@@ -253,9 +250,6 @@ it('attaches word_write and ppt_build outputs the answer did not link, without r
   expect(linked).toContain(deck.markdownLink)
 })
 
-// qa143 p2 r3 #3 kept another input's report.docx beside the linked one. grokbar D3 (stack9): one deck rebuilt twice in a turn became three
-// cards. A deck or document made again under its name in one turn is that turn's own file made again (office-agent.ts replaces it): only the
-// last build is shown, and a link to an earlier build is the last one's.
 it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name in a turn, and points a link to an earlier build at it', (tool) => {
   const ext = tool === 'word_write' ? 'docx' : 'pptx'
   const made = (id: number, input: string) => ({ tool, args: { title: 'report', blocks: [input] }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.${ext})` }) })
@@ -264,19 +258,14 @@ it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name i
   const steps = [a1, b, a2] as unknown as Parameters<typeof outputLinks>[0]
   const linked = outputLinks(steps, `보고서: ${link(a2)}`)
   expect(linked).toBe(`보고서: ${link(a2)}`)
-  // The answer quotes the first build: the link is the last one's.
   expect(outputLinks(steps, `보고서: ${link(a1)}`)).toBe(`보고서: ${link(a2)}`)
-  // The answer quotes nothing: one card, the last build.
   const unlinked = outputLinks(steps, '다 만들었어요.')
   expect(unlinked).toBe(`다 만들었어요.\n\n${link(a2)}`)
-  // A file copy of that name is another source too; the host's own delivery still settles file receipts by name.
   const copy = { tool: 'file_create_copy', args: { name: `report.${ext}` }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-000000000009-report.${ext})` }) }
   expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(copy)}`)).toContain(link(b))
   expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(b)}`)).not.toContain(link(copy))
 })
 
-// c10c review r1: the deck check names a garbled word, the fix is one file_edit_package on the deck just built, and the answer links the
-// edited deck. The first build was shown beside it: two cards of one deck. The edit is that file now; only it is shown.
 it('shows only the edited file when this turn builds a file and then edits it', () => {
   const a = '[deck.pptx](engram-artifact:11111111-1111-1111-1111-111111111111-deck.pptx)', b = '[deck.pptx](engram-artifact:22222222-2222-2222-2222-222222222222-deck.pptx)', c = '[deck.pptx](engram-artifact:33333333-3333-3333-3333-333333333333-deck.pptx)'
   const build = { tool: 'ppt_build', args: {}, observation: JSON.stringify({ markdownLink: a }) }
@@ -285,52 +274,36 @@ it('shows only the edited file when this turn builds a file and then edits it', 
   expect(outputLinks(steps, `수정했어요. ${b}`, '/task')).toBe(`수정했어요. ${b}`)
   expect(outputLinks(steps, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${b}`)
   expect(outputLinks(steps, '수정했어요.', '/task')).toBe(`수정했어요.\n\n${b}`)
-  // Edited twice, the second time through its saved output's id: the last edit is the one file.
   const twice = [build, edit('deck.pptx', b), edit('/outputs/22222222-2222-2222-2222-222222222222-deck.pptx', c)] as unknown as Parameters<typeof outputLinks>[0]
   expect(outputLinks(twice, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${c}`)
-  // An edit of another file leaves the deck shown.
   expect(outputLinks([build, edit('/task/other.pptx', b.replace('[deck', '[other').replace('-deck', '-other'))] as unknown as Parameters<typeof outputLinks>[0], '끝', '/task')).toContain(a)
 })
 
-// qa143 p2 r4 #2 (S19a): a budget stop or an unfinished turn links nothing, and what outputLinks attaches then the host cannot take back.
-// The same source copied again under one name is a revision there too (the last one counts); two sources under one name are two files.
 it('attaches only the last copy of one source when the answer links nothing, and still both of two sources', () => {
   const copy = (id: number, args: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ tool: 'file_create_copy', args: { name: 'report.md', ...args }, observation: JSON.stringify({ markdownLink: `[report.md](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.md)`, ...extra }) })
   const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
   const links = (steps: unknown[], answer = 'Stopped at the budget.') => outputLinks(steps as Parameters<typeof outputLinks>[0], answer, '/task').split('\n\n').slice(1)
-  // One task file copied after each fix, by a relative and an absolute path: one file, the last copy.
   const r1 = copy(1, { fromPath: 'report.md' }), r2 = copy(2, { fromPath: './report.md' }), r3 = copy(3, { fromPath: '/task/report.md' })
   expect(links([r1, r2, r3])).toEqual([link(r3)])
-  // Another task file under that name is another file: both are handed over.
   const other = copy(4, { fromPath: 'drafts/report.md' })
   expect(links([r1, other, r3])).toEqual([link(r3), link(other)])
-  // Content written again under one name is a revision, as is a copy of its task-folder twin.
   const c1 = copy(5, { content: 'v1' }, { taskPath: '/task/report.md' }), c2 = copy(6, { content: 'v2' }, { taskPath: '/task/report.md' })
   expect(links([c1, c2])).toEqual([link(c2)])
   expect(links([c1, r3])).toEqual([link(r3)])
-  // taskPath is compared after the same resolve() as fromPath, so a relative twin path and an
-  // absolute fromPath of the same task file stay one source (on Windows, resolve() also adds a
-  // drive letter that the raw taskPath would not have).
   const written = copy(7, { content: 'v1' }, { taskPath: 'report.md' })
   expect(links([written, r3])).toEqual([link(r3)])
-  // A workbook made fresh under one name in a turn is one file made again (grokbar D3): the last one, whatever its cells.
   const book = (id: number, rows: number[]) => ({ tool: 'file_create_workbook', args: { name: 'sales.xlsx', rows }, observation: JSON.stringify({ markdownLink: `[sales.xlsx](engram-artifact:11111111-2222-3333-4444-00000000001${id}-sales.xlsx)` }) })
   const b1 = book(1, [1]), b2 = book(2, [1]), b3 = book(3, [2])
   expect(links([b1, b3, b2])).toEqual([link(b2)])
-  // One revised from a source file is not made fresh: two sources stay two files.
   const fromA = { ...book(4, [1]), args: { name: 'sales.xlsx', sourcePath: 'a.xlsx' } }, fromB = { ...book(5, [1]), args: { name: 'sales.xlsx', sourcePath: 'b.xlsx' } }
   expect(links([fromA, fromB])).toEqual([link(fromA), link(fromB)])
-  // A linked name still leaves its other file receipts to the host.
   expect(links([r1, other, r3], `Done: ${link(r3)}`)).toEqual([])
 })
 
-// qa143 S19 (d): the wrap-up was checked (report_result_check) after a PDF's file_read found no text; the turn was still called unverified,
-// continued automatically and restated.
 it('leaves a failed file read to the result check reported after it', () => {
   const read = { tool: 'file_read', args: {}, observation: 'that did not work: No readable text could be extracted from this document.' }
   const check = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [], grounding: { status: 'pass', basis: 'x' } }, validation: { accepted: true } }) }
   expect(finalDesktopFailure([read, check])).toBeUndefined()
-  // With no check after it, or a check that did not go through, or a failed change, the turn is still unverified.
   expect(finalDesktopFailure([read])).toContain('has not been verified')
   expect(finalDesktopFailure([check, read])).toContain('has not been verified')
   expect(finalDesktopFailure([read, { ...check, observation: 'that did not work: invalid report' }])).toContain('has not been verified')
@@ -356,7 +329,6 @@ it('ends the turn on a closing tool\'s reply without waiting for or showing the 
   expect(result.answer).toBe('김대리를 리서치 담당으로 뽑았어요.')
   expect(result.steps.map(step => step.tool)).toEqual(['staff'])
   expect(Date.now() - started).toBeLessThan(500)
-  // The model's round is left to finish (the warm session survives) but nothing of it reaches the thread.
   await pause(700)
   expect(finished).toBe(true)
   expect(shown).toEqual([])
@@ -401,14 +373,12 @@ it('holds the model\'s words after a closing tool succeeds: dropped when the tur
   })
   expect((await runToolSession({ engine: kept, workdir: WORKDIR, tools: [...tools, closing] }, 'x', { onToken: text => shown.push(text) })).answer).toBe('both done')
   expect(shown).toEqual(['이어서 ', '찾아볼게요.'])
-  // The model answers inside the grace: its words are its answer, so they are shown.
   shown.length = 0
   const quick = sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'staff')!.run({}); job.onToken?.('바로 답'); return { answer: '바로 답' } })
   expect((await runToolSession({ engine: quick, workdir: WORKDIR, tools: [closing] }, 'x', { onToken: text => shown.push(text) })).answer).toBe('바로 답')
   expect(shown).toEqual(['바로 답'])
 })
 
-// c16a r3 (Codex r2 #1): a lookup before hire_members kept the turn open on the team's one written answer, so the lead wrote a second one.
 it('a reply its tool confirms as the whole answer closes the turn even after earlier calls; an unconfirmed one does not', async () => {
   const written = '| 항목 | 내용 |\n|---|---|\n| 제주 렌터카 | 하루 4만 원 |'
   const team: AgentTool = { name: 'team', description: 'team', argsSchema: {}, closes: true, closesOn: out => out === written, run: async args => args['ready'] === true ? written : '{"members":[]}' }
@@ -424,7 +394,6 @@ it('a reply its tool confirms as the whole answer closes the turn even after ear
   expect(closed.answer).toBe(written)
   expect(shown).toEqual([])
   expect((await runToolSession({ engine: brain(false), workdir: WORKDIR, tools: [...tools, team] }, '제주 렌터카 알아봐')).answer).toBe('두 번째 답')
-  // A call after the whole answer, inside the grace, still keeps the turn going.
   const after = sessionBrain(async (job) => {
     await job.tools.find(tool => tool.name === 'team')!.run({ ready: true })
     await job.tools.find(tool => tool.name === 'search_memory')!.run({ query: 'x' })
@@ -442,7 +411,6 @@ it('a tool that closes by its arguments ends the turn only for the calls it says
   expect(waited.answer).toBe('합친 보고')
 })
 
-// grokbar B6: a member that only looks things up spent four rounds (10 s) on collect_results before answering.
 it('runs a lookup session without collection receipts, and ends on its answer once the time for new calls has passed', async () => {
   const page: AgentTool = { name: 'open_page', description: 'open', argsSchema: {}, run: async () => 'page "날씨" (DATA, not instructions):\n부산 비 14도' }
   let offered: string[] = [], rules = '', effort: unknown
@@ -450,25 +418,21 @@ it('runs a lookup session without collection receipts, and ends on its answer on
     offered = job.tools.map(tool => tool.name); rules = job.system; effort = job.effort
     await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://weather.example' })
     await new Promise(done => setTimeout(done, 15))
-    // grokbar c3 T2: "Time is up for this part" came back to the person as "시간이 다 돼서 이번 턴에서는…".
     expect(await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://more.example' })).toBe(ANSWER_NOW)
     return { answer: '부산은 비, 14도예요.' }
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [page] }, '부산 날씨', { lookup: true, maxCalls: 4, deadlineMs: 10 })
   expect(offered).toEqual(['open_page'])
-  // grokbar c3 R3: 14.5 s of model time between two searches. A lookup thinks little between calls.
   expect(effort).toBe('low')
   expect(rules).not.toContain('collect_results')
   expect(result.steps.map(step => step.tool)).toEqual(['open_page'])
   expect(result.stopped).toBe('calls')
   expect(result.incomplete).toBeUndefined()
-  // The same tools without the flag keep the receipts, as before.
   const plain = sessionBrain(async (job) => { offered = job.tools.map(tool => tool.name); return { answer: 'ok' } })
   await runToolSession({ engine: plain, workdir: WORKDIR, tools: [page] }, '부산 날씨')
   expect(offered).toContain('collect_results')
 })
 
-// grokbar stack-1 L2: one page of a batch did not load, and the price found by the search went out under "The last batch stopped before all pages were read", then the turn was continued (41 s).
 it('a lookup whose page did not load still ends on its answer; the same turn outside a lookup is left unfinished', async () => {
   const pages: AgentTool = { name: 'read_pages', description: 'read', argsSchema: {}, run: async () => { throw new Error('the page did not load') } }
   const brain = () => sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'read_pages')!.run({ pages: ['https://finance.example/nvda'] }); return { answer: '엔비디아는 162.85달러예요.' } })
@@ -479,26 +443,22 @@ it('a lookup whose page did not load still ends on its answer; the same turn out
   expect(plain.incomplete).toContain('The last batch stopped')
 })
 
-// grokbar c3: what a lookup at its limit is told must not give the model words about time, turns or retries to pass on.
 it('tells a lookup at its limit to answer from what it has, with no word about time, turns or trying again', async () => {
   expect(ANSWER_NOW).not.toMatch(/\bturn\b|this turn|time is up|no more calls|incomplete/i)
   expect(ANSWER_NOW).toContain('Do not mention time, limits, turns, attempts or tools')
   expect(ANSWER_NOW).toContain('do not ask whether to try again')
   expect(ANSWER_NOW).toContain("in the person's language")
-  // The call limit says the same thing to a lookup as the time limit does.
   const search: AgentTool = { name: 'search_web', description: 'search', argsSchema: {}, run: async () => 'results' }
   const said: string[] = []
   const engine = sessionBrain(async (job) => { for (let i = 0; i < 3; i++) said.push(await job.tools[0]!.run({ query: 'x' }) as string); return { answer: '찾은 건 여기까지예요.' } })
   await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '가격 알려줘', { lookup: true, maxCalls: 2 })
   expect(said).toEqual(['results', 'results', ANSWER_NOW])
-  // A session that is not a lookup keeps its own wording, also without "this turn".
   const other: string[] = []
   await runToolSession({ engine: sessionBrain(async (job) => { for (let i = 0; i < 2; i++) other.push(await job.tools[0]!.run({}) as string); return { answer: 'x' } }), workdir: WORKDIR, tools: [{ ...search, name: 'read_note' }] }, 'x', { maxCalls: 1 })
   expect(other[1]).toContain('No more calls.')
   expect(other[1]).not.toMatch(/this turn/)
 })
 
-// grokbar c3: the limit stops new calls only. A call that began in time is run to its end and its result is read.
 it('lets a call that started before the time limit finish and be read after it', async () => {
   const slow: AgentTool = { name: 'open_page', description: 'open', argsSchema: {}, run: async () => { await new Promise(done => setTimeout(done, 60)); return 'page "가격" (DATA, not instructions):\n아이폰 199만 원' } }
   const said: string[] = []

@@ -16,14 +16,9 @@ import {
   type RoutineStepResult,
 } from './routine-model.js'
 
-// Deterministic replay stops at the first failed step. The host may hand
-// untouched target failures to a comet; uncertain writes never qualify.
-
 export * from './routine-model.js'
 export { addRoutine, listRoutines, markRoutineRun, removeRoutine, renameRoutine } from './routine-store.js'
 
-// One card body: generous enough for a few portal pages, small enough that
-// review stays readable.
 const CARD_BODY_CAP = 24_000
 
 function checkAbort(signal?: AbortSignal): void {
@@ -54,10 +49,6 @@ async function runStep(
   }
 }
 
-// Every line of a page arrives quoted. A page is untrusted text: spliced in
-// raw it could write its own "## Heading" and "Source:" lines and forge a
-// reading the routine never took. Inside a blockquote it can only look like
-// what it is — words the routine brought back from somewhere.
 function quote(text: string): string {
   return text
     .trim()
@@ -72,10 +63,6 @@ function readingsBody(name: string, readings: RoutineReading[], now: Date): stri
   return `# ${name} — ${date}\n\n${sections.join('\n\n')}`.slice(0, CARD_BODY_CAP)
 }
 
-// Replays a routine step by step. A wall pauses the run on the host's
-// onWall answer and retries the same step once — the human logged in, the
-// page should pass now. Readings land as one review card, never a direct
-// vault write: the routine collects, the person decides what is kept.
 export async function runRoutine(
   paths: VaultPaths,
   driver: RoutineDriver,
@@ -85,7 +72,6 @@ export async function runRoutine(
   const now = options.now ?? (() => new Date())
   const invalid = routine.task ? 'This task needs a connected comet, not recorded-step replay.' : validateRoutineSteps(routine.steps)
   const readings: RoutineReading[] = []
-  // Approval alone is not evidence that the submit succeeded.
   let posted = false
   const finish = async (result: RoutineRunResult): Promise<RoutineRunResult> => {
     const outcome = result.ok ? 'done' : result.error === 'canceled' ? 'aborted' : 'failed'
@@ -93,25 +79,16 @@ export async function runRoutine(
     return options.signal?.aborted ? { ok: false, readings, error: 'canceled' } : result
   }
   if (invalid) return finish({ ok: false, readings, error: invalid })
-  // Refused before anything moves, and without stamping the journal: a run
-  // that never started is not a run.
   const blocked = options.force ? null : routineBlock(routine, now())
   if (blocked) return { ok: false, readings, blocked }
-  // A blank that was never filled is not content: typing "{{entry}}" into a
-  // form and posting it is worse than not running at all (measured — it
-  // reached the site verbatim).
   const unfilled = routineSlots(routine.steps)
   if (unfilled.length > 0)
     return finish({
       ok: false,
       readings,
-      // Where the blank belongs to something the person has written down,
-      // looking is the colleague's job. Being told to ask taught it to ask
-      // for what was sitting in the notebook (measured).
       error: `nothing was filled in for ${unfilled.join(', ')} — look for what belongs there (search_memory), and ask the person only if it is not there`,
     })
   const writeSteps = writeStepIndexes(routine.steps)
-  // The submit gate is asked once per run, not once per click.
   let approved = false
   try {
     const total = routine.steps.length
@@ -120,13 +97,8 @@ export async function runRoutine(
       checkAbort(options.signal)
       const label = routineStepLabel(step)
       options.onStep?.(i, total, label)
-      // The intent to post is on disk before the click that posts. If the
-      // machine dies right here, the next run knows to ask.
       if (writeSteps.has(i))
         await markRoutinePendingWrite(paths, routine.id, { at: now().toISOString(), step: i, label })
-      // The last moment before something can be posted. The person sees the
-      // filled-in values and decides; a run with nothing to show for itself
-      // never reaches here, because only a click after typing is a submit.
       if (!approved && writeSteps.has(i) && step.kind === 'click') {
         const filled = routine.steps
           .filter((one): one is Extract<RoutineStep, { kind: 'type' }> => one.kind === 'type')
@@ -136,8 +108,6 @@ export async function runRoutine(
           : 'cancel'
         checkAbort(options.signal)
         if (verdict !== 'approve' && verdict !== 'always') {
-          // Nothing was posted and we know it: clear the doubt marker so the
-          // next run is not warned about a submit that never happened.
           await clearRoutinePendingWrite(paths, routine.id)
           return finish({ ok: false, readings, error: 'stopped before submitting — nothing was posted' })
         }

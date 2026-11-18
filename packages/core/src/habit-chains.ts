@@ -5,11 +5,6 @@ import { renameWithRetry } from './rename-with-retry.js'
 import type { SkillCandidate, SkillDraft } from './skills.js'
 import type { VaultPaths } from './vault.js'
 
-// What the person's own desk shows about how they work: which apps they use,
-// and the same run of apps gone through again and again for one kind of job -
-// a message, then a sheet, then an assistant, then a deploy page, then the
-// reply. Window titles are the only evidence; nothing inside an app is read.
-
 export interface ActivityStep { app: string; title: string; start: string; end: string }
 export interface UsedApp { app: string; label: string; ms: number; days: number; lastAt: string }
 export interface HabitStep { app: string; label: string; titles: string[] }
@@ -22,12 +17,6 @@ const TITLES_SHOWN = 3
 
 export const appKey = (app: string): string => app.trim().toLowerCase()
 
-// The name an app shows itself by is the trailing title segment most of its
-// windows share ("report.xlsx - Excel", or a bare "Mail"); without one, its
-// process name. A window with no title is no app at all (the desktop), nor is
-// the lock or sign-in screen, and both are left out everywhere. A title read
-// through a narrow character set turned what it could not hold into "?" (an
-// invisible joiner in a browser's name), and no app is named with one.
 const SCREENS = new Set(['lockapp', 'logonui'])
 export const isScreen = (app: string): boolean => SCREENS.has(appKey(app))
 const titled = (spans: ActivityStep[]) => spans.filter(span => span.title.trim() && !isScreen(span.app))
@@ -89,9 +78,6 @@ function sessionsOf(spans: ActivityStep[], off: Set<string>): Visit[][] {
   return sessions
 }
 
-// Runs of three to five different apps that came back in separate sittings.
-// A longer run that holds a shorter one as often says more, so the shorter
-// one is dropped; the rest are ranked by how often and how long.
 export function habitChains(spans: ActivityStep[], off: Set<string> = new Set(), { minTimes = 3, limit = 5 } = {}): HabitChain[] {
   const labels = appLabels(titled(spans))
   const sessions = sessionsOf(spans, off)
@@ -133,10 +119,6 @@ export function habitChains(spans: ActivityStep[], off: Set<string> = new Set(),
 
 const wordsOf = (titles: string[], label: string): Set<string> => new Set(titles.flatMap(title => title.split(TITLE_SPLIT).filter(part => part.trim() !== label).join(' ').toLowerCase().match(/\p{L}{2,}/gu) ?? []))
 
-// Apps switched between at random line up the same way now and then; one job
-// gone through again shows the same thing at its steps each time - the same
-// sheet, the same channel, the same kind of message. Half the steps, two at
-// least, must share a word across three quarters of the times seen.
 function sameJob(runs: Visit[][], labels: Map<string, string>): boolean {
   const need = Math.max(3, Math.ceil(runs.length * 3 / 4))
   let shared = 0
@@ -164,8 +146,6 @@ export function habitPrompt(chain: HabitChain, language: string): string {
   ].join('\n\n')
 }
 
-// The person answered some of the open questions in the conversation the draft
-// was raised in; their words go into the how-to before it is kept.
 export function habitRevisePrompt(draft: SkillDraft, answers: string[]): string {
   return [
     'Below is a how-to drafted from the person\'s own work, and what they said about it afterwards. Rewrite the how-to with what they said: fill the steps they explained, drop the open questions they answered, keep the ones they did not. Add nothing they did not say.',
@@ -180,8 +160,6 @@ export function habitCandidate(key: string): SkillCandidate {
   return { slug: `habit--${createHash('sha256').update(key).digest('hex').slice(0, 24)}`, folder: 'Work habits', notes: [], source: 'turn' }
 }
 
-// What became of each run seen: drafted and waiting for the person, kept as a
-// how-to, set aside by them, or declined by the model at the count it had.
 export interface HabitEntry { state: 'draft' | 'kept' | 'dismissed' | 'declined'; at: string; times: number; labels: string[]; draft?: SkillDraft; botId?: string }
 export type HabitLedger = Record<string, HabitEntry>
 
@@ -216,8 +194,6 @@ export function changeHabits(paths: VaultPaths, change: (ledger: HabitLedger) =>
   return next
 }
 
-// A run is worth a model call when it is new, or when it was declined and has
-// since come back twice more.
 export function habitsToDraft(chains: HabitChain[], ledger: HabitLedger): HabitChain[] {
   return chains.filter(chain => {
     const entry = ledger[chain.key]

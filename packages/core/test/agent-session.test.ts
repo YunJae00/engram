@@ -44,7 +44,6 @@ it.each([false, true])('preserves host post-action evidence, never model argumen
     { tool: 'read_open_page', args: { observedAfterAction: true } },
     { tool: 'look', args: {} },
   ]
-  // A session is offered page_steps for single page moves too.
   const plan = session ? moves.map(move => move.tool === 'press' ? { tool: 'page_steps', args: { steps: [{ do: 'press', target: move.args['target'] }] } } : move) : moves
   let index = 0
   const engine = session ? sessionBrain(async job => {
@@ -102,9 +101,6 @@ it('opens a fresh session with the person\'s earlier request whole and its own r
   await runToolSession({ engine, workdir: WORKDIR, tools: [] }, 'Update it with the new fare', { history: [{ role: 'user', text: request }, { role: 'assistant', text: 'x'.repeat(3_000) }] })
 })
 
-// A brain that holds its own loop: it calls the tools it is handed in the
-// order a script says, then answers.
-// grokbar B6 r3 (GROKBOT rule 3): words said while the answer is being written, after the last tool result, change that answer.
 it('rewrites the answer with words said after the last tool result, in the same turn', async () => {
   const waiting: string[] = []
   const prompts: string[] = []
@@ -125,12 +121,10 @@ it('rewrites the answer with words said after the last tool result, in the same 
   expect(prompts).toHaveLength(2)
   expect(prompts[1]).toContain('엔비디아는 189달러예요.')
   expect(prompts[1]).toContain('"그냥 애플로 바꿔"')
-  // The draft the person saw streaming is dropped, not kept beside the new answer.
   expect(resets).toEqual([true])
   expect(waiting).toEqual([])
 })
 
-// grokbar c3 T2: "그냥 애플로 바꿔" was taken with a tool result at 5 s, the 12 s clock ran on from the first ask, and the 애플 search was refused at 12.96 s.
 it('gives a lookup its time and calls again, once, when it takes words with a tool result', async () => {
   const waiting: string[] = [], seen: string[] = []
   const tool: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async args => `${String(args['query'])} 결과` }
@@ -140,23 +134,19 @@ it('gives a lookup its time and calls again, once, when it takes words with a to
     seen.push(await search('엔비디아 주가'))
     await pause(120)
     waiting.push('그냥 애플로 바꿔')
-    // Taken with this result, 120 ms into a 200 ms allowance.
     seen.push(await search('엔비디아 시간외'))
     await pause(120)
-    // 240 ms after the first ask, 120 ms after the new one: allowed, and it is the third call of a three-call allowance that started again.
     seen.push(await search('애플 주가'))
     seen.push(await search('애플 시간외'))
     waiting.push('아니 다시 테슬라로')
     seen.push(await search('애플 전망'))
     await pause(220)
-    // Once only: the second words do not start the clock a second time.
     seen.push(await search('테슬라 주가'))
     return { answer: '애플은 230달러예요.' }
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 3, deadlineMs: 200, steerReplied: true, takeSteer: () => waiting.splice(0, 1) })
   expect(seen[1]).toContain('엔비디아 시간외 결과')
   expect(seen[1]).toContain('"그냥 애플로 바꿔"')
-  // The host already answered them: the model is told not to write a second line.
   expect(seen[1]).toContain('They were already told in one short line that you got it')
   expect(seen[1]).not.toContain('First answer them')
   expect(seen[2]).toBe('애플 주가 결과')
@@ -166,9 +156,7 @@ it('gives a lookup its time and calls again, once, when it takes words with a to
   expect(result.answer).toContain('애플은 230달러예요.')
 })
 
-// Codex b6 r3 #1: at its limit a lookup did not read words that were waiting; it answered the old ask first.
 it('reads words waiting when a lookup is at its limit, before the old ask is answered', async () => {
-  // Two calls used of two, or the time passed with calls to spare.
   for (const limit of [{ maxCalls: 2 }, { maxCalls: 4, deadlineMs: 10 }]) {
     const waiting: string[] = [], seen: string[] = []
     let runs = 0
@@ -181,7 +169,6 @@ it('reads words waiting when a lookup is at its limit, before the old ask is ans
       if (limit.maxCalls === 2) await search('엔비디아 시간외')
       await new Promise(done => setTimeout(done, 15))
       waiting.push('그냥 애플로 바꿔')
-      // At the limit: instead of "answer now", the words are handed over and the call is not run.
       seen.push(await search('엔비디아 전망'))
       seen.push(await search('애플 주가'))
       return { answer: '애플은 230달러예요.' }
@@ -192,14 +179,12 @@ it('reads words waiting when a lookup is at its limit, before the old ask is ans
     expect(seen[1]).not.toBe(ANSWER_NOW)
     expect(seen[2]).toBe('애플 주가 결과')
     expect(ran.filter(query => query !== '엔비디아 시간외')).toEqual(['엔비디아 주가', '애플 주가'])
-    // One pass: no old answer was written and thrown away.
     expect(runs).toBe(1)
     expect(result.answer).toBe('애플은 230달러예요.')
     expect(result.stopped).toBeUndefined()
   }
 })
 
-// grokbar B6 r4: a lookup at its call or time limit did not take the words; the 엔비디아 answer went out and "애플로 바꿔" became its own turn.
 it('takes words said while a lookup at its call or time limit writes its answer, and gives the new ask calls and time of its own', async () => {
   for (const limit of [{ maxCalls: 2 }, { maxCalls: 4, deadlineMs: 10 }]) {
     const waiting: string[] = [], seen: string[] = []
@@ -211,7 +196,6 @@ it('takes words said while a lookup at its call or time limit writes its answer,
         seen.push(await search('엔비디아 주가'))
         await new Promise(done => setTimeout(done, 15))
         await search('엔비디아 시간외')
-        // The limit is reached: this call is refused, so the words have no tool result to ride on.
         seen.push(await search('엔비디아 전망'))
         waiting.push('그냥 애플로 바꿔')
         return { answer: '엔비디아는 189달러예요.' }
@@ -226,7 +210,6 @@ it('takes words said while a lookup at its call or time limit writes its answer,
     expect(result.answer).toBe('애플은 230달러예요.')
     expect(runs).toBe(2)
     expect(waiting).toEqual([])
-    // The rewrite stayed inside its own limit, so it is a finished answer.
     expect(result.stopped).toBeUndefined()
   }
 })
@@ -236,7 +219,6 @@ it('writes the answer once when nothing was said, and leaves a question to the p
   const quiet = sessionBrain(async () => { runs++; return { answer: 'Done' } })
   expect((await runToolSession({ engine: quiet, workdir: WORKDIR, tools: [] }, 'Say done', { takeSteer: () => [] })).answer).toBe('Done')
   expect(runs).toBe(1)
-  // Words that keep coming are not rewritten for ever: what is left gets its own turn.
   runs = 0
   const taken: number[] = []
   const chatty = sessionBrain(async () => ({ answer: `Answer ${++runs}` }))
@@ -312,9 +294,6 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
       history: [{ role: 'user', text: 'earlier' }],
       onStep: (line) => lines.push(line),
     })
-    // The rules stand in the system prompt; who speaks and what they want
-    // travel with the turn; the conversation opens the session; the key
-    // lets the brain keep it.
     expect(seen[0]!.system).toContain('language of their message')
     expect(seen[0]!.system).not.toContain('Scout')
     expect(seen[0]!.prompt).toContain('You are "Scout".')

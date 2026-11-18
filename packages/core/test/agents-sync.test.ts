@@ -26,15 +26,10 @@ describe('syncAgentsMd', () => {
   })
 
   it('upgrades a vault still holding a version we shipped', async () => {
-    // The exact failure this exists for: a vault created before today, whose
-    // file we wrote ourselves and then never touched again.
     const paths = await vault('agents-stale')
     await writeFile(agentsPath(paths), OLD_SHIPPED)
-    // No receipt yet either — that is what every pre-existing vault looks like.
     expect(await syncAgentsMd(paths)).toBe('user-owned')
 
-    // With the old content actually recognised as ours, it upgrades. (Simulated
-    // by the receipt, which is the mechanism every vault has from now on.)
     await writeFile(join(paths.cache, 'agents-written'), hashOf(OLD_SHIPPED))
     expect(await syncAgentsMd(paths)).toBe('upgraded')
     expect(await readFile(agentsPath(paths), 'utf8')).toBe(AGENTS_MD_V1)
@@ -49,10 +44,6 @@ describe('syncAgentsMd', () => {
   })
 
   it('an upgraded vault upgrades again next time, with no list to maintain', async () => {
-    // The receipt is what closes AGENTS_MD_SHIPPED: after one sync a vault
-    // carries proof of what we last wrote it, so the next template edit needs
-    // no new hash anywhere. A list you must remember to append is a list that
-    // silently strands users.
     const paths = await vault('agents-receipt')
     await syncAgentsMd(paths)
     const receipt = await readFile(join(paths.cache, 'agents-written'), 'utf8')
@@ -60,15 +51,11 @@ describe('syncAgentsMd', () => {
   })
 
   it('the shipped-hash list holds only PAST versions, never the current one', async () => {
-    // If the current template's hash were in the list, a hand-edited file that
-    // happened to match it would be silently replaced.
     expect(AGENTS_MD_SHIPPED).not.toContain(hashOf(AGENTS_MD_V1))
     expect(new Set(AGENTS_MD_SHIPPED).size).toBe(AGENTS_MD_SHIPPED.length)
   })
 })
 
 function hashOf(text: string): string {
-  // Mirrors vault.ts — kept local so the test pins the format rather than
-  // sharing a helper that could drift with it.
   return createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex').slice(0, 16)
 }

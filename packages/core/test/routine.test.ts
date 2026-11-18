@@ -24,16 +24,11 @@ import { tmpVaultRoot } from './helpers.js'
 const OPEN: RoutineStep = { kind: 'open', url: 'https://example.com/notices' }
 const READ: RoutineStep = { kind: 'read' }
 const TYPE: RoutineStep = { kind: 'type', target: { text: 'Entry' }, text: 'shipped the replayer' }
-// Posting needs a person's yes; these tests are about other things, so they
-// grant it. The gate itself is tested in its own block below.
 const APPROVE = async (): Promise<'approve'> => 'approve'
 const CLICK: RoutineStep = { kind: 'click', target: { text: 'Submit' } }
 const KEY: RoutineStep = { kind: 'key', key: 'Enter' }
-// The fake driver accepts this search; browser guards are exercised in e2e.
 const SEARCH: RoutineStep = { kind: 'type', target: { text: 'From' }, text: 'Seoul' }
 
-// A scripted driver: each call shifts the next canned answer and records what
-// the engine asked of it — the replay's whole contract in one fake.
 function fakeDriver(script: {
   open?: Array<{ ok: boolean; wall?: 'login' | 'captcha'; error?: string }>
   click?: Array<{ ok: boolean; wall?: 'login' | 'captcha'; error?: string }>
@@ -317,9 +312,6 @@ describe('runRoutine — replay', () => {
   })
 })
 
-// Repetition is the point, and repetition is also the danger: a routine that
-// types into a page can post the same thing twice. These are the guardrails
-// that make a second press a question instead of a second submission.
 describe('rerunning a routine that writes', () => {
   const NINE_AM = (): Date => new Date('2026-08-20T09:00:00')
 
@@ -356,15 +348,12 @@ describe('rerunning a routine that writes', () => {
     })
     expect(failed.ok).toBe(false)
 
-    // The click that would have posted was recorded BEFORE it ran, and a
-    // failure leaves it standing: that is the whole signal.
     const saved = (await listRoutines(paths))[0]!
     expect(saved.pendingWrite?.step).toBe(2)
     expect(saved.pendingWrite?.label).toBe('Click "Submit"')
     expect(saved.lastSuccessAt).toBeUndefined()
 
     expect((await runRoutine(paths, fakeDriver({}), saved, { onSubmit: APPROVE })).blocked).toBe('unfinished-write')
-    // Insisting clears it by finishing cleanly.
     expect((await runRoutine(paths, fakeDriver({}), saved, { force: true, onSubmit: APPROVE })).ok).toBe(true)
     expect((await listRoutines(paths))[0]!.pendingWrite).toBeUndefined()
   })
@@ -380,7 +369,6 @@ describe('what a page is allowed to say in the card', () => {
     const body = (await listCards(paths))[0]!.proposed
     expect(body).toContain('> ## Payroll')
     expect(body).toContain('> Source: https://evil.example')
-    // The only unquoted provenance line is the one the routine itself wrote.
     expect(body.split('\n').filter((line) => line.startsWith('Source: '))).toEqual(['Source: https://example.com/n'])
   })
 })
@@ -388,8 +376,6 @@ describe('what a page is allowed to say in the card', () => {
 describe('what reaches the stored routine', () => {
   it('stores a step as its known fields only', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-normalize'), { git: false })
-    // The renderer is not trusted to send exactly the shape: whatever else
-    // rode along must not be persisted and handed back over IPC forever.
     const dirty = { kind: 'click', target: { text: ' Submit ', css: ['   ', '#go'] }, note: 'x'.repeat(400) } as unknown as RoutineStep
     const routine = await addRoutine(paths, { name: 'Clean', steps: [OPEN, dirty] })
     expect(routine.steps[1]).toEqual({ kind: 'click', target: { css: ['#go'], text: 'Submit' } })
@@ -403,8 +389,6 @@ describe('what reaches the stored routine', () => {
   })
 })
 
-// A procedure is knowledge: the routine lives as a vault note — searchable,
-// synced, hand-editable — with the steps in frontmatter and prose in the body.
 describe('routines are vault notes', () => {
   it('saving a routine writes a note of type routine, evergreen and off the timeline', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-note'), { git: false })
@@ -420,7 +404,6 @@ describe('routines are vault notes', () => {
 
   it('save → load → replay walks the exact same steps (full round trip)', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-roundtrip'), { git: false })
-    // What a comet keeps after doing a job: the moves it made, in order.
     const steps: RoutineStep[] = [
       { kind: 'open', url: 'https://portal.example/home' },
       { kind: 'click', target: { css: ['a#notices'], text: 'Notices' } },
@@ -473,14 +456,11 @@ describe('routines are vault notes', () => {
     expect(listed[0]!.name).toBe('Portal notices')
     expect(listed[0]!.steps).toEqual([OPEN, READ])
     expect(listed[0]!.lastSuccessAt).toBe('2026-08-19T09:00:00.000Z')
-    // migrated once: the cache file has stepped aside, the note is the truth
     await expect(readFile(join(paths.cache, 'routines.json'), 'utf8')).rejects.toThrow()
     expect((await readNote(paths, 'rt-legacy-1')).front.type).toBe('routine')
   })
 })
 
-// Nothing a person cannot undo happens without them seeing it first. This is
-// the last gate before a routine posts, and it is deliberately unskippable.
 describe('the submit gate', () => {
   const WRITER: RoutineStep[] = [OPEN, TYPE, CLICK]
 
@@ -542,8 +522,6 @@ describe('the submit gate', () => {
     const paths = await initVault(await tmpVaultRoot('routine-submit-clean'), { git: false })
     const routine = await addRoutine(paths, { name: 'Daily log', steps: WRITER })
     await runRoutine(paths, fakeDriver({}), routine, { onSubmit: async () => 'cancel' })
-    // Nothing was posted and the app knows it, so no "stopped mid-submit"
-    // warning is left standing to block or frighten the next run.
     const saved = (await listRoutines(paths))[0]!
     expect(saved.pendingWrite).toBeUndefined()
     expect(await runRoutine(paths, fakeDriver({}), saved, { onSubmit: APPROVE })).toMatchObject({ ok: true })
@@ -564,8 +542,6 @@ describe('the submit gate', () => {
   })
 })
 
-// A procedure that types the same sentence every day is a worse procedure
-// than one that leaves the sentence blank for the day it runs.
 describe('slots — the blanks a procedure fills fresh', () => {
   const TEMPLATE: RoutineStep[] = [
     OPEN,
@@ -613,13 +589,10 @@ describe('informational routine replay', () => {
     const paths = await initVault(await tmpVaultRoot('routine-search'), { git: false })
     const routine = await addRoutine(paths, { name: 'Seat check', steps: [OPEN, SEARCH, KEY, READ] })
     const driver = fakeDriver({ read: [{ url: 'https://rail.example/r', title: 'Results', text: '3 seats left' }] })
-    // No onSubmit handler at all: a real submit would stop here. A search must
-    // not — it runs to the end and reads.
     const first = await runRoutine(paths, driver, routine, { now: NINE })
     expect(first.ok).toBe(true)
     expect(driver.calls).toEqual(['open https://example.com/notices', 'type From Seoul', 'key Enter', 'read'])
 
-    // Same day, again: a read-only search never posted, so it is not blocked.
     const saved = (await listRoutines(paths))[0]!
     expect(saved.posts).toBe(false)
     const again = await runRoutine(paths, fakeDriver({ read: [{ url: 'https://rail.example/r', title: 'Results', text: '1 seat left' }] }), saved, { now: NINE })
@@ -630,7 +603,6 @@ describe('informational routine replay', () => {
   it('a routine that actually posts is marked a poster and asks before repeating', async () => {
     const paths = await initVault(await tmpVaultRoot('routine-poster'), { git: false })
     const routine = await addRoutine(paths, { name: 'Post log', steps: [OPEN, TYPE, CLICK] })
-    // The submit is approved, so it genuinely posts.
     expect((await runRoutine(paths, fakeDriver({}), routine, { now: NINE, onSubmit: APPROVE })).ok).toBe(true)
     const saved = (await listRoutines(paths))[0]!
     expect(saved.posts).toBe(true)

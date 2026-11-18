@@ -6,12 +6,10 @@ import { applyLabels, buildWorkMap, labelPrompt, placeNote, placeNoteId, readWor
 import type { VaultPaths } from '../src/vault.js'
 
 const NOW = new Date(2026, 8, 28, 18, 0)
-// Visits at a local hour on each of the given days back from NOW.
 const on = (url: string, title: string, daysBack: number[], hour: number) => daysBack.map((back) => {
   const at = new Date(NOW); at.setDate(at.getDate() - back); at.setHours(hour, 5, 0, 0)
   return { url, title, at: at.getTime() }
 })
-// NOW is a Monday: offsets back from it that land on weekdays, and on Fridays.
 const fridays = [3, 10, 17, 24, 31, 38], weekdays = [0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 17]
 
 it('keeps the places a person returns to, with the page they land on and the hour they go', () => {

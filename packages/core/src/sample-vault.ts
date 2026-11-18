@@ -2,16 +2,11 @@ import { createNote } from './notes.js'
 import type { Note } from './schema.js'
 import { initVault, type VaultPaths } from './vault.js'
 
-// Deterministic sample vault: a 3-step supersede chain,
-// a disputed pair, an expired note, an undetermined-chronology note and a
-// pinned/inferred trio for interpolation demos. No git — fixtures live
-// inside the monorepo repo.
 export async function generateSampleVault(root: string): Promise<{ paths: VaultPaths; notes: Note[] }> {
   const paths = await initVault(root, { git: false })
   const at = (iso: string) => new Date(iso)
   const notes: Note[] = []
 
-  // 3-step supersede chain: deploy procedure v1 → v2 → v3(current).
   notes.push(
     await createNote(
       paths,
@@ -50,7 +45,6 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
     ),
   )
 
-  // Disputed pair: two current claims that contradict each other.
   notes.push(
     await createNote(
       paths,
@@ -76,7 +70,6 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
     ),
   )
 
-  // Expired note: fast decay, verified window long gone.
   notes.push(
     await createNote(
       paths,
@@ -104,7 +97,6 @@ export async function generateSampleVault(root: string): Promise<{ paths: VaultP
     ),
   )
 
-  // Pinned/inferred trio for interpolation: kick-off — (inferred) — launch.
   notes.push(
     await createNote(
       paths,

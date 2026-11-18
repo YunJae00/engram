@@ -2,8 +2,6 @@ import { desktopReadOptions, DESKTOP_READ_PROPERTIES, DESKTOP_READ_GUIDANCE, typ
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { exactKeys, plainRecord, printable, requireNoLocalPage, requirePublicText } from './tool-args.js'
 
-// Provider actions avoid capture and injected input; foreground tools remain
-// a fallback for controls without a usable provider action.
 export const QUIET_KEYS = ['Enter', 'Escape', 'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Control+Enter'] as const
 export interface QuietPressOptions { key?: typeof QUIET_KEYS[number]; state?: 'checked' | 'unchecked' | 'selected' | 'expanded' | 'collapsed'; action?: 'scroll_up' | 'scroll_down' | 'scroll_left' | 'scroll_right' | 'scroll_into_view' }
 export interface QuietCourier {
@@ -11,7 +9,6 @@ export interface QuietCourier {
   set(app: string, snapshot: string, control: string, text: string, expected: string | undefined, context: AgentToolContext): Promise<string>
   press(app: string, snapshot: string, control: string, context: AgentToolContext, options?: QuietPressOptions): Promise<string>
   text(app: string, snapshot: string | undefined, control: string | undefined, settleSeconds: number, signal?: AbortSignal): Promise<string>
-  // A short goal carried out by a decision model picking each control; offered only when one is connected.
   do?(app: string, goal: string, text: string | undefined, send: boolean, maxSteps: number, context: AgentToolContext): Promise<string>
 }
 
@@ -45,7 +42,6 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
       if (typeof send !== 'boolean' || (send && !text)) return 'app_do takes send only as true or false, and send needs the text to send.'
       if (!app || !goal?.trim() || text === null || text === '' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text and maxSteps from 1 to 12.'
       requirePublicText(goal, context)
-      // The goal is acted on like text: the loop may not be steered to a local page in another app either (qa143 B13).
       requireNoLocalPage(goal, true)
       if (text) { requirePublicText(text, context); requireNoLocalPage(text) }
       const result = await run(app, goal.trim(), text, send, steps, context)

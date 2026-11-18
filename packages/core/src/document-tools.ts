@@ -6,7 +6,6 @@ import type { saveArtifact } from './file-work.js'
 type Source = { path: string; data: Buffer; sha256: string }
 export const DOCUMENT_EXTENSIONS = ['.docx', '.pptx', '.xlsx']
 export const DOCUMENT_BYTES = 20_000_000
-// grokbar D2, D3: "not proof of visual layout" here came back to the person as "워드 창은 열지 않았어요" / "실제 화면에 그려진 모습까지는 확인하지 않았어요".
 const STATE = 'Saved-file copy only; original and unsaved application state are unchanged. Formulas are stored as written, not recalculated.'
 function documentPath(value: unknown): string {
   if (typeof value !== 'string' || !isAbsolute(value) || !DOCUMENT_EXTENSIONS.includes(extname(value).toLowerCase())) throw new Error('Supply an absolute path to a saved .docx, .pptx or .xlsx file.')
@@ -14,18 +13,12 @@ function documentPath(value: unknown): string {
 }
 const string = { type: 'string', minLength: 1 }
 
-// c7c D5: one slide title took 45 s, 28 of them the model copying 27k characters of slide XML into an exact before/after pair. A deck's
-// words are read as an outline (slide number, title, texts) and one is replaced by slide number and words; the host finds the XML.
-// shortcut: text is found by pattern, with the usual p: and a: prefixes and one run per <a:t>; a deck written with other prefixes gives an
-// empty outline and keeps the XML form. Move to a parsed tree when such a deck is seen.
 const SHAPE = /<p:sp(?:\s[^>]*)?>.*?<\/p:sp>/gs, PARAGRAPH = /<a:p(?:\s[^>]*)?>.*?<\/a:p>/gs, RUN = /(<a:t(?:\s[^>]*)?>)([^<]*)(<\/a:t>)/g
 const plain = (xml: string): string => xml.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, '\'').replace(/&amp;/g, '&')
 const escaped = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const wordsIn = (xml: string): string => plain([...xml.matchAll(RUN)].map(run => run[2]).join('')).trim()
 const titleShape = (xml: string): string | undefined => { const shapes = xml.match(SHAPE) ?? []; return shapes.find(shape => /<p:ph\b[^>]*\btype="(title|ctrTitle)"/.test(shape)) ?? shapes.find(wordsIn) }
-// The first run takes the new words and keeps its formatting; the other runs of the same text are emptied.
 const reworded = (xml: string, words: string): string => { let at = 0; return xml.replace(RUN, (_all, open: string, _old: string, close: string) => `${open}${at++ ? '' : escaped(words)}${close}`) }
-// Slide parts in the order the deck shows them.
 function slideParts(parts: Map<string, Buffer>): string[] {
   const deck = parts.get('ppt/presentation.xml')?.toString('utf8') ?? '', rels = parts.get('ppt/_rels/presentation.xml.rels')?.toString('utf8') ?? ''
   const targets = new Map([...rels.matchAll(/<Relationship\b[^>]*>/g)].map(one => [/\bId="([^"]*)"/.exec(one[0])?.[1] ?? '', /\bTarget="([^"]*)"/.exec(one[0])?.[1] ?? '']))
@@ -37,23 +30,17 @@ function deckOutline(parts: Map<string, Buffer>): { slide: number; title: string
     return { slide: at + 1, title: head ? wordsIn(head) : '', texts: ((head ? xml.replace(head, '') : xml).match(PARAGRAPH) ?? []).map(wordsIn).filter(Boolean) }
   })
 }
-// Round 2: the outline is also how an edited deck is checked, so it has to be the whole deck or say that it is not. The words of the content
-// parts that are not slides (notes, a chart's labels and values: 8 of the 12 decks of the earlier runs hold a chart) are listed too, every
-// text of the XML as it stands, and the outline is complete only when, part by part, the words it shows are every character of text the
-// XML holds: slide text under other prefixes leaves it incomplete and the parts are read instead.
 const bare = (text: string): string => text.replace(/\s/g, '')
 function deckWords(parts: Map<string, Buffer>, textParts: readonly string[], slides: readonly { title: string; texts: string[] }[]): { otherTexts: { part: string; texts: string[] }[]; complete: boolean } {
   const slideNames = slideParts(parts)
   const otherTexts = textParts.filter(name => !slideNames.includes(name)).map(part => ({ part, texts: parts.get(part)!.toString('utf8').split(/<[^>]*>/).map(text => plain(text).trim()).filter(Boolean) }))
   const shown = new Map([...slideNames.map((name, at): [string, string[]] => [name, [slides[at]!.title, ...slides[at]!.texts]]), ...otherTexts.map((other): [string, string[]] => [other.part, other.texts])])
-  // A slide's outline leads with its title wherever that shape sits in the XML, so the XML is taken in the same order.
   const all = (name: string): string => {
     const xml = parts.get(name)!.toString('utf8'), head = slideNames.includes(name) ? titleShape(xml) : undefined
     return bare(plain((head ? [head, xml.replace(head, '')] : [xml]).map(piece => piece.replace(/<[^>]*>/g, '')).join('')))
   }
   return { otherTexts: otherTexts.filter(other => other.texts.length), complete: textParts.every(name => all(name) === bare(shown.get(name)!.join(''))) }
 }
-// {slide, with} replaces that slide's title, {slide, text, with} the one text that reads exactly so. Anything unclear is refused before a byte is written.
 function slideEdits(parts: Map<string, Buffer>, edits: readonly Record<string, unknown>[], hash: (bytes: Buffer) => string): XmlEdit[] {
   const slides = slideParts(parts), now = new Map<string, string>()
   return edits.map((edit) => {
@@ -137,7 +124,6 @@ export function documentTools(
           const slides = extname(path).toLowerCase() === '.pptx' && !part ? deckOutline(parts) : []
           if (!slides.length) throw new Error('An outline is for a PPTX with slides, without part. Read its parts instead.')
           const { otherTexts, complete } = deckWords(parts, textParts, slides)
-          // completeReadback is what the result check takes as the whole deck read (result-check.ts fullOutputRead): it is said only when it is so.
           const outline = JSON.stringify({ path: source.path, sha256: source.sha256, slides, ...(otherTexts.length ? { otherTexts } : {}), ...(complete ? { completeReadback: true } : { textParts }), state: STATE })
           if (outline.length > 60_000) throw new Error('This deck is too long for an outline. Read the slide part instead.')
           return outline

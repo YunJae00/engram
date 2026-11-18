@@ -4,8 +4,6 @@ import { JobRunner, type JobSpec } from '../src/jobs/runner.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// Trivial fake engine that always succeeds — same shape as runner.test.ts's
-// engineOf, minus the per-prompt handler (the hook doesn't care about output).
 function fakeEngine(): Engine {
   return {
     id: 'mock' as Engine['id'],
@@ -47,7 +45,7 @@ describe('runner onJobStart hook', () => {
 
   it('does not fire for journal-skipped jobs (only for jobs that execute)', async () => {
     const jobs = [job('J1', 'a'), job('J3', 'b')]
-    await new JobRunner(paths, [fakeEngine()]).runAll(jobs) // populate the journal
+    await new JobRunner(paths, [fakeEngine()]).runAll(jobs)
     const seen: string[] = []
     const rerun = await new JobRunner(paths, [fakeEngine()], { onJobStart: (j) => seen.push(j) }).runAll(jobs)
     expect(rerun.skipped).toBe(2)
@@ -56,7 +54,6 @@ describe('runner onJobStart hook', () => {
 
   it('shouldStop after the first job defers the remaining jobs', async () => {
     const seen: string[] = []
-    // Stops before the second job: false on the first check, true thereafter.
     const runner = new JobRunner(paths, [fakeEngine()], {
       onJobStart: (j) => seen.push(j),
       shouldStop: () => seen.length >= 1,

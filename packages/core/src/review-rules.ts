@@ -1,6 +1,3 @@
-// Standing review rules the person sets: "ask first" or "allow automatically"
-// for one operation on one concrete target. Matching is exact; ask-first wins.
-
 export type ReviewRuleKind = 'ask-first' | 'allow'
 type ReviewDecision = 'ask' | 'allow'
 
@@ -58,12 +55,10 @@ function rulesError(rules: unknown[] | null): string | null {
   return null
 }
 
-// Copy once so getters run a single time and validation sees exactly what is used.
 function plainCopy(value: unknown): unknown {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? { ...value } : value
 }
 
-// Indexed copy: the caller's iterator, methods and spread are never used.
 function snapshot(rules: unknown): unknown[] | null {
   if (!Array.isArray(rules)) return null
   const length: unknown = rules.length
@@ -94,7 +89,6 @@ export function addReviewRule(rules: readonly ReviewRule[], rule: ReviewRule): R
   return [...next, added]
 }
 
-// Malformed or over-limit rules fail closed: nothing is allowed automatically.
 export function evaluate(rules: readonly ReviewRule[], action: ReviewAction): ReviewDecision {
   try {
     const list = snapshot(rules)
@@ -117,7 +111,6 @@ export function serializeReviewRules(rules: readonly ReviewRule[]): string {
   return JSON.stringify(checkRules(rules))
 }
 
-// Only the exact Date.prototype.toISOString() form is valid; toISOString throws on an invalid Date.
 function createdMs(createdAt: unknown): number | null {
   if (typeof createdAt !== 'string') return null
   try {
@@ -128,7 +121,6 @@ function createdMs(createdAt: unknown): number | null {
   }
 }
 
-// An invalid timestamp, an invalid clock or a card from the future counts as expired.
 export function routineCardExpired(createdAt: string, nowMs: number): boolean {
   if (!Number.isFinite(nowMs)) return true
   const created = createdMs(createdAt)

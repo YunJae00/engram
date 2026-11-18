@@ -6,11 +6,6 @@ import { readNote, writeNote } from './notes.js'
 import type { Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-// The profile every comet reads, shown as a note the person can open, edit and
-// prune like any other. The note is their surface; the memory file keeps each
-// line's clocks. A line deleted from the note is forgotten, a line added is
-// learned, and what comets learn is written back.
-
 export const PROFILE_NOTE_ID = 'n-person-profile'
 export const PROFILE_TYPE = 'profile'
 const INTRO = '# About me\n\nWhat Engram has learned about how you work. Every comet reads this; edit or delete any line.\n'
@@ -42,11 +37,9 @@ async function sync(paths: VaultPaths, now: Date, learned: string[], forgotten: 
   const removed = new Set(forgotten.map(key))
   const noteLines = profileLines(note?.body ?? '')
   const inNote = new Set(noteLines.map(key))
-  // A line that only carries a replaced value, or that a later line replaces, leaves the note as it leaves memory.
   const settled = settleFacts([...noteLines, ...learned].map(text => ({ text }))).map(fact => fact.text)
   const stays = new Set(settled.map(key))
   for (const line of noteLines) if (!stays.has(key(line))) removed.add(key(line))
-  // Compare to what was actually published, not an editor-controlled timestamp.
   for (const line of previous) if (!inNote.has(key(line))) removed.add(key(line))
   for (const line of removed) await forgetFactText(paths, PERSON_MEMORY, line)
   const memory = await loadBotMemory(paths, PERSON_MEMORY)
@@ -55,7 +48,6 @@ async function sync(paths: VaultPaths, now: Date, learned: string[], forgotten: 
   if (additions.length) await recordFacts(paths, PERSON_MEMORY, additions, now)
   const facts = (await loadBotMemory(paths, PERSON_MEMORY)).facts.sort((a, b) => a.at.localeCompare(b.at))
   if (!note && !facts.length) return
-  // Retain the person's prose and formatting; append only newly learned lines.
   let body = (note?.body ?? INTRO).split('\n').filter(line => !/^\s*[-*]\s+\S/.test(line) || !removed.has(key(line))).join('\n')
   const shown = new Set(profileLines(body).map(key))
   const fresh = facts.filter(fact => !shown.has(key(fact.text)))

@@ -23,8 +23,6 @@ describe('the journal key follows the instruction, not just the data', () => {
     )
   })
 
-  // The field is only useful if the builders actually carry the live constant —
-  // a spec that stamped a placeholder would hash stably and reintroduce the bug.
   it('stamps the brief job with the instruction it is about to send', () => {
     const paths = { views: '/v', notes: '/n', inbox: '/i', cache: '/c' } as unknown as VaultPaths
     const spec = buildJ8(paths, '# AGENTS', { loops: [] }, new Date('2026-07-27T00:00:00Z'))

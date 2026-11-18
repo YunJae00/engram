@@ -22,7 +22,6 @@ async function vault(name: string, files: Record<string, unknown>): Promise<Vaul
   return paths
 }
 
-// Every file under a folder with its bytes: the proof that a source was not written.
 async function snapshot(dir: string, base = dir): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -79,9 +78,7 @@ describe('mergeWorkspace', () => {
     const before = await snapshot(work.root), mine = await snapshot(main.root)
     const report = await mergeWorkspace(main, { root: work.root, name: '회사' })
 
-    // The source is byte for byte what it was.
     expect(await snapshot(work.root)).toEqual(before)
-    // Nothing that was here is gone or changed, apart from the lists that grew.
     const after = await snapshot(main.root)
     for (const [file, bytes] of Object.entries(mine)) {
       if (/bots\.json|sidebar-layout\.json|_person\.json|aliases\.md/.test(file)) continue
@@ -90,18 +87,15 @@ describe('mergeWorkspace', () => {
 
     const bots = await loadBots(main)
     expect(names(bots)).toEqual(['비서실장', '김대리', '비서실장 (회사)', '김대리 (회사)', '박사원'])
-    // One chief of staff, the one that was already here.
     expect(bots.filter(one => one.primary).map(one => one.id)).toEqual(['bot-a-1'])
     const tag = /^bot-a-1-[0-9a-f]{6}$/
     const chief = bots[2]!
     expect(chief.id).toMatch(tag)
-    // A schedule that was not running in its own workspace does not start by itself.
     expect(chief.tasks).toEqual([{ id: 'task-1', goal: '주간보고', schedule: { kind: 'weekly' }, paused: true }])
     expect(bots[3]!.id).toBe('bot-a-2f')
     expect(bots[4]!.avatar).toEqual({ image: 'bot-avatars/bot-b-9.png' })
     expect(names(await loadArchivedBots(main))).toEqual(['이과장'])
 
-    // Each conversation under the id its bot now has; the ones here are whole.
     expect(await text(main, `${C}/bot-chats/bot-a-1.jsonl`)).toContain('main chief')
     expect(await text(main, `${C}/bot-chats/${chief.id}.jsonl`)).toContain('work chief')
     expect(await text(main, `${C}/bot-chats/${chief.id}.2026-11-01T10-00-00.jsonl`)).toContain('work chief earlier')
@@ -115,13 +109,11 @@ describe('mergeWorkspace', () => {
     expect(await text(main, 'private/secret-capture.md')).toBe('private')
     expect(JSON.parse(await text(main, `${C}/habits.json`))).toEqual({ chain: { state: 'draft', botId: chief.id } })
 
-    // What the person told every bot: both sets, the shared line once.
     const person = JSON.parse(await text(main, `${C}/bot-memory/_person.json`)) as { facts: { id: string; text: string }[]; turns: number }
     expect(person.facts.map(fact => fact.text)).toEqual(['민호와 일한다', '서울에 산다'])
     expect(new Set(person.facts.map(fact => fact.id)).size).toBe(2)
     expect(person.turns).toBe(3)
 
-    // Notes: a new one arrives, an identical one is one file, a different one with the same id keeps both.
     expect(await text(main, 'workspace/notes/n-2.md')).toContain('only at work')
     expect(await text(main, 'workspace/notes/n-person-profile.md')).toContain('main profile')
     const aside = (await readdir(main.notes)).filter(name => /^n-person-profile-[0-9a-f]{6}\.md$/.test(name))
@@ -132,7 +124,6 @@ describe('mergeWorkspace', () => {
     expect((await readdir(main.notes)).filter(name => name.startsWith('n-1'))).toEqual(['n-1.md'])
     expect(await text(main, 'workspace/aliases.md')).toBe('# Aliases\n\n- 민호 = Minho\n- 엔비디아 = NVDA\n')
 
-    // Folders are teams: the second 마케팅팀 says where it came from, and every bot stays in its own.
     const layout = await readSidebarLayout(main, { chat: bots.map(one => one.id) })
     expect(layout.chat.folders.map(folder => folder.name)).toEqual(['마케팅팀', '마케팅팀 (회사)', '영업팀'])
     expect(layout.chat.items).toEqual([
@@ -155,7 +146,6 @@ describe('mergeWorkspace', () => {
     const main = await mainVault(), work = await workVault()
     await mergeWorkspace(main, { root: work.root, name: '회사' })
     const whole = await snapshot(main.root)
-    // As if the app had quit after the bots were written and before the run was marked done.
     const ledgerPath = join(main.cache, 'merged-workspaces.json')
     const ledger = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, { done: boolean; report?: unknown; at: string }>
     for (const entry of Object.values(ledger)) { entry.done = false; delete entry.report }
@@ -167,7 +157,6 @@ describe('mergeWorkspace', () => {
     expect(after).toEqual(whole)
   })
 
-  // Review round 2: a copied workspace has the same folder ids; the arriving folder was dropped and its bots put in the folder here.
   it('keeps both folders when a copied workspace has the same folder id', async () => {
     const main = await mainVault()
     const copy = await vault('copy', {
@@ -183,9 +172,7 @@ describe('mergeWorkspace', () => {
       const arrived = layout.chat.folders[1]!.id
       expect(arrived).toMatch(/^fold-1-[0-9a-f]{6}$/)
       expect(layout.chat.folders).toEqual([{ id: 'fold-1', name: '마케팅팀' }, { id: arrived, name: '기획팀' }, { id: 'fold-2', name: '마케팅팀 (사본)' }])
-      // Each bot stays in its own folder: the one here is not handed the arriving folder's bot.
       expect(layout.chat.items).toEqual([{ id: 'bot-a-2', folder: 'fold-1' }, { id: 'bot-c-1', folder: arrived }, { id: 'bot-c-2', folder: 'fold-2' }])
-      // One id per source folder, whichever list it is in; the team's memory follows its folder.
       expect(layout.routine).toEqual({ folders: [{ id: arrived, name: '아침' }], items: [{ id: 'r-1', folder: arrived }] })
       expect(await text(main, `${C}/bot-memory/_team-${arrived}.json`)).toContain('copy team fact')
       expect((await readdir(join(main.cache, 'bot-memory'))).filter(name => name.startsWith('_team-'))).toEqual([`_team-${arrived}.json`])
@@ -193,7 +180,6 @@ describe('mergeWorkspace', () => {
     }
     const first = await check()
     expect(await snapshot(copy.root)).toEqual(before)
-    // Cut short after the layout was written: the same ids are chosen again and no folder arrives twice.
     const ledgerPath = join(main.cache, 'merged-workspaces.json')
     const ledger = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, { done: boolean; report?: unknown }>
     for (const entry of Object.values(ledger)) { entry.done = false; delete entry.report }
@@ -214,7 +200,6 @@ describe('mergeWorkspace', () => {
     expect(bots.filter(one => one.primary)).toHaveLength(1)
   })
 
-  // Review round 1: a team workspace as the open one was marked merged while its notes stayed in the closed folder.
   it('brings notes into a workspace shared with a team as files git never stages', async () => {
     const main = await mainVault(), work = await workVault()
     const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.quotepath=false', ...args], { cwd: main.workspace, encoding: 'utf8' })
@@ -225,39 +210,32 @@ describe('mergeWorkspace', () => {
     const before = await snapshot(work.root)
 
     const report = await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })
-    // Everything the other workspace held is here now.
     const here = (await readdir(main.notes)).map(name => name.normalize('NFC')).sort()
     expect(here.filter(name => !/^n-person-profile-[0-9a-f]{6}\.md$/.test(name))).toEqual(['n-1.md', 'n-2.md', 'n-person-profile.md', '회의 [초안] 메모.md'])
     expect(here).toHaveLength(5)
     expect(await readdir(main.inbox)).toContain('later.md')
     expect(await readdir(main.sources)).toContain('paper.pdf')
     expect(report!.skipped.join(' ')).not.toContain('shared with a team')
-    // The alias lines are read, and the file the team shares is as it was.
     expect(await text(main, 'workspace/aliases.md')).toBe('# Aliases\n\n- 민호 = Minho\n')
     expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
-    // What the app's sync does: nothing of the person's other workspace is staged, and the team's own files still are.
     await writeFile(join(main.notes, 'team-new.md'), '---\nid: team-new\n---\nteam\n')
     git('add', '-A')
     expect(git('status', '--porcelain', '--untracked-files=all').trim()).toBe('A  notes/team-new.md')
     git('commit', '-q', '-m', 'sync')
     expect(git('ls-files').trim().split('\n').sort()).toEqual([...tracked, 'notes/team-new.md'].sort())
-    // A teaching in chat rewrites the shared alias file with its own lines only.
     await addAliasGroup(main, ['서연', 'Seoyeon'])
     expect(await text(main, 'workspace/aliases.md')).toContain('서연 = Seoyeon')
     expect(await text(main, 'workspace/aliases.md')).not.toContain('엔비디아')
     expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
     expect(await snapshot(work.root)).toEqual(before)
-    // A second run is a no-op.
     expect(await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })).toBeNull()
   })
 
-  // Codex cap (sm r3): with no .git folder the notes were left in the closed workspace and the source was still marked done.
   it('a shared workspace with no repository folder still receives the notes, and a repository made later never stages them', async () => {
     const main = await mainVault(), work = await workVault()
     await writeFile(join(work.inbox, 'later.md'), 'inbox item\n')
     const before = await snapshot(work.root)
     const report = await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })
-    // Everything the other workspace held is here now; the alias file a team would share is as it was.
     const here = (await readdir(main.notes)).sort()
     expect(here.filter(name => !/^n-person-profile-[0-9a-f]{6}\.md$/.test(name))).toEqual(['n-1.md', 'n-2.md', 'n-person-profile.md'])
     expect(here).toHaveLength(4)
@@ -267,16 +245,13 @@ describe('mergeWorkspace', () => {
     expect(await text(main, 'workspace/aliases.md')).toBe('# Aliases\n\n- 민호 = Minho\n')
     expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
     expect(await snapshot(work.root)).toEqual(before)
-    // With names to keep local and no repository folder to hold them, nothing is staged at all.
     await expect(new GitLayer(main.workspace).autoCommit('sync')).rejects.toThrow(/local-only/)
-    // A repository made (or cloned again) afterwards: the app's own commit names them first, so only the team's files go in.
     const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.quotepath=false', ...args], { cwd: main.workspace, encoding: 'utf8' })
     git('init', '-q'); git('config', 'user.name', 't'); git('config', 'user.email', 't@t')
     await new GitLayer(main.workspace).autoCommit('sync')
     const staged = git('ls-files').trim().split('\n')
     expect(staged).toContain('notes/n-1.md')
     expect(staged.filter(name => /n-2\.md|n-person-profile-|later\.md|paper\.pdf|local-only|aliases\.local/.test(name))).toEqual([])
-    // A second run is a no-op.
     expect(await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })).toBeNull()
   })
 

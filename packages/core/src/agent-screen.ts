@@ -2,8 +2,6 @@ import type { AgentTool } from './agent-loop.js'
 import { DESKTOP_TASK_RULE } from './agent-prompt.js'
 import { isDesktopTool } from './desktop-tools.js'
 
-// The step transport carries strings, not rich tool images. Image-file
-// ingestion support on an engine does not change that transport contract.
 export function textStepTools(tools: AgentTool[]): AgentTool[] {
   return tools.filter((tool) => tool.name !== 'look_desktop')
 }

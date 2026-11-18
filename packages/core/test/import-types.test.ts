@@ -15,9 +15,7 @@ describe('import folder-type inference', () => {
     expect(inferTypeFromFolder('log/2026-05-02.md')).toBe('log')
     expect(inferTypeFromFolder('concepts/lineage.md')).toBe('concept')
     expect(inferTypeFromFolder('random-stuff/note.md')).toBeNull()
-    // a file at the import root has no folder to read
     expect(inferTypeFromFolder('note.md')).toBeNull()
-    // windows separators
     expect(inferTypeFromFolder('decisions\\stack.md')).toBe('decision')
   })
 
@@ -41,7 +39,6 @@ describe('import folder-type inference', () => {
     const paths = await initVault(await tmpVaultRoot('import-reclass'), { git: false })
     const source = join(await tmpVaultRoot('import-reclass-src'), 'vault')
     await mkdir(join(source, 'howto'), { recursive: true })
-    // Explicit frontmatter simulates a pre-inference import: type stays 'imported'.
     await writeFile(join(source, 'howto', 'guide.md'), '---\ntype: imported\n---\n# Old import\n\nbody')
     await mkdir(join(source, 'misc'), { recursive: true })
     await writeFile(join(source, 'misc', 'loose.md'), '---\ntype: imported\n---\n# Stays imported\n\nbody')
@@ -56,7 +53,6 @@ describe('import folder-type inference', () => {
     const loose = after.find((n) => n.body.startsWith('# Stays imported'))!
     expect(guide.front.type).toBe('howto')
     expect(loose.front.type).toBe('imported')
-    // metadata correction must not re-enter the sweep delta
     expect(guide.front.updated).toBe(before.get(guide.front.id))
 
     expect(await reclassifyImported(paths)).toBe(0)

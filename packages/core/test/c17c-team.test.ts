@@ -7,10 +7,6 @@ import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// c17c (cause S: the team's own summary and hand-off messages were shaped by rules that deleted what the person reads, C10 "신기능 세 곳"
-// with no 노션/슬랙/리니어, and whose fallback wrote metadata, C6 "(서연, 지민이 찾은 …) 링크"). Wordings are not the harness's:
-// 쿠팡 / 마켓컬리 / 11번가 배송 정책, 하은 / 준 / 소윤, 연말 프로모션 문구, "오늘 팀 뭐 했어".
-// c18b: the one fix after a check is a scoped repair (written-check repairedWrite): replacements of the units a problem names, and new lines.
 const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const insert = (after: number, ...lines: string[]): string => JSON.stringify({ insert_after: { [after]: lines } })
 const none = JSON.stringify({ problems: [] })
@@ -22,7 +18,6 @@ function model(drafts: string[], verdicts: string[] = []) {
 const logged: string[] = []
 afterEach(() => { logged.length = 0; setReportLog(() => undefined) })
 
-// --- the team summary names what every job was about ---
 async function today() {
   const paths = await initVault(await tmpVaultRoot('c17c-summary'), { git: false })
   await createBot(paths, { name: '엔그램' })
@@ -34,7 +29,6 @@ async function today() {
     '11번가 배송 정책 조사 → 못 찾았어요 (소윤, 2026-11-18)',
     '연말 프로모션 문구 (하은한테 받아서) → 1. 올해 마지막 할인, 놓치지 마세요 (준, 2026-11-18)',
   ], new Date('2026-11-18T01:00:00.000Z'))
-  // 소윤 is taken off the team afterwards: their job is still named, and said as gone.
   await staff.run({ remove: ['소윤'] }, { task: '' })
   return { paths, bots: await loadBots(paths), now: new Date(2026, 10, 18, 10) }
 }
@@ -44,17 +38,13 @@ const FOLDED = '오늘은 하은, 준, 소윤이 배송 정책 세 곳을 봤는
 test('a summary that folds jobs into a count ("배송 정책 세 곳") is refused as missing, naming the subject, and the repair names every one', async () => {
   setReportLog(line => logged.push(line))
   const { paths, bots, now } = await today()
-  // c18b: the repair adds the subjects as a line; the draft's own sentences stay as written.
   const added = '쿠팡·마켓컬리·11번가 배송 정책이었어요.'
   const { write, calls } = model([FOLDED, insert(1, added)], [none])
   expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(`${FOLDED}\n${added}`)
-  // The writer is told each job's subject is named, never folded into a count.
   expect(calls[0]).toContain('never folded into a count')
-  // The meaning check is offered the "missing" kind with the jobs' subjects as its parts.
   expect(calls[1]).toContain(CHECK)
   expect(calls[1]).toContain('"missing": the message must name what each of these was about')
   expect(calls[1]).toContain('연말 프로모션 문구')
-  // The repair note says which subjects are missing.
   expect(calls[2]).toContain(REDO)
   expect(calls[2]).toContain('"kind":"shape"')
   for (const subject of ['쿠팡 배송 정책', '마켓컬리 배송 정책', '11번가 배송 정책']) expect(calls[2]).toContain(subject)
@@ -83,7 +73,6 @@ test('grouping by listing the subjects passes; a meaning check that still finds 
   expect(calls[2]).toContain('"kind":"missing"')
 })
 
-// --- a hand-off is one person's message with its sources linked ---
 const block = (report: Record<string, unknown>): string => `\`\`\`report\n${JSON.stringify(report)}\n\`\`\``
 const part = (id: string, role: string, brief: string, more: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: new Date().toISOString(), ...more })
 const reported = (m: TeamMember, report: Record<string, unknown>): TeamMember => {
@@ -98,7 +87,6 @@ function handOff(): TeamMember[] {
   return [haeun, jun]
 }
 
-// c17c r2 (rule 5, review #1): the items are the answer, so they come first; whose they are is one sentence after them.
 const LINES = ['1. 올해 마지막 할인, 놓치지 마세요', '2. 12월 20일, 장바구니를 채우세요']
 test('a writer draft that opens on the items and then says whose find they came from, with no link, is accepted; the host closes that sentence with the link', async () => {
   setReportLog(line => logged.push(line))
@@ -115,12 +103,10 @@ test('a draft that opens on a sentence about the work, before the items, is refu
   setReportLog(line => logged.push(line))
   const members = handOff()
   const narrated = JSON.stringify({ message: `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n${LINES.join('\n')}`, kept: [] })
-  // c18b: the opening sentence is the problem's quote: the repair drops it and says whose they are after the items.
   const repair = JSON.stringify({ replace: { 1: '' }, insert_after: { 3: ['하은이 찾은 연말 할인으로 준이 쓴 거예요.'] } })
   const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, repair]).write })
   expect(out.split('\n')).toEqual([...LINES, `하은이 찾은 연말 할인으로 준이 쓴 거예요. [shop.example.kr](${SALE})`])
   expect(logged).toEqual([expect.stringMatching(/^writer=repaired:items-first /)])
-  // A repair that is no repair: the draft is never withheld, and (c18b r3) the host still opens it on the items, its sentence after them.
   logged.length = 0
   expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')).toEqual([...LINES, '', `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`])
   expect(logged).toEqual([expect.stringMatching(/^writer=kept:items-first /)])
@@ -129,10 +115,8 @@ test('a draft that opens on a sentence about the work, before the items, is refu
 test('a draft that names nobody it was made from is refused; the host\'s fallback opens on the items and says whose they are after, never a "(name, …)" tag', async () => {
   const members = handOff()
   const nobody = JSON.stringify({ message: `${LINES.join('\n')}\n\n준이 써 봤어요.`, kept: [] })
-  // c18b: a rule of shape never withholds the draft: unrepaired it is shown as written, the pages it was made from closing its sentence.
   const out = await writtenReport({ ask: '할인 행사 찾아서 준한테 넘겨 문구 써줘', members, write: model([nobody, nobody]).write })
   expect(out.split('\n').filter(Boolean)).toEqual([...LINES, `준이 써 봤어요. [shop.example.kr](${SALE})`])
-  // The host's own rendering (no draft at all) opens on the items and says whose they are after.
   const host = mergedReport(members)
   expect(host.split('\n')).toEqual([...LINES, `준이 하은이 찾은 연말 할인 행사로 만든 거예요. [shop.example.kr](${SALE})`])
   expect(host).not.toMatch(/\(준|\(하은/)
@@ -152,7 +136,6 @@ test('side by side, each part keeps its "part(name):" row label (rule 7)', () =>
   expect(shown).not.toContain('찾아보니')
 })
 
-// c17c r2 (review #2): one job's subject inside another's ("쿠팡" in "쿠팡이츠") is still that job's own word, and is not said by the longer one.
 test('a job whose subject is part of another job\'s word is still checked: naming only the longer one is missing', async () => {
   setReportLog(line => logged.push(line))
   const paths = await initVault(await tmpVaultRoot('c17c-r2'), { git: false })
@@ -166,7 +149,6 @@ test('a job whose subject is part of another job\'s word is still checked: namin
   const bots = await loadBots(paths), now = new Date(2026, 10, 18, 10)
   const half = '오늘은 준이 쿠팡이츠 수수료를 봤는데 새로 나온 게 없었어요. 하은도 같이 봤어요.'
   const both = '오늘은 하은이 쿠팡, 준이 쿠팡이츠 수수료를 봤는데 둘 다 새로 나온 게 없었어요.'
-  // c18b: "쿠팡 수수료" stands in no sentence of the draft, so the repair adds it as a line; the draft's sentences stay.
   const { write, calls } = model([half, insert(2, '하은은 쿠팡 수수료를 봤어요.')], [none])
   expect(await teamSummary(paths, { bots, message: '오늘 다들 뭐 했어', now, write })).toBe(`${half}\n하은은 쿠팡 수수료를 봤어요.`)
   expect(calls[2]).toContain('쿠팡 수수료')
@@ -174,8 +156,6 @@ test('a job whose subject is part of another job\'s word is still checked: namin
   void both
 })
 
-// c17c r3 (review #3): one job's words all inside another's ("배민 광고 요금" beside "배민 광고 요금 인상") left the first with no word of its own,
-// and it went unchecked. Saying only the longer one is missing the shorter; both said side by side, or apart, pass.
 async function nested(dids: [string, string]) {
   const paths = await initVault(await tmpVaultRoot('c17c-r3'), { git: false })
   await createBot(paths, { name: '엔그램' })
@@ -189,7 +169,6 @@ test('a job whose words are all inside another job\'s is still checked: naming o
   const { paths, bots, now } = await nested(['배민 광고 요금 조사', '배민 광고 요금 인상 조사'])
   const half = '오늘은 하은이랑 준이 배민 광고 요금 인상을 봤는데 새로 나온 게 없었어요.'
   const both = '오늘은 하은이 배민 광고 요금이랑 준이 배민 광고 요금 인상을 봤는데 둘 다 새로 나온 게 없었어요.'
-  // c18b: the quoted subject stands inside the draft's one sentence, so the repair replaces that sentence.
   const { write, calls } = model([half, JSON.stringify({ replace: { 1: both } })], [none])
   expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(both)
   expect(calls[2]).toContain('배민 광고 요금')

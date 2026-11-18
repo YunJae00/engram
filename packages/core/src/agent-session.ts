@@ -37,7 +37,6 @@ function summarizeArgs(args: Record<string, unknown>): string {
   return typeof first === 'string' ? first.slice(0, 80) : ''
 }
 
-// replied: the host already gave the person a one-line reply (grokbar c3 T1/H6: the model's own reply came with its next tool result, at 6.7 s or never).
 export function withSteer(text: string, said: string[], replied = false): string {
   if (!said.length) return text
   const words = `The person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}.`
@@ -46,20 +45,14 @@ export function withSteer(text: string, said: string[], replied = false): string
     : `${text}\n\n${words} First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
 }
 
-// What a lookup is told when its time or its calls are used up. grokbar c3: "Time is up for this part" and "No more calls this turn" came
-// back to the person as "시간이 다 돼서 이번 턴에서는…" and "다시 시도해볼까요?".
 export const ANSWER_NOW = 'Call no more tools. Answer now from what you already have, in the person\'s language: what you found, each fact with the address it came from, and in one plain clause what is not out yet or could not be found. Do not mention time, limits, turns, attempts or tools, do not apologize, and do not ask whether to try again or look further.'
 
 const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
-// shortcut: words that keep coming past this many rewrites are answered as their own turn, raise it if people steer more often.
 const LATE_STEER_ROUNDS = 3
-// c11b: one more round for a gap the host found in the answer's shape: two calls (a search, or a read of a few pages), then the answer.
 const RECHECK_CALLS = 2
 const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
-// c11b r2: the model ended its turn with nothing after its last call; what it wrote before the call was a note to itself.
 const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
-// Written in the language the person wrote in: in a Korean ask, Hangul and no Latin word they did not write themselves.
 const theirLanguage = (text: string, task: string): boolean => !/[가-힣]/.test(task) || /[가-힣]/.test(text) && !(text.match(/[A-Za-z]+/g) ?? []).some(word => !task.toLowerCase().includes(word.toLowerCase()))
 function lateSteer(draft: string, said: string[], replied = false): string {
   return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
@@ -69,11 +62,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
-  // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
-  // Only a work turn acts on pages (collect_results receipts, the browser call budget); a lookup or short ask reads them.
   const browser = !options.lookup && !options.short && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
-  // The turn kind picks which rules the session is sent (agent-session-shape sessionRules): a lookup or a short ask carries no work rules.
   const kind = options.lookup ? 'lookup' as const : options.short ? 'short' as const : 'work' as const
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
@@ -108,14 +98,11 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let exhausted = false
   let extended = false
   let toolMs = 0
-  // Words taken mid-lookup are a new ask: its time and its calls start again, once (grokbar c3 T2: "그냥 애플로 바꿔" was taken at 5 s and the 애플 search was refused at 12.96 s).
   let renewed = false
   const renew = (): void => { if (!options.lookup || renewed) return; renewed = true; exhausted = false; extended = false; startedCalls = 0; working = Date.now() }
   let stalled = false, stallNote = ''
-  // A closing tool's reply is the answer (AgentTool.closes): the turn ends on it unless another kind of call ran this turn or one follows within the grace.
   let closed: string | undefined, composing = false, close: ((result: ToolSessionResult) => void) | undefined
   const closeLines: string[] = []
-  // Once a closing tool has succeeded the model's words are held, not shown: dropped if the turn closes, shown in order if it goes on.
   let held: (() => void)[] | undefined
   const release = (): void => { const kept = held; held = undefined; for (const show of kept ?? []) show() }
   let pageStepCalls = 0
@@ -132,7 +119,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const closing = typeof tool.closes === 'function' ? tool.closes(args) : tool.closes === true
       if (!closing) { composing = true; release() }
       const late = options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs
-      // A lookup at its limit still hears the person: words waiting there change the job before the old one is answered (Codex b6 r3 #1).
       if (options.lookup && !renewed && (late || startedCalls + 1 > allowance())) {
         const waiting = options.takeSteer?.() ?? []
         if (waiting.length) { renew(); return withSteer('That call was not run.', waiting, options.steerReplied) }
@@ -173,7 +159,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
           const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }), waitingForPerson)
           observation = outcome.text
           image = outcome.image
-          // Deltas are for work that acts on one page again and again; a lookup or short ask gets whole pages, so its rules carry no delta rule.
           modelObservation = compactPage(options.compactObservations === false || kind !== 'work' ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed ||= outcome.committed === true
@@ -209,7 +194,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
       if (said.length) renew()
-      // c16a r3: a reply its tool confirms as the whole answer (closesOn) closes whatever ran before it; only calls after it keep the turn open.
       const whole = tool.closesOn?.(observation)
       if (closing && (whole ?? !composing) && !said.length && !observation.startsWith('that did not work')) {
         if (whole) composing = false
@@ -284,9 +268,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),
-    // A lookup reads and reports: it needs no long thinking between calls (grokbar c3 R3: 14.5 s of model time between two searches).
-    // c5c D1, M2: a note the host already read was answered after 20 s (1,330 of 1,586 output tokens were thinking), a one-word correction after 7.5 s.
-    // A change of effort opens a fresh session (engine-claude-session.ts signatureOf); its first turn is given the thread so far (opening).
     ...(options.lookup || options.light ? { effort: 'low' as const } : {}),
     ...(options.native ? { native: {
       ...options.native,
@@ -329,12 +310,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal.throwIfAborted()
     const run = runTools.call(deps.engine, job)
     session = await Promise.race([run, ended, new Promise<ToolSessionResult>(resolve => { close = resolve })])
-    // The model's own closing words are not waited for or shown, but its round is left to finish (bounded): cutting it would cost the warm session.
     if (closed !== undefined) { const stop = () => lifetime.abort(new Error('The tool session has ended.')), limit = setTimeout(stop, CLOSE_TAIL_MS); void run.catch(() => undefined).finally(() => { clearTimeout(limit); stop() }) }
-    // Words said after the last tool result, while the answer was being written, had no tool result left to ride on: the answer is
-    // written again with them, in the same turn, and the draft is dropped. grokbar B6 r3: "그냥 애플로 바꿔" got the 엔비디아 answer and a turn of its own.
-    // c12b r2 (review #1): every wait after the first round (the note round, the host's verdict on the draft, its extra round) is a window
-    // words can land in; each ends here, so words said at any point before delivery rewrite the one answer. True when words were taken.
     let lateLeft = LATE_STEER_ROUNDS
     const takeLate = async (): Promise<boolean> => {
       let took = false
@@ -343,27 +319,19 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         if (!late.length) break
         lateLeft--; took = true
         options.onReset?.(true)
-        // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
         exhausted = false; extended = false; startedCalls = 0; working = Date.now()
         session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
       }
       return took
     }
     await takeLate()
-    // c11b r2 (review #3): a turn whose only words came before a tool call gets one round to say its answer; the note is never shown as
-    // one unless that round, too, says nothing (a reply said before a save, "…기억해 둘게요." then keep_in_mind, is then kept as it was).
     if (closed === undefined && !signal.aborted && !session.error && !asked && !session.answer.trim() && session.note?.trim()) {
       const note = session.note
       working = Date.now()
       session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${UNSAID_NOTE}` }), ended])
-      // c11b r3 (review #2): a note is the model's working words, written for itself; it stands in for an answer only when it is in the
-      // person's own language (a reply said before a save, "…기억해 둘게요."), never as English narration in a Korean thread (rule 12).
-      // stack-11 (c11b r3 #1): on a lookup the answer is what was found, so words said before a call ("먼저 자료를 찾아볼게요.") never
-      // stand in, in any language: the answer stays empty and the host writes it from the rows it holds (desktop fast-lane heldAnswer).
       if (!session.answer.trim() && !session.error && !options.lookup && theirLanguage(note, task)) session = { answer: note }
       await takeLate()
     }
-    // A verdict on a draft that words said during it have since rewritten is about the old ask: the rewritten answer is judged instead.
     let gap: string | undefined
     do gap = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.recheck?.(session.answer), ended.then(() => undefined)]) : undefined
     while (await takeLate())
@@ -375,8 +343,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
       await takeLate()
     }
-    // c12b r3 (review #1): the host's own steps before delivery are a wait like the others: words said during them are taken, the raw
-    // answer is rewritten with them, and the rewrite is shaped again. Only an answer shaped from the last raw answer is delivered.
     if (options.deliver) {
       let shaped: string | undefined
       do shaped = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.deliver(session.answer), ended.then(() => undefined)]) : undefined

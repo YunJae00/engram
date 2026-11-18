@@ -36,7 +36,6 @@ function editList(value: unknown, app: string): Record<string, unknown>[] {
 }
 
 export function officeEditTools(courier: OfficeCourier): AgentTool[] {
-  // Read grants belong to this tool session, not to another chat's document reads.
   const observed = new Map<string, string>()
   return ['ppt', 'word'].flatMap((app): AgentTool[] => {
     const target = { file: { type: 'string' } }

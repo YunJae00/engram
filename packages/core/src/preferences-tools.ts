@@ -1,13 +1,6 @@
 import type { AgentTool } from './agent-loop.js'
 import type { AuditEntry } from './audit-log.js'
 
-// What used to be rows on the Settings page is said in chat. One tool, and one closed list of plain Korean
-// sentences that are answered without a model. Each answer is one line that says the state as it now is.
-//
-// The rule every path goes through (settle): a change that narrows what Engram may do is made at once;
-// a change that widens it is asked about once, and made only when the person's next message says yes.
-// The tool cannot carry the yes itself, so a model cannot widen anything on its own.
-
 export const PREFERENCE_ACTIONS = [
   'auto_start', 'app_activity', 'learn_places', 'learn_files', 'learn_apps', 'rescan_work', 'app', 'habits', 'habit',
   'review_rules', 'ask_first', 'auto_allow', 'activity_log', 'export_logs',
@@ -20,20 +13,15 @@ export interface PreferenceHost {
   autoStart(on: boolean): Promise<void>
   learning(source: 'activity' | 'places' | 'files' | 'apps', on: boolean): Promise<void>
   rescanWork(): Promise<void>
-  // Apps seen on this computer and the ones kept off, by process name and the name the app shows.
-  // on: false for one the person keeps out of reach.
   apps(): Promise<{ app: string; label: string; on: boolean }[]>
   setApp(app: string, label: string, on: boolean): Promise<void>
   habits(): Promise<{ key: string; title: string }[]>
   answerHabit(key: string, keep: boolean): Promise<void>
   reviewRules(): Promise<{ kind: 'ask-first' | 'allow'; target: string }[]>
   setReviewRule(kind: 'ask-first' | 'allow', site: string, on: boolean): Promise<void>
-  // One audit file, by its UTC day (YYYY-MM-DD).
   audit(day: string): Promise<AuditEntry[]>
-  // The name of the folder it wrote, inside Downloads.
   exportLogs(): Promise<string>
   backup: {
-    // false: this copy of the app keeps no history to back up.
     available(): boolean
     connected(): Promise<boolean>
     connect(url: string): Promise<{ ok: boolean; detail?: string }>
@@ -52,7 +40,6 @@ const SOURCE = { app_activity: 'activity', learn_places: 'places', learn_files: 
 const SOURCE_WORDS = { app_activity: '앱 활동', learn_places: '자주 가는 사이트', learn_files: '최근 파일', learn_apps: '쓰는 앱' } as const
 const THEME_WORDS = { system: '시스템 설정을 따르는 화면', light: '밝은 화면', dark: '어두운 화면' } as const
 
-// The site a person named, as the host a rule is kept under.
 function siteOf(typed: string): string | undefined {
   const value = typed.trim()
   try {
@@ -61,11 +48,9 @@ function siteOf(typed: string): string | undefined {
   } catch { return undefined }
 }
 
-// Widening: Engram may see, use or send more than before. Everything else narrows or changes nothing a gate guards.
 export function widens(ask: PreferenceAsk): boolean {
   switch (ask.do) {
     case 'app_activity': case 'learn_places': case 'learn_files': case 'learn_apps': case 'app': case 'auto_allow': return ask.on === true
-    // Taking an ask-first rule away removes a gate.
     case 'ask_first': return ask.on === false
     case 'backup_connect': return true
     default: return false
@@ -83,14 +68,12 @@ function question(ask: PreferenceAsk): string {
   }
 }
 
-// The person's day runs midnight to midnight where they are; the audit files are kept by UTC day.
 async function dayEntries(host: PreferenceHost, now: Date, back: number): Promise<AuditEntry[]> {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back), end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1)
   const files = [...new Set([start, new Date(end.getTime() - 1)].map(date => date.toISOString().slice(0, 10)))]
   return (await Promise.all(files.map(file => host.audit(file)))).flat().filter(entry => { const at = Date.parse(entry.at); return at >= start.getTime() && at < end.getTime() })
 }
 
-// What the bots did on one day, from the audit files: who, how much, where, and what was asked first.
 export function activityLine(entries: readonly AuditEntry[], when: '오늘' | '어제'): string {
   const lead = when === '오늘' ? '오늘은' : '어제는'
   if (!entries.length) return `${lead} 아직 한 일이 없어요.`
@@ -142,7 +125,6 @@ async function apply(host: PreferenceHost, ask: PreferenceAsk, now: Date): Promi
       return rules.length ? [of('ask-first') && `항상 먼저 여쭤보는 곳: ${of('ask-first')}`, of('allow') && `묻지 않고 제출하는 곳: ${of('allow')}`].filter(Boolean).join('\n') : '따로 정해 둔 곳은 없어요. 보내거나 제출하기 전에는 늘 먼저 여쭤봐요.'
     }
     case 'ask_first': case 'auto_allow': {
-      // No site named: sending and submitting already wait for the person everywhere.
       if (!name && ask.do === 'ask_first' && on) return '보내거나 제출하기 전에는 항상 먼저 여쭤볼게요.'
       const site = siteOf(name)
       if (!site) return '어느 사이트인지 주소를 알려 주세요.'
@@ -184,12 +166,9 @@ const OFF = /(꺼|끄|끊|하지\s*마|보지\s*마|말아|마세요|마$|해제
 const YES = /^(응|ㅇㅇ|ㅇ|네|넵|예|그래|좋아|맞아|어|웅|해\s*줘|해|그렇게\s*해|허용|허용해|연결해|ok|okay|yes|y|sure)\s*(요|줘|주세요)?$/iu
 const NO = /^(아니|아니요|아뇨|ㄴㄴ|안\s*돼|하지\s*마|됐어|취소|no|n|nope)\s*(요)?$/iu
 const ASK_MAX = 60
-// A second request in the same breath ("…꺼주고, 그리고 …") makes it a turn of its own.
 const AND_MORE = /그리고|(주|하|끄|켜)고[,\s]|한\s*다음|다음에/u
 const DEICTIC = /^(이|그|저|이런|그런)\s*(앱|프로그램|거|것)?$/u
 
-// A plain sentence that is nothing but one of these asks. Anything else (longer, mixed with other work, or
-// about something this list does not name) is left to the model, which has the same tool.
 export function preferenceAsk(message: string, apps: readonly string[] = []): PreferenceAsk | undefined {
   const line = message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
   if (!line || line.includes('\n') || [...line].length > ASK_MAX || AND_MORE.test(line)) return undefined
@@ -221,7 +200,6 @@ export function preferenceAsk(message: string, apps: readonly string[] = []): Pr
   if (host && /(묻지\s*말고|그냥|바로|자동으로)\s*(제출|보내|진행)/u.test(line)) return { do: 'auto_allow', name: host, on: true }
   if (host && /(물어|여쭤|확인|묻지)/u.test(line)) return /(묻지\s*마|물어보지\s*마|안\s*물어|확인하지\s*마|규칙\s*(은|을|를)?\s*(지워|삭제|없애|해제))/u.test(line) ? { do: 'ask_first', name: host, on: false } : { do: 'ask_first', name: host, on: true }
   if (/(메일|메시지|문자|카톡|뭐든|무엇이든)?\s*(을|를)?\s*보내기\s*전(에|엔|에는)\s*(항상|꼭|반드시|먼저)?\s*(물어|여쭤|확인)/u.test(line)) return { do: 'ask_first', on: true }
-  // An app by name: only a name this computer has seen, or one the sentence itself calls an app ("존댓말은 쓰지 마" is not one).
   const app = /^(.+?)\s*(앱)?\s*(은|는|을|를|도)?\s*(이제\s*|다시\s*)?(쓰지\s*마|건드리지\s*마|사용하지\s*마|열지\s*마|써도\s*돼|사용해도\s*돼|건드려도\s*돼)(요|세요)?$/u.exec(line)
   const named = app?.[1]?.trim()
   if (named && !DEICTIC.test(named) && (app?.[2] || apps.some(label => label.toLowerCase() === named.toLowerCase()))) return { do: 'app', name: named, on: !/마(요|세요)?$/u.test(line) }
@@ -232,9 +210,7 @@ const APP_VERB = /(쓰지\s*마|건드리지\s*마|사용하지\s*마|열지\s*�
 const PENDING_MS = 10 * 60_000
 
 export interface Preferences {
-  // The answer to a message this module takes whole, or undefined when the turn should go on as usual.
   say(channel: string, message: string): Promise<string | undefined>
-  // The first line for a sentence whose work can take seconds (collecting logs, reaching GitHub), shown before that work starts; undefined for the rest.
   opening(channel: string, message: string): string | undefined
   tool(channel: string, korean: () => boolean): AgentTool
 }
@@ -243,22 +219,17 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
   const pending = new Map<string, { ask: PreferenceAsk; at: number }>()
   const failed = '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'
   const done = (ask: PreferenceAsk) => apply(host, ask, clock()).catch(() => failed)
-  // The one door: a widening is held as a question, everything else is done.
   const settle = async (channel: string, said: PreferenceAsk, typed = false): Promise<string> => {
     pending.delete(channel)
-    // A call that leaves `on` out never widens: it reads as off, and for an ask-first rule as keeping the rule.
     const ask: PreferenceAsk = { ...said, on: said.do === 'ask_first' ? said.on !== false : said.on === true }
     if (!widens(ask)) return done(ask)
     if ((ask.do === 'app' || ask.do === 'auto_allow') && !ask.name?.trim()) return done(ask)
     if (ask.do === 'app') {
-      // Only an app that is off can be widened; one already in reach needs no question.
       const name = ask.name!.trim().toLowerCase(), held = (await host.apps().catch(() => [])).find(one => one.label.toLowerCase() === name || one.app === name)
       if (!held || held.on) return `${josa(held?.label ?? ask.name!.trim(), '은', '는')} 지금도 쓸 수 있어요.`
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow' && !siteOf(ask.name ?? '')) return done(ask)
-    // What lets something leave later with no question (submitting on a site, notes going to a repository) is settled only on the person's
-    // own sentence, where the question they answer is this module's own line. A model's call could be worded to them any way it likes.
     if (!typed && ask.do === 'auto_allow') return `그건 직접 말씀해 주셔야 바꿀 수 있어요. "${siteOf(ask.name ?? '')}에서는 묻지 말고 제출해"라고 말씀해 주세요.`
     if (!typed && ask.do === 'backup_connect') return `백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 ${ask.name!.trim()} 로 연결해줘"라고 말씀해 주세요.`
     pending.set(channel, { ask: ask.do === 'auto_allow' ? { ...ask, name: siteOf(ask.name ?? '')! } : ask, at: clock().getTime() })
@@ -281,13 +252,11 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
           if (NO.test(line)) return '그대로 둘게요.'
         }
       }
-      // The app list is read only for a sentence shaped like one about an app.
       const ask = preferenceAsk(message) ?? (APP_VERB.test(line) ? preferenceAsk(message, (await host.apps().catch(() => [])).map(one => one.label)) : undefined)
       return ask ? settle(channel, ask, true) : undefined
     },
     tool: (channel, korean) => ({
       name: 'preferences',
-      // In a Korean conversation the line it returns is the whole answer.
       closes: () => korean(),
       description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call and give its reply to them as it is (it is already one Korean line; in another language, say the same thing in theirs). do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When the reply is a question, the change has NOT been made: pass the question on and stop; never call again to answer it yourself.',
       argsSchema: { type: 'object', additionalProperties: false, required: ['do'], properties: { do: { type: 'string', enum: [...PREFERENCE_ACTIONS] }, on: { type: 'boolean' }, name: { type: 'string' } } },

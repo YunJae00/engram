@@ -33,7 +33,7 @@ describe('noteActivation — the memory luminance curve', () => {
     expect(week).toBeLessThan(fresh)
     expect(month).toBeLessThan(week)
     expect(quarter).toBeLessThan(month)
-    expect(quarter).toBeGreaterThan(0.1) // dim, never zero — stale is not gone
+    expect(quarter).toBeGreaterThan(0.1)
   })
 
   it('frequency keeps an old memory vivid (ACT-R practice term)', () => {

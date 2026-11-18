@@ -8,7 +8,6 @@ describe('resolveTheme', () => {
     expect(theme!.colors.field).toBe('1F3B5B')
     expect(theme!.colors.accent).toBe('C0603B')
     expect(theme!.fonts.title).toBe('Georgia')
-    // The structural neutrals are filled in, never dictated by the model.
     expect(theme!.colors.paper).toBe('FFFFFF')
     expect(theme!.colors.onField).toBe('FFFFFF')
     expect(theme!.colors.chart[0]).toBe('1F3B5B')
@@ -17,8 +16,6 @@ describe('resolveTheme', () => {
 
   it('takes extra chart hues from the model and invents none itself', () => {
     const plain = resolveTheme({ field: '1F3B5B', accent: 'C0603B', fonts: { title: 'Georgia', body: 'Segoe UI' } })!
-    // With no extra hues the palette is exactly the two brand colours plus the
-    // neutral - nothing brand-like is fabricated.
     expect(plain.colors.chart).toEqual(['1F3B5B', 'C0603B', '6B7280'])
     const rich = resolveTheme({ field: '1F3B5B', accent: 'C0603B', chart: ['#2FA98C', 'e8a317'], fonts: { title: 'Georgia', body: 'Segoe UI' } })!
     expect(rich.colors.chart).toEqual(['1F3B5B', 'C0603B', '6B7280', '2FA98C', 'E8A317'])
@@ -43,7 +40,6 @@ describe('resolveTheme', () => {
     expect(resolveTheme(input)).toBeNull()
   })
 
-  // c8c D2: no theme no longer asks the person (GROKBOT rule 6): the house look is used and the result says so to the model.
   it('carries a house look for when nothing usable was passed, and never an ask', () => {
     expect(THEME_NEEDED).toContain('Never ask the person')
     expect(THEME_NEEDED).not.toMatch(/^Ask|\bAsk the person for/)

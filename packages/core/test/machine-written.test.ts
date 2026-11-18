@@ -28,9 +28,6 @@ describe('capture provenance', () => {
   })
 
   it('AN UNMARKED NOTE IS THE USER’S — the default must never be the risky one', () => {
-    // Every note written before this field existed was a deliberate capture.
-    // If absent ever read as 'session', one release would start silently
-    // rewriting years of someone's own memories.
     expect(readOrigin('')).toBe('user')
     expect(readOrigin('<!-- something else -->\n# 노트')).toBe('user')
     expect(readOrigin('# 노트\n\n<!-- engram:origin=session -->')).toBe('user')
@@ -45,8 +42,6 @@ describe('capture context — where a memory came from', () => {
     const content = await readFile(join(paths.inbox, file), 'utf8')
     expect(readOrigin(content)).toBe('session')
     expect(readContext(content)).toBe('sample')
-    // The engine-facing text carries neither marker — provenance is
-    // bookkeeping, not something to be copied into a memory's body.
     const stripped = stripProvenanceMarkers(content)
     expect(stripped).not.toContain('engram:')
     expect(stripped).toContain('# team 구조')
@@ -104,7 +99,7 @@ describe('the autonomic librarian and the provenance line', () => {
     expect(effects.join(' ')).toContain('user note protected')
     expect((await readNote(paths, a.front.id)).front.status).toBe('current')
     expect((await readNote(paths, b.front.id)).front.status).toBe('current')
-    expect((await listCards(paths, 'proposed'))).toHaveLength(0) // the question is gone
+    expect((await listCards(paths, 'proposed'))).toHaveLength(0)
   })
 
   it('a merge that would swallow a USER note is refused, both notes untouched', async () => {
@@ -127,8 +122,6 @@ describe('the autonomic librarian and the provenance line', () => {
     await conflictCard(a.front.id, b.front.id)
     const effects = await applyVerdict({ verdict: 'escalate', reason: '어느 측정이 맞는지 본문에 없음' })
     expect(effects.join(' ')).toContain('held quietly')
-    // Still in the archive for a human — but off the resolver's desk, so the
-    // next sweep does not re-judge it (the idempotency gate caught this).
     expect(await listCards(paths, 'proposed')).toHaveLength(1)
     expect(await resolvableCards(paths)).toHaveLength(0)
   })

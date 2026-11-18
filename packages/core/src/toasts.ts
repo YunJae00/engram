@@ -1,10 +1,7 @@
 import { appKey } from './habit-chains.js'
 
-// A notification copied out of the system's list the moment it showed, so it
-// stays Engram's after the person clears it there.
 export interface Toast {
   id: string
-  // The name the app shows itself by, and the id the system knows it by.
   app: string
   aumid: string
   at: string
@@ -12,10 +9,6 @@ export interface Toast {
   text: string
 }
 
-// Which recorded app sent a notification, by where its programs live. A store
-// app's id names its package ("Name_publisher!App"), whose folder holds the
-// program; a desktop app's id mostly carries its program's name
-// ("Microsoft.Office.OUTLOOK.EXE.15"). With neither, it goes by its shown name.
 export function toastApp(toast: Pick<Toast, 'app' | 'aumid'>, paths: Record<string, string>): string {
   const aumid = toast.aumid.toLowerCase()
   const family = /^([^!/\\]+)_([a-z0-9]{13})!/.exec(aumid)
@@ -39,7 +32,6 @@ export function toastUse(toasts: Toast[], paths: Record<string, string>): Map<st
   return use
 }
 
-// The app a request names, by its recorded key or any name it goes by.
 export function toastFrom(toast: Toast, key: string, named: string, label = ''): boolean {
   const want = appKey(named)
   return !want || key === want || [toast.app, label].some(name => name && appKey(name).includes(want))

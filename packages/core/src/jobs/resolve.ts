@@ -10,10 +10,6 @@ function isMachineWritten(note: Note): boolean {
   return note.front.origin === 'session'
 }
 
-// Cards worth attempting. `stale` and `new-note` are excluded for opposite
-// reasons: stale is a question about the world (is this still true?) that no
-// amount of reading two bodies can answer, and new-note has no targets to
-// judge provenance from.
 const RESOLVABLE = new Set(['conflict', 'merge', 'supersede'])
 
 export interface ResolvableCard {
@@ -25,7 +21,7 @@ export async function resolvableCards(paths: VaultPaths): Promise<ResolvableCard
   const out: ResolvableCard[] = []
   for (const card of await listCards(paths, 'proposed')) {
     if (!RESOLVABLE.has(card.cardType)) continue
-    if (card.held) continue // one attempt was the budget — see Card.held
+    if (card.held) continue
     if (card.targets.length < 2) continue
     const notes: Note[] = []
     for (const id of card.targets) {
@@ -86,8 +82,6 @@ export function buildJ12(
   return {
     kind: 'J12',
     disallowTools: true,
-    // Judgment: a cheap model here would resolve the ones it should escalate,
-    // and a wrong auto-resolve silently loses a memory.
     modelHint: 'default',
     inputKey: card.id,
     ...withPrompt(agentsMd, 'J12', INSTRUCTION, {
@@ -99,19 +93,10 @@ export function buildJ12(
       try {
         parsed = extractJson(result) as Verdict
       } catch {
-        // An unreadable verdict spends the one attempt too — without this a
-        // model that answers J12 in prose would re-judge the card every sweep.
         await holdCard(paths, card.id, 'verdict could not be read')
         return [`held quietly: ${card.id} (verdict could not be read)`]
       }
-      // Complementary findings can both remain current without retiring either note.
       if (parsed.verdict === 'keep-both') {
-        // The two card types need opposite calls to reach the same outcome. On
-        // a conflict, approving with 'both' verifies each note and retires
-        // neither — and lifts the `disputed` status the card pinned on them,
-        // which is what puts them back into the context every session reads.
-        // On a merge or supersede the proposal itself is the thing to refuse:
-        // approving it would write the merge this verdict just said not to do.
         if (card.cardType === 'conflict') await approveCard(paths, card.id, { choice: 'both', actor: 'librarian' }, now)
         else await rejectCard(paths, card.id, `not a contradiction — both kept: ${parsed.reason ?? ''}`, now, 'librarian')
         return [`not a contradiction: ${card.id} — both kept (${parsed.reason ?? ''})`]
@@ -121,24 +106,16 @@ export function buildJ12(
         return [`held quietly: ${card.id} (${parsed.reason ?? 'undecidable'})`]
       }
       const winner = notes.find((n) => n.front.id === parsed.winner)
-      // A "winner" that is not one of the targets means the engine invented an
-      // id. Hold rather than guess — this path retires notes.
       if (!winner) {
         await holdCard(paths, card.id, 'winner id is not one of the targets')
         return [`held quietly: ${card.id} (winner id is not one of the targets)`]
       }
       const losers = notes.filter((n) => n.front.id !== winner.front.id)
-      // THE PROVENANCE LAW, enforced where it bites: the machine never retires
-      // what the user wrote. A resolve verdict that would sink a user-written
-      // note becomes keep-both — the question still disappears, the memory
-      // stays. (Session-written losers retire as judged.)
       if (losers.some((n) => !isMachineWritten(n))) {
         if (card.cardType === 'conflict') await approveCard(paths, card.id, { choice: 'both', actor: 'librarian' }, now)
         else await rejectCard(paths, card.id, `user-written note protected — both kept: ${parsed.reason ?? ''}`, now, 'librarian')
         return [`user note protected: ${card.id} — both kept instead of resolving (${parsed.reason ?? ''})`]
       }
-      // approveCard already knows how to retire the other side for each card
-      // type; reuse it so the auto path and the human path do the same thing.
       if (card.cardType === 'conflict') {
         await approveCard(paths, card.id, { choice: winner.front.id === notes[0]?.front.id ? 'A' : 'B', actor: 'librarian' }, now)
       } else {

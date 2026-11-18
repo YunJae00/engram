@@ -38,8 +38,6 @@ function parseXml(text: string): Document {
   return document
 }
 
-// Read sequentially, checking declared and streamed sizes before allocating a
-// complete part. Archive paths never become host filesystem paths.
 export async function readPackage(bytes: Buffer, signal?: AbortSignal): Promise<DocumentPackage> {
   if (bytes.length > DOCUMENT_BYTES) throw new Error(`Document exceeds ${DOCUMENT_BYTES / 1_000_000} MB.`)
   signal?.throwIfAborted()
@@ -88,7 +86,6 @@ export async function readPackage(bytes: Buffer, signal?: AbortSignal): Promise<
       zip.readEntry()
     })
   })
-  // CRC validation is safe after the bounded pass above has checked every part.
   await JSZip.loadAsync(bytes, { checkCRC32: true })
   signal?.throwIfAborted()
   return parts
@@ -143,7 +140,6 @@ export function validatePackage(parts: DocumentPackage, extension: string): { te
     if (name === '[Content_Types].xml') continue
     const contentType = overrides.get(name) || defaults.get(name.endsWith('.rels') ? 'rels' : extname(name).slice(1))
     if (!contentType) throw new Error(`Missing content type for ${name}.`)
-    // Writers can declare unused binary defaults in a plain XLSX. Reject actual active parts.
     if (/macroEnabled|vbaProject|activeX/i.test(contentType)) throw new Error('Executable document content is not supported.')
   }
   const relationships = new Map<string, Set<string>>()
@@ -179,8 +175,6 @@ export function validatePackage(parts: DocumentPackage, extension: string): { te
     if (root.localName === 'document' && TEXT_NAMESPACES.has(root.namespaceURI ?? '')
       || ['sld', 'notes'].includes(root.localName ?? '') && ['http://schemas.openxmlformats.org/presentationml/2006/main', 'http://purl.oclc.org/ooxml/presentationml/main'].includes(root.namespaceURI ?? '')) textParts.add(name)
     for (const element of Array.from(document.getElementsByTagName('*'))) {
-      // Content-bearing parts only: metadata, styles, themes and image bytes
-      // do not establish that the document's words and values were read.
       if (TEXT_NAMESPACES.has(element.namespaceURI ?? '') && ['t', 'delText', 'instrText', 'v', 'f'].includes(element.localName ?? '') && element.textContent?.trim()) textParts.add(name)
       for (const attr of Array.from(element.attributes)) {
         if (OFFICE_RELS.includes(attr.namespaceURI ?? '') && !relationships.get(name)?.has(attr.value)) throw new Error(`Missing relationship ${attr.value} in ${name}.`)

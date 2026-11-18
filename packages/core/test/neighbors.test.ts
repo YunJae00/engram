@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { emptyNeighborRows, pruneNeighborRows, semanticEdges, updateNeighborRows } from '../src/neighbors.js'
 import type { VectorIndex } from '../src/vectors.js'
 
-// Synthetic 2D meaning space: angles close together = neighbours. Rows are
-// unit vectors, matching applyEmbeddings' guarantee.
-
 function indexOf(entries: { id: string; angle: number }[]): VectorIndex {
   const vectors = new Float32Array(entries.length * 2)
   entries.forEach((e, i) => {
@@ -18,8 +15,8 @@ describe('neighbor rows — the similarity fabric cache', () => {
   it('updating a fresh note also teaches its neighbours about it (reverse insert)', () => {
     const index = indexOf([
       { id: 'old', angle: 0 },
-      { id: 'fresh', angle: 0.1 }, // cos ≈ 0.995 — clearly the same neighbourhood
-      { id: 'far', angle: 2.5 }, // cos < 0 — different world
+      { id: 'fresh', angle: 0.1 },
+      { id: 'far', angle: 2.5 },
     ])
     const rows = updateNeighborRows(emptyNeighborRows('test'), index, ['fresh'])
     expect(rows.rows['fresh']!.map((h) => h.id)).toEqual(['old'])
@@ -41,8 +38,8 @@ describe('neighbor rows — the similarity fabric cache', () => {
   it('semanticEdges emits each close pair once, weighted, floor-guarded', () => {
     const index = indexOf([
       { id: 'a', angle: 0 },
-      { id: 'b', angle: 0.15 }, // cos ≈ 0.989 — a strong pair
-      { id: 'c', angle: 0.9 }, // cos(0.9) ≈ 0.62 vs a — below a strict floor
+      { id: 'b', angle: 0.15 },
+      { id: 'c', angle: 0.9 },
     ])
     const rows = updateNeighborRows(emptyNeighborRows('test'), index, ['a', 'b', 'c'])
     const strict = semanticEdges(rows, 0.95)

@@ -5,29 +5,19 @@ import { renameWithRetry } from './rename-with-retry.js'
 import type { Note } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-// Where a person works, learned before they ever explain it: the sites their
-// browser already knows they return to, the names they gave them in their
-// bookmarks, and the days and hours they go there. Addresses and titles only;
-// no page is opened and no content is read to build it.
-
-// from: the address the visit was reached from, when the browser recorded one.
 export interface TraceVisit { url: string; title: string; at: number; from?: string }
 interface TraceBookmark { title: string; url: string; folder: string; managed?: boolean }
 
 export interface WorkPlace {
   host: string
-  // The page the person actually lands on most, not just the site root.
   entry: string
   title: string
   pages: { url: string; title: string; days: number }[]
   days: number
   lastSeen: string
-  // "Folder / Name" as the person or their organisation filed it.
   bookmarks: string[]
-  // Listed by the organisation only; the person never bookmarked it.
   managed: boolean
   rhythm?: { day?: number; hour?: number; weekdaysOnly?: boolean }
-  // The site the person usually comes through to get here (a portal, a hub).
   via?: string
   purpose?: string
   work?: boolean
@@ -39,25 +29,19 @@ export const PLACE_TYPE = 'place'
 export const WORK_MAP_DAYS = 30
 const KEEP = 80
 const SHOWN_PAGES = 5
-// A weekly visit shows four times in the window, enough to read its day and hour.
 const RHYTHM_DAYS = 4
-// A way in counts once it is used on this share of the days the place is visited.
 const VIA_SHARE = 0.3
-// Sign-in, hand-off and redirect pages are passages, not places.
 const PASSAGE = /login|signin|sign-in|sign_in|oauth|saml|\/sso\b|\/auth\b|callback|redirect|password|로그인|인증/i
 const PASSAGE_TITLE = /^(working\.\.\.|redirecting|리디렉션 중)/i
 const SECRET_KEY = /^(access_token|refresh_token|id_token|token|jwt|code|session|sessionid|password|secret|signature|sig|state|nonce|ticket|samlrequest|samlresponse|relaystate|key|apikey|api_key)$/i
 const TOKEN_VALUE = /[A-Za-z0-9_\-+/=%]{40,}/
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-// An address safe to keep and reuse: no credentials, no token-shaped values.
 export function safeAddress(raw: string): string | null {
   let url: URL
   try { url = new URL(raw) } catch { return null }
   if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null
   for (const key of [...url.searchParams.keys()]) if (SECRET_KEY.test(key) || TOKEN_VALUE.test(url.searchParams.get(key) ?? '')) url.searchParams.delete(key)
-  // Hash routers can carry their own query (including login tokens). Keep
-  // only the route, never that second query or a token-shaped path segment.
   url.hash = url.hash.startsWith('#/') ? url.hash.split('?')[0]! : ''
   if (TOKEN_VALUE.test(url.pathname) || TOKEN_VALUE.test(url.hash)) return null
   return url.href.length <= 300 ? url.href : null
@@ -118,7 +102,6 @@ export function buildWorkMap(visits: TraceVisit[], bookmarks: TraceBookmark[], n
   return { builtAt: now.toISOString(), windowDays, places: places.sort((a, b) => weight(b) - weight(a)).slice(0, KEEP) }
 }
 
-// One short model call names what each place is for and whether it is work.
 export function labelPrompt(map: WorkMap): string {
   return [
     "Below are websites from one person's own browser history and bookmarks. For each, say in a few words what the person uses it for, and whether it is part of their work.",
@@ -149,8 +132,6 @@ const rhythmText = (place: WorkPlace): string => {
   return parts.length ? ` (${parts.join(', ')})` : ''
 }
 
-// What every comet carries: one line per place, the purpose and the address,
-// and what was last done there when a task there has been finished.
 export function workShortcuts(map: WorkMap | null, max = 40, learned: Map<string, string> = new Map()): string {
   const places = (map?.places ?? []).filter((place) => place.work !== false && (place.days > 0 || !place.managed)).slice(0, max)
   if (!places.length) return ''
@@ -163,8 +144,6 @@ export function workShortcuts(map: WorkMap | null, max = 40, learned: Map<string
 export const placeNoteId = (host: string): string => `n-place-${host.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)}`
 const OWN = '## Your notes'
 
-// A place as a note the person can open, correct and add to. The lines above
-// their own section are refreshed from the browser; theirs are kept.
 export function placeNote(place: WorkPlace, now: Date, existing?: Note | null): Note {
   const stamp = now.toISOString()
   const generated = [

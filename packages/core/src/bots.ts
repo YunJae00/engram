@@ -9,19 +9,15 @@ import { botPatchError } from './bot-fields.js'
 import { assignCharacter, isCharacterId, newBotId, type CharacterId } from './bot-character.js'
 export { AVATAR_RANGES } from './bot-fields.js'
 
-// A task is the work a person repeats, saved on the comet that owns it and run with one click.
 export interface BotTask {
   id: string
   name: string
   goal: string
   lastRunAt?: string
-  // A standing task: without a procedure its goal is said as a turn; sends still wait for the person's OK.
   schedule?: Schedule
   routineId?: string
-  // Run only when this read-only listing shows items not in `seen` from the last run.
   watch?: TaskWatch
   seen?: string[]
-  // The conversation a repeating request keeps answering in.
   chat?: string
   paused?: true
 }
@@ -35,11 +31,9 @@ export interface Bot {
   createdAt: string
   webSites?: { origin: string; visits: number }[]
   tasks?: BotTask[]
-  // Asks the person refused to make standing, by ask key: offered once.
   declined?: string[]
   avatar?: BotAvatar
   label?: string
-  // Exactly one stored bot holds it whenever any bot exists.
   primary?: true
   hidden?: true
   notify?: 'all' | 'attention' | 'off'
@@ -51,9 +45,7 @@ export interface Bot {
 export type BotAvatar = { body: number; face: number; accessory: number; palette: number } | { image: string } | { character: CharacterId }
 export type BotPatch = Partial<Pick<Bot, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }
 
-// How a checked answer was checked: verdicts with their basis, sources read, and the confirmed record.
 export interface TurnEvidence {
-  // not_applicable: a work-guide rule with nothing to apply to in this result; shown, but not open.
   checks: { requirement: string; status: 'pass' | 'fail' | 'unknown' | 'not_applicable'; basis: string }[]
   grounding: { status: 'pass' | 'fail' | 'unknown'; basis: string }
   sources: string[]
@@ -68,15 +60,11 @@ export interface BotTurn {
   at: string
   attachments?: string[]
   evidence?: TurnEvidence
-  // Said by a kept schedule at its time, not typed then.
   scheduled?: boolean
-  // Said while an earlier turn was still working; its own reply comes after that turn's answer.
   aside?: boolean
-  // The turn ended on this error instead of an answer; shown as an error card, never given to a model as something said.
   error?: boolean
   errorKind?: string
   provider?: string
-  // c14b r2: a reply that answers an ask other than the turn before it (a task's result posted later): that ask.
   asked?: string
 }
 
@@ -88,7 +76,6 @@ interface BotSuggestion {
 
 const BOTS_FILE = 'bots.json'
 const CHAT_DIR = 'bot-chats'
-// A conversation is a working surface; old turns fall off the top.
 const TRANSCRIPT_CAP = 400
 
 function botsPath(paths: VaultPaths): string {
@@ -96,17 +83,14 @@ function botsPath(paths: VaultPaths): string {
 }
 
 function chatPath(paths: VaultPaths, botId: string): string {
-  // The id is generated here (crypto hex), never user text, so it is safe as a file name.
   return join(paths.cache, CHAT_DIR, `${botId}.jsonl`)
 }
 
 interface BotsFile {
   bots: Bot[]
-  // Refused suggestion names: a decision about this vault, so kept beside the bots.
   dismissed: string[]
 }
 
-// Parsed bots.json as stored; entries and fields the code does not know ride along to the next write.
 interface StoredBots { raw: Record<string, unknown>; bots: unknown[]; dismissed: unknown[] }
 
 function isBot(entry: unknown): entry is Bot {
@@ -123,7 +107,6 @@ async function readBotsBytes(paths: VaultPaths): Promise<Buffer | undefined> {
 function parseBots(bytes: Buffer | undefined): StoredBots | undefined {
   if (!bytes) return { raw: {}, bots: [], dismissed: [] }
   let raw: unknown
-  // fatal: invalid UTF-8 is corrupt, never silently replaced with U+FFFD and rewritten.
   try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)) } catch { return undefined }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const { bots, dismissed = [] } = raw as { bots?: unknown; dismissed?: unknown }
@@ -135,7 +118,6 @@ async function readBotsFile(paths: VaultPaths): Promise<BotsFile> {
   return { bots: stored?.bots.filter(isBot) ?? [], dismissed: stored?.dismissed.filter((n): n is string => typeof n === 'string') ?? [] }
 }
 
-// Never returns empty for a file that exists: a write after that would erase it.
 async function readForWrite(paths: VaultPaths): Promise<StoredBots> {
   const bytes = await readBotsBytes(paths)
   const stored = parseBots(bytes)
@@ -152,14 +134,12 @@ async function readForWrite(paths: VaultPaths): Promise<StoredBots> {
 
 async function writeBotsFile(paths: VaultPaths, file: Record<string, unknown>): Promise<void> {
   await mkdir(paths.cache, { recursive: true })
-  // Scratch + rename: a reader mid-write sees the old file whole.
   const target = botsPath(paths)
   const scratch = `${target}.${process.pid}.tmp`
   await writeFile(scratch, JSON.stringify(file, null, 2))
   await renameWithRetry(scratch, target)
 }
 
-// Each change is read-then-write; one chain per file keeps interleaved changes from losing one side.
 const queues = new Map<string, Promise<unknown>>()
 
 function serialized<T>(paths: VaultPaths, work: () => Promise<T>, key = botsPath(paths)): Promise<T> {
@@ -188,7 +168,6 @@ export function recordBotSites(paths: VaultPaths, botId: string, urls: string[])
   })
 }
 
-// Read, change, write as one turn of the queue, or concurrent changes drop each other.
 function mutateBots<T>(paths: VaultPaths, work: (bots: Bot[]) => T): Promise<T> {
   return serialized(paths, async () => {
     const stored = await readForWrite(paths)
@@ -201,10 +180,8 @@ function mutateBots<T>(paths: VaultPaths, work: (bots: Bot[]) => T): Promise<T> 
   })
 }
 
-// A refused name is stored as shown, and shown names are short.
 const SUGGESTION_NAME_CAP = 80
 
-// The name the person saw and refused is the key, compared like "already have this bot".
 function suggestionKey(name: string): string {
   return name.trim().toLowerCase()
 }
@@ -223,11 +200,9 @@ export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<v
   })
 }
 
-// A comet made with one press carries this name until its first message names it.
 export const UNTITLED_BOT_NAME = 'New bot'
 const TITLE_CHARS = 40
 
-// The first sentence without its closing mark, cut at a word; never an ellipsis in the stored name - the row clips what is long.
 export function titleFromMessage(message: string): string {
   const line = message.replace(/\s+/g, ' ').trim()
   const first = (/^.*?[.?!。？！](?=\s|$)/u.exec(line)?.[0] ?? line).replace(/[.?!。？！\s]+$/u, '') || line
@@ -244,12 +219,10 @@ export async function createBot(
   now: Date = new Date(),
 ): Promise<Bot> {
   const name = input.name.trim().slice(0, 60)
-  // The charter is optional: most comets are a conversation, not a role.
   const purpose = (input.purpose ?? '').trim().slice(0, 2000)
   if (!name) throw new Error('a bot needs a name')
   if (input.character !== undefined && !isCharacterId(input.character)) throw new Error('avatar must be one of the 8 orbs')
   const bot: Bot = { id: '', name, purpose, createdAt: now.toISOString(), updatedAt: new Date().toISOString() }
-  // The id and face are chosen in the same queue turn that appends, so concurrent creates see each other.
   await mutateBots(paths, (bots) => {
     bot.id = newBotId(new Set(bots.map((b) => b.id)), now)
     bot.avatar = { character: assignCharacter(bot.id, bots.at(-1), input.character) }
@@ -276,7 +249,6 @@ export async function deleteBot(paths: VaultPaths, id: string, opts: { undoCreat
     if (same.some((b) => b.primary === true) && !undoing) throw new Error('the primary comet cannot be deleted; make another comet primary first')
     await writeBotsFile(paths, { ...stored.raw, bots: stored.bots.filter((b) => !same.includes(b as Record<string, unknown>)), dismissed: stored.dismissed })
   })
-  // Its memory of the person goes with it; the transcript stays on disk until a vault reset.
   await forgetBotMemory(paths, id)
 }
 
@@ -344,9 +316,6 @@ export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: s
   })
 }
 
-// One appended line per turn; compacted only once well past the cap.
-// Let go, not deleted: the record moves out of the list every surface reads, so the comet is gone from the sidebar and from
-// schedules, while its transcript and memory (keyed by id) stay for restoreBot.
 export async function loadArchivedBots(paths: VaultPaths): Promise<Bot[]> {
   const kept = parseBots(await readBotsBytes(paths).catch(() => undefined))?.raw['archived']
   return Array.isArray(kept) ? kept.filter(isBot) : []
@@ -374,7 +343,6 @@ const compactAt = new Map<string, number>()
 
 export async function updateBot(paths: VaultPaths, id: string, patch: BotPatch): Promise<Bot> {
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new Error('a bot change must be an object')
-  // One read of the caller's object; nested values are detached so nothing changes while queued.
   const copy: BotPatch = { ...patch }
   if (copy.avatar && typeof copy.avatar === 'object' && !Array.isArray(copy.avatar)) copy.avatar = { ...copy.avatar }
   if (Array.isArray(copy.skills)) copy.skills = [...copy.skills]
@@ -414,7 +382,6 @@ export function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): 
   }, file)
 }
 
-// A fresh start: the transcript is put away beside the live file, nothing deleted.
 export function archiveBotTranscript(paths: VaultPaths, botId: string, now: Date = new Date()): Promise<void> {
   const live = chatPath(paths, botId)
   return serialized(paths, async () => {
@@ -444,7 +411,6 @@ export async function readBotTranscript(paths: VaultPaths, botId: string, limit 
         if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string')
           rows.push(parsed)
       } catch {
-        // one corrupt line must not cost the conversation
       }
     }
     return rows.reverse()
@@ -453,13 +419,11 @@ export async function readBotTranscript(paths: VaultPaths, botId: string, limit 
   }
 }
 
-// What bots would this vault want, read from its busiest folders; deterministic so it does not read as noise.
 export function recommendBots(
   notes: { context?: string; title: string }[],
   existingNames: string[],
   dismissedNames: string[] = [],
 ): BotSuggestion[] {
-  // A refused suggestion counts as taken: it must not be offered again.
   const taken = new Set([...existingNames, ...dismissedNames].map(suggestionKey))
   const byContext = new Map<string, number>()
   for (const note of notes) {

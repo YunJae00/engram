@@ -25,8 +25,6 @@ describe('a note id cannot leave notes/', () => {
     })
   }
 
-  // A NUL byte truncates the path in some syscalls — reject rather than trust
-  // the platform to reject it for us.
   it('refuses an embedded NUL', () => {
     expect(() => notePath(paths, 'n-ok-0001\0.png')).toThrow(/unsafe note id/)
   })

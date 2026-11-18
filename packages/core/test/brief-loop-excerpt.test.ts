@@ -29,10 +29,8 @@ describe('what the brief gets to read about an open loop', () => {
     ]
     const { loops } = openLoopsForBrief(notes, NOW)
     expect(loops).toHaveLength(1)
-    // the identifiers a useful next step is made of
     expect(loops[0]!.excerpt).toContain('PROJECT-162')
     expect(loops[0]!.excerpt).toContain('PROJECT-124')
-    // the title line itself is dropped — it already travels as `title`
     expect(loops[0]!.excerpt).not.toContain('# sample-project')
   })
 
@@ -40,7 +38,6 @@ describe('what the brief gets to read about an open loop', () => {
     const body = `# 백로그\n\n1. 첫 번째 항목 — 제일 급함\n${'x'.repeat(2000)}\n99. 마지막 항목`
     const { loops } = openLoopsForBrief([loop('n-long', body)], NOW)
     expect(loops[0]!.excerpt).toContain('첫 번째 항목')
-    // bounded, so a backlog cannot swallow the prompt
     expect(loops[0]!.excerpt.length).toBeLessThanOrEqual(420)
   })
 
@@ -60,8 +57,6 @@ describe('what the brief gets to read about an open loop', () => {
   })
 })
 
-// The instruction is the other half: content is useless if the engine is still
-// asked for a status line.
 describe('J8 asks for the next step, not a restatement', () => {
   it('tells the engine to draw the line from the excerpt', () => {
     expect(J8_INSTRUCTION).toContain('excerpt')
@@ -75,8 +70,6 @@ describe('J8 asks for the next step, not a restatement', () => {
     }
   })
 
-  // Specificity invites invention: an engine told to name a ticket will happily
-  // name one that does not exist.
   it('forbids inventing what the note does not say', () => {
     expect(J8_INSTRUCTION).toContain('do not invent one')
     expect(J8_INSTRUCTION).toContain('only be repeated from the excerpt')

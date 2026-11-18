@@ -1,6 +1,3 @@
-// URL clipping: fetch → title + readable text as markdown.
-// Extraction is deliberately naive — the librarian summarizes downstream.
-
 export interface Clip {
   url: string
   title: string

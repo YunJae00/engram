@@ -7,10 +7,6 @@ import { createNote } from '../src/notes.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// The MCP server speaks newline-delimited JSON-RPC over the given streams —
-// exercised in-process end to end: handshake, tool list, a capture landing in
-// the inbox, and a search finding a seeded note.
-
 const NOW = new Date('2026-07-21T09:00:00Z')
 let paths: VaultPaths
 let input: PassThrough
@@ -34,8 +30,6 @@ beforeAll(async () => {
   paths = await initVault(await tmpVaultRoot('mcp'), { git: false })
   await createNote(paths, { body: '# PG사 결정\n\n수수료와 정산 주기 때문에 A사로 결정함.' }, NOW)
   await createNote(paths, { body: '# 백업 보존 정책\n\n컴플라이언스 요구로 90일 보관.' }, NOW)
-  // Prospective memory fixture (seeded up front: the server caches its index
-  // for 30s, so notes created mid-suite would not be visible to later tools).
   await createNote(
     paths,
     { body: '# 다음 배포 때 캐시 무효화 확인\n\nCDN 캐시 무효화를 빼먹으면 구버전이 살아남음.', triggers: ['배포'] },
@@ -110,7 +104,6 @@ describe('engram mcp server', () => {
     send({ id: 3, method: 'tools/call', params: { name: 'engram_capture', arguments: { text: '내일 김대리에게 배포 일정 회신하기' } } })
     const result = (await waitFor(3))['result'] as { content: { text: string }[]; isError?: boolean }
     expect(result.isError).toBeUndefined()
-    // Multi-workspace safety: every answer names the workspace it touched.
     expect(result.content[0]!.text).toContain('workspace "')
     const files = (await readdir(paths.inbox)).filter((f) => f.endsWith('-capture.md'))
     expect(files.length).toBe(1)
@@ -118,16 +111,12 @@ describe('engram mcp server', () => {
   })
 
   it('malicious capture text cannot escape inbox/ — traversal/newlines land only in the body', async () => {
-    // Path-traversal + injection payload as the capture text. The filename is
-    // timestamp-only, so the payload can only ever become file CONTENT.
     const evil = '../../../etc/passwd\n../\\..\\windows\n# pwned\n<script>alert(1)</script>'
     send({ id: 15, method: 'tools/call', params: { name: 'engram_capture', arguments: { text: evil } } })
     const result = (await waitFor(15))['result'] as { isError?: boolean }
     expect(result.isError).toBeUndefined()
-    // Every inbox entry is a safe timestamp-capture name — nothing derived from text.
     const entries = (await readdir(paths.inbox)).filter((f) => !f.startsWith('.'))
     for (const name of entries) expect(name).toMatch(/^[0-9TZ.-]+-capture\.md$/)
-    // The payload survived as body content, proving text → content (never path).
     const captures = entries.filter((f) => f.endsWith('-capture.md'))
     const bodies = await Promise.all(captures.map((f) => readFile(join(paths.inbox, f), 'utf8')))
     expect(bodies.some((b) => b.includes('pwned'))).toBe(true)
@@ -175,7 +164,6 @@ describe('engram mcp server', () => {
   })
 
   it('prospective memory: a trigger note self-surfaces when its keyword comes up', async () => {
-    // Lexically the query shares nothing with the note body except the trigger.
     send({ id: 11, method: 'tools/call', params: { name: 'engram_search', arguments: { query: '이번 주 배포 일정 정리' } } })
     const found = (await waitFor(11))['result'] as { content: { text: string }[] }
     expect(found.content[0]!.text).toContain('REMINDER')

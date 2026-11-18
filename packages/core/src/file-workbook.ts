@@ -2,8 +2,6 @@ import type { AgentTool } from './agent-loop.js'
 import { saveArtifact } from './file-work.js'
 
 type Cell = string | number | boolean | null | { formula: string }
-// Local formulas only. External references and executable spreadsheet features
-// are not emitted; unfamiliar formulas remain a job for the live application.
 const FUNCTIONS = new Set(['SUM', 'MIN', 'MAX', 'AVERAGE', 'COUNT', 'COUNTA', 'IF', 'AND', 'OR', 'NOT', 'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'ABS'])
 export function validateWorkbookFormula(value: string, sheets: string[] = []): string {
   const formula = value.toUpperCase()
@@ -25,7 +23,6 @@ function cell(value: unknown, sheets: string[]): Cell {
   throw new Error('Cells must be text, finite numbers, booleans, null or {formula}.')
 }
 
-// A chart over a range of one of the sheets: its first row names the series, its first column the categories.
 type Chart = { sheet: string; index: number; type: 'column' | 'bar' | 'line' | 'pie'; title?: string; top: number; left: number; bottom: number; right: number }
 const CHART_TYPES = ['column', 'bar', 'line', 'pie']
 const xml = (text: string): string => text.replace(/[&<>"]/g, mark => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[mark]!)
@@ -42,12 +39,9 @@ function chartXml(chart: Chart): string {
   const title = chart.title ? `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${xml(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>` : '<c:autoTitleDeleted val="1"/>'
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:chart>${title}<c:plotArea><c:layout/>${plot}</c:plotArea><c:legend><c:legendPos val="r"/></c:legend><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`
 }
-// The sheet library writes no charts, so they are added to its package as parts of their own: one drawing per sheet, one chart part per chart, to
-// the right of the data. No application is involved (grokbar D4: "엑셀에 차트도 넣어줘" could only be done by starting Excel).
 async function withCharts(bytes: Buffer, charts: Chart[]): Promise<Buffer> {
   const { default: JSZip } = await import('jszip')
   const zip = await JSZip.loadAsync(bytes)
-  // A package holds parts only: no folder entries.
   const put = (name: string, text: string) => zip.file(name, text, { createFolders: false })
   const RELS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships', PACKAGE = 'http://schemas.openxmlformats.org/package/2006/relationships'
   const edit = async (name: string, change: (text: string) => string) => {
@@ -128,7 +122,6 @@ export function workbookTool(directory: string, assertActive?: () => void): Agen
         XLSX.utils.book_append_sheet(workbook, table, sheet)
       }
       const plain = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
-      // The cells are read back below from the bytes that are saved, charts included.
       const bytes = charts.length ? await withCharts(plain, charts) : plain
       const decodedWorkbook = XLSX.read(bytes, { type: 'buffer', sheetStubs: true })
       const inspected = sheets.map(({ sheet, rows }) => {

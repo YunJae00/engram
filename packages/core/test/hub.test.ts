@@ -25,11 +25,8 @@ function fakeNote(id: string, derived: string[] = [], type = 'note', status: Not
 describe('linkComponents', () => {
   it('finds connected components of size >= 4, largest first', () => {
     const notes = [
-      // component of 4 (chain a-b-c-d)
       fakeNote('n-a'), fakeNote('n-b', ['n-a']), fakeNote('n-c', ['n-b']), fakeNote('n-d', ['n-c']),
-      // component of 2 — too small
       fakeNote('n-x'), fakeNote('n-y', ['n-x']),
-      // isolated
       fakeNote('n-z'),
     ]
     const components = linkComponents(notes)
@@ -42,7 +39,6 @@ describe('linkComponents', () => {
     const notes = [
       fakeNote('n-a'), fakeNote('n-b', ['n-a']),
       fakeNote('n-c'), fakeNote('n-d', ['n-c']),
-      // a hub linking both pairs must NOT merge them into one component of 4
       fakeNote('n-hub', ['n-a', 'n-b', 'n-c', 'n-d'], 'hub'),
     ]
     expect(linkComponents(notes)).toHaveLength(0)
@@ -66,8 +62,6 @@ describe('matchHub', () => {
     expect(matchHub([far], members)).toBeNull()
   })
 
-  // When a topic splits, both halves still overlap the old hub. Handing it to
-  // both would have their J9 jobs overwrite each other's synthesis.
   it('never hands the same hub to two topics', () => {
     const old = fakeNote('n-hub1', ['n-a', 'n-b', 'n-c', 'n-d'], 'hub')
     const first = [fakeNote('n-a'), fakeNote('n-b')]
@@ -77,7 +71,6 @@ describe('matchHub', () => {
     const forFirst = matchHub([old], first, taken)
     expect(forFirst?.front.id).toBe('n-hub1')
     taken.add(forFirst!.front.id)
-    // the second half must get a fresh hub, not this one
     expect(matchHub([old], second, taken)).toBeNull()
   })
 })
@@ -130,7 +123,6 @@ describe('J9 topic hub synthesis', () => {
     stale.body = '# 옛 이름\n\n낡은 종합'
     expect(buildJ9(paths, '', members, stale, NOW, 'Workspace').prompt).not.toContain('옛 이름')
     expect(buildJ9(paths, '', members, stale, NOW, 'Workspace').prompt).toContain('Workspace')
-    // Same membership = the same topic, so the synthesis carries over.
     const same = fakeNote('n-hub-0002', ['n-d', 'n-c', 'n-b', 'n-a'], 'hub')
     same.body = '# 옛 이름\n\n낡은 종합'
     expect(buildJ9(paths, '', members, same, NOW).prompt).toContain('옛 이름')
@@ -159,7 +151,7 @@ describe('J9 topic hub synthesis', () => {
     }
 
     const conservative = await linkedVault('j9-sweep-conservative')
-    await writeFile(join(conservative.inbox, 'memo.md'), '캡처') // ensure executed > 0 either way
+    await writeFile(join(conservative.inbox, 'memo.md'), '캡처')
     await sweep(conservative, [new MockEngine(canned)], { now: () => NOW, autonomy: 'conservative' })
     expect((await loadNotes(conservative)).filter((n) => n.front.type === 'hub')).toHaveLength(0)
 

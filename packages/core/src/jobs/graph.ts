@@ -2,14 +2,10 @@
 export type Adjacency = Map<string, Set<string>>
 
 const RESOLUTION = 1
-// Local moving converges in a handful of passes; the cap is a safety net.
 const MAX_PASSES = 20
 
 type Weighted = Map<number, Map<number, number>>
 
-// One local-moving phase over a weighted graph. `self` holds each node's
-// self-loop weight (edges folded inside it by a previous aggregation).
-// Returns the community index per node, renumbered from 0.
 function localMoving(adj: Weighted, self: number[]): number[] {
   const n = self.length
   const k: number[] = []
@@ -31,7 +27,6 @@ function localMoving(adj: Weighted, self: number[]): number[] {
           const c = community[j]!
           linksTo.set(c, (linksTo.get(c) ?? 0) + w)
         }
-        // Pull the node out first, so staying put is judged on equal terms.
         totalDegree[from] = totalDegree[from]! - k[i]!
         let best = from
         let bestGain = (linksTo.get(from) ?? 0) - (RESOLUTION * totalDegree[from]! * k[i]!) / m2
@@ -76,16 +71,14 @@ function communitiesOf(source: Adjacency): string[][] {
     ]),
   )
   let self = ids.map(() => 0)
-  // original node index -> its node at the current level
   let level = ids.map((_, i) => i)
 
   for (let round = 0; round < MAX_PASSES; round++) {
     const community = localMoving(adj, self)
     const count = new Set(community).size
-    if (count === self.length) break // nothing merged — converged
+    if (count === self.length) break
     level = level.map((node) => community[node]!)
 
-    // Aggregate: one super-node per community, carrying its internal weight.
     const nextAdj: Weighted = new Map(Array.from({ length: count }, (_, i) => [i, new Map()]))
     const nextSelf = new Array<number>(count).fill(0)
     for (let i = 0; i < self.length; i++) {
@@ -94,7 +87,7 @@ function communitiesOf(source: Adjacency): string[][] {
     }
     for (const [i, edges] of adj) {
       for (const [j, w] of edges) {
-        if (j < i) continue // each undirected edge once
+        if (j < i) continue
         const a = community[i]!
         const b = community[j]!
         if (a === b) nextSelf[a] = (nextSelf[a] ?? 0) + w
@@ -115,9 +108,6 @@ function communitiesOf(source: Adjacency): string[][] {
     grouped.get(c)!.push(id)
   })
 
-  // Local moving can leave a community whose members aren't all reachable from
-  // each other. A topic shown to the user must be ONE linked cluster, so split
-  // each community on its own connectivity.
   const out: string[][] = []
   for (const members of grouped.values()) {
     const inCommunity = new Set(members)
@@ -142,12 +132,6 @@ function communitiesOf(source: Adjacency): string[][] {
   return out
 }
 
-// Connected components — the outer frame. Communities are only looked for
-// INSIDE a component, and only once it is big enough to plausibly hold more
-// than one topic: modularity has no notion of "too small to bother", so on a
-// short lineage (a → b → c → d, the shape a young vault is full of) it would
-// happily return two topics of two. Below the threshold the component is one
-// topic, full stop.
 const MIN_SPLIT_COMPONENT = 8
 
 export function topicComponents(source: Adjacency): string[][] {

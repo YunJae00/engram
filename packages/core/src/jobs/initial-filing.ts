@@ -15,7 +15,6 @@ import { INITIAL_FILING_SCHEMAS } from './initial-filing-schema.js'
 export type InitialFilingStage = 'capture' | 'organize'
 interface InitialFilingOptions extends RunnerOptions {
   includeWorkMap?: boolean
-  // Notes from sources the person has not allowed; left out with what came of them.
   withheld?: string[]
   ingest?: IngestOptions
   onProgress?(completed: number, total: number, stage: InitialFilingStage): void
@@ -52,7 +51,6 @@ function permitted(notes: Note[], includeWorkMap: boolean, withheld: string[] = 
   return notes.filter(note => note.front.status === 'current' && !excluded.has(note.front.id))
 }
 
-// The host owns the filing lock. New captures and notes are left for another pass.
 export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[], options: InitialFilingOptions = {}): Promise<InitialFilingReport> {
   const signal = options.signal
   signal?.throwIfAborted()
@@ -74,7 +72,6 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
   report.noteIds = current.map(note => note.front.id)
   const created: string[] = []
   const now = options.now?.() ?? new Date()
-  // A stage split into runs keeps one running count across model batches.
   const run = async (jobs: JobSpec[], stage: InitialFilingStage, done = 0, total = jobs.length) => {
     signal?.throwIfAborted()
     let completed = done
@@ -113,7 +110,6 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
         if ((await localFile(file)).toString('utf8') !== content) throw new Error('The capture changed while filing; the newer version was kept.')
         signal?.throwIfAborted()
         const effects = await job.apply(result)
-        // Only IDs returned by our capture jobs belong to this snapshot.
         for (const effect of effects) {
           const id = /^note created: (\S+) \(/.exec(effect)?.[1]
           if (id) { created.push(id); report.noteIds.push(id) }
@@ -132,7 +128,6 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
 
   const byId = new Map(current.map(note => [note.front.id, note]))
   const scopeHash = digest(JSON.stringify(current.map(note => [note.front.id, note.body]).sort((a, b) => a[0]!.localeCompare(b[0]!))))
-  // Model calls may overlap, but card deduplication and note writes must not.
   let applying: Promise<unknown> = Promise.resolve()
   const guarded = (job: JobSpec, ownTarget?: string): JobSpec => ({
     ...job, inputKey: `initial:${scopeHash}:${job.inputKey}`,
@@ -160,11 +155,8 @@ export async function prepareInitialFiling(paths: VaultPaths, engines: Engine[],
     },
   })
   const targets = current.filter(note => note.front.type !== 'hub')
-  // Links write each target's own note; dates write their batch's notes. They
-  // run in separate passes so no two writes to one note overlap.
   const links = current.length > 1 ? await Promise.all(targets.map(async note => guarded(await buildJ2(paths, agents, note, current, now), note.front.id))) : []
   const jobs: JobSpec[] = []
-  // Keep within-batch comparisons while bounding both targets and retrieved neighbours.
   if (current.length > 1) for (let at = 0; at < targets.length; at += 20) {
     signal?.throwIfAborted()
     const batch = targets.slice(at, at + 20)

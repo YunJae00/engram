@@ -6,10 +6,6 @@ import type { AgentTool } from '../src/agent-loop.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { agreeing, STATED_PROMPT } from './agreeing.js'
 
-// c18a (cause V): evidence is read, not quoted. A judge's quote holds by structure against everything read for its item (title, snippet,
-// a page opened for it); the host opens pages before it searches again; a first-hand read is the helper's evidence; the points are the
-// ask's own things; the loop ends on time, not on the judge's silence. Wordings are in no harness row (대전 미세먼지, 광주 날씨,
-// 배터리 스타트업 투자, 춘천 날씨, 부산/제천 케이블카).
 const page = (query: string, rows: string[], words = ''): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows, ...(words ? ['', words] : [])].join('\n')
 const row = (url: string, title: string, snippet?: string): string => `- ${title} — ${url}${snippet ? ` — ${snippet} — 11월 20일` : ''}`
 function search(outs: string[], tick?: () => void): AgentTool & { queries: string[] } {
@@ -25,11 +21,9 @@ describe('c18a rule 1: a quote holds by numbers and words in order, against what
     const item = { title: '광주 날씨', text: '광주 날씨 — 현재 6.0°C, 맑음 — 11월 20일' }
     expect(evidenced('기온 6도 맑음', item, ask, true)).toBe(true)
     expect(evidenced('기온 7도 맑음', item, ask, true)).toBe(false)
-    // Thousands separators and spacing aside; two numbers stay two numbers.
     expect(evidenced('왕복 18000원', { title: '요금', text: '요금 — 대인 왕복 18,000 원' }, '케이블카 요금', true)).toBe(true)
     expect(evidenced('영업 09:30 - 22:00', { title: '영업', text: '영업 — 영업시간 09:30~22:00' }, '몇 시까지 해', true)).toBe(true)
     expect(evidenced('093 원', { title: '영업', text: '영업 — 영업시간 09:30~22:00' }, '몇 시까지 해', true)).toBe(false)
-    // Out of order is not the row's words.
     expect(evidenced('맑음, 6도', item, ask, true)).toBe(false)
   })
   it('a headline-only row never holds a value, nor does a headline\'s date; a value split across title and snippet does', () => {
@@ -41,7 +35,6 @@ describe('c18a rule 1: a quote holds by numbers and words in order, against what
     const ask = '요즘 국내 배터리 스타트업 투자 유치 뉴스 6개'
     expect(evidenced('셀볼트, 투자 유치 추진', { title: '셀볼트, 투자 유치 추진', text: '셀볼트, 투자 유치 추진 — 셀볼트가 이번 주 데모데이에 참가해 사업을 소개했다' }, ask, false)).toBe(false)
     expect(evidenced('셀볼트가 80억 원 규모 시리즈A 투자를 유치했다', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치 — 셀볼트가 80억 원 규모 시리즈A 투자를 유치했다' }, ask, false)).toBe(true)
-    // c18a r2: with words beyond the headline, the headline is not the statement; the item's own sentence is.
     expect(evidenced('셀볼트, 시리즈A 80억 투자 유치', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치 — 셀볼트가 80억 원 규모 시리즈A 투자를 유치했다' }, ask, false)).toBe(false)
     expect(evidenced('셀볼트, 시리즈A 80억 투자 유치', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치' }, ask, false)).toBe(true)
   })
@@ -93,7 +86,6 @@ describe('c18a rule 2: open, don\'t re-search (광주 오늘 날씨 총정리, a
     expect(opened).toEqual(['https://news.example/gj'])
     expect(s.queries).toEqual(['q'])
     expect(found?.proof).toEqual([{ point: '날씨: 기온이나 하늘 상태', quote: '8도, 구름 많음', url: 'https://news.example/gj' }])
-    // The page's text is in the observation, so the answer is written from what was read.
     expect(out).toContain('The page at https://news.example/gj, opened and read')
     expect(out).toContain('현재 광주는 8.0°C, 구름많음이에요')
   })
@@ -108,7 +100,6 @@ describe('c18a rule 2: open, don\'t re-search (광주 오늘 날씨 총정리, a
     }).run({ query: 'q' }, { task: ask })
     expect(opened.sort()).toEqual(['https://a.example/1', 'https://b.example/2'])
     expect(open).toBe(2)
-    // Round 2 judges the two held rows as context and the two unsettled rows with their page text.
     expect(judged).toHaveLength(2)
     expect(judged[1]!.slice(2)).toEqual(['https://a.example/1', 'https://b.example/2'])
     expect(out).toContain('· 날씨: "영상 5도, 흐림" (https://b.example/2)')
@@ -203,8 +194,6 @@ describe('c18a rule 3: a first-hand read is the helper\'s evidence', () => {
   })
 })
 
-// c18a r2 (review r1): words being there is not the point being stated. Wordings are in no harness row (생수 값, 노트북 무게, 축구 이적,
-// 로봇 스타트업 투자).
 describe('c18a r2 #1: a value is in the point\'s units, a kind quote is a whole statement', () => {
   it('a point that names its units holds only a figure written in one of them', () => {
     const price = '생수 2L 가격: 원화 금액 (원)', item = { title: '생수값 소식', text: '생수값 소식 — 생수 2L 값이 3% 올라 1,250원이 됐다' }
@@ -215,7 +204,6 @@ describe('c18a r2 #1: a value is in the point\'s units, a kind quote is a whole 
     const weight = '노트북 무게: 킬로그램 (kg, g)'
     expect(evidenced('15% 가벼워', { title: '신형 노트북', text: '신형 노트북 — 전작보다 15% 가벼워졌다' }, weight, weight)).toBe(false)
     expect(evidenced('1.2kg', { title: '신형 노트북', text: '신형 노트북 — 무게 1.2 kg' }, weight, weight)).toBe(true)
-    // A measure that can be words names no units: a sky state still holds.
     const sky = '날씨: 기온이나 하늘 상태'
     expect(evidenced('흐림', { title: '세종 날씨', text: '세종 날씨 — 오후 흐림' }, sky, sky)).toBe(true)
   })
@@ -227,10 +215,8 @@ describe('c18a r2 #1: a value is in the point\'s units, a kind quote is a whole 
     const done = { title: '수원, 센터백 영입', text: '수원, 센터백 영입 — 수원이 센터백 박도현을 영입했다고 2일 밝혔다. 계약 기간은 3년이다' }
     expect(evidenced('박도현을 영입했다고 2일 밝혔다', done, kind, false)).toBe(true)
     expect(evidenced('센터백 박도현을 영입', done, kind, false)).toBe(false)
-    // In English the denial sits inside the sentence: no word of it may be skipped.
     const en = { title: 'Robotics startup Arko', text: 'Robotics startup Arko — Arko has not raised its Series A yet' }
     expect(evidenced('Arko raised its Series A yet', en, 'news of a startup raising funding', false)).toBe(false)
-    // An ending the text adds to a word the quote has, and a particle the quote adds, are still the same words.
     expect(evidenced('로봇랩 시리즈B 유치', { title: '로봇랩', text: '로봇랩 — 로봇랩이 시리즈B를 유치' }, '로봇 스타트업 투자 보도', false)).toBe(true)
   })
   it('the judge is asked for units and whole sentences; its percentage for a price and its fragment for a kind are not holds', async () => {
@@ -259,17 +245,12 @@ describe('c18a r2 #2: a page\'s fact covers the points it states, not the page',
   })
 })
 
-// c18a r3 (review r2): words being in the text, even a whole sentence or a figure, is not their stating the point; that is meaning. A quote is
-// evidence only when a blind read (the quick model, shown each quote alone beside what it is offered as) says its words state it. The fake
-// blind reader below answers by a table of what each quote means, standing in for the model's reading; what the tests check is the host:
-// the read sees only the words and the point, its "no" (or no answer) leaves the quote unproven on every path, and its "yes" proves it.
 describe('c18a r3: a quote is evidence only when a blind read says its words state the point', () => {
   const reader = (meaning: Record<string, boolean>, seen: string[] = []) => async (prompt: string): Promise<string> => {
     seen.push(prompt)
     const entries = JSON.parse(prompt.split('\nEntries: ')[1]!) as { n: number; words: string }[]
     return JSON.stringify({ states: entries.filter(e => meaning[e.words]).map(e => e.n) })
   }
-  // One quick model: the judge's answer for a judge prompt, the blind reader's for the read.
   const model = (verdict: () => string, meaning: Record<string, boolean>, seen: string[] = []) => async (p: string): Promise<string> => p.includes(STATED_PROMPT) ? reader(meaning, seen)(p) : verdict()
 
   it('the reviewer\'s price: a judge that leaves out the units still cannot make "4%가량 하락" a price', async () => {
@@ -295,7 +276,6 @@ describe('c18a r3: a quote is evidence only when a blind read says its words sta
     const meaning = { '기본요금이 12% 오른다': false, '기본요금은 3,000원이다': true, '수원이 윙어 김하람과 협상 중이나 아직 서명하지 않았다': false, '대전이 윙어 이도윤을 영입했다고 5일 밝혔다': true }
     const fare = await judgedItems('광역버스 요금 얼마야', items.slice(0, 2), model(() => JSON.stringify({ keep: [1, 2], points: ['광역버스 요금: 원화 금액'], holds: { 1: { '광역버스 요금': '기본요금이 12% 오른다' }, 2: { '광역버스 요금': '기본요금은 3,000원이다' } } }), meaning, seen))
     expect(fare?.holds).toEqual([2])
-    // The read is blind: each quote beside its point, never the item's headline, its other words, or the ask.
     expect(seen[0]).toContain('"offered as":"광역버스 요금: 원화 금액","words":"기본요금이 12% 오른다"')
     expect(seen[0]).not.toContain('요금 조정')
     expect(seen[0]).not.toContain('얼마야')
@@ -309,7 +289,6 @@ describe('c18a r3: a quote is evidence only when a blind read says its words sta
     const seen: string[] = []
     const v = await judgedItems('요금 얼마야', [{ title: '요금표', text: '요금표 — 기본요금은 3,000원이다' }], async p => { seen.push(p); return p.includes(STATED_PROMPT) ? 'sorry' : JSON.stringify({ keep: [1], points: ['요금: 원화 금액'], holds: { 1: { 요금: '기본요금은 3,000원이다' } } }) })
     expect(v?.holds).toEqual([])
-    // A quote not in the item is settled by structure alone: no read is asked.
     seen.length = 0
     await judgedItems('요금 얼마야', [{ title: '요금표', text: '요금표 — 기본요금은 3,000원이다' }], async p => { seen.push(p); return JSON.stringify({ keep: [1], points: ['요금: 원화 금액'], holds: { 1: { 요금: '4,000원' } } }) })
     expect(seen.filter(p => p.includes(STATED_PROMPT))).toHaveLength(0)
@@ -324,7 +303,6 @@ describe('c18a r3: a quote is evidence only when a blind read says its words sta
       write: model(() => JSON.stringify({ keep: [1], asked: 1, points: ['개통일: 날짜'], open: 1, holds: { 1: { 개통일: quote } }, search: '' }), { [quote]: false }, seen),
       read: async () => `세종 신규 버스 노선\n${quote}. 시는 연내 발표할 계획이다.`,
     }).run({ query: 'q' }, { task: ask })
-    // The page held the words, so they were read blind (again on each later judgment that offers them), and every "no" left the date unproven.
     expect(seen.length).toBeGreaterThanOrEqual(1)
     expect(seen.every(p => p.includes(`"words":"${quote}"`))).toBe(true)
     expect(found?.proof).toEqual([])

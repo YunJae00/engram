@@ -8,7 +8,6 @@ import { initVault } from '../src/vault.js'
 const at = (day: number, minute: number) => new Date(Date.UTC(2026, 9, day, 1, minute)).toISOString()
 const span = (app: string, title: string, day: number, from: number, to: number): ActivityStep => ({ app, title, start: at(day, from), end: at(day, to) })
 
-// One job, three days: a message, the sheet, an assistant, the deploy page, the reply.
 const job = (day: number, offset = 0): ActivityStep[] => [
   span('chat', `Issue ${day} | Team chat`, day, offset, offset + 3),
   span('sheet', `issues.xlsx - Sheets`, day, offset + 3, offset + 10),
@@ -53,7 +52,6 @@ describe('habit chains', () => {
     expect(chains[0]!.key).toBe('chat>sheet>assistant>browser>chat')
     expect(chains[0]!.times).toHaveLength(3)
     expect(chains.some(chain => chain.key.includes('mail'))).toBe(false)
-    // A shorter run held inside the longer one as often is not repeated.
     expect(chains.some(chain => chain.key === 'chat>sheet>assistant')).toBe(false)
     expect(chains[0]!.steps[1]).toMatchObject({ label: 'Sheets', titles: ['issues.xlsx'] })
   })

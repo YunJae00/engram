@@ -2,7 +2,6 @@ import { parseReadBatch } from './browser-read-batch.js'
 import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import { officeReadEvidence } from './office-verification.js'
 
-// Fresh readings of the world: what a phase can be shown done by.
 const READS = new Set(['app_read', 'app_text', 'read_desktop', 'look_desktop', 'read_open_page', 'read_note', 'look', 'open_page', 'search_web', 'search_memory', 'outlook_mail', 'outlook_read', 'outlook_calendar', 'find_files', 'schedule', 'desk_activity', 'notifications', 'search_chats', 'look_in_parallel'])
 function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
   if (step.tool === 'read_pages') return (parseReadBatch(step.observation)?.completed ?? 0) > 0 || /^Batch read:/.test(step.observation)
@@ -27,8 +26,6 @@ function hasObservation(step: AgentLoopStep, allowFailure = false): boolean {
     return (allowFailure || !result.error) && !result.observationMayBeStale && typeof result.observation?.snapshot === 'string' && !!result.observation.snapshot
   } catch { return false }
 }
-// The latest step that is not a plan call: a rejected or accepted plan call
-// is bookkeeping, and must not stand between the work and its citation.
 function latestWork(steps: AgentLoopStep[]): number {
   for (let at = steps.length; at > 0; at--) if (steps[at - 1]!.tool !== 'task_plan') return at
   return 0
@@ -50,11 +47,9 @@ export function taskPlan(steps: AgentLoopStep[]): { tool: AgentTool; completed: 
       }, oneOf: [{ required: ['phases'], maxProperties: 1 }, { required: ['evidenceStep', 'finding'], maxProperties: 2 }, { required: ['remainingPhases', 'evidenceStep', 'finding'], maxProperties: 3 }] },
       async run(given, context) {
         context.signal?.throwIfAborted()
-        // Fields sent empty are fields not sent.
         const args = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== null && value !== undefined))
         if (Object.keys(args).length === 1 && Array.isArray(args['phases'])) {
           if (phases.length) throw new Error(`The plan already has ${phases.length} phases. Complete the current one with evidenceStep and finding, or revise with remainingPhases.`)
-          // A phase written as an object (a title with its check) is its words.
           const value = (args['phases'] as unknown[]).map(one => (typeof one === 'string' ? one : one && typeof one === 'object' ? Object.values(one).filter(part => typeof part === 'string').join(' - ') : '').trim().slice(0, 240))
           if (value.length < 2 || value.length > 8 || value.some(one => !one)) throw new Error(`Create one plan with 2 to 8 nonempty phases; ${value.length} were given${value.some(one => !one) ? ', some empty' : ''}.`)
           phases = value

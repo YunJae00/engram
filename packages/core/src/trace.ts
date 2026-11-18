@@ -25,8 +25,6 @@ export function traceNote(notes: Note[], seedId: string): string | null {
   if (seed.front.origin === 'session') flags.push('machine-harvested')
   parts.push(`${line(seed)}${flags.length > 0 ? `\n  ${flags.join(' · ')}` : ''}`)
 
-  // Outgoing: this memory's own links, with the librarian's reason when it
-  // wrote one down. Incoming: who points here, with THEIR reason about us.
   const reasons = seed.front.link_reasons ?? {}
   const out = seed.front.derived_from
     .map((id) => byId.get(id))
@@ -45,8 +43,6 @@ export function traceNote(notes: Note[], seedId: string): string | null {
     parts.push(`Links in (${incoming.length}):\n${rows.join('\n')}${overflow(incoming.length, EDGE_CAP)}`)
   }
 
-  // Lineage — the axis a codebase graph cannot have. Down: what this memory
-  // retired. Up: what retired it, ending at the version that speaks today.
   const down: Note[] = []
   let frontier = seed.front.supersedes
   for (let depth = 0; depth < LINEAGE_DEPTH && frontier.length > 0; depth++) {
@@ -70,9 +66,6 @@ export function traceNote(notes: Note[], seedId: string): string | null {
     parts.push(`History:\n${rows.join('\n')}`)
   }
 
-  // The topic this memory belongs to: a hub note wired to it in either
-  // direction. Hubs are the librarian's own syntheses, so this is "which
-  // chapter of the brain is this page in".
   const hub = notes.find(
     (n) =>
       n.front.type === 'hub' &&
@@ -81,8 +74,6 @@ export function traceNote(notes: Note[], seedId: string): string | null {
   )
   if (hub) parts.push(`Topic hub: ${line(hub)}`)
 
-  // Folder siblings: memories born in the same place, newest first — the
-  // cross-note thread no link ever wrote down.
   if (seed.front.context) {
     const listed = new Set([seedId, ...out.map((n) => n.front.id), ...incoming.map((n) => n.front.id)])
     const siblings = notes

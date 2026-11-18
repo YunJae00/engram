@@ -49,7 +49,6 @@ describe('what a session is handed', () => {
     expect(block).not.toContain('오래된 결정')
   })
 
-  // It is injected ahead of the user's actual prompt, so bloat is a real cost.
   it('stays small enough to sit in front of every prompt', () => {
     expect(block.length).toBeLessThan(4_000)
   })
@@ -58,12 +57,9 @@ describe('what a session is handed', () => {
     expect(buildContextBlock([], NOW)).toContain('Nothing recorded yet')
   })
 
-  // The previous attempt at this inferred the user's projects statistically and
-  // had to be deleted for fitting one vault. This one only projects.
   it('is a projection — every line comes from a note that exists', () => {
     const only = buildContextBlock([note('단 하나', { open_loop: true })], NOW)
     expect(only).toContain('단 하나')
-    // no invented groupings, themes or project names
     expect(only.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(1)
   })
 })

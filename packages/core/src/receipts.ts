@@ -14,7 +14,6 @@ export async function trimJsonlIfHuge(file: string, maxBytes: number = JSONL_TRI
     await writeFile(temp, `${kept.join('\n')}\n`)
     await rename(temp, file)
   } catch {
-    /* trimming is hygiene, never worth an error */
   }
 }
 
@@ -62,7 +61,6 @@ export async function countRecallReceipts(
       total += 1
       for (const id of receipt.ids) perId.set(id, (perId.get(id) ?? 0) + 1)
     } catch {
-      /* torn line — skip */
     }
   }
   const topIds = [...perId.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)

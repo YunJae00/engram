@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { pageTools } from '../src/comet-page-tools.js'
 import type { PageMove, WebCourier, WebPage } from '../src/errand.js'
 
-// A browser that answers every hand with the page it now shows.
 function courier(log: string[]): WebCourier {
   let shown = 'week of the 24th'
   return {
@@ -205,7 +204,7 @@ describe('page_steps', () => {
     const outcome = await tool.runRich!(args, { task: 'Fill the report' })
     expect(outcome.observedAfterAction === true).toBe(mode === 'complete')
     expect(outcome.text).toContain('Done in order: type into "Hours"')
-    expect(outcome.page).toBeUndefined() // Keep the moves with the full report, not a compact page delta.
+    expect(outcome.page).toBeUndefined()
     const observed = vi.fn()
     await tool.run(args, { task: 'Fill the report', onObservedAfterAction: observed })
     expect(observed).toHaveBeenCalledTimes(mode === 'complete' ? 1 : 0)

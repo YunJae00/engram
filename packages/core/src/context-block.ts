@@ -3,15 +3,11 @@ import { noteTitle } from './schema.js'
 import { activeFolders } from './standup.js'
 import type { Note } from './schema.js'
 
-// Injected into every session, so it competes with the user's actual prompt for
-// attention. Small enough to skim, or it becomes noise the model learns to skip.
 const OPEN_LOOPS = 12
 const RECENT_DECISIONS = 8
 const RESUME_FOLDERS = 6
 const TITLE_MAX = 90
 
-// Written between markers so the file can be rewritten in place forever without
-// touching anything a human added around it.
 export const CONTEXT_BEGIN = '<!-- engram:begin -->'
 export const CONTEXT_END = '<!-- engram:end -->'
 
@@ -19,8 +15,6 @@ function trim(text: string): string {
   return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text
 }
 
-// Notes the user settled recently: what was decided, not what is pending. These
-// are the answers a session would otherwise re-derive or contradict.
 function recentlySettled(notes: Note[], now: Date): Note[] {
   return notes
     .filter((n) => n.front.status === 'current' && n.front.type !== 'hub')
@@ -88,8 +82,6 @@ export function buildContextBlock(notes: Note[], now: Date = new Date()): string
   return lines.join('\n')
 }
 
-// Replace an existing block in place, or append one. Anything the user wrote
-// outside the markers is preserved exactly — this file is theirs, not ours.
 export function upsertContextBlock(existing: string, block: string): string {
   const start = existing.indexOf(CONTEXT_BEGIN)
   const end = existing.indexOf(CONTEXT_END)

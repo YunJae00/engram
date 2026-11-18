@@ -1,7 +1,5 @@
 import type { DecayLevel, Note } from './schema.js'
 
-// Freshness = decay × verified_until.
-// Verification windows per decay level; evergreen never expires.
 const WINDOW_DAYS: Record<DecayLevel, number | null> = {
   evergreen: null,
   slow: 180,
@@ -9,7 +7,6 @@ const WINDOW_DAYS: Record<DecayLevel, number | null> = {
   ephemeral: 7,
 }
 
-// Fraction of the window that counts as "expiry imminent" (🟡).
 const IMMINENT_RATIO = 0.2
 
 export type Freshness = 'fresh' | 'aging' | 'stale' | 'disputed'
@@ -32,7 +29,6 @@ export function freshnessOf(note: Note, now: Date = new Date()): Freshness {
   const baseWindow = WINDOW_DAYS[note.front.decay]
   if (baseWindow === null) return 'fresh'
   const windowDays = note.front.salience === 'high' ? baseWindow * SALIENCE_WINDOW_FACTOR : baseWindow
-  // Without an explicit verified_until the clock runs from creation.
   const expiry = note.front.verified_until
     ? Date.parse(note.front.verified_until)
     : Date.parse(note.front.created) + windowDays * 86_400_000

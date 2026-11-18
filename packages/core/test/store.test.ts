@@ -76,7 +76,6 @@ describe('NoteStore.applyFile', () => {
   it('a parse failure keeps the previous note and returns an empty delta', async () => {
     await createNote(paths, { id: 'x2', body: '# Keep me\n\noriginal body' }, NOW)
     const store = await NoteStore.open(paths)
-    // Frontmatter missing required id/created/updated → zod rejects it.
     await writeFile(notePath(paths, 'x2'), '---\nfoo: bar\n---\n# Garbage\n')
     const delta = await store.applyFile('change', notePath(paths, 'x2'))
     expect(delta).toEqual({ upserts: [], removed: [] })
@@ -87,7 +86,6 @@ describe('NoteStore.applyFile', () => {
   it('ignores paths that are not .md files directly inside notes/', async () => {
     const store = await NoteStore.open(paths)
     const empty = { upserts: [], removed: [] }
-    // Wrong directory (inbox), wrong extension, and a nested subfolder.
     expect(await store.applyFile('add', notePath({ ...paths, notes: paths.inbox }, 'a'))).toEqual(empty)
     expect(await store.applyFile('add', `${paths.notes}/note.txt`)).toEqual(empty)
     expect(await store.applyFile('add', `${paths.notes}/sub/note.md`)).toEqual(empty)

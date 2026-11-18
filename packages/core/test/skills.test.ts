@@ -26,10 +26,6 @@ import { tmpVaultRoot } from './helpers.js'
 import type { Note } from '../src/schema.js'
 import type { VaultPaths } from '../src/vault.js'
 
-// The vault's recurring know-how becomes a skill file in the vault itself.
-// The gates matter more than the generation — no repetition no skill, a
-// user-edited file is theirs forever, secrets never leave the vault.
-
 const NOW = new Date('2026-08-05T09:00:00Z')
 let n = 0
 function note(title: string, over: Partial<Note['front']> = {}): Note {
@@ -128,7 +124,6 @@ describe('progressive disclosure', () => {
     const body = await readSkillFile(paths, 'engram-sample')
     expect(body).toContain('## Steps')
     expect(body).toContain('more detail here')
-    // The index carries no body — that is the whole point.
     expect(JSON.stringify(cards)).not.toContain('## Steps')
   })
 
@@ -137,7 +132,6 @@ describe('progressive disclosure', () => {
     await installSkill(paths, candidate!, draft, NOW)
     expect(await readSkillFile(paths, 'engram-nope')).toBeNull()
     expect(await readSkillFile(paths, 'engram-sample', '../../secrets.txt')).toBeNull()
-    // A real reference file inside the skill folder reads.
     await writeFile(join(skillsDir(paths), 'engram-sample', 'ref.md'), 'reference body', 'utf8')
     expect(await readSkillFile(paths, 'engram-sample', 'ref.md')).toBe('reference body')
   })
@@ -153,7 +147,6 @@ describe('migrateSkillsHome', () => {
     await mkdir(legacy, { recursive: true })
     await writeFile(join(legacy, 'SKILL.md'), renderSkillMd('old', 'old', { title: 'Old', description: 'legacy skill', body: 'B' }), 'utf8')
     await writeSkillsLedger(paths, { old: { folder: 'old', hash: 'previous-version', distilledAt: NOW.toISOString() } })
-    // A non-engram sibling is left untouched.
     const foreign = join(home, '.claude', 'skills', 'other-tool')
     await mkdir(foreign, { recursive: true })
     await writeFile(join(foreign, 'SKILL.md'), 'not ours', 'utf8')
@@ -229,7 +222,6 @@ describe('living skills — stale when the folder moves on', () => {
   it('re-distills a folder that changed after the last distillation (edit, not just new note)', () => {
     const base = procedureNotes('sample', 3, '2026-08-01T00:00:00.000Z')
     const ledger = { sample: { folder: 'sample', hash: 'h', distilledAt: '2026-08-02T00:00:00.000Z' } }
-    // No new note, but one was edited after distillation → still a candidate.
     const edited = base.map((note, i) => (i === 0 ? { ...note, front: { ...note.front, updated: '2026-08-09T00:00:00.000Z' } } : note))
     expect(skillCandidates(edited, ledger)).toHaveLength(1)
   })
@@ -239,14 +231,11 @@ describe('living skills — stale when the folder moves on', () => {
     const [candidate] = skillCandidates(notes, {})
     await installSkill(paths, candidate!, draft, NOW)
     const ledger = await readSkillsLedger(paths)
-    // Nothing changed since distillation → not stale.
     expect(staleSkills(ledger, notes)).toEqual([])
-    // A newer note in the folder → stale, and the card carries a caution.
     const changed = [...procedureNotes('sample', 3), note('새 함정 발견 주의', { context: 'sample', created: '2026-08-10T00:00:00.000Z' })]
     expect(staleSkills(ledger, changed)).toEqual(['sample'])
     const cards = annotateStaleCards([{ name: 'engram-sample', description: 'When porting sample modules' }], ledger, changed)
     expect(cards[0]!.description).toContain('may be outdated')
-    // A skill whose folder is unchanged is left alone.
     expect(annotateStaleCards([{ name: 'engram-sample', description: 'x' }], ledger, notes)[0]!.description).toBe('x')
     expect(staleSkills(ledger, notes.slice(1))).toEqual(['sample'])
     expect(staleSkills(ledger, [])).toEqual(['sample'])
@@ -275,7 +264,6 @@ describe('learning a how-to from a kept turn', () => {
   it('parseSkillDraft accepts a structured draft and refuses a stub, a skip, or prose', () => {
     const good = JSON.stringify({ title: 'File the VAT return', description: 'when filing VAT', body: '## When to use\n' + 'x'.repeat(120) })
     expect(parseSkillDraft(good)).toMatchObject({ title: 'File the VAT return' })
-    // Embedded in chatter still parses.
     expect(parseSkillDraft('sure!\n' + good + '\nhope that helps')).toMatchObject({ title: 'File the VAT return' })
     expect(parseSkillDraft('{"skip": true}')).toBeNull()
     expect(parseSkillDraft('here is a nice skill for you')).toBeNull()
@@ -322,7 +310,6 @@ describe('successful-turn skill ranking', () => {
       c: { folder: 'c', hash: 'h', distilledAt: NOW.toISOString(), used: 1 },
     }
     expect(rankSkillCards(cards, ledger).map((card) => card.name)).toEqual(['engram-b', 'engram-c', 'engram-a'])
-    // No usage anywhere → the original order is preserved.
     expect(rankSkillCards(cards, {}).map((card) => card.name)).toEqual(['engram-a', 'engram-b', 'engram-c'])
   })
 
@@ -334,7 +321,6 @@ describe('successful-turn skill ranking', () => {
     const ledger = await readSkillsLedger(paths)
     expect(ledger['sample']?.used).toBe(2)
     expect(ledger['sample']?.lastUsedAt).toBe(NOW.toISOString())
-    // An unknown skill is never invented as a ledger row.
     await markSkillUsed(paths, 'engram-nope', NOW)
     expect((await readSkillsLedger(paths))['nope']).toBeUndefined()
   })

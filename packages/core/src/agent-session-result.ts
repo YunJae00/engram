@@ -2,14 +2,9 @@ import { basename, resolve } from 'node:path'
 import { parseReadBatch } from './browser-read-batch.js'
 import type { AgentLoopStep } from './agent-loop.js'
 
-// cwd: the task folder a relative fromPath is read against.
 export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): string {
   const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
   const COMPOSED = ['word_write', 'ppt_build']
-  // What a receipt was made from, by the rule the host's native delivery uses (deliverOutputs): a copy's fromPath; content (and a content copy's
-  // task-folder twin, compared after the same resolve() as fromPath so a Windows drive letter or a relative twin path still matches), one source; any other tool and the file it names, else its own input. The same source made again under one name is a
-  // revision, where the last one counts, whether or not the answer links anything: a budget stop or an unfinished turn links nothing, and what
-  // is attached here the host cannot take back (qa143 S19a: every copy of one report.md was attached). A receipt naming no source is its own.
   const twins = new Set(steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [resolve(cwd, path)] : [] } catch { return [] } }))
   const sourceOf = (step: AgentLoopStep, link: string): string => {
     if (step.tool === 'file_create_copy') {
@@ -19,11 +14,7 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
     const input = COMPOSED.includes(step.tool) ? undefined : [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined
     return `${step.tool}\0${input ? resolve(cwd, input) : JSON.stringify(step.args)}`
   }
-  // grokbar D3 (stack9): one deck built three times in one turn showed three cards ("3분기 실적 보고.pptx", "-2", "-3"). A file made fresh
-  // (a deck, a document, a workbook with no input) and made again under its name later in the turn is that turn's own draft, replaced by
-  // the later one (office-agent.ts composeOffice, file-work.ts placeInTask): only the last is shown, and a link to an earlier one is the last one's.
   const fresh = (step: AgentLoopStep): boolean => COMPOSED.includes(step.tool) || (step.tool === 'file_create_workbook' && ![step.args['source'], step.args['sourcePath'], step.args['path']].some(value => typeof value === 'string'))
-  // c10c r1: the file a file_edit_package changes, by name (a task path or a saved output's id both end in it).
   const edits = (step: AgentLoopStep): string | undefined => step.tool === 'file_edit_package' && typeof step.args['sourcePath'] === 'string' ? fileName(basename(step.args['sourcePath'])).toLowerCase() : undefined
   let outputs: { link: string; id: string; name: string; source: string; composed: boolean; fresh: boolean; edits?: string | undefined; taskPath?: string | undefined }[] = []
   for (const step of steps) {
@@ -32,22 +23,16 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
       const result = JSON.parse(step.observation) as { markdownLink?: unknown; taskPath?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
       if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: sourceOf(step, result.markdownLink as string), composed: COMPOSED.includes(step.tool), fresh: fresh(step), edits: edits(step), taskPath: typeof result.taskPath === 'string' ? result.taskPath : undefined })
-    } catch { /* Failed writes have no output receipt. */ }
+    } catch { }
   }
   const last = new Map(outputs.filter(output => output.fresh).map(output => [output.name.toLowerCase(), output]))
   const replaced = new Map(outputs.filter(output => output.fresh && last.get(output.name.toLowerCase())!.id !== output.id).map(output => [output.id, last.get(output.name.toLowerCase())!]))
-  // c10c r1: a file this turn made (or edited) and then changed with file_edit_package is that file, now edited: only the last edit is shown,
-  // and a link to an earlier version is the edit's (a deck built, then its garbled word fixed, is one card).
-  // c11c r3: only an edit saved onto that file replaces it (the same task file, or with none on record the same name); one saved under another name is another file.
   const onto = (edit: typeof outputs[number], output: typeof outputs[number]) => edit.taskPath && output.taskPath ? edit.taskPath === output.taskPath : edit.name.toLowerCase() === output.name.toLowerCase()
   outputs.forEach((output, at) => { const edit = outputs.slice(at + 1).filter(one => one.edits === output.name.toLowerCase() && onto(one, output)).at(-1); if (edit && (output.fresh || output.edits)) replaced.set(output.id, edit) })
   const final = (id: string) => { let now = replaced.get(id); for (let hops = 0; now && replaced.has(now.id) && hops < 50; hops++) now = replaced.get(now.id); return now }
   answer = answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g, (whole, id: string) => final(id)?.link ?? whole)
   outputs = outputs.filter(output => !replaced.has(output.id))
   const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
-  // The answer's link sets aside the other versions of the input it quotes, not another input's file of that name: two different inputs under
-  // one name are two files (qa143 S19a). Nothing later hands over a composed document or deck, so another input of a linked name is attached
-  // here; a file receipt under a linked name is left to the host, which names a second source apart (report-2.md).
   const chosen = outputs.filter(output => selected.has(output.id))
   const links = new Map<string, string>()
   for (const output of outputs) {
@@ -72,9 +57,6 @@ export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined 
   const step = steps.filter((one) => one.tool.startsWith('file_') || ['app_read', 'app_text', 'app_set', 'app_press', 'app_do', 'desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(one.tool)).at(-1)
   if (!step) return undefined
   const incomplete = 'The last computer or file result failed or may be stale and has not been verified.'
-  // A read that failed changed nothing, and a result check reported after it is judged by the host readback by readback (which final bytes were
-  // read, which were not): that verdict stands instead of this one. qa143 S19: an unreadable PDF's file_read turned a checked wrap-up into
-  // "Not verified as complete", continued it automatically and had it restated.
   if (step.tool.startsWith('file_read') && steps.slice(steps.lastIndexOf(step) + 1).some(reportedCheck)) return undefined
   if (step.observation.startsWith('that did not work:')) return incomplete
   try {
@@ -85,7 +67,7 @@ export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined 
         try { return JSON.parse(one.observation)?.opened === true } catch { return false }
       })) return undefined
     if (error) return incomplete
-  } catch { /* Text observations have no structured failure field. */ }
+  } catch { }
   if (step.tool === 'app_set' || step.tool === 'app_text' || step.tool === 'app_do') {
     try {
       const result = JSON.parse(step.observation) as { landed?: boolean; exact?: boolean; settled?: boolean; status?: string }

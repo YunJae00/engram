@@ -34,7 +34,6 @@ it('continues with the goal verbatim and says why', async () => {
   expect(restart).toContain('The app restarted')
   expect(restart.endsWith('The delegated task, verbatim:\nFile the expense report\nKeep receipts attached.')).toBe(true)
   expect(continuationPrompt(task, 'answer', 'Their answer: use the team card')).toContain('Their answer: use the team card')
-  // as-e1cf9bfd C3: the employees' report in a Korean thread quoted an English source headline.
   expect(continuationPrompt(task, 'report')).toContain(SOURCE_TITLES_RULE)
   task.verificationIssue = 'The output has an unsupported claim.'
   const verify = continuationPrompt(task, 'verify')
@@ -46,7 +45,6 @@ it('continues with the goal verbatim and says why', async () => {
   expect(continuationPrompt({ ...task, result: '[Report](engram-artifact:report.md)' }, 'verify')).toContain('Check this result and correct only what is wrong; do not redo the task:\n[Report](engram-artifact:report.md)')
   expect(continuationPrompt({ ...task, result: 'draft' }, 'limit')).not.toContain('draft')
   expect(verify).toContain('do not keep adding exploratory checks')
-  // qa145 B14 (S19): a re-check that corrected the report in its answer still reported that statement failed, and the finished team turn stopped.
   expect(verify).toContain('a mismatch you corrected and confirmed is a pass')
   expect(verify).toContain('nothing to apply to in this result is not_applicable, not unknown')
   expect(verify).toContain('Nothing the request itself asks for can be not_applicable')

@@ -8,11 +8,9 @@ export interface HarnessMetric {
   sentChars?: number
   completed?: number
   requested?: number
-  /** c10a: the counts of one pass of a counted news search (rows, rounds, rows kept). */
   counts?: Record<string, number>
 }
 
-// Metrics contain timings and counts, never page contents, arguments or addresses.
 export function measuredCourier(courier: WebCourier, emit?: (metric: HarnessMetric) => void): WebCourier {
   if (!emit) return courier
   const measured = Object.create(courier) as WebCourier

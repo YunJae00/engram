@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkPrompt, readProblems } from '../src/written-check.js'
 
-// c16c (cause D2). Wordings are not the harness's.
 const input = { data: { source: '## 합의\n1. 문서 작성 — 이수진' }, ask: '킥오프 메모 합의된 것, 리스크, 다음 단계로 나눠줘' }
 describe('kind "missing": a part the ask names is not its own part of the message', () => {
   it('is asked of a text with parts and of a text held to its ask, and of nothing else', () => {

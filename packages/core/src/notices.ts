@@ -4,10 +4,6 @@ import { join } from 'node:path'
 import { renameWithRetry } from './rename-with-retry.js'
 import type { VaultPaths } from './vault.js'
 
-// What Engram brings to the person on its own - a scheduled request that ran,
-// a way of working it noticed - kept in one place instead of in conversations
-// that drop out of the list after a day. Opening one opens its conversation.
-
 export interface NoticeItem {
   id: string
   kind: 'scheduled' | 'habit' | 'system'
@@ -15,12 +11,9 @@ export interface NoticeItem {
   text: string
   at: string
   read: boolean
-  // The conversation it opens; a habit gets one only when it is opened.
   botId?: string
-  // The habit it raises.
   key?: string
   running?: boolean
-  // When a scheduled run started; `at` moves to its end.
   began?: string
 }
 
@@ -38,8 +31,6 @@ export async function readNotices(paths: VaultPaths): Promise<NoticeItem[]> {
 }
 
 let queue = Promise.resolve()
-// One change at a time, so a scheduled run finishing and the person opening
-// an item never write over each other.
 export function changeNotices(paths: VaultPaths, change: (items: NoticeItem[]) => NoticeItem[]): Promise<NoticeItem[]> {
   const next = queue.then(async () => {
     const items = change(await readNotices(paths)).slice(0, KEEP)
@@ -62,8 +53,6 @@ export function updateNotice(paths: VaultPaths, id: string, patch: Partial<Omit<
   return changeNotices(paths, items => items.map(item => item.id === id ? { ...item, ...patch } : item))
 }
 
-// A conversation's answer as one plain line for the bell: suggested replies,
-// code, rules and markdown marks left out.
 export function noticeText(text: string, cap = 280): string {
   return text
     .replace(/```[\s\S]*?(```|$)/g, ' ')

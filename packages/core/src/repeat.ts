@@ -1,18 +1,12 @@
 import { contentWords } from './search-template.js'
 import { guessSchedule, type Schedule } from './schedule.js'
 
-// The same ask coming back on another day is the strongest sign a task
-// should stand on its own. Matched by the words that carry the ask, with the
-// asking itself (such as "please") taken off, so differently phrased requests
-// to check the same portal notice are one ask.
-
 interface PastAsk {
   text: string
   at: string
 }
 
 interface RepeatVerdict {
-  // How many times it has been asked, this one included.
   count: number
   times: Date[]
   schedule: Schedule
@@ -23,8 +17,6 @@ const REPEAT_WINDOW = 60
 const REPEAT_OVERLAP = 0.6
 const ASKING_TAIL = /(해\s*주세요|해\s*줄래|해\s*줘|해\s*봐|해\s*라|하자|해요|해|좀|요|please|now|again)$/u
 
-// The verbs of asking carry no subject: "check the deploy notice" and
-// "check the parking policy" share "check" and nothing else worth sharing.
 const GENERIC = /^(좀|확인|처리|정리|진행|부탁|알려|보여|찾아|please|check|run|do|get|make|show|tell|find|look|the|a|an|to|me|my|it|and|for|of)$/
 function askWords(text: string): string[] {
   return contentWords(text.normalize('NFKC'))
@@ -55,8 +47,6 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-// Earlier asks on earlier days - at least two of them - make this one the
-// third morning, and a standing task worth offering.
 export function repeatedAsk(past: readonly PastAsk[], message: string, now = new Date()): RepeatVerdict | null {
   const today = dayKey(now)
   const earlier = past

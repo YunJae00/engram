@@ -7,7 +7,6 @@ function bounded(value: number): number {
   return value
 }
 
-// Fixed arithmetic only: no expression evaluation, code, files, network or shell.
 export function calculationTool(assertActive?: () => void): AgentTool {
   return {
     name: 'work_calculate',

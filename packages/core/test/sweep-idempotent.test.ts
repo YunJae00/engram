@@ -14,8 +14,6 @@ function collectIO(): { io: CliIO; lines: string[] } {
   return { io: { out: (l) => lines.push(l), err: (l) => lines.push(`ERR ${l}`) }, lines }
 }
 
-// Everything the sweep may touch: notes + all generated views (cards, brief,
-// logs). Two consecutive sweeps must leave this snapshot byte-identical.
 async function snapshotWorkspace(paths: VaultPaths): Promise<Map<string, string>> {
   const snapshot = new Map<string, string>()
   const walk = async (dir: string, prefix: string) => {

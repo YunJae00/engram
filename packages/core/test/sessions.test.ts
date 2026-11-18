@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSessionSpan, projectOfTranscript, renderSpan } from '../src/sessions.js'
 
-// Claude Code transcripts are append-only JSONL, measured at 27MB for a single
-// session, and most lines are UI bookkeeping. Engram reads forward from a
-// remembered offset while the app runs, so the parser has to survive being
-// handed a span that ends mid-line.
-
 const line = (o: unknown) => JSON.stringify(o) + '\n'
 const user = (text: string, at = '2026-07-29T00:00:00Z') =>
   line({ type: 'user', timestamp: at, message: { role: 'user', content: text } })
@@ -42,7 +37,6 @@ describe('reading a transcript span', () => {
     expect(turns).toEqual([])
   })
 
-  // The file is being appended to while we read it.
   it('leaves a half-written final line for the next read', async () => {
     const whole = user('첫 줄')
     const span = whole + '{"type":"user","message":{"role":"user","content":"잘린'
@@ -64,10 +58,9 @@ describe('reading a transcript span', () => {
   })
 
   it('skips an oversized tool-dump row (a multi-MB JSON.parse would freeze the thread)', async () => {
-    const huge = user('x'.repeat(600 * 1024)) // one > 512KB row
+    const huge = user('x'.repeat(600 * 1024))
     const { turns, consumed } = await parseSessionSpan(huge + user('작다'))
     expect(turns.map((t) => t.text)).toEqual(['작다'])
-    // Its bytes still count, so the cursor moves past it and it is not re-read.
     expect(consumed).toBe(Buffer.byteLength(huge + user('작다'), 'utf8'))
   })
 })

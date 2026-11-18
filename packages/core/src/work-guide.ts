@@ -3,7 +3,6 @@ import type { Note } from './schema.js'
 
 export const WORK_GUIDE_NOTE_ID = 'n-work-guide'
 export const WORK_GUIDE_TYPE = 'guide'
-// What the person answered while a comet worked, folded into their guide.
 export interface GuideAnswer { question: string; answer: string; rejected?: boolean }
 
 const GUIDE_CHARS = 12000
@@ -13,7 +12,6 @@ const INTRO = 'My own answers about my work. Every comet reads this; edit or del
 const clip = (text: string, max: number) => text.replace(/\s+/g, ' ').trim().slice(0, max)
 const GUIDE_HEADINGS = ['Recurring work', 'Where things are', 'Outputs', 'Terms (use exactly)', 'Rules', 'People', 'Examples']
 
-// The answer shape handed to the engine, so a reply cannot drift into prose.
 export const GUIDE_SCHEMA = { type: 'object', additionalProperties: false, required: ['sections'], properties: {
   sections: { type: 'array', maxItems: 7, items: { type: 'object', additionalProperties: false, required: ['heading', 'lines'], properties: {
     heading: { type: 'string', enum: GUIDE_HEADINGS }, lines: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 600 } },
@@ -34,8 +32,6 @@ export function guidePrompt(answers: GuideAnswer[], current = ''): string {
   ].join('\n')
 }
 
-// The sections the model wrote: the schema-shaped answer, or markdown from an
-// engine that cannot hold a schema (preamble dropped, bare lines kept).
 export function guideBody(raw: string): string {
   if (raw.length > 24000) throw new Error('The work guide response was too long.')
   let parsed: { sections?: { heading?: unknown; lines?: unknown }[] } | undefined
@@ -72,7 +68,6 @@ export function guideNote(sections: string, now: Date, existing?: Note | null, a
   }
 }
 
-// What a turn carries of the guide: the person's own sections, bounded.
 export function guideForPrompt(note: Note | null | undefined): string {
   if (!note || note.front.status !== 'current') return ''
   const body = note.body.replace(HEADER, '').replace(INTRO, '').trim()

@@ -12,7 +12,6 @@ const CONTENT_BYTES = 8_000_000
 const MAX_CHARS = 24_000
 export const TEXT_FILE_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.tsv']
 const TEXT = new Set(TEXT_FILE_EXTENSIONS)
-// Read as text only, so a script result can be read back in full; the text tools never create or edit one.
 const SCRIPTS = new Set(['.py', '.js', '.ts', '.sh', '.ps1'])
 const DOCUMENTS = new Set([...DOCUMENT_EXTENSIONS, '.pdf', '.hwpx'])
 const IMAGES = new Map([['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'], ['.webp', 'image/webp'], ['.gif', 'image/gif']])
@@ -28,7 +27,6 @@ interface TableValidation {
   error?: { row: number; column: number; message: string }
 }
 
-// Count logical records, including the header; quoted newlines stay in a cell.
 export function validateTextTable(content: string, name: string): TableValidation | undefined {
   const extension = extname(name).toLowerCase()
   if (extension !== '.csv' && extension !== '.tsv') return undefined
@@ -89,12 +87,7 @@ interface FileWorkOptions {
   approveRead(path: string, signal?: AbortSignal): Promise<boolean>
   assertReadable?(path: string): Promise<void>
   assertActive?(): void
-  // Finds saved files by name within the host-provided search roots.
-  // It only returns paths and names, never content - reading one still goes
-  // through approveRead - so a look does not hand over what a file holds.
   findFiles?(query: string, signal?: AbortSignal): Promise<FileSearchResult>
-  // Folders where a script may have built a deliverable, handed in by path.
-  // A function lets the host validate them (links, workspace) at each hand-in.
   handInRoots?: string[] | (() => Promise<string[]>)
 }
 
@@ -106,7 +99,6 @@ function nameOf(value: unknown, document = false, media = false): string {
   return value
 }
 
-// A link target a markdown reader cannot cut short: parentheses in a name are escaped too.
 export const artifactHref = (id: string): string => encodeURIComponent(id).replace(/\(/g, '%28').replace(/\)/g, '%29')
 
 export async function saveArtifact(directory: string, name: string, data: Buffer, signal?: AbortSignal, media = false) {
@@ -119,7 +111,6 @@ export async function saveArtifact(directory: string, name: string, data: Buffer
     throw new Error(`${tableValidation.format.toUpperCase()} row ${row}, column ${column}: ${message} No output was written.`)
   }
   if (tableValidation) {
-    // Spreadsheet applications may infer a delimiter different from the extension.
     const XLSX = await import('xlsx')
     const table = XLSX.read(textOf(data, name), { type: 'string', raw: true, ...(tableValidation.format === 'tsv' ? { FS: '\t' } : {}) })
     for (const sheet of Object.values(table.Sheets)) for (const [key, value] of Object.entries(sheet)) {
@@ -189,8 +180,6 @@ function textOf(data: Buffer, name: string): string {
   return content
 }
 
-// An app-owned output directory is the only write target. Imported files
-// are immutable inputs; even an open document's backing file is never replaced.
 export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   const inputs = new Map<string, { path: string; sha256: string }>()
   let declined = false
@@ -223,7 +212,6 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   }
   const inspectText = (content: string, sha256: string, bytes: number, path: string, offset = 0) => {
     const tableValidation = validateTextTable(content, path)
-    // Models miscount length; measured counts let them check a requested limit.
     const words = content.trim() ? content.trim().split(/\s+/).length : 0
     return { sha256, bytes, characters: content.length, words, lines: content ? content.split(/\r?\n/).length : 0, offset,
       content: content.slice(offset, offset + MAX_CHARS), truncated: content.length > offset + MAX_CHARS,

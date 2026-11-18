@@ -61,7 +61,7 @@ describe('job runner', () => {
     const applied: string[] = []
     const runner = new JobRunner(paths, [flaky])
     const report = await runner.runAll([job('J1', 'x', applied), job('J5', 'y', applied)])
-    expect(calls).toBe(4) // 2 attempts 횞 2 jobs
+    expect(calls).toBe(4)
     expect(report.failed.map((f) => f.inputKey)).toEqual(['x', 'y'])
     expect(applied).toEqual([])
   })
@@ -88,9 +88,6 @@ describe('job runner', () => {
     expect(applied).toEqual(['one:from-a', 'two:from-b', 'three:from-b'])
   })
 
-  // An expired login will not fix itself on attempt two. It used to be an
-  // ordinary failure: retried once per job, pushed into report.failed, and
-  // report.failed was rendered nowhere — 2N doomed spawns and total silence.
   it('a dead login halts at once, without retrying, and says why', async () => {
     let calls = 0
     const applied: string[] = []
@@ -100,12 +97,11 @@ describe('job runner', () => {
     })
     const runner = new JobRunner(paths, [loggedOut])
     const report = await runner.runAll([job('J1', 'one', applied), job('J5', 'two', applied)])
-    expect(calls).toBe(1) // no retry, and the second job never dispatched
+    expect(calls).toBe(1)
     expect(report.executed).toBe(0)
     expect(report.failed).toEqual([])
     expect(report.deferred).toBe(2)
     expect(report.haltReason).toBe('auth')
-    // Deferred work is KEPT: a working engine picks both jobs up next time.
     const rerun = await new JobRunner(paths, [engineOf('mock', () => ok('r'))]).runAll([
       job('J1', 'one', applied),
       job('J5', 'two', applied),
@@ -143,7 +139,6 @@ describe('job runner', () => {
     const report = await runner.runAll([job('J1', 'one', applied), job('J5', 'two', applied)])
     expect(report.executed).toBe(0)
     expect(report.deferred).toBe(2)
-    // deferred jobs are NOT journaled ??the next sweep picks them up
     const rerun = await new JobRunner(paths, [engineOf('mock', () => ok('r'))]).runAll([
       job('J1', 'one', applied),
       job('J5', 'two', applied),
@@ -171,9 +166,8 @@ describe('job runner (concurrent pool)', () => {
     const runner = new JobRunner(paths, [slow], { concurrency: 3 })
     const report = await runner.runAll([job('J1', 'a', applied), job('J5', 'b', applied), job('J5', 'c', applied)])
     expect(report.executed).toBe(3)
-    expect(peak).toBeGreaterThan(1) // genuinely overlapped
+    expect(peak).toBeGreaterThan(1)
     expect(new Set(applied)).toEqual(new Set(['a:r', 'b:r', 'c:r']))
-    // journal survives the pool: a rerun skips everything
     const rerun = await new JobRunner(paths, [slow], { concurrency: 3 }).runAll([
       job('J1', 'a', applied),
       job('J5', 'b', applied),
@@ -183,7 +177,7 @@ describe('job runner (concurrent pool)', () => {
   })
 
   it('concurrent quota hits advance the substitution pointer once and finish on the substitute', async () => {
-    const engineA = engineOf('claude', quota) // every call 429s
+    const engineA = engineOf('claude', quota)
     const engineB = engineOf('mock', () => ok('from-b'))
     const applied: string[] = []
     const runner = new JobRunner(paths, [engineA, engineB], { concurrency: 3 })
@@ -200,7 +194,7 @@ describe('job runner (concurrent pool)', () => {
       id: 'mock',
       detect: async () => ({ installed: true, loggedIn: true }),
       async *run() {
-        stop = true // first dispatched batch flips the stop flag
+        stop = true
         await new Promise((r) => setTimeout(r, 10))
         yield { type: 'result', text: 'r' } as EngineEvent
       },
@@ -212,8 +206,6 @@ describe('job runner (concurrent pool)', () => {
       job('J5', 'c', applied),
       job('J5', 'd', applied),
     ])
-    // Workers dispatch a and b before either flips stop is observed; c and d
-    // must defer. In-flight jobs complete and are journaled.
     expect(report.executed + report.deferred).toBe(4)
     expect(report.deferred).toBeGreaterThanOrEqual(2)
   })

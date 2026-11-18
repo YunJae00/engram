@@ -58,7 +58,6 @@ describe('J1 valid_until (deadline-aware freshness)', () => {
       '{"type":"note","decay":"slow","body":"# 메모","valid_until":"언젠가"}',
       'vu-garbage',
     )
-    // default window: created + 180d, so verified_until is a real timestamp ≠ garbage
     expect(note.front.verified_until).toBeDefined()
     expect(Number.isNaN(Date.parse(note.front.verified_until!))).toBe(false)
   })

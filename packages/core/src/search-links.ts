@@ -1,11 +1,5 @@
-// A results page links to its own redirector, not to the result: the address
-// says nothing about where it leads, and opening it costs a page load on the
-// search engine before the real one begins. The target is read from the link
-// itself when it carries one, or from the redirect the engine answers with.
 const TARGET_PARAMS = ['url', 'q', 'u', 'uddg', 'target', 'dest', 'link', 'to']
 const RESOLVE_AT_MOST = 12
-// The links are followed together, and the first request a process makes can
-// wait seconds on its network setup before any answer.
 const RESOLVE_MS = 10_000
 
 type Link = { text: string; url: string }
@@ -16,7 +10,6 @@ const webAddress = (value: string | null | undefined): string | null => {
   try { const url = new URL(value); return /^https?:$/.test(url.protocol) ? url.href : null } catch { return null }
 }
 
-// The target a wrapper link names in its own query, when it names one in the clear.
 export function namedTarget(link: string): string | null {
   try {
     const url = new URL(link)
@@ -28,8 +21,6 @@ export function namedTarget(link: string): string | null {
   return null
 }
 
-// One site across its hosts: an engine's results and its redirector can sit on
-// www.engine and engine, or on a country domain such as engine.co.kr.
 const SECOND_LEVEL = new Set(['co', 'or', 'ac', 'go', 'ne', 'com', 'net', 'org', 'gov', 'edu'])
 export function siteOf(host: string): string {
   const labels = host.toLowerCase().replace(/^www\./, '').split('.')
@@ -48,8 +39,6 @@ async function followWithin(follow: FollowRedirect, url: string, signal?: AbortS
   try { return webAddress(await follow(url, both)) } catch { return null } finally { clearTimeout(stop) }
 }
 
-// Links on the results page that lead back through the engine are replaced by
-// where they go; the rest are left as they are.
 export async function resolveResultLinks(links: Link[], resultsPage: string, follow?: FollowRedirect, signal?: AbortSignal): Promise<Link[]> {
   let asked = 0
   const resolved = await Promise.all(links.map(async (link) => {

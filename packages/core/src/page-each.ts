@@ -2,7 +2,6 @@ import type { AgentTool, AgentToolContext, ToolOutcome } from './agent-loop.js'
 import type { PageMove, WebCourier } from './errand.js'
 import { str } from './page-report.js'
 
-// One move on the open page, as page_steps and page_each both make it.
 export function makeMove(courier: WebCourier, step: Record<string, unknown>, signal?: AbortSignal): Promise<PageMove> | PageMove {
   const target = str(step, 'target'), kind = str(step, 'do')
   const { press, typeText, choose, pressKey } = courier
@@ -17,18 +16,12 @@ export function makeMove(courier: WebCourier, step: Record<string, unknown>, sig
 
 const PAGE_EACH_VALUES_MAX = 60
 const PAGE_EACH_STEPS_MAX = 8
-// Each value's page is cut to this, and the whole report to the second.
 const READING_CAP = 2_500
 const REPORT_CAP = 60_000
 
 const filled = (step: unknown, value: string): Record<string, unknown> =>
   Object.fromEntries(Object.entries(step as Record<string, unknown>).map(([key, field]) => [key, typeof field === 'string' ? field.split('{value}').join(value) : field]))
 
-// The same few moves for every value of a list - every project in a menu,
-// every person, every month - with the page read after each, so a job that
-// needs all of them looked at one by one is one call, not dozens. The loop
-// runs here, not in the brain. A value whose moves fail is noted and the rest
-// go on; anything that would commit or needs a person stops the whole run.
 export function pageEachTool(courier: WebCourier): (Omit<AgentTool, 'run'> & { run(args: Record<string, unknown>, context: AgentToolContext): Promise<string | ToolOutcome> }) | null {
   const readOpen = courier.readOpen
   if (!readOpen || !courier.press || !courier.typeText || !courier.choose || !courier.pressKey) return null

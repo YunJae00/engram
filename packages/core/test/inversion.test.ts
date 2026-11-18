@@ -30,7 +30,7 @@ describe('supersede/chronology inversion → card ⑥ (M5)', () => {
       id: 'n-new-0001',
       body: '# Pricing v2\n\nNew pricing.',
       supersedes: ['n-old-0001'],
-      happened_at: '2026-04-01', // earlier than what it supersedes — inverted
+      happened_at: '2026-04-01',
     })
 
     await sweep(paths, [engine])
@@ -40,7 +40,7 @@ describe('supersede/chronology inversion → card ⑥ (M5)', () => {
 
     await approveCard(paths, card!.id)
     const fixed = await readNote(paths, 'n-new-0001')
-    expect(fixed.front.happened_at).toContain('2026-05-02') // day after the superseded note
+    expect(fixed.front.happened_at).toContain('2026-05-02')
     expect(fixed.front.timeline).toBe('pinned')
   })
 

@@ -6,8 +6,6 @@ import type { AgentTool } from '../src/agent-loop.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { agreeing } from './agreeing.js'
 
-// c17a (cause E): the lookup stops and shows on evidence, the item's own words for each point the ask wants, checked by the host to be in
-// that item; never on a bare "keep" or a bare row number. Wordings are in no harness row (광주 미세먼지, 바이오 인수합병, 맥북 에어 M6).
 const page = (query: string, rows: string[], words = ''): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows, ...(words ? ['', words] : [])].join('\n')
 const row = (n: number, title: string, snippet: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — ${snippet} — 11월 ${n}일`
 function search(outs: string[]): AgentTool & { queries: string[] } {
@@ -24,9 +22,7 @@ describe('c17a: evidence is the item\'s own words, by shape', () => {
     expect(evidenced('광주 내일 미세먼지', { text: '광주 내일 미세먼지 나쁨' }, ask, true)).toBe(false)
     expect(evidenced('미세먼지 나쁨', item, ask, true)).toBe(false)
     expect(evidenced("내일 광주 미세먼지 '나쁨'", { title: '광주 대기질 예보', text: "광주 대기질 예보 — 내일 광주 미세먼지 '나쁨', 초미세먼지 38㎍/㎥" }, ask, true)).toBe(true)
-    // Whitespace aside: a quote copied across a line break still is the item's words.
     expect(evidenced('초미세먼지  38㎍/㎥', { text: '초미세먼지 38㎍/㎥ 예상' }, ask, true)).toBe(true)
-    // For the kind (an ask for things), a headline is evidence when it is all the item has (c18a: with other words, those must say it too).
     expect(evidenced('바이오젠코리아, 셀메드 인수', { title: '바이오젠코리아, 셀메드 인수', text: '바이오젠코리아, 셀메드 인수' }, '바이오 스타트업 인수합병 뉴스 4개', false)).toBe(true)
     expect(evidenced('바이오젠코리아, 셀메드 인수', { title: '바이오젠코리아, 셀메드 인수', text: '바이오젠코리아, 셀메드 인수 — x' }, '바이오 스타트업 인수합병 뉴스 4개', false)).toBe(false)
   })
@@ -90,20 +86,17 @@ describe('c17a: kind (바이오 인수합병 4개)', () => {
     row(2, '바이오 M&A 컨퍼런스 개최', '국내 바이오 인수합병 전략을 논의하는 컨퍼런스가 열린다'),
     row(3, '진랩, 엔자임원 합병 완료', '유전체 분석 기업 진랩이 엔자임원과의 합병을 마쳤다'),
     row(4, '바이오 전용 펀드 1천억 출범', '바이오 스타트업에 투자하는 펀드가 출범했다'),
-    // c18a: the snippet says what the headline says (a kind quote from a headline holds only when the item's other words say it too).
     row(5, '메디큐브, 뉴로스타 지분 100% 인수', '디지털 치료제 스타트업 뉴로스타 지분 100%를 인수했다'),
   ]
   const kind = '국내 바이오 스타트업이 인수되거나 합병됐다는 보도'
   it('keep counts 5 but only 3 are evidenced acquisitions: the loop goes on while time is left; at the due 3 are listed, never a padded 4th', async () => {
     const s = search([page('q', rows), page('바이오 스타트업 피인수', [row(6, '바이오 업계 동향', '올해 바이오 투자 시장 분위기')])])
     const verdicts = [
-      // A judge that keeps the conference and the fund launch, and even forges a quote for the conference: neither holds.
       JSON.stringify({ keep: [1, 2, 3, 4, 5], asked: 4, kind, search: '바이오 스타트업 피인수', holds: { 1: { kind: '셀메드를 인수했다' }, 2: { kind: '바이오 기업 인수 완료' }, 3: { kind: '엔자임원과의 합병을 마쳤다' }, 5: { kind: '뉴로스타 지분 100% 인수' } } }),
       JSON.stringify({ keep: [6], asked: 4, search: '', holds: {} }),
     ]
     let t = 0
     const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 3000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
-    // c18a: still short with no new words and time left, it searches by its kind line before the due.
     expect(s.queries).toEqual(['q', '바이오 스타트업 피인수', kind])
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3', 'https://news.example/5'])
     expect(out).toContain('3 of the 4 asked for were found')
@@ -126,28 +119,21 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
     expect(found!.missing).toEqual(['출시일'])
     const at = new Date().toISOString()
     const helper = (said: string): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '맥북 조사', topic: '맥북 에어 M6', brief: ask, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said || 'x', said, proof: found!.proof, missing: found!.missing })
-    // c17a r3: the cell is the verified quote, not the helper's prose cited to that page; its row also says the date was not found.
     const [own] = helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)')])
     expect(own!.data!.facts[0]!.text).toBe('가격: 179만 원부터. 출시일은 못 찾았어요.')
-    // Its words already speak of the date: the date is still said once, by the host, never twice.
     const [told] = helperParts([helper('맥북 에어 M6는 179만 원부터예요 [애플](https://apple.example/1). 출시일은 아직 안 나왔어요.')])
     expect(told!.data!.facts[0]!.text.match(/출시일/g)).toHaveLength(1)
-    // Nothing of its own (cut before it wrote): the cell is the verified quote, with its page, never a headline.
     const [cut] = helperParts([helper('')])
     expect(cut!.data!.facts).toEqual([{ text: '가격: 179만 원부터. 출시일은 못 찾았어요.', url: 'https://apple.example/1', site: expect.any(String) }])
-    // The host's table (a late writer) opens with one answer-first line naming what was not found.
     const galaxy: TeamMember = { ...helper('갤럭시북 6는 159만 원이고 3월 6일 나와요. [삼성](https://samsung.example/1)'), id: 'g', topic: '갤럭시북 6', proof: [{ point: '가격', quote: '159만 원', url: 'https://samsung.example/1' }, { point: '출시일', quote: '3월 6일', url: 'https://samsung.example/1' }], missing: [] }
     const table = mergedReport(helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)'), galaxy]), new Map(), [], true)
-    // stack-18: the missing 출시일 is said once, in 맥북 에어 M6's own sentence below; the lead does not repeat it.
     expect(table.split('\n')[0]).toBe('갤럭시북 6는 다 찾았어요.')
     expect(table.match(/출시일은 못 찾았어요/g)).toHaveLength(1)
-    // c18b: two things are said in sentences (a table only for three or more compared on two or more points): the row's date said not found.
     expect(table).not.toMatch(/^\|/m)
     expect(table).toMatch(/^맥북 에어 M6 가격은 [^\n]*출시일은 못 찾았어요\. \[[^\]]+\]\(https:\/\/apple\.example\/1\)$/m)
   })
 })
 
-// c17a r2: the evidence rule reaches every place a fact is shown or a search ends (wordings in no harness row and not the review's).
 describe('c17a r2: a helper\'s words stand only on a page with a verified quote', () => {
   const at = new Date().toISOString()
   const helper = (said: string, proof: Proof[], missing: string[]): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '수원 조사', topic: '수원', brief: '수원 이번 주말 꽃가루 농도 어때?', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, proof, missing })
@@ -160,7 +146,6 @@ describe('c17a r2: a helper\'s words stand only on a page with a verified quote'
   })
   it('of two cited facts, only the one on the verified page stays (a trailing slash aside), and the missing point is labelled', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루 \'보통\'이에요 [기상청](https://weather.example/pollen/). 일요일엔 비 소식이 있어요 [카페](https://cafe.example/3).', [{ point: '꽃가루 농도', quote: "꽃가루 '보통'", url: 'https://weather.example/pollen' }], ['강수'])])
-    // c17a r3: the verified page gives its quote (not the prose cited to it); the cafe's line is gone.
     expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen'])
     expect(m!.data!.facts[0]!.text).toBe("꽃가루 농도: 꽃가루 '보통'. 강수는 못 찾았어요.")
   })
@@ -188,7 +173,6 @@ describe('c17a r2: a counted ask with several points counts only items that stat
     let t = 0
     const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 4000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q', '태블릿 배터리 용량'])
-    // Both partial rows are shown (rule 7: never dropped), each with its missing point named.
     expect(urls(out)).toEqual(['https://apple.example/1', 'https://samsung.example/2'])
     expect(out).toContain('For https://apple.example/1, not found in anything read: 배터리 용량.')
     expect(out).toContain('For https://samsung.example/2, not found in anything read: 배터리 용량.')
@@ -202,7 +186,6 @@ describe('c17a r2: a counted ask with several points counts only items that stat
   })
 })
 
-// c17a r3: evidence is per point, not per page, and "judged, nothing verified" is not "never judged" (wordings in no harness row).
 describe('c17a r3: a helper cell holds only verified points', () => {
   const at = new Date().toISOString()
   const helper = (brief: string, said: string, extra: Partial<TeamMember>): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '조사', topic: '대상', brief, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, ...extra })
@@ -226,10 +209,7 @@ describe('c17a r3: a helper cell holds only verified points', () => {
     expect(table).not.toContain('낮음')
     expect(table.split('\n')[0]).toContain('못 찾았어요')
   })
-  // c18a (closes c17a r3 #1 as the brief decides): a page read first-hand is evidence. What the helper says there stands, a point it states
-  // there is found, and "못 찾았어요" is said only of a point no read text holds.
   it('on a page it read whole itself, its prose stands, and a point it states there is not said as not found', () => {
-    // stack-18 (c18a r3 #1): the point is cleared when the blind meaning read says the helper's words state it (helperAnswer gives that here).
     const [m] = helperParts([helper('부산 해수욕장 수온이랑 파고', '해운대 수온은 22도예요 [해양청](https://sea.example/busan). 파고는 1.5m예요 [해양청](https://sea.example/busan)', { proof: [], missing: ['파고'], sources: ['https://sea.example/busan'] })], new Map([['h', new Set(['파고'])]]))
     const text = m!.data!.facts.map(f => f.text).join(' ')
     expect(text).toContain('22도')

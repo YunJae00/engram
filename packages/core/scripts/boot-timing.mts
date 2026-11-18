@@ -1,6 +1,3 @@
-// Where does startup time actually go? Measured against a real vault, in the
-// order main/index.ts pays for it, because "the app is slow" needs numbers
-// before it needs fixes.
 import { buildIndex } from '../src/search.js'
 import { detectAvailableEngines } from '../src/engine/registry.js'
 import { loadAliasGroups } from '../src/aliases.js'
@@ -25,7 +22,6 @@ t = Date.now()
 await loadAliasGroups(paths)
 mark('loadAliasGroups', t)
 
-// This one blocks openVaultContext — the shell cannot paint until it returns.
 t = Date.now()
 const engines = await detectAvailableEngines('claude', {})
 mark('detectEngines', t, `| ${engines.length} available`)

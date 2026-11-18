@@ -2,18 +2,12 @@ import type { AgentTool } from './agent-loop.js'
 import type { BotTask, TaskWatch } from './bots.js'
 import { EVERY_MAX, EVERY_MIN, isSchedule, localDay, type Schedule } from './schedule.js'
 
-// What a person asks to have done later - "every weekday at 9, sum up my
-// mail" or "tomorrow at 3, remind me to call". At its time the words start
-// a new conversation and run as a turn like any other; the result waits in
-// the person's inbox.
 export interface ScheduleDeps {
   list(): Promise<BotTask[]>
   add(input: { name: string; goal: string; schedule: Schedule; watch?: TaskWatch }): Promise<BotTask>
   remove(id: string): Promise<boolean>
-  // Read-only listing tools the host can look at by itself before a run.
   watchable?: string[]
   now?(): Date
-  /** On the person's own thread: a kept schedule is confirmed by the tool's own Korean line, which ends the turn (one model round), and it runs in this conversation. */
   duty?: true
 }
 
@@ -29,9 +23,7 @@ export function scheduleWords(schedule: Schedule): string {
 }
 
 const DAY_KO = ['일', '월', '화', '수', '목', '금', '토']
-// The time as people say it: "9시", "오후 3시 반", "밤 12시".
 const timeKo = (hour: number, minute: number): string => `${hour === 0 ? '밤 12' : hour < 6 ? `새벽 ${hour}` : hour < 12 ? hour : hour === 12 ? '낮 12' : `오후 ${hour - 12}`}시${minute === 30 ? ' 반' : minute ? ` ${minute}분` : ''}`
-/** "매주 월요일 9시", for the line the person reads. */
 export function scheduleWordsKo(schedule: Schedule): string {
   const time = timeKo(schedule.hour, schedule.minute)
   if (schedule.on) return `${schedule.on} ${time}에 한 번`
@@ -40,8 +32,6 @@ export function scheduleWordsKo(schedule: Schedule): string {
   return schedule.every ? `${when} ${time}부터 ${schedule.every}분마다` : `${when} ${time}`
 }
 
-// grokbar C7: "매주 월요일 09:00 일정으로 넣었어요: 지난주 팀이 한 일 요약해줘" read like a form. The request's own ending is turned into a
-// promise ("…요약해 드릴게요."); an ending that cannot be turned safely is quoted as it was said.
 function keptLine(schedule: Schedule, what: string): string {
   const when = scheduleWordsKo(schedule), asked = /^(.*[가-힣])\s*(?:줘요?|주세요|줄래요?)[.!~\s]*$/u.exec(what.trim())?.[1]
   const open = asked ? (asked.charCodeAt(asked.length - 1) - 0xac00) % 28 === 0 : false
@@ -49,13 +39,9 @@ function keptLine(schedule: Schedule, what: string): string {
   return `${when}에 ${asked} 드릴게요.`
 }
 
-// grokbar C7: one model round only to copy a day and a time into the call took 6.6 s (bar 5 s). These plain shapes are made by the host.
-// shortcut: weekly on one day, daily, weekdays and weekends, at a whole hour with optional minutes; anything else is the model's call.
 const PLAIN_REPEAT = /^(매주\s*([월화수목금토일])요일(?:\s*마다)?|매일|평일\s*마다|주말\s*마다)\s*(아침|오전|낮|오후|저녁|밤)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분|(반))?\s*(?:에|마다)?\s+(.+)$/u
 const ASKS_FOR = /(줘요?|주세요|줄래요?|해|해요)[.!~\s]*$/u
-// Something to do now as well, another time in the job, or somewhere outside: not a plain schedule.
 const NOT_PLAIN = /지금|먼저|매주|매일|마다|\d\s*시|보내|올려|전송|게시|공유/u
-/** The schedule arguments for a plain recurring ask ("매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘"), or undefined. An hour with no part of day is taken as said from 7 to 23; an earlier one is ambiguous and left to the model. */
 export function plainSchedule(message: string): { action: 'add'; what: string; time: string; days: number[] } | undefined {
   const line = message.trim(), said = line.length <= 200 && !line.includes('\n') ? PLAIN_REPEAT.exec(line) : null
   if (!said) return undefined
@@ -71,7 +57,6 @@ export function plainSchedule(message: string): { action: 'add'; what: string; t
   return { action: 'add', what: what.trim(), time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, days }
 }
 
-// korean: on the person's own thread the time is given the way the confirmation said it ("매주 월요일 9시"), so the list reads the same.
 function described(task: BotTask, korean = false): Record<string, string> {
   return { id: task.id, what: task.goal, when: task.schedule ? (korean ? scheduleWordsKo : scheduleWords)(task.schedule) : 'not scheduled', ...(task.watch ? { onlyWhenNew: task.watch.tool } : {}), ...(task.lastRunAt ? { lastRun: task.lastRunAt } : {}) }
 }

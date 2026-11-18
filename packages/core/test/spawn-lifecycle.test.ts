@@ -12,14 +12,9 @@ import {
   type SpawnedEngineProcess,
 } from '../src/engine/spawn.js'
 
-// A sleeper the shell-safety gate accepts: argv is just a file path, no
-// cmd.exe metacharacters (node -e "setInterval(...)" would be rejected on
-// win32 by assertShellSafeArgs — parentheses are shell meta).
 async function sleeperScript(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'engram-sleeper-'))
   const file = join(dir, 'sleeper.cjs')
-  // The file's CONTENT is free to use any syntax — only argv passes the
-  // shell-safety gate, and argv here is just this path.
   await writeFile(file, 'setInterval(function () {}, 1000)\n')
   return file
 }
@@ -33,8 +28,6 @@ const dead = (pid: number): boolean => {
   }
 }
 
-// Endpoint inspection can delay process startup and exit notifications.
-// Still require the child to exit and leave the registry before passing.
 async function until(check: () => boolean, ms = 15_000): Promise<boolean> {
   const start = Date.now()
   while (Date.now() - start < ms) {
@@ -56,7 +49,6 @@ describe('engine child registry', () => {
     setSpawnObserver({
       onSpawn: (p: SpawnedEngineProcess) => {
         events.push(`spawn:${p.pid}`)
-        // Diagnostics label carries the program and flags, never a prompt.
         expect(p.cmd).toContain('node')
         expect(Math.abs(Date.now() - p.startedAt)).toBeLessThan(5_000)
       },
@@ -80,7 +72,6 @@ describe('engine child registry', () => {
         throw new Error('observer bug')
       },
     })
-    // The spawn itself survives an exploding observer; so does the teardown.
     const child = spawnServerChild('node', [file], process.cwd())
     expect(child.pid).toBeGreaterThan(0)
     killTree(child)
@@ -102,8 +93,6 @@ describe('engine child registry', () => {
     const file = await sleeperScript()
     const verdict = await probeCli('node', [file], 500)
     expect(verdict).toBeNull()
-    // The probe's own child (the shim on win32) must be gone from the
-    // registry — the grandchild's death rides taskkill /T.
     expect(await until(() => liveEnginePids().length === 0)).toBe(true)
   })
 })

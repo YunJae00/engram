@@ -27,7 +27,7 @@ describe('fabric clusters feed hub synthesis', () => {
     const notes = await loadNotes(paths)
     const chain = ids.slice(1).map((id, i) => ({ a: ids[i]!, b: id, w: 0.8 }))
     expect(linkComponents(notes, {}, chain)).toHaveLength(1)
-    expect(linkComponents(notes, {})).toHaveLength(0) // no fabric → loose
+    expect(linkComponents(notes, {})).toHaveLength(0)
   })
 
   it('planHubJobs enqueues a J9 synthesis for the fabric cluster', async () => {

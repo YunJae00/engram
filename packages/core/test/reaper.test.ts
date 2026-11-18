@@ -4,11 +4,6 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPidLedger, sweepStaleEnginePids, type LedgerEntry, type ProcessProbe } from '../src/engine/reaper.js'
 
-// The janitor kills from a FILE, possibly days old, so every test here is
-// about the fail-open discipline: a PID dies only when the process exists AND
-// its birth time matches the ledger AND its command line (when readable)
-// looks like an engine. Every disagreement releases; only agreement kills.
-
 const T = 1_753_900_000_000
 
 let file: string
@@ -18,8 +13,6 @@ beforeEach(async () => {
 
 const ledger = (...entries: LedgerEntry[]) => writeFile(file, JSON.stringify(entries))
 
-// The ledger writer flushes through an async chain — poll the DISK state
-// rather than guessing a sleep that a loaded machine will outrun.
 const ledgerPids = async (): Promise<number[]> => {
   try {
     return (JSON.parse(await readFile(file, 'utf8')) as LedgerEntry[]).map((e) => e.pid)
@@ -27,9 +20,6 @@ const ledgerPids = async (): Promise<number[]> => {
     return [-1]
   }
 }
-// 30s, not 10: under a loaded full-suite run (90 files in parallel) the
-// serialized write chain can lose the disk race for longer than any single
-// reasonable window — the poll is cheap, the flake was not (3x on 08-06).
 const until = async (check: () => Promise<boolean>, ms = 30_000): Promise<void> => {
   const start = Date.now()
   while (Date.now() - start < ms) {
@@ -129,7 +119,7 @@ describe('sweepStaleEnginePids', () => {
 describe('createPidLedger', () => {
   it('a spawn/exit round trip leaves the ledger empty on disk', async () => {
     const observer = createPidLedger(file)
-    await new Promise((r) => setTimeout(r, 50)) // let the prior-load settle
+    await new Promise((r) => setTimeout(r, 50))
     observer.onSpawn({ pid: 500, cmd: 'claude --version', startedAt: Date.now() })
     await until(async () => (await ledgerPids()).includes(500))
     expect((JSON.parse(await readFile(file, 'utf8')) as LedgerEntry[]).map((e) => e.pid)).toEqual([500])

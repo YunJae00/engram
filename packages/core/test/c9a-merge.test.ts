@@ -8,7 +8,6 @@ const host = (url: string): string => new URL(url).hostname
 const search = (words: string): string => `https://search.naver.com/search.naver?query=${encodeURIComponent(words)}`
 
 test('c9a R2: the stored three helpers through the merge give three rows on three hosts, platform names, a figure in every price cell', () => {
-  // The lead's table as the live run wrote it: two café links and the 픽셀 helper's search page, all named 출처.
   const table = ['셋이 하나씩 맡아서 알아봤어요.', '', '| 모델 | 가격 | 출시일 | 출처 |', '|---|---|---|---|',
     '| 아이폰 18 | 일반형은 미발표 (프로 기준 199만 원부터) | 일반형은 내년 봄 예상 (프로·듀오는 10월 23일 이미 출시) | [출처](https://cafe.naver.com/appletouch/2303631) |',
     '| 갤럭시 S27 | 미발표, 전작 S26 140만 3,600원 | 미발표, 2027년 1~2월 공개설 | [출처](https://cafe.naver.com/sm2022sf/1328949) |',
@@ -17,7 +16,6 @@ test('c9a R2: the stored three helpers through the merge give three rows on thre
   const shown = links(out)
   expect(shown).toHaveLength(3)
   expect(new Set(shown.map(host)).size).toBe(3)
-  // A real page wherever its helper cited one; 픽셀 cited none, so its search page stays, named as what it is.
   expect(shown.slice(0, 2).some(isSearchPage)).toBe(false)
   expect(out).toContain('[스마트스토어](https://smartstore.naver.com/main/products/12990053235)')
   expect(out).toContain('[네이버 카페](https://cafe.naver.com/appletouch/2303631)')
@@ -32,18 +30,13 @@ test('c9a R2: a search page never stands for a row whose helper cited a real pag
   const out = citeMembers(`${head}| 테슬라 모델 2 | 예상 2만 5천 달러 | 2027년 상반기 예상 | [출처](${search('테슬라 모델 2 가격 출시일')}) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://blog.naver.com/ev/2) |`, [tesla, byd], true)
   const shown = links(out)
   expect(shown.some(isSearchPage)).toBe(false)
-  // A publication comes before a blog post, even on a host an earlier row uses (테슬라: no figure on either page).
-  // c9a r2 (Codex r1): BYD's price 2,450만 원 is only on the blog post, its date only in the paper: the row links both, so the price keeps its source.
   expect(shown).toEqual(['https://www.hankyung.com/article/2026111700001', 'https://www.hankyung.com/article/2026111700009', 'https://blog.naver.com/ev/2'])
   expect(out.split('\n').at(-1)).toMatch(/\]\(https:\/\/www\.hankyung\.com\/article\/2026111700009\) · \[[^\]]+\]\(https:\/\/blog\.naver\.com\/ev\/2\) \|$/)
-  // One page holding every figure is the row's one source, before a publication that holds none.
   const one: TeamMember = { ...byd, result: '가격: 2,450만 원부터, 2025년 4월 15일 출시 — https://blog.naver.com/ev/2\n소식 — https://www.hankyung.com/article/2026111700009' }
   expect(links(citeMembers(`${head}| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://www.hankyung.com/article/2026111700009) |`, [one], true))).toEqual(['https://blog.naver.com/ev/2'])
-  // Between equals, a host no earlier row uses: two posts, one on the earlier row's host.
   const a: TeamMember = { ...tesla, sources: [], result: '가격: 2만 5천 달러 — https://cafe.naver.com/ev/1' }
   const b: TeamMember = { ...byd, sources: [], result: '가격: 2,450만 원부터 — https://cafe.naver.com/ev/2\n출시일: 2025년 4월 15일 — https://www.youtube.com/watch?v=x1' }
   const spread = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://cafe.naver.com/ev/2) |`, [a, b], true)
-  // c9a r2: the price is only on the cafe post, the date only in the video: the row links both.
   expect(links(spread)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1', 'https://cafe.naver.com/ev/2'])
   const c: TeamMember = { ...byd, sources: [], result: '소식 — https://cafe.naver.com/ev/2\n소식 — https://www.youtube.com/watch?v=x1' }
   const apart = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 미정 | 미정 | [출처](https://cafe.naver.com/ev/2) |`, [a, c], true)
@@ -56,7 +49,6 @@ test('c9a r3 (Codex r2): a source cell with a search page beside an article keep
   const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'tesla', brief: '테슬라 모델 2 가격', lookup: true, state: 'done', sessionKey: 's1', hiredAt: '', sources: [search('테슬라 모델 2 가격')], result: '가격: 2만 5천 달러 — https://www.hankyung.com/article/2026111700001' }
   const out = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [한국경제](https://www.hankyung.com/article/2026111700001) |`, [m], true)
   expect(links(out)).toEqual(['https://www.hankyung.com/article/2026111700001'])
-  // Two search pages only: the teammate's real page takes their place.
   const two = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [네이버 검색](${search('모델 2')}) |`, [m], true)
   expect(links(two)).toEqual(['https://www.hankyung.com/article/2026111700001'])
 })
@@ -69,7 +61,6 @@ test('c9a R2: platforms are named by the platform; a search page and an unknown 
   expect(sourceName('https://someone.tistory.com/12', true)).toBe('티스토리')
   expect(sourceName('https://brunch.co.kr/@a/3', true)).toBe('브런치')
   expect(sourceName(search('아이폰 18 가격'), true)).toBe('네이버 검색')
-  // c11a: an unknown site is named by its host, never by the word 출처.
   expect(sourceName('https://phones.example/x', true)).toBe('phones.example')
   expect(isSearchPage(search('x'))).toBe(true)
   expect(isSearchPage('https://cafe.naver.com/a/1')).toBe(false)
@@ -92,6 +83,5 @@ test('c9a R2: a figure given with a bare 출처 takes the address of the row it 
   expect(out[1]).not.toContain('search.naver.com')
   expect(out[2]).toBe('메모: 아직 국내 출시는 미정이에요.')
   expect(figurePages('가격: 899달러 — https://store.google.com/p11', read)).toBe('가격: 899달러 — https://store.google.com/p11')
-  // Never drops a number the helper gave.
   expect(figurePages(answer, read)).toContain('899달러부터')
 })

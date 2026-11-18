@@ -24,8 +24,6 @@ it.each([true, false])('requests fresh turn evidence only for desktop tasks (des
   expect(jobs[0]!.system).toBe(jobs[1]!.system)
 })
 
-// c5c D1, M2: a note the host already read thought for 20 s, a one-word correction for 7.5 s. Such a turn runs at low effort like a lookup.
-// Effort is part of the session's signature, so the thread's next turn may open a fresh session: every turn carries the thread so far.
 it('runs a light turn at low effort, and the next turn of the thread still holds what was said', async () => {
   const jobs: ToolSessionJob[] = []
   const engine = { runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '정리했어요.' } } } as Engine

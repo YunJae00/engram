@@ -24,9 +24,6 @@ export * from './retrieval.js'
 export { AGENTS_MD_V1 } from './agents-template.js'
 export * from './cards.js'
 export * from './engine/types.js'
-// The index is the app-facing surface, deliberately narrower than the modules:
-// tests and core internals import their module directly, so what stands here
-// is exactly what the desktop, the CLI and the MCP server actually consume.
 export { killAllEngineChildrenSync, setSpawnObserver } from './engine/spawn.js'
 export { createPidLedger, sweepStaleEnginePids } from './engine/reaper.js'
 export { engineBackoff } from './engine/backoff.js'

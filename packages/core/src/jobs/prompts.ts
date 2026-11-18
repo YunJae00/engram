@@ -4,10 +4,6 @@ import type { VaultPaths } from '../vault.js'
 
 export type JobKind = 'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6' | 'J7' | 'J8' | 'J9' | 'J10' | 'J11' | 'J12' | 'J13'
 
-// Prompts quote AGENTS.md: the schema,
-// the procedure line for this job, the card JSON contract and the
-// prohibitions travel with every prompt so engine behaviour stays identical
-// across CLIs.
 const LANGUAGE = '## 0. Language'
 const SCHEMA = '## 1. Schema'
 const SUPERSEDE = '## 3. When to supersede'
@@ -67,10 +63,6 @@ export async function readAgentsMd(paths: VaultPaths): Promise<string> {
   return readFile(join(paths.workspace, 'AGENTS.md'), 'utf8')
 }
 
-// The two JobSpec fields that must always agree: the assembled prompt, and the
-// bare instruction the journal hashes so a reworded template re-runs the job.
-// Spread into the spec (`...withPrompt(...)`) rather than set separately —
-// several instructions are inline literals, and a second copy of one would rot.
 export function withPrompt(
   agentsMd: string,
   kind: JobKind,

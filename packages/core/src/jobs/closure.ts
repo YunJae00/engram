@@ -8,8 +8,6 @@ import type { VaultPaths } from '../vault.js'
 import { withPrompt } from './prompts.js'
 import type { JobSpec } from './runner.js'
 
-// A handful of loops and a handful of fresh conclusions fit one judgment call.
-// Caps keep the prompt bounded on vaults with a long tail of undated loops.
 const LOOP_CAP = 20
 const CONCLUSION_CAP = 10
 
@@ -18,14 +16,6 @@ export interface ClosureInput {
   conclusions: Note[]
 }
 
-// Deterministic candidate selection, pure so it is testable without a vault.
-// Loops: the open ones, most urgent first, minus those already asked about —
-// a pending closure card means the question exists; re-judging it every sweep
-// would burn tokens to rediscover it. Conclusions: session-origin notes new
-// since the last sweep — the only notes that can contain "it happened", and
-// the origin filter is what keeps the user's own notes from being read as
-// evidence (a user note claiming something is done IS the loop's business,
-// but it is the user saying so, and they can close their own loop).
 export function closureCandidates(
   notes: Note[],
   cardedLoops: ReadonlySet<string>,
@@ -77,7 +67,6 @@ export function buildJ13(paths: VaultPaths, agentsMd: string, input: ClosureInpu
   return {
     kind: 'J13',
     disallowTools: true,
-    // Same reasoning as J12: a cheap model would close loops that merely moved.
     modelHint: 'default',
     inputKey,
     ...withPrompt(agentsMd, 'J13', INSTRUCTION, {
@@ -95,16 +84,10 @@ export function buildJ13(paths: VaultPaths, agentsMd: string, input: ClosureInpu
       for (const c of Array.isArray(parsed.closures) ? parsed.closures : []) {
         const loop = c.loop ? loopById.get(c.loop) : undefined
         const evidence = c.closed_by ? conclusionById.get(c.closed_by) : undefined
-        // Every guard here exists because this path ends in a frontmatter
-        // write: invented ids, a note closing itself, or "evidence" older than
-        // the promise it claims to fulfil are all engine hallucinations.
         if (!loop || !evidence) continue
         if (loop.front.id === evidence.front.id) continue
         if (Date.parse(evidence.front.created) <= Date.parse(loop.front.created)) continue
         if (loop.front.origin === 'session') {
-          // The machine's own loop: close it, say so in the journal. Re-read
-          // from disk — the sweep may have touched the note since candidates
-          // were selected, and isOpenLoop's authority belongs to the fresh copy.
           const fresh = await readNote(paths, loop.front.id).catch(() => null)
           if (!fresh || fresh.front.open_loop !== true || fresh.front.status !== 'current') continue
           fresh.front.open_loop = false
@@ -112,8 +95,6 @@ export function buildJ13(paths: VaultPaths, agentsMd: string, input: ClosureInpu
           await writeNote(paths, fresh)
           effects.push(`loop closed: ${loop.front.id} ← ${evidence.front.id} (${c.reason ?? ''})`)
         } else {
-          // The user's loop: their promise, their click. createCard dedups a
-          // repeat proposal, so a re-run cannot stack questions.
           const card = await createCard(
             paths,
             {
@@ -133,8 +114,6 @@ export function buildJ13(paths: VaultPaths, agentsMd: string, input: ClosureInpu
   }
 }
 
-// The pending closure questions, so candidate selection can skip loops the
-// user is already being asked about. A set, because sweep asks per loop id.
 export async function cardedClosureTargets(paths: VaultPaths): Promise<Set<string>> {
   return new Set(
     (await listCards(paths, 'proposed')).filter((c) => c.cardType === 'closure').flatMap((c) => c.targets),

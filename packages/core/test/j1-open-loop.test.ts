@@ -33,7 +33,6 @@ describe('J1 open_loop / due_at', () => {
     )
     expect(isOpenLoop(note)).toBe(true)
     expect(note.front.due_at).toBe('2026-07-31')
-    // A date-only deadline stays "today" for the whole of that day.
     expect(loopUrgency(note, new Date('2026-07-31T23:00:00Z'))).toBe('today')
     expect(loopUrgency(note, new Date('2026-08-01T00:30:00Z'))).toBe('overdue')
   })
@@ -56,8 +55,6 @@ describe('J1 open_loop / due_at', () => {
   })
 
   it('a garbage due_at is dropped, so the note still parses on the next vault load', async () => {
-    // createNote writes frontmatter as given — an unparseable date would only
-    // explode later, taking the whole loadNotes pass down with it.
     const note = await captureWith(
       '{"type":"note","decay":"slow","body":"# 답장 보내기","open_loop":true,"due_at":"금요일쯤"}',
       'loop-garbage',

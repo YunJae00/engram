@@ -250,17 +250,14 @@ it('find_files returns name/path candidates only when a finder is available, and
   expect(seen).toEqual(['budget'])
   expect(hit.matches).toHaveLength(1)
   expect(hit.matches[0].name).toBe('Q3 budget.xlsx')
-  // No content is ever returned by a look — only paths and names.
   expect(JSON.stringify(hit)).not.toContain('content')
   const miss = JSON.parse(await find.run({ query: 'nowhere' }, { task: 'find it' }))
   expect(miss.matches).toEqual([])
   await expect(find.run({ query: '' }, { task: 'find it' })).rejects.toThrow()
   await expect(find.run({ query: 'x'.repeat(121) }, { task: 'find it' })).rejects.toThrow()
-  // Without a finder dependency the tool is not offered at all.
   expect(fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => true }).some((tool) => tool.name === 'find_files')).toBe(false)
 })
 
-// qa142 p2a-r4 #3: a script result has a readback, behind the same approval as any file; the text tools still create none.
 it('reads an approved script as text in full, and only after approval', async () => {
   const path = join(root, 'audit.py')
   await writeFile(path, 'print("audited")\n')

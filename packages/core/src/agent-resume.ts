@@ -2,10 +2,8 @@ import type { AgentLoopResult } from './agent-loop.js'
 import { textsIn, withoutSecretsIn } from './secrets.js'
 import { contextExcerpt } from './context-excerpt.js'
 
-// The checkpoint's own field names, which the resume prompt refers to.
 export const RESUME_FIELDS: readonly string[] = ['at', 'request', 'remaining', 'lastResponse', 'collection', 'committedActions', 'committedActions.*.tool', 'committedActions.*.args', 'recentResults', 'recentResults.*.tool', 'recentResults.*.observation']
 
-// Historical context, not an executable plan or permission to resume input.
 export function resumeCheckpoint(task: string, result: AgentLoopResult): string | undefined {
   const record = {
     at: new Date().toISOString(),
@@ -16,6 +14,5 @@ export function resumeCheckpoint(task: string, result: AgentLoopResult): string 
     committedActions: result.steps.filter(step => step.committed).map(step => ({ tool: step.tool, args: step.args })),
     recentResults: result.steps.filter(step => !step.seeded).slice(-8).map(step => ({ tool: step.tool, observation: contextExcerpt(step.observation, 3000) })),
   }
-  // Whatever any part of the record labels as secret (the task, the answer, what remains, observations, arguments) stays out of all of it.
   return JSON.stringify(withoutSecretsIn(record, [task, result.answer, ...result.steps.map(step => step.observation), ...textsIn(record)].join('\n'), RESUME_FIELDS))
 }

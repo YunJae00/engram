@@ -4,16 +4,9 @@ import { randomBytes } from 'node:crypto'
 import { renameWithRetry } from './rename-with-retry.js'
 import type { VaultPaths } from './vault.js'
 
-// Work the person handed over and walked away from. Each task lives on disk,
-// so it outlasts a turn's limits, a closed window and a restart: the runner
-// chains comet turns until the goal is met, and a question or an approval
-// waits here for the person instead of in an open dialog.
-
-// as-e1cf9bfd C3: a Korean report quoted a source headline in English ("Agents, rebuilt to do more for less").
 export const SOURCE_TITLES_RULE = 'A headline or title a source wrote in another language is given in the person\'s language, not quoted in the original; only names of products, companies and people stay as written.'
 export type TaskState = 'queued' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped'
 
-// A press the task wanted to make and did not: the person decides later.
 export interface TaskApproval {
   id: string
   words: string
@@ -21,21 +14,11 @@ export interface TaskApproval {
   url: string
   at: string
   answer?: 'approve' | 'approve-task' | 'decline'
-  // Answered and handed to the next turn.
   settled?: boolean
 }
 
 export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
-// One hidden worker hired for a part of the task; parentId null means the lead hired it.
-/** c11a: one thing a teammate found, as data: its page, and the site's name taken from what the host holds for that page (never "출처"). */
-/** listing: the quick check found it is not one item with what the job needs (a page that lists several, an item with only a year): it is
- * shown labeled, never as an item (c12a B3). rest: items were taken from it; shown after them as where the full list is (round 3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
-export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string; /** c15a r3: the in-hand second-hand facts this first-hand one takes the place of (kindChecked → withItems; never kept). */ instead?: string[] }
-// c12a B2: a fact's date lives in its text (REPORT_RULE); `date` is metadata for sorting and period checks. Shown once: after the text,
-// in brackets, only when the text already states that same date in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지").
-// round 3: a date is compared as a date: each number with the part of a date it is (year, month or day), read from a unit (년/월/일,
-// a range "2~6일" too) or a date form (12.2, 2026-12-02, Dec 2). A clock time ("11시 18분"), a model number or a price is no part of a
-// date, and a word about now ("오늘 확인했어요") states no day of the thing, so the date is shown. Number forms, not a phrase list.
+export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string; instead?: string[] }
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 const DATE_PARTS = /(\d+)\s*(?:[~–-]\s*(\d+)\s*)?(년|월|일)|(?<!\d)(\d{1,4})[./-](\d{1,2})(?:[./-](\d{1,2}))?(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/giu
 export const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_PARTS)].flatMap(m => {
@@ -43,7 +26,6 @@ export const dateParts = (text: string): Set<string> => new Set([...text.matchAl
   if (m[3]) return [m[1], m[2]].filter(Boolean).map(v => `${m[3]}${n(v!)}`)
   if (m[7]) return [`월${MONTHS.indexOf(m[7].toLowerCase()) + 1}`, `일${n(m[8]!)}`]
   const [a, b, c] = [m[4]!, m[5]!, m[6]]
-  // stack-12 (c12a r3 #1): a year-less "2.5" is a decimal ("2.5배") unless written the way a day is ("12.2.", "12.2(화)").
   if (!c && a.length < 4 && m[0].includes('.') && !/^[.(]/.test(text.slice(m.index! + m[0].length))) return []
   return c ? [`년${n(a)}`, `월${n(b)}`, `일${n(c)}`] : a.length === 4 ? [`년${n(a)}`, `월${n(b)}`] : [`월${n(a)}`, `일${n(b)}`]
 }).concat(/^\s*\d{4}\s*$/.test(text) ? [`년${Number(text.trim())}`] : []))
@@ -52,16 +34,12 @@ export const datedText = (f: { text: string; date?: string | undefined }): strin
   const stated = !date || (parts.length > 0 && parts.every(p => own.has(p)))
   return stated ? f.text : f.text.replace(/([.!?]?)\s*$/u, ` (${date})$1`)
 }
-/** c11a: what a teammate handed back, as data the host never parses out of prose. A lookup gives facts (one per item for a list), or nothing
- * for the time asked with the newest thing it did see; a writer gives the deliverable's finished lines. note: their own one chat sentence. */
 export interface MemberData { facts: MemberFact[]; nothing?: { latest?: MemberFact }; items?: string[]; note?: string }
-export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; /** This member is the employee (a persistent bot) with this id. */ botId?: string; /** The lead does not wait for it: its report comes back as a later turn of the lead's. */ background?: true; /** When it ends done, this employee takes its result and goes on (a handoff). */ then?: { botId: string; who: string; brief: string; voice?: string }; /** The employee's way of speaking (company-tools voiceOf), for the host's own opener over their result. */ voice?: string; deliverable?: string; /** Only looks things up and reports: runs fast, read-only and time-boxed. */ lookup?: boolean; /** The search words the lead gave a lookup member: the host runs that search as the member starts (team-runner). */ query?: string; /** Writes from what was handed over: no tools, time-boxed. */ writer?: true; /** The name of its part in the person's words ("노션"), for the row of the merged answer. */ topic?: string; /** c16a: the one definition every compared point of a split is measured by (hire_members measure), for the writer. */ measure?: string; /** What the job was, in a few words ("노션 신기능 조사"): what the person reads when they ask who did what. */ title?: string; state: MemberState; result?: string; files?: string[]; /** Pages a lookup member read, for the lead's citations. */ sources?: string[]; /** c17a: the words its lookup's item judge verified on each page, per point asked, and the points no page it held stated (lead-check helperParts). Set (empty too) once the judge judged points: absent means never judged. */ proof?: { point: string; quote: string; url: string }[]; missing?: string[]; /** stack-16: a lookup's own words, before the host adds what it read and its cut-short note (both are for the lead); a cut-short answer ends at its last whole sentence. The only words of a helper's the person may read (lead-check helperParts). */ said?: string; /** Its result holds what it read (search rows, page text), under whatever it had written: its time ran out first. */ read?: true; /** It said it found nothing new; its result is that sentence, then what it read (settleMember). */ empty?: true; /** Still at work when the others were reported (GROKBOT rule 7): labeled there, and reported by itself when it lands. */ late?: true; /** c13a: a teammate that hands back data ended with none (cut at its last limit): not finished, never "found nothing". */ unfinished?: true; /** c11a: its structured result (lookup or writer on the team); absent when it gave none, and then its prose is never parsed into items. */ data?: MemberData; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
-// planTurn is the task turn in which the big plan was last sent back to be shown; only a later turn can approve it.
-export interface TaskTeam { members: TeamMember[]; hires: number; maxHires: number; maxDepth: number; big: boolean; approvedAt?: string; planTurn?: number; /** The report without the late members is in the thread: the next one is theirs alone. */ lateTold?: true; /** The late members' own report is in the thread too: nothing of this split is owed. */ lateDone?: true; /** c9: members whose result is already in the thread as a bubble of its own (a hand-off's first teammate): later reports leave them out. */ posted?: string[] }
+export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; botId?: string; background?: true; then?: { botId: string; who: string; brief: string; voice?: string }; voice?: string; deliverable?: string; lookup?: boolean; query?: string; writer?: true; topic?: string; measure?: string; title?: string; state: MemberState; result?: string; files?: string[]; sources?: string[]; proof?: { point: string; quote: string; url: string }[]; missing?: string[]; said?: string; read?: true; empty?: true; late?: true; unfinished?: true; data?: MemberData; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
+export interface TaskTeam { members: TeamMember[]; hires: number; maxHires: number; maxDepth: number; big: boolean; approvedAt?: string; planTurn?: number; lateTold?: true; lateDone?: true; posted?: string[] }
 export const TEAM_MAX_HIRES = 8
 export const TEAM_MAX_DEPTH = 3
 export const MEMBER_RESULT_CHARS = 2000
-// A task whose lead ended its turn while employees it handed work to are still on it: it waits for their report, not for the person.
 export const backgroundOpen = (task: DelegatedTask): boolean => (task.team?.members ?? []).some(m => m.background && (m.state === 'hired' || m.state === 'working'))
 const MEMBER_STATES = ['hired', 'working', 'waiting', 'reviewing', 'done', 'failed', 'released']
 const count = (n: unknown): boolean => Number.isInteger(n) && (n as number) >= 0
@@ -75,39 +53,28 @@ function validTeam(team: Partial<TaskTeam> | null): boolean {
 export interface DelegatedTask {
   id: string
   goal: string
-  // The comet the task runs on: its own, so the person's chats stay free.
   botId: string
   state: TaskState
   turns: number
   tokensUsed?: number
-  // Tool steps taken across its turns: how much the task actually did.
   work?: number
-  // The one check turn before it is reported done has run.
   verified?: boolean
-  // Persists until a check turn finishes, including across questions and restarts.
   verificationPending?: boolean
   verificationAttempts?: number
   verificationIssue?: string
   createdAt: string
   updatedAt: string
   finishedAt?: string
-  // What the task asked the person, answered by the next turn.
   question?: string
   approvals: TaskApproval[]
-  // The latest answer, and the lines of progress the person sees.
   result?: string
   log: { at: string; line: string }[]
-  // A finished report held back while its automatic re-check runs: not yet in the thread. Kept here so a quit or crash during the re-check cannot lose it.
   unshown?: string
-  // The hidden team hired for this task (team-hire-tools.ts).
   team?: TaskTeam
-  // Why it waits, as of its last turn end: for employees working in the background, not for the person. The thread shows no card for it.
   awaitingEmployees?: boolean
 }
 
-// Turn count is a fallback for engines that do not report token usage.
 export const TASK_MAX_TURNS = 50
-// New input and output tokens; cached context reads are logged separately.
 export const TASK_TOKEN_BUDGET = 300_000
 const LOG_LINES = 60
 const KEEP_FINISHED = 100
@@ -172,16 +139,12 @@ export function logTask(task: DelegatedTask, line: string, now = new Date()): vo
   task.log.push({ at: now.toISOString(), line: line.slice(0, 300) })
 }
 
-// After a restart: work that was mid-turn carries on, told to re-observe first.
 export function tasksToResume(tasks: DelegatedTask[]): DelegatedTask[] {
   return tasks.filter((t) => t.state === 'running' || t.state === 'queued')
 }
 
-// Where a check keeps its own throwaway scripts in the task folder, apart from the results. The answer does not name them, so they are not handed in; one it does name is.
 export const CHECK_SCRATCH = '.check'
 
-// The next message a task's comet receives. The goal travels verbatim every
-// time; what came before is in the comet's own conversation.
 export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'restart' | 'answer' | 'approved' | 'verify' | 'report', detail = ''): string {
   const lead = {
     limit: 'Continue the delegated task where the last turn stopped. Do not repeat work already confirmed; re-read the current state first.',
@@ -194,7 +157,6 @@ export function continuationPrompt(task: DelegatedTask, reason: 'limit' | 'resta
   return [lead, ...(reason === 'verify' && task.result ? ['The result you produced, which the person has not seen yet. Check this result and correct only what is wrong; do not redo the task:', task.result, ''] : []), ...(reason === 'verify' ? [`Write any script or scratch file you make only to check the result (a comparison, a count, a verification run) inside the ${CHECK_SCRATCH}/ folder of your working folder. Do not name or link those files in your answer: a file there is handed to the person only when your answer names it, and every other file you create and name is handed in as a result.`, 'Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each check concise.'] : []), ...(detail ? [detail] : []), ...(reason === 'report' ? ['', 'Their reports:', ...(task.team?.members ?? []).filter(m => m.background).map(m => `- ${m.role} [${m.state === 'failed' ? 'failed' : 'done'}]: ${m.result ?? '(nothing)'}`)] : []), ...(reason === 'verify' && task.verificationIssue ? [`Previous check did not pass: ${task.verificationIssue}`] : []), '', 'The delegated task, verbatim:', task.goal].join('\n')
 }
 
-// How often this comet's checked work was confirmed, over the tasks still on record.
 export function cometRecord(tasks: DelegatedTask[], botId: string): { confirmed: number; checked: number } {
   const checked = tasks.filter(task => task.botId === botId && (task.verified === true || task.verificationIssue))
   return { confirmed: checked.filter(task => task.verified === true).length, checked: checked.length }

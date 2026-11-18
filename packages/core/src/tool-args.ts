@@ -1,8 +1,6 @@
 import type { AgentToolContext } from './agent-loop.js'
 import { carriesSecret, secretsIn } from './secrets.js'
 
-// Argument hygiene shared by the tools that reach the computer: exact keys,
-// printable text, and no secret ever typed into another app.
 export function plainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const prototype: unknown = Object.getPrototypeOf(value)
@@ -27,7 +25,6 @@ export function requirePublicText(text: string, context: AgentToolContext): void
   if (secretsIn(text).length || carriesSecret(text, context.task) || carriesSecret(text, context.read ?? '') || OBVIOUS_SECRET.test(text)) throw new Error('Passwords, tokens and other secrets must be entered directly by the person, not desktop typing or verification.')
 }
 
-// A local HTML file named by a file:// address or an absolute path, as the file:// address the in-app browser opens.
 export function localPageUrl(text: string): string | null {
   const asked = text.trim()
   if (!asked || /[\r\n]/.test(asked)) return null
@@ -39,11 +36,6 @@ export function localPageUrl(text: string): string | null {
   } catch { return null }
 }
 
-// Typed into another app, a local file address opens that file in that app (a system browser's address bar, an Open
-// panel): local pages are opened by open_page in the in-app browser only, where a form's own submit asks the person.
-// anywhere: a goal a decision model acts on names the address inside a sentence ("Type file:///tmp/form.html in the address bar"), so it is
-// refused wherever it stands: any file: address, or an absolute or home path together with an .html name. Web addresses are not local paths.
-// A home path (~/qa/form.html, ~user/qa/form.html) standing alone is the same file as its absolute path: the app that takes the text expands it.
 export function requireNoLocalPage(text: string, anywhere = false): void {
   const rest = anywhere ? text.replace(/\b(?!file:)[a-z][a-z0-9+.-]*:\/\/\S+/gi, ' ') : ''
   const named = anywhere && (/(?<![a-z0-9])file:\S/i.test(text) || /\.x?html?(?![a-z0-9])/i.test(rest) && /(?:^|[\s"'`(<=])(?:~[^\s\\/]*|[a-z]:)?[\\/]/i.test(rest))

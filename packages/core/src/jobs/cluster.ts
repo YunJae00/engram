@@ -3,43 +3,22 @@ import type { Note } from '../schema.js'
 import { noteTitle } from '../schema.js'
 import { buildIndexAsync, searchIndex } from '../search.js'
 
-// J7 deterministic pre-pairing. The weekly merge scan used to embed the WHOLE
-// current corpus in the prompt (linear token growth). Instead we cluster
-// near-duplicates locally at ZERO token cost: index the current notes once,
-// query each by its title + head, and join any pair whose retrieval score
-// clears J7_EDGE_THRESHOLD into an undirected edge. Connected components of
-// size ≥2 are the merge candidates that reach the engine.
 const J7_QUERY_HEAD = 100
-// Calibrated on the repo's note fixtures (search over title + 100-char head):
-// tight near-duplicates score ~250–310 and same-topic rewrites ~90–125, while
-// incidental single-phrase overlap between unrelated notes tops out near ~24.
-// 40 sits in that gap — obvious dupes pair up, unrelated notes stay apart.
 const J7_EDGE_THRESHOLD = 40
 const J7_CLUSTER_CAP = 30
-// Yield to the event loop after this many seed searches so a bulk re-cluster
-// (a fresh import of thousands) never freezes the UI while it runs.
 const CLUSTER_YIELD_EVERY = 200
 
-// `seeds` are the notes whose neighbourhood is searched; every current note is
-// a searchable target. Passing only the notes changed since the last J7 makes
-// the scan incremental — a pair only forms when at least one side is new, and
-// an unchanged corpus re-clusters to the same result at a fraction of the cost.
-// Defaults to a full all-pairs scan.
 export async function findMergeClusters(
   current: Note[],
   aliasGroups: string[][] = [],
   seeds: Note[] = current,
 ): Promise<Note[][]> {
   if (current.length < 2) return []
-  // Plain tokenizer: the threshold above was calibrated without CJK bigrams.
   const index = await buildIndexAsync(current, { cjkNgrams: false })
   const byId = new Map(current.map((n) => [n.front.id, n]))
-  // Undirected edges keyed "a\tb" (a<b) → best score seen in either direction.
   const edges = new Map<string, number>()
   let scanned = 0
   for (const note of seeds) {
-    // Taught aliases join the query, so notes filed under the OTHER name of
-    // the same thing can reach the pairing threshold despite disjoint text.
     const query = expandQueryWithAliases(`${noteTitle(note)} ${note.body.slice(0, J7_QUERY_HEAD)}`, aliasGroups)
     for (const hit of searchIndex(index, query)) {
       if (hit.id === note.front.id || hit.score < J7_EDGE_THRESHOLD) continue
@@ -51,7 +30,6 @@ export async function findMergeClusters(
     if (++scanned % CLUSTER_YIELD_EVERY === 0) await new Promise((resolve) => setImmediate(resolve))
   }
   if (edges.size === 0) return []
-  // Union-Find over edge endpoints → connected components.
   const parent = new Map<string, string>()
   const root = (x: string): string => {
     let r = x
@@ -88,7 +66,6 @@ export async function findMergeClusters(
       const sorted = [...ids].sort()
       return { notes: sorted.map((id) => byId.get(id)!), best: best.get(r) ?? 0, lowId: sorted[0]! }
     })
-    // Deterministic: strongest cluster first, ties broken by lowest member id.
     .sort((x, y) => y.best - x.best || (x.lowId < y.lowId ? -1 : x.lowId > y.lowId ? 1 : 0))
     .slice(0, J7_CLUSTER_CAP)
     .map((c) => c.notes)

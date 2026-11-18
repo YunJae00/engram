@@ -1,10 +1,3 @@
-// Can one bad file in notes/ stop the whole vault from opening?
-//
-// loadNotes reads every .md through Promise.all. A rejection anywhere in a
-// chunk rejects the chunk, which rejects NoteStore.open, openVaultContext and
-// bootVault — and the boot path has no catch, so the window sits on its
-// opening state forever. This asks whether that is reachable with files a real
-// machine actually produces, not with something hand-crafted to break a parser.
 import { initVault, loadNotes, createNote } from '../src/index.js'
 import { mkdir, mkdtemp, writeFile, chmod } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -61,7 +54,6 @@ let bricks = 0
 for (const c of CASES) {
   const root = await mkdtemp(join(REPO_TMP, 'brick-'))
   const paths = await initVault(root, { git: false })
-  // A few good notes, so a failure means "lost the vault", not "lost one note".
   for (let i = 0; i < 3; i += 1) {
     await createNote(paths, { id: `good-${i}`, body: `# Good ${i}\n\nbody` })
   }

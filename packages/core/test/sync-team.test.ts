@@ -10,7 +10,6 @@ import { joinTeam, TeamSync } from '../src/sync.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// M7 acceptance: 2-clone simulation over a LOCAL bare repo — no network.
 let bare: string
 let vaultA: VaultPaths
 let vaultB: VaultPaths
@@ -47,7 +46,6 @@ describe('team sync: 2-clone simulation', () => {
   }, 240_000)
 
   it('both sides edit the same note → conflict → merge card → approval resolves', async () => {
-    // A edits and pushes
     const noteA = await readNote(vaultA, 'n-team-0001')
     noteA.body = '# Team decision\n\nWe ship on Fridays.\nQA signs off on Thursdays.'
     noteA.front.updated = new Date().toISOString()
@@ -55,7 +53,6 @@ describe('team sync: 2-clone simulation', () => {
     await syncA.commitAll('note: A adds QA line')
     await syncA.push()
 
-    // B edits the same note differently
     const noteB = await readNote(vaultB, 'n-team-0001')
     noteB.body = '# Team decision\n\nWe ship on Fridays.\nRelease notes are mandatory.'
     noteB.front.updated = new Date().toISOString()
@@ -80,14 +77,13 @@ describe('team sync: 2-clone simulation', () => {
     expect(merged!.body).toContain('QA signs off')
     expect(merged!.body).toContain('Release notes are mandatory')
 
-    // repo is out of the conflicted state and can push the resolution
     await syncB.commitAll('sync: merged decision')
     await syncB.push()
     expect((await syncB.status()).state).toBe('clean')
   }, 240_000)
 
   it('판단불가 (no engine) → both versions preserved as disputed', async () => {
-    await syncA.pull() // catch up with B's merge commits first
+    await syncA.pull()
     await createNote(vaultA, { id: 'n-team-0002', body: '# Venue\n\nOffsite in Busan.' })
     await syncA.commitAll('note: venue')
     await syncA.push()

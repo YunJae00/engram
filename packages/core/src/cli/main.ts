@@ -15,9 +15,6 @@ import { buildIndex, searchIndex } from '../search.js'
 import { traceNote } from '../trace.js'
 import { initVault, vaultPaths, type VaultPaths } from '../vault.js'
 
-// The CLI and Electron app share the same
-// core calls — everything here must work without any GUI.
-
 export interface CliIO {
   out(line: string): void
   err(line: string): void
@@ -80,8 +77,6 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
   const [command, ...rest] = positionals
 
   switch (command) {
-    // MCP stdio server — stdout is the protocol channel, so nothing else may
-    // print there. Runs until the client (Claude) closes stdin.
     case 'mcp': {
       await startMcpServer(process.stdin, process.stdout, {
         vaultRoot: values.vault ? resolve(values.vault) : undefined,

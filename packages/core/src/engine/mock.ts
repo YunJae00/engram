@@ -2,9 +2,6 @@ import { readdir, readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import type { Engine, EngineDetection, EngineEvent, EngineJobInput } from './types.js'
 
-// MockEngine replays canned responses (fixtures or injected). Every prompt
-// built by jobs/prompts.ts carries a "JOB: <kind>" marker line; the response
-// for that kind is replayed as a short token stream + result.
 type MockResponse = string | ((prompt: string) => string)
 
 export class MockEngine implements Engine {
@@ -47,7 +44,7 @@ export class MockEngine implements Engine {
           { once: true },
         )
       })
-      if (aborted) return // a cancel ends silently, like the adapter
+      if (aborted) return
       yield { type: 'error', message: `[engram] timed out after ${budget}ms` }
       return
     }
@@ -58,8 +55,6 @@ export class MockEngine implements Engine {
       return
     }
     const text = (typeof canned === 'function' ? canned(job.prompt) : canned).replaceAll('{{task}}', /^Task: (.*)$/m.exec(job.prompt)?.[1] ?? '')
-    // Emit token events with a small gap so streaming consumers render
-    // progressively (chat panel acceptance).
     const step = Math.max(1, Math.ceil(text.length / 4))
     for (let i = 0; i < text.length; i += step) {
       yield { type: 'token', text: text.slice(i, i + step) }

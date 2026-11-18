@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type GatedAction } from '../src/approval.js'
 
-// A standing approval names the procedure, the site and the fields - never
-// the words typed - so it covers tomorrow's entry and nothing else.
 const ACTION: GatedAction = { routineId: 'rt-1', kind: 'submit', host: 'portal.example.com', fieldLabels: ['Entry', 'Date'] }
 
 describe('fingerprintOf', () => {

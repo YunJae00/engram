@@ -43,7 +43,6 @@ it('adds charts to a new workbook as package parts, with no application, and sti
     expect(chart).toContain('<c:barDir val="col"/>')
     expect((await text('xl/charts/chart2.xml')).match(/<c:ser>/g)).toHaveLength(1)
     expect(await text('xl/charts/chart3.xml')).toContain('<c:lineChart>')
-    // The chart hangs on the second sheet only, and the package names every new part.
     expect(await text('xl/worksheets/sheet2.xml')).toMatch(/xmlns:r="[^"]+".*<drawing r:id="rIdChart"\/><\/worksheet>$/s)
     expect(await text('xl/worksheets/sheet1.xml')).not.toContain('<drawing')
     expect(await text('xl/worksheets/_rels/sheet2.xml.rels')).toContain('Target="../drawings/drawing1.xml"')
@@ -55,7 +54,6 @@ it('adds charts to a new workbook as package parts, with no application, and sti
       const source = await text(part)
       expect(() => new DOMParser({ onError: (level, message) => { throw new Error(`${level}: ${message}`) } }).parseFromString(source, 'text/xml')).not.toThrow()
     }
-    // The package checks the file tools run on every document still accept it with its chart parts.
     const inspect = fileWorkTools({ directory: root, approveRead: async () => true }).find(one => one.name === 'file_read_package')!
     expect(JSON.parse(await inspect.run({ path: output.path }, context)).parts.map((part: { name: string }) => part.name)).toContain('xl/charts/chart1.xml')
     const reader = fileWorkTools({ directory: root, approveRead: async () => true }).find(one => one.name === 'file_read_workbook')!

@@ -1,11 +1,9 @@
-// ask_person has no deadline; input tools allow the five-minute hands-off wait.
 const DEFAULT_MS = 45_000
 const INPUT_MS = 7 * 60_000
 const BUDGETS: Record<string, number | null> = {
   app_text: 200_000,
   app_do: 320_000,
   page_do: 120_000,
-  // Many values one by one, each moved and read.
   page_each: 600_000,
   look_in_parallel: 600_000,
   ppt_build: 120_000, word_write: 120_000, excel_write: 120_000, compose_live_document: 120_000, edit_live_document: 120_000,
@@ -25,8 +23,6 @@ export class ToolOverBudget extends Error {
   }
 }
 
-// Runs one call within its budget. The call gets its own signal, so a tool
-// that listens stops its work when the budget runs out.
 export async function withinBudget<T>(name: string, parent: AbortSignal, run: (signal: AbortSignal) => Promise<T>, waitingForPerson?: () => boolean): Promise<T> {
   parent.throwIfAborted()
   const budget = toolBudgetMs(name)

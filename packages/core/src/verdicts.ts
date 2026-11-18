@@ -3,21 +3,6 @@ import { trimJsonlIfHuge } from './receipts.js'
 import { dirname, join } from 'node:path'
 import type { VaultPaths } from './vault.js'
 
-// The verdict ledger: every card resolution, written down as it happens.
-//
-// Dogfooding's most perishable output is the stream of judgments the user
-// makes in review — approve, reject, rewrite — and until now each one was
-// consumed and discarded. Recorded, they become the raw material for a
-// librarian style guide: after a few hundred verdicts the patterns in what
-// gets rejected ("stop raising supersede cards for X") can be distilled into
-// the job prompts, the same way the notification ledger already teaches the
-// nudge WHEN to ask. This file only records; the distillation comes when the
-// data has earned it.
-//
-// Actor matters: the librarian resolves its own machine-vs-machine cards
-// (J12), and those verdicts are not training signal about the USER's taste —
-// they are stamped 'librarian' so the distillation can filter them out.
-
 export type CardVerdictKind = 'approved' | 'rejected' | 'edited' | 'answered-in-text'
 export type VerdictActor = 'user' | 'librarian'
 
@@ -28,9 +13,7 @@ export interface CardVerdictEvent {
   job?: string
   verdict: CardVerdictKind
   actor: VerdictActor
-  // conflict approvals: which side won (A/B/both)
   choice?: string
-  // rejections: the reason the caller recorded
   reason?: string
 }
 

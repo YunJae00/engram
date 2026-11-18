@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { carriesSecret, secretsIn, withoutSecrets, withoutSecretsIn } from '../src/secrets.js'
 
-// A password the person types into the chat is theirs. It must not reach a
-// note, a card, or the answer read back to them — the thread outlives the
-// moment, and the vault syncs.
 describe('secrets the person marked themselves', () => {
   it('reads the value out of the sentence that labelled it', () => {
     expect(secretsIn('비밀번호는 hunter2 야')).toEqual(['hunter2'])

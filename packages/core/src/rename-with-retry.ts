@@ -12,7 +12,6 @@ export async function renameWithRetry(source: string, target: string, platform: 
       const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
       const delay = RETRY_DELAYS_MS[attempt]
       if (platform !== 'win32' || typeof code !== 'string' || !TRANSIENT_WINDOWS_ERRORS.has(code) || delay === undefined) throw error
-      // Windows scanners may briefly hold either file; retain the atomic rename.
       await new Promise<void>((resolve) => setTimeout(resolve, delay))
     }
   }

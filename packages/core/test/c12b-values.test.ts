@@ -1,9 +1,6 @@
 import { expect, it } from 'vitest'
 import { citeMembers, liveCited, liveLinks, LOOKUP_RULE, memberPersona, MERGED_SHAPE, type TeamMember } from '../src/index.js'
 
-// c12b (R2, cause C2): two LOOKUP_RULE patches forced every value into a "base model / 미발표" frame and banned another model's figure,
-// so a helper's real 프로 price became "미발표" and a released phone's price was called unannounced. One rule now: every value says what
-// it is and whose it is. Products and wordings here are not in the harness.
 const helper = (role: string, brief: string, result: string, sources: string[] = ['https://search.naver.com/search.naver?query=x']): TeamMember =>
   ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-18T00:00:00Z', state: 'released', lookup: true, sources, result })
 
@@ -15,7 +12,6 @@ it('c12b: a helper\'s rule has no tier ban and no fixed "미발표" frame; value
     expect(rule).not.toMatch(/"미발표[,( ]/)
     expect(rule).toContain('a thing already out has its 출시가 and its date, never "미발표"')
     expect(rule).toContain('names what it belongs to')
-    // Kept: a figure with its currency, and a source named by its site.
     expect(rule).toContain('a price with its currency')
     expect(rule).toContain('A source is named by its site or publication')
   }
@@ -36,9 +32,7 @@ it('c12b: the merged table keeps every value its helpers reported, labeled, for 
   expect(rows[1]!.slice(0, 3)).toEqual(['모토로라 레이저 70', '출시가 129만 원', '2026년 6월 5일'])
   expect(out).not.toContain('미발표')
   expect(out).not.toContain('못 찾았어요')
-  // Every figure a helper reported is still in the table.
   for (const figure of ['289만 원', '2027년 7월', '129만 원', '2026년 6월 5일']) expect(out).toContain(figure)
-  // The source of the upper-model price is the page that holds it.
   expect(rows[0]!.at(-1)).toContain('https://news.example.kr/fold8-ultra')
 })
 
@@ -51,7 +45,6 @@ it('c12b: a table cell whose only link is dead shows no bare site name; a cell w
   expect(out).not.toContain('gadgetzone')
   expect(out).toContain('| 낫싱 폰 4 | 예상 79만 원 |  |')
   expect(out).toContain('| 샤오미 17 | 출시가 99만 원 | [샤오미](https://mi.example/17) |')
-  // The lone lookup's path (liveCited) does the same; in a sentence the name stays as words.
   const cited = await liveCited(table, [], answer => answer, alive, true, 500)
   expect(cited).not.toContain('gadgetzone')
   expect(cited).toContain('[샤오미](https://mi.example/17)')

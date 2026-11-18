@@ -22,8 +22,6 @@ function note(created: string): Note {
   }
 }
 
-// Seven undated loops in a column each printed "no deadline" under a heading
-// that already said No deadline. Age is what that cell should have been saying.
 describe('how long a loop has been open', () => {
   it('counts whole UTC days, like every other deadline in the vault', () => {
     expect(daysOpen(note('2026-07-13T23:00:00Z'), NOW)).toBe(14)
@@ -34,8 +32,6 @@ describe('how long a loop has been open', () => {
     expect(daysOpen(note('2026-07-27T00:00:00Z'), NOW)).toBe(0)
   })
 
-  // A note dated in the future (clock skew, a hand-edited file) must not render
-  // as "open -3d".
   it('never goes negative', () => {
     expect(daysOpen(note('2026-08-01T00:00:00Z'), NOW)).toBe(0)
   })

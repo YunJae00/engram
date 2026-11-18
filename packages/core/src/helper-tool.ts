@@ -1,9 +1,6 @@
 import type { AgentTool } from './agent-loop.js'
 import { contextExcerpt } from './context-excerpt.js'
 
-// Separate questions looked into at the same time, each by a helper that only
-// reads. What they bring back is data for the comet's own answer; anything
-// that needs hands is still done by the comet itself, where it can ask.
 const HELPERS_MAX = 3
 const FOUND_CHARS = 3_000
 

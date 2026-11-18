@@ -6,13 +6,7 @@ import { pipeline } from 'node:stream/promises'
 import type { BinaryProvider } from './binary.js'
 import { killTree, spawnServerChild } from './engine/spawn.js'
 
-// Long recordings are legitimately slow, but nothing here is unbounded — a
-// wedged binary must not hold the cores and the librarian job forever.
 const TRANSCRIBE_TIMEOUT_MS = 20 * 60_000
-
-// Audio pipeline: whisper.cpp transcription with
-// first-use model download. When no whisper binary is available the caller
-// leaves the audio in the inbox without blocking other captures.
 
 export class WhisperUnavailableError extends Error {
   constructor(detail: string) {
@@ -30,7 +24,6 @@ export async function ensureWhisperModel(modelsDir: string, url = MODEL_URL): Pr
     await access(modelPath)
     return modelPath
   } catch {
-    /* download below */
   }
   await mkdir(modelsDir, { recursive: true })
   const response = await fetch(url)
@@ -50,10 +43,6 @@ export async function transcribeAudio(
   await new Promise<void>((resolve, reject) => {
     let child
     try {
-      // Tracked, not bare: whisper decodes on every core, so one that outlives
-      // its app pins the whole machine. spawnServerChild files it in the
-      // ledger the boot janitor reads, and killAllEngineChildrenSync ends it
-      // at quit.
       child = spawnServerChild(whisper, ['-m', model, '-f', audioFile, '-otxt', '-of', outBase], dirname(audioFile))
     } catch (err) {
       reject(new WhisperUnavailableError(String(err)))

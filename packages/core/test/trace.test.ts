@@ -4,8 +4,6 @@ import { traceNote } from '../src/trace.js'
 import { initVault, loadNotes, type VaultPaths } from '../src/index.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// link_reasons is J2's field — written onto an existing note, never through
-// createNote. The tests wire it the same way the librarian does.
 async function link(paths: VaultPaths, from: string, to: string, reason: string) {
   const notes = await loadNotes(paths)
   const note = notes.find((n) => n.front.id === from)!
@@ -13,12 +11,6 @@ async function link(paths: VaultPaths, from: string, to: string, reason: string)
   note.front.link_reasons = { ...note.front.link_reasons, [to]: reason }
   await writeNote(paths, note)
 }
-
-// engram_trace renders one memory's neighborhood as a walkable map — edges
-// labeled with the librarian's WHY, lineage in both directions, the topic
-// hub, and folder siblings. These tests pin the map's grammar: everything an
-// agent needs to walk (ids, arrows, labels) and nothing that belongs to
-// engram_context (bodies).
 
 const NOW = new Date('2026-07-31T00:00:00Z')
 let paths: VaultPaths
@@ -40,7 +32,6 @@ describe('traceNote', () => {
     expect(map).toContain('team 유니크 제약이 owner를 1명으로 제한')
     expect(map).toContain('← [스코프 게이트] (n-c')
     expect(map).toContain('같은 팀 구조 전제')
-    // A map, not a dump: bodies never travel.
     expect(map).not.toContain('본문')
   })
 
@@ -53,7 +44,6 @@ describe('traceNote', () => {
     expect(midway).toContain('replaces → [결정 v1] (n-v1')
     expect(midway).toContain('replaced by → [결정 v3] (n-v3')
     expect(midway).toContain('this note is history')
-    // The current version knows its whole past, transitively.
     const head = traceNote(notes, 'n-v3')!
     expect(head).toContain('n-v2')
     expect(head).toContain('n-v1')

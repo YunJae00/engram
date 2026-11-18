@@ -8,7 +8,6 @@ const extensions = new Set([...TEXT_FILE_EXTENSIONS, ...DOCUMENT_EXTENSIONS, '.p
 const skip = new Set(['node_modules', 'appdata', 'library'])
 const within = (root: string, path: string) => { const part = relative(root, path); return !part || (part !== '..' && !part.startsWith('../') && !part.startsWith('..\\') && !isAbsolute(part)) }
 
-// Names only; links are not traversed and private paths must resolve before scanning.
 export async function findLocalFiles(roots: string[], privateDir: string, query: string, signal?: AbortSignal): Promise<FileSearchResult> {
   signal?.throwIfAborted()
   const privateRoot = await realpath(privateDir)

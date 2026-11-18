@@ -10,9 +10,6 @@ const DAY_ONE = new Date('2026-07-12T00:00:00Z')
 const DAY_TWO = new Date('2026-07-13T00:00:00Z')
 const DAY_THREE = new Date('2026-07-14T00:00:00Z')
 
-// The stale fact sorts inside the first slice; its replacement sorts far past
-// it, so the audit must retrieve it as a CANDIDATE — the pre-existing
-// contradiction shape, with neither note in any delta.
 const OLD_ID = 'n-a12-old'
 const NEW_ID = 'n-z99-new'
 const REPLACEMENT = '# 배포 요일\n\n배포는 금요일임 (7월 정책 변경).'
@@ -28,8 +25,6 @@ async function seedStandingCorpus(paths: VaultPaths): Promise<void> {
   await createNote(paths, { id: NEW_ID, body: REPLACEMENT }, DAY_ONE)
 }
 
-// Records every J4 payload so a test can see exactly which notes were judged
-// against which corpus. The payload is the LAST json fence of the prompt.
 function j4Recorder(cards: string) {
   const payloads: { changed: string[]; corpus: string[] }[] = []
   const respond = (prompt: string) => {
@@ -83,7 +78,6 @@ describe('auditSlice (rotating window over the standing corpus)', () => {
     const all = await notes(paths)
     expect(auditSlice(all, new Set(), undefined, 2).map((n) => n.front.id)).toEqual(['n-1', 'n-2'])
     expect(auditSlice(all, new Set(), 'n-2', 2).map((n) => n.front.id)).toEqual(['n-3', 'n-4'])
-    // past the end → the window wraps rather than stalling on the tail
     expect(auditSlice(all, new Set(), 'n-4', 2).map((n) => n.front.id)).toEqual(['n-5', 'n-1'])
     expect(auditSlice(all, new Set(), 'n-5', 2).map((n) => n.front.id)).toEqual(['n-1', 'n-2'])
   })
@@ -104,23 +98,19 @@ describe('sweep audits the standing corpus', () => {
     const paths = await initVault(await tmpVaultRoot('audit-sweep'), { git: false })
     await seedStandingCorpus(paths)
 
-    // Sweep 1: nothing has been swept yet, so the delta IS the whole vault —
-    // the audit has nothing left to add and only arms its cadence.
     const first = j4Recorder('{"cards":[]}')
     await sweep(paths, [engineWith(first.respond)], { now: () => DAY_ONE })
     expect(first.payloads).toHaveLength(1)
     expect(first.payloads[0]!.changed).toHaveLength(20)
     expect(typeof (await loadState(paths)).last_audit).toBe('string')
 
-    // Sweep 2 a day later: nothing changed, so the delta is empty and the old
-    // pass would have queued no J4 at all. The audit picks the first slice.
     const second = j4Recorder(SUPERSEDE_CARD)
     await sweep(paths, [engineWith(second.respond)], { now: () => DAY_TWO })
     expect(second.payloads).toHaveLength(1)
     const audited = second.payloads[0]!
-    expect(audited.changed).toHaveLength(12) // AUDIT_CAP — never the whole vault
+    expect(audited.changed).toHaveLength(12)
     expect(audited.changed).toContain(OLD_ID)
-    expect(audited.corpus).toContain(NEW_ID) // the contradiction is in the prompt
+    expect(audited.corpus).toContain(NEW_ID)
     expect(audited.corpus).not.toContain(OLD_ID)
 
     const card = (await listCards(paths, 'proposed')).find((c) => c.cardType === 'supersede')
@@ -141,7 +131,6 @@ describe('sweep audits the standing corpus', () => {
     await sweep(paths, [engineWith(third.respond)], { now: () => DAY_THREE })
     const audited = third.payloads[0]!
     expect(audited.changed).toHaveLength(12)
-    // The tail the first slice never reached — including the newer note.
     expect(audited.changed).toContain(NEW_ID)
     expect(audited.changed).not.toContain(OLD_ID)
   }, 60_000)

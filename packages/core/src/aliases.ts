@@ -6,8 +6,6 @@ export function aliasesPath(paths: VaultPaths): string {
   return join(paths.workspace, 'aliases.md')
 }
 
-// Alias lines that stay on this computer: the ones that came from a person's other workspace into one a team shares.
-// Read with aliases.md, never written into it.
 export function localAliasesPath(paths: VaultPaths): string {
   return join(paths.cache, 'aliases.local.md')
 }
@@ -27,9 +25,6 @@ const HEADER = [
 
 const UMBRELLA_HEADING = '## Umbrella terms'
 
-// Only `- ` list lines carry groups; anything else is prose. A term shorter
-// than 2 chars would expand almost every query, so it is dropped.
-// Lines under the umbrella heading are a different list and never aliases.
 export function parseAliasGroups(text: string): string[][] {
   const groups: string[][] = []
   let inUmbrella = false
@@ -42,7 +37,6 @@ export function parseAliasGroups(text: string): string[][] {
   return groups
 }
 
-// One term per line under the umbrella heading, lowercased for comparison.
 export function parseUmbrellaTerms(text: string): string[] {
   const terms: string[] = []
   let inUmbrella = false
@@ -83,14 +77,9 @@ async function saveAliasGroups(paths: VaultPaths, groups: string[][]): Promise<v
   await writeFile(aliasesPath(paths), `${HEADER}\n${lines.join('\n')}\n`)
 }
 
-// Add one equivalence. Any existing group sharing a term is folded in
-// (aliasing is transitive: teaching a=b then b=c must yield one a=b=c group).
-// Returns the final merged group, or null when the input carries fewer than
-// two usable terms.
 export async function addAliasGroup(paths: VaultPaths, terms: string[]): Promise<string[] | null> {
   const fresh = dedupeTerms(terms)
   if (fresh.length < 2) return null
-  // Only the shared file's own groups are rewritten into it.
   const groups = parseAliasGroups(await readFile(aliasesPath(paths), 'utf8').catch(() => ''))
   const freshKeys = new Set(fresh.map((t) => t.toLowerCase()))
   const merged: string[] = []
@@ -104,8 +93,6 @@ export async function addAliasGroup(paths: VaultPaths, terms: string[]): Promise
   return finalGroup
 }
 
-// Already-known check for the librarian: a proposed pair whose terms all sit
-// inside one existing group teaches nothing new.
 export function coveredByAliases(terms: string[], groups: string[][]): boolean {
   const keys = dedupeTerms(terms).map((t) => t.toLowerCase())
   if (keys.length < 2) return true
@@ -117,9 +104,6 @@ export function coveredByAliases(terms: string[], groups: string[][]): boolean {
 
 const CJK_RE = /[぀-ヿ㄰-㆏一-鿿가-힯]/
 
-// Does the query mention this term? CJK terms match by plain substring
-// (no word boundaries exist); latin/digit terms require non-word neighbours
-// so "ai" never fires inside "maintain".
 function queryMentions(queryLower: string, term: string): boolean {
   const t = term.toLowerCase()
   if (CJK_RE.test(t)) return queryLower.includes(t)
@@ -127,9 +111,6 @@ function queryMentions(queryLower: string, term: string): boolean {
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(queryLower)
 }
 
-// Recall-only expansion: when the query names a term of a group, the group's
-// OTHER terms are appended. MiniSearch ORs terms, so this can surface notes
-// filed under the other name but never hides anything.
 export function expandQueryWithAliases(query: string, groups: string[][]): string {
   if (groups.length === 0) return query
   const queryLower = query.toLowerCase()

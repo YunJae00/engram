@@ -12,7 +12,6 @@ const toast = (app: string, aumid: string): Toast => ({ id: aumid, app, aumid, a
 describe('which app sent a notification', () => {
   it('finds a store app by its package folder, under the program name its windows carry', () => {
     expect(toastApp(toast('Microsoft Teams', 'MSTeams_8wekyb3d8bbwe!MSTeams'), paths)).toBe('ms-teams')
-    // An app may show itself under another name than its program's.
     expect(toastApp(toast('ChatGPT', 'OpenAI.Codex_2p2nqsd0c76g0!App'), paths)).toBe('codex')
   })
 

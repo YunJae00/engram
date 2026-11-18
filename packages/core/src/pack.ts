@@ -6,12 +6,7 @@ import type { Note } from './schema.js'
 import { noteTitle } from './schema.js'
 import type { VaultPaths } from './vault.js'
 
-// Context pack: current notes ONLY, each with a one-line lineage
-// summary so the model knows what superseded what — stale text never leaks
-// into a prompt.
-
 export interface PackOptions {
-  // Optional filter: only notes whose title/body matches (case-insensitive).
   query?: string
   now?: Date
 }
@@ -52,6 +47,5 @@ export async function writeContextPack(paths: VaultPaths, content: string, now: 
   await mkdir(paths.views, { recursive: true })
   const file = `pack-${now.toISOString().replace(/[:.]/g, '-')}.md`
   await writeFile(join(paths.views, file), content)
-  // Vault-relative reference — always POSIX-style, independent of host OS.
   return `_views/${file}`
 }

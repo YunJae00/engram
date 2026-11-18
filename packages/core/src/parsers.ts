@@ -1,6 +1,3 @@
-// Chat-paste parsers: Slack and KakaoTalk pastes keep speaker
-// and time; anything unrecognized passes through untouched.
-
 export interface ChatMessage {
   speaker: string
   time: string
@@ -14,8 +11,6 @@ export interface ParsedCapture {
 
 const KAKAO_PC = /^(?<date>\d{4}년 \d{1,2}월 \d{1,2}일) (?<time>(?:오전|오후) \d{1,2}:\d{2}), (?<speaker>[^:]+) : (?<text>.*)$/
 const KAKAO_MOBILE = /^\[(?<speaker>[^\]]+)\] \[(?<time>(?:오전|오후) ?\d{1,2}:\d{2})\] (?<text>.*)$/
-// Slack paste: a header line "Name  10:24 AM" (or "Name [10:24]") followed by
-// message lines until the next header.
 const SLACK_HEADER = /^(?<speaker>\S.{0,60}?)\s{1,4}\[?(?<time>\d{1,2}:\d{2}(?:\s?[AP]M)?)\]?$/
 
 function parseKakao(lines: string[]): ChatMessage[] | null {
@@ -35,7 +30,6 @@ function parseKakao(lines: string[]): ChatMessage[] | null {
         text: hit.groups['text'] ?? '',
       })
     } else if (messages.length > 0) {
-      // continuation line of the previous message
       messages[messages.length - 1]!.text += '\n' + line
     }
   }
@@ -55,7 +49,6 @@ function parseSlack(lines: string[]): ChatMessage[] | null {
       current.text = current.text.length > 0 ? current.text + '\n' + line.trim() : line.trim()
     }
   }
-  // Require ≥2 headers and at least one body so prose does not false-positive.
   return headers >= 2 && messages.some((m) => m.text.length > 0) ? messages : null
 }
 
@@ -68,7 +61,6 @@ export function parseChatPaste(text: string): ParsedCapture {
   return { kind: 'plain', messages: [] }
 }
 
-// Markdown that keeps the original speaker/time structure for J1.
 export function chatToMarkdown(parsed: ParsedCapture, raw: string): string {
   if (parsed.kind === 'plain') return raw
   const label = parsed.kind === 'slack' ? 'Slack' : 'KakaoTalk'
@@ -78,8 +70,6 @@ export function chatToMarkdown(parsed: ParsedCapture, raw: string): string {
   return `# ${label} conversation\n\n${body}\n`
 }
 
-// Entry point used by every capture path: chat pastes get structured,
-// everything else stays as-is.
 export function normalizeCapture(text: string): string {
   return chatToMarkdown(parseChatPaste(text), text)
 }

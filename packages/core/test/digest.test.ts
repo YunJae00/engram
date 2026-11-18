@@ -27,14 +27,13 @@ describe('J10 weekly digest', () => {
     const old = new Date('2026-06-01T00:00:00Z')
     await createNote(paths, { id: 'n-recent', body: '# 이번 주\n\n내용' }, NOW)
     await createNote(paths, { id: 'n-linked', body: '# 링크됨\n\n내용', derived_from: ['n-recent'] }, NOW)
-    await createNote(paths, { id: 'n-old', body: '# 옛것\n\n내용', decay: 'fast' }, old) // 30d window → stale by NOW
+    await createNote(paths, { id: 'n-old', body: '# 옛것\n\n내용', decay: 'fast' }, old)
     await createNote(paths, { id: 'n-hub-01', type: 'hub', body: '# 허브\n\n종합', derived_from: ['n-recent'] }, NOW)
     const input = digestInput(await loadNotes(paths), NOW)
 
     expect(input.recent.map((n) => n.id)).toEqual(expect.arrayContaining(['n-recent', 'n-linked']))
     expect(input.recent.map((n) => n.id)).not.toContain('n-hub-01')
     expect(input.cooling.map((n) => n.id)).toContain('n-old')
-    // n-recent/n-linked are linked to each other; n-old never got connected
     expect(input.orphans.map((n) => n.id)).toEqual(['n-old'])
     expect(input.hubs).toEqual(['허브'])
   })
@@ -63,7 +62,6 @@ describe('J10 weekly digest', () => {
     expect(views1).toEqual(['digest-2026-07-12.md'])
     expect(typeof (await loadState(paths)).last_digest).toBe('string')
 
-    // A day later: due again only after a week — no second digest file.
     await createNote(paths, { id: 'n-next', body: '# 다음 날\n\n내용' }, new Date('2026-07-13T00:00:00Z'))
     await sweep(paths, [engine], { now: () => new Date('2026-07-13T00:00:00Z') })
     const views2 = (await readdir(paths.views)).filter((f) => f.startsWith('digest-'))

@@ -3,19 +3,7 @@ import { extname } from 'node:path'
 import { readPackage, validatePackage, type DocumentPackage } from '../document-package.js'
 import { DOCUMENT_BYTES, DOCUMENT_EXTENSIONS } from '../document-tools.js'
 
-// Document content extraction — the heart of non-developer capture
-// when a document the user is working on is saved,
-// its TEXT comes out here so the librarian can remember what the work was
-// about. Local files, local parsing, nothing leaves the machine.
-//
-// Formats by presence on Korean office machines: docx/xlsx/pptx (Office),
-// pdf (digital-text only — scanned pages yield nothing and OCR is out of
-// scope by policy), hwpx (the KS X 6101 zip+XML format; the legacy binary
-// .hwp is NOT parsed — partial extractors mangle tables and the honest move
-// is to capture the skeleton only), and the plain-text family.
-
 export type ExtractableKind = 'docx' | 'xlsx' | 'pptx' | 'pdf' | 'hwpx' | 'text'
-// unbounded: every sheet, page and character, for a reader that pages the result itself.
 export interface DocumentExtractOptions { minLength?: number; onLimit?(message: string): void; unbounded?: boolean; bytes?: Buffer; signal?: AbortSignal }
 
 const TEXT_EXTS = new Set(['.txt', '.md', '.csv', '.log', '.json'])
@@ -31,8 +19,6 @@ export function extractableKind(path: string): ExtractableKind | null {
   return null
 }
 
-// Office autosave writes temp siblings (~$foo.docx, foo.tmp) that must never
-// be read as documents.
 export function isTransientArtifact(path: string): boolean {
   const name = path.replaceAll('\\', '/').split('/').pop() ?? ''
   return name.startsWith('~$') || name.startsWith('.~') || name.endsWith('.tmp') || name.endsWith('.crdownload') || name.endsWith('.part')
@@ -98,8 +84,6 @@ async function extractPdf(bytes: Buffer, options: DocumentExtractOptions): Promi
   }
 }
 
-// One entry point: kind-dispatched, clipped, throw-free (a document that
-// cannot be read yields null — the caller records the skeleton only).
 export async function extractDocumentText(path: string, options: DocumentExtractOptions = {}): Promise<string | null> {
   const kind = extractableKind(path)
   if (!kind || isTransientArtifact(path)) return null
@@ -128,9 +112,6 @@ export async function extractDocumentText(path: string, options: DocumentExtract
   }
 }
 
-// "What changed since the last save" — the memory-worthy delta, not the whole
-// document again. Line-level diff, added lines only (removals are noise for a
-// work journal), capped.
 export async function contentDelta(previous: string | null, current: string): Promise<string> {
   if (!previous) return current.slice(0, 4_000)
   const { diffLines } = await import('diff')

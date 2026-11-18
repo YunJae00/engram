@@ -6,7 +6,6 @@ import type { VaultPaths } from '../vault.js'
 import { withPrompt } from './prompts.js'
 import type { JobSpec } from './runner.js'
 
-// Retain reusable conclusions rather than transient progress. An empty result is valid.
 export const J11_INSTRUCTION = [
   "Below is a stretch of a work session the user just had with an AI assistant. Pick out ONLY what will be needed again later and turn it into notes.",
   "",
@@ -39,8 +38,6 @@ export interface HarvestedNote {
   body: string
 }
 
-// Enough of a fingerprint that re-running over the same conversation is a
-// journal skip, while genuinely new turns are new work.
 function spanDigest(turns: SessionTurn[]): string {
   const first = turns[0]
   const last = turns[turns.length - 1]
@@ -74,8 +71,6 @@ export function buildJ11(
   return {
     kind: 'J11',
     disallowTools: true,
-    // Judgement, not mechanics: a cheap model here writes down the progress
-    // updates this job exists to refuse.
     modelHint: 'default',
     inputKey: `${project}:${spanDigest(turns)}`,
     ...withPrompt(agentsMd, 'J11', J11_INSTRUCTION + alreadyKeptSection(alreadyKept), {
@@ -94,23 +89,8 @@ export function buildJ11(
         const title = String(note?.title ?? '').trim()
         const body = String(note?.body ?? '').trim()
         if (!title || !body) continue
-        // Into the inbox, exactly like a hand-typed capture — from here the
-        // ordinary pipeline absorbs, links and files it. Nothing about a
-        // harvested memory is special once it exists.
-        // 'session': the machine's own summary of a conversation nobody asked
-        // it to read. That marker is what later lets the librarian tidy these
-        // without asking, while never touching a note the user actually wrote.
-        // `project` is the folder the session was living in ("strata",
-        // "novel") — the one word that later tells a topic called "Team"
-        // apart from every other Team the user has ever worked near.
         const { file, duplicate } = await writeCapture(paths.inbox, `# ${title}\n\n${body}\n`, 'session', project)
-        // Overlapping spans can surface the same conclusion twice; writeCapture
-        // already recognises an identical pending capture.
         if (duplicate) continue
-        // Told to the caller so the NEXT harvest of this same conversation
-        // knows this one exists. Recorded even though the note is not written
-        // yet — J1 turns the capture into a note asynchronously, and waiting
-        // for that would leave open the window where the duplicate is written.
         onKept?.(title)
         effects.push(`harvested from session: ${title} → inbox/${file}`)
       }

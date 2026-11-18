@@ -13,9 +13,6 @@ import { traceNote } from './trace.js'
 import { vaultPaths, type VaultPaths } from './vault.js'
 
 interface McpOptions {
-  // Explicit vault root wins; otherwise the workspace registry (vaults.json,
-  // written by the desktop app) names the current vault — re-read per call so
-  // a workspace switch in the app is picked up without reconnecting.
   vaultRoot?: string
   registryPath?: string
   instructions?: string
@@ -116,7 +113,6 @@ export const MEMORY_MCP_TOOLS = [
 
 interface SearchCache {
   root: string
-  // When the notes folder was last fingerprinted, and what it looked like.
   checkedAt: number
   fingerprint: string
   notes: Note[]
@@ -126,8 +122,6 @@ interface SearchCache {
 
 let cache: SearchCache | null = null
 
-// Every answer names the workspace it touched — with multiple workspaces a
-// capture that silently lands in the wrong one is data loss by surprise.
 interface ResolvedVault {
   paths: VaultPaths
   workspace: string
@@ -155,9 +149,6 @@ async function resolveVault(opts: McpOptions): Promise<ResolvedVault> {
   throw new Error('no vault configured (pass --vault or --registry)')
 }
 
-// The notes folder as a cheap fingerprint - names and mtimes, stat only, no
-// reads or parsing - so the index is rebuilt when a note actually changed
-// rather than every 30 seconds whether one did or not.
 async function notesFingerprint(paths: VaultPaths): Promise<string> {
   const names = await readdir(paths.notes).catch(() => [] as string[])
   const files = [...names.filter(name => name.endsWith('.md')).map(name => join(paths.notes, name)), aliasesPath(paths)]
@@ -187,10 +178,6 @@ function excerptOf(note: Note, chars: number): string {
   return note.body.replace(/^#.*$/m, '').trim().replace(/\s+/g, ' ').slice(0, chars)
 }
 
-// The capture filename is built ONLY from a timestamp — no capture text or MCP
-// argument ever reaches it, so path traversal is impossible by construction.
-// This guard locks that invariant: any future change that let user input into
-// the name (separators, .., NUL) fails loudly instead of writing outside inbox/.
 export function safeInboxName(name: string): string {
   if (name !== basename(name) || /[\\/\0]/.test(name) || name === '.' || name === '..' || name.includes('..')) {
     throw new Error(`unsafe inbox filename: ${JSON.stringify(name)}`)
@@ -204,7 +191,6 @@ function captureContext(): string | undefined {
   if (!cwd || (home && resolve(cwd) === resolve(home))) return undefined
   if (/AppData|Program Files|AnthropicClaude|[\\/]Applications[\\/]|^\/usr\b/i.test(cwd)) return undefined
   const label = basename(cwd)
-  // Versioned install dirs ("app-1.24012.9") are packaging, not projects.
   if (!label || /^app-[\d.]+$/i.test(label)) return undefined
   return label
 }
@@ -221,7 +207,6 @@ const folderTag = (note: Note | undefined): string =>
 
 async function runCapture({ paths, workspace }: ResolvedVault, text: string): Promise<string> {
   await mkdir(paths.inbox, { recursive: true })
-  // An agent retrying a tool call must not leave two copies of one memory.
   const { file, duplicate } = await writeCapture(paths.inbox, text, 'user', CWD_LABEL)
   const fileName = safeInboxName(file)
   if (duplicate) {
@@ -234,8 +219,6 @@ async function runSearch({ paths, workspace }: ResolvedVault, query: string, lim
   const { notes, index, aliases } = await indexFor(paths)
   const byId = new Map(notes.map((n) => [n.front.id, n]))
   const expanded = expandQueryWithAliases(query, aliases)
-  // Prospective memory first: a trigger match outranks (and absorbs) a plain
-  // lexical hit so the REMINDER framing always survives.
   const woken = triggeredNotes(expanded, notes)
   const wokenIds = new Set(woken.map((n) => n.front.id))
   const hits = foldSameFolderFirst(
@@ -247,7 +230,6 @@ async function runSearch({ paths, workspace }: ResolvedVault, query: string, lim
   ).slice(0, limit)
   const aliasNote = expanded !== query ? ` (query expanded via the user's aliases: "${expanded}")` : ''
   if (hits.length === 0 && woken.length === 0) {
-    // The brain remembers what it could NOT answer — repeated gaps surface in the brief.
     await recordRecallMiss(paths, query).catch(() => {})
     return `No matches in workspace "${workspace}" for "${query}"${aliasNote}. (Search follows the workspace active in the Engram app.) If the user finds the answer elsewhere, offer to capture it — this question has now been recorded as a memory gap.`
   }
@@ -261,8 +243,6 @@ async function runSearch({ paths, workspace }: ResolvedVault, query: string, lim
       `- [${noteTitle(note)}] (id: ${note.front.id}, REMINDER — the user asked to be reminded of this when "${(note.front.triggers ?? []).join('/')}" comes up)\n  ${excerptOf(note, 160)}`,
     )
   }
-  // Receipts + sky glow: memories served to a model count as recalled — the
-  // brief turns these into "Claude drew on your memories N times this week".
   const served = [...woken.slice(0, 3).map((n) => n.front.id), ...hits.map((h) => h.id)]
   void (async () => {
     for (const id of served) await recordRecall(paths, id).catch(() => {})
@@ -271,8 +251,6 @@ async function runSearch({ paths, workspace }: ResolvedVault, query: string, lim
   return `${hits.length + Math.min(woken.length, 3)} matches in workspace "${workspace}"${aliasNote}:\n${lines.join('\n')}`
 }
 
-// The map, not the bodies (see trace.ts). The ref is an id when the agent is
-// walking, a phrase when it is starting out — the top search hit seeds it.
 async function runTrace({ paths, workspace }: ResolvedVault, ref: string): Promise<string> {
   const { notes, index, aliases } = await indexFor(paths)
   let seedId = ref
@@ -316,7 +294,6 @@ async function runContext({ paths, workspace }: ResolvedVault, query: string): P
   }
   const included = new Set<string>()
   const entries: string[] = []
-  // Prospective memories fire first — the user explicitly asked to be reminded.
   for (const note of woken.slice(0, 2)) {
     included.add(note.front.id)
     entries.push(entry(note, `REMINDER the user set for "${(note.front.triggers ?? []).join('/')}"`))
@@ -348,14 +325,11 @@ async function runBrief({ paths, workspace }: ResolvedVault): Promise<string> {
   try {
     waiting = (await readdir(paths.inbox)).filter((f) => !f.startsWith('.')).length
   } catch {
-    /* no inbox yet */
   }
   const { notes } = await indexFor(paths)
   const lines = [
     `Engram workspace "${workspace}" — ${notes.length} living notes, ${waiting} capture(s) waiting for the librarian.`,
   ]
-  // The receipt line: the week's served-memory count, so the value of having
-  // a vault stops being invisible.
   const receipts = await countRecallReceipts(paths, Date.now() - 7 * 86_400_000).catch(() => ({ total: 0, topIds: [] as [string, number][] }))
   if (receipts.total > 0) {
     lines.push(`This week, assistants drew on these memories ${receipts.total} time(s).`)
@@ -381,8 +355,6 @@ async function runBrief({ paths, workspace }: ResolvedVault): Promise<string> {
   } catch {
     lines.push('No briefing written yet — the librarian writes one after its next tidy.')
   }
-  // Metamemory: gaps the user keeps reaching for. The brain knows what it
-  // does NOT know — repeated zero-hit questions become capture suggestions.
   const gaps = await repeatedRecallMisses(paths).catch(() => [])
   if (gaps.length > 0) {
     lines.push(
@@ -423,7 +395,7 @@ export async function callMemoryTool(opts: McpOptions, name: string, args: Recor
       const terms = (Array.isArray(args['terms']) ? args['terms'] : []).map((t) => String(t))
       const group = await addAliasGroup(vault.paths, terms)
       if (!group) throw new Error('terms needs 2 or more distinct names (each 2+ characters)')
-      cache = null // next search sees the new equivalence immediately
+      cache = null
       return `Recorded in workspace "${vault.workspace}": ${group.join(' = ')}. Search and the librarian now treat these names as the same thing (workspace/aliases.md).`
     }
     default:
@@ -431,7 +403,6 @@ export async function callMemoryTool(opts: McpOptions, name: string, args: Recor
   }
 }
 
-// Runs until the input stream closes (the client owns the process lifetime).
 export function startMcpServer(
   input: NodeJS.ReadableStream,
   output: NodeJS.WritableStream,
@@ -444,7 +415,6 @@ export function startMcpServer(
   const handle = async (msg: RpcMessage): Promise<void> => {
     if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.method !== 'string') return
     const { id, method, params } = msg
-    // Notifications (no id) never get a response.
     if (method === 'notifications/cancelled') {
       const requestId = params?.['requestId']
       if (typeof requestId === 'string' || typeof requestId === 'number') pending.get(requestId)?.abort()
@@ -461,8 +431,6 @@ export function startMcpServer(
             protocolVersion: requested,
             capabilities: { tools: {} },
             serverInfo: { name: 'engram', version: '0.1.0' },
-            // Free steering for every client, not just the ones with a system
-            // prompt we control: this rides the MCP handshake itself.
             instructions: opts.instructions ?? (
               "Engram is the user's second brain — their real decisions, projects and memories, kept locally. " +
               'BEFORE answering anything about their past work, decisions, or preferences, call engram_search or engram_context. ' +
@@ -504,7 +472,6 @@ export function startMcpServer(
       try {
         void handle(JSON.parse(trimmed) as RpcMessage)
       } catch {
-        // Unparseable line — a request id is unknowable, so stay silent.
       }
     })
     rl.on('close', () => { closed = true; for (const controller of pending.values()) controller.abort(); resolvePromise() })

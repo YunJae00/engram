@@ -58,10 +58,7 @@ describe('one bad file must not cost the vault', () => {
       const skipped: SkippedNote[] = []
       const notes = await loadNotes(paths, (s) => skipped.push(s))
 
-      // Every healthy note is still there…
       expect(notes.map((n) => n.front.id).sort()).toEqual(['good-0', 'good-1', 'good-2'])
-      // …and the bad one is reported rather than silently missing. A note that
-      // vanishes with no explanation is its own bug report.
       expect(skipped.map((s) => s.file)).toEqual([bad.name])
       expect(skipped[0]!.reason.length).toBeGreaterThan(0)
     })

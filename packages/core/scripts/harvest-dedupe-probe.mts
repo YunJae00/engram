@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 const PROJECT = 'C--Users-ykwon060-Desktop-pjt-strata-strata'
 const DIR = join(homedir(), '.claude', 'projects', PROJECT)
 
-// The biggest transcript in this project is this conversation.
 const files = await readdir(DIR)
 let biggest = { file: '', size: 0 }
 for (const name of files) {
@@ -17,7 +16,6 @@ for (const name of files) {
 }
 if (!biggest.file) throw new Error('no transcript found')
 
-// Read a window out of the middle — a real span, not the whole 30MB.
 const WINDOW = 3 * 1024 * 1024
 const from = Math.max(0, biggest.size - WINDOW)
 const handle = await open(biggest.file, 'r')
@@ -25,7 +23,6 @@ const buffer = Buffer.alloc(Math.min(WINDOW, biggest.size - from))
 await handle.read(buffer, 0, buffer.length, from)
 await handle.close()
 const { turns } = parseSessionSpan(buffer.toString('utf8'))
-// Drop the first turn: reading from an arbitrary offset can clip it.
 const span = turns.slice(1, 60)
 console.log(`transcript ${(biggest.size / 1048576).toFixed(1)}MB → ${span.length} turns of conversation\n`)
 
@@ -66,8 +63,6 @@ const second = await harvest(first)
 for (const t of second) console.log(`   + ${t}`)
 console.log(`   ${second.length} note(s)\n`)
 
-// Today the second pass writes the same conclusions again in new words, and
-// those become the questions. Anything it emits now should be genuinely new.
 const repeats = second.filter((t) => first.some((f) => f === t))
 console.log(`identical titles repeated: ${repeats.length}`)
 console.log(`duplicate notes the vault is spared: ${first.length} → ${second.length}`)

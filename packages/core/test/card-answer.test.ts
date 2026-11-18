@@ -4,11 +4,6 @@ import { createNote, loadNotes, readNote } from '../src/notes.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-// Typing into the nudge is the third way to answer a question, and the
-// strongest: the user's sentence becomes a current note superseding every
-// note the card was about. These tests pin the grammar — supersession, not
-// deletion; the card resolves; a heading is grown for headingless text.
-
 const NOW = new Date('2026-07-31T00:00:00Z')
 let paths: VaultPaths
 
@@ -28,7 +23,6 @@ describe('answerCardWithText', () => {
     await answerCardWithText(paths, card.id, '운영이 맞아 — dev는 이미 적용됨', NOW)
 
     expect((await readCard(paths, card.id)).status).toBe('approved')
-    // Nothing deleted: both originals survive on disk as superseded.
     expect((await readNote(paths, 'n-a')).front.status).toBe('superseded')
     expect((await readNote(paths, 'n-b')).front.status).toBe('superseded')
     const answer = (await loadNotes(paths)).find((n) => n.front.supersedes.includes('n-a'))

@@ -9,7 +9,7 @@ function stubEngine(reply: string | Error): Engine {
     id: 'mock',
     detect: async () => ({ installed: true, loggedIn: true }),
     async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
-      expect(job.modelHint).toBe('fast') // expansion must ride the cheap tier
+      expect(job.modelHint).toBe('fast')
       expect(job.disallowTools).toBe(true)
       if (reply instanceof Error) yield { type: 'error', message: reply.message }
       else yield { type: 'result', text: reply }

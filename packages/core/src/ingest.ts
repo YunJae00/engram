@@ -13,24 +13,16 @@ const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg'])
 const URL_EXT = new Set(['.url'])
 const AUDIO_EXT = new Set(['.wav', '.mp3', '.m4a'])
 
-// Images above this size never go to the engine (context/token safety) —
-// they fall back to local OCR, which merely gets slower, not wrong.
 export const VISION_MAX_BYTES = 10 * 1024 * 1024
 
 export interface IngestOptions {
   provider?: BinaryProvider
   modelsDir?: string
-  // Engine-backed image transcription: takes a workspace-relative path,
-  // returns markdown or null (unavailable/refused → caller falls back to OCR).
   vision?: (relPath: string) => Promise<string | null>
   visionMaxBytes?: number
-  // Injectable for tests — tesseract downloads traineddata on first use.
   ocr?: (path: string) => Promise<string>
 }
 
-// Builds the vision callback from the connected engines, or undefined when
-// none can see images. Wired automatically by sweep/processCapture so the CLI
-// and the app get the hybrid pipeline without extra plumbing.
 export function visionExtractor(
   paths: VaultPaths,
   engines: Engine[],
@@ -52,7 +44,7 @@ export function visionExtractor(
       const trimmed = text.trim()
       return trimmed.length > 0 ? trimmed : null
     } catch {
-      return null // engine down/refusing → OCR fallback, never a lost capture
+      return null
     }
   }
 }
@@ -72,8 +64,6 @@ async function ocrImage(path: string): Promise<string> {
 }
 
 function parseUrlFile(content: string): string | null {
-  // Windows .url files: [InternetShortcut]\nURL=https://…  Plain files with a
-  // bare URL work too.
   const ini = /^URL=(.+)$/m.exec(content)?.[1]
   if (ini) return ini.trim()
   const bare = content.trim()
@@ -81,12 +71,10 @@ function parseUrlFile(content: string): string | null {
 }
 
 export interface IngestResult {
-  // inbox file (possibly rewritten to .md) that J1 should read
   file: string
   converted: boolean
 }
 
-// Converts one inbox item to text in place. Non-convertible files stay put.
 export async function prepareInboxItem(
   paths: VaultPaths,
   file: string,
@@ -125,7 +113,6 @@ export async function prepareInboxItem(
       try {
         return await transcribeAudio(options.provider, fullPath, options.modelsDir)
       } catch (err) {
-        // whisper missing/broken → the audio waits in the inbox (degrade)
         if (err instanceof WhisperUnavailableError) return null
         throw err
       }
@@ -136,12 +123,6 @@ export async function prepareInboxItem(
   const text = await toMarkdown()
   if (text === null) return { file, converted: false }
 
-  // Extracted text lands in the inbox FIRST, then the original moves to
-  // sources/ — in this order each failure is recoverable: a failed write
-  // leaves the original in the inbox for the next sweep, a failed rename
-  // leaves a re-preparable duplicate. The exclusive flag + suffix loop keeps
-  // a same-stem pending capture (report.md next to report.pdf) from being
-  // silently replaced.
   const stem = basename(file, extname(file))
   const body = `${text.trim()}\n\n> source: sources/${file}\n`
   let mdFile = `${stem}.md`

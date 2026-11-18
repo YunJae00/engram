@@ -81,7 +81,6 @@ describe('the gate on each step', () => {
   })
 })
 
-// A portal whose first link lands on a promotion; the way is through the notices.
 function portal(): WebCourier & { log: string[] } {
   const pages: Record<string, WebPage> = {
     home: { url: 'https://x.test/', title: 'Portal', text: 'Portal', controls: ['#1 [link] Security notice', '#2 [link] Notices'] },
@@ -103,7 +102,6 @@ function portal(): WebCourier & { log: string[] } {
 }
 
 it('goes another way from a page it came back to, where an ungated run goes round in a circle', async () => {
-  // A decision model that always prefers the first link it is offered.
   const decide = vi.fn(async (_state: string, _instructions: string, criteria: Record<string, string>) => {
     const pick = Object.keys(criteria).find(option => option.startsWith('press')) ?? 'done'
     return { choice: pick, confidence: 0.9, ms: 1, probabilities: { [pick]: 0.9, done: 0.05, blocked: 0.05 } }
@@ -118,7 +116,6 @@ it('goes another way from a page it came back to, where an ungated run goes roun
 })
 
 it.each(['safe', 'already-committed', 'replay-committed', 'refused'] as const)('replays a tab safely and stops on unsafe replay: %s', async mode => {
-  // One address; a tab switches the list in place.
   let view = 'all', where = 'app'
   const log: string[] = []
   const lists: Record<string, string[]> = { all: ['#1 [button] Mine', '#2 [link] Budget - Kim'], mine: ['#1 [button] All', '#2 [link] Budget - draft', '#3 [link] Budget (to approve)'] }
@@ -141,7 +138,6 @@ it.each(['safe', 'already-committed', 'replay-committed', 'refused'] as const)('
     typeText: async () => ({ ok: true }),
     choose: async () => ({ ok: true }),
   }
-  // Mine (sure), the draft (unsure), a dead end there; back on Mine's list it takes the other budget.
   const decide = vi.fn()
     .mockResolvedValueOnce({ choice: 'press #1', confidence: 0.9, ms: 1, probabilities: { 'press #1': 0.9, 'press #2': 0.1 } })
     .mockResolvedValueOnce({ choice: 'press #2', confidence: 0.55, ms: 1, probabilities: { 'press #2': 0.55, 'press #3': 0.45 } })

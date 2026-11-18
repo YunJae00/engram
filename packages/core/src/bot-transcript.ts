@@ -26,13 +26,11 @@ function parseTurns(raw: string): BotTurn[] {
       const parsed = JSON.parse(line) as BotTurn
       if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string') rows.push(parsed)
     } catch {
-      // one corrupt line must not cost the conversation
     }
   }
   return rows
 }
 
-// `before` counts valid turns from the newest end, so cursors survive appends and compaction.
 export async function readBotTranscriptPage(paths: VaultPaths, botId: unknown, before: unknown, limit?: unknown): Promise<BotTurn[]> {
   checkId(botId)
   const size = checkPage(before, limit)
@@ -74,13 +72,11 @@ function lastTurnIn(bytes: Buffer, whole: boolean): BotTurn | undefined {
       const parsed = JSON.parse(line) as BotTurn
       if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string' && !parsed.progress && !parsed.error) return parsed
     } catch {
-      // one corrupt line must not cost the preview
     }
   }
   return undefined
 }
 
-// Reads a growing tail of the live transcript until it holds the last non-progress turn; bytes read never exceed the file size.
 export async function readLastBotTurn(paths: VaultPaths, botId: string): Promise<BotTurn | undefined> {
   let handle
   try {

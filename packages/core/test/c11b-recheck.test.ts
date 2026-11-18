@@ -3,8 +3,6 @@ import type { AgentTool } from '../src/agent-loop.js'
 import { runToolSession } from '../src/agent-session.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
-// c11b (R3/H6): a list short of the count asked was cut by the host and led by a host-made count. Now the host only checks the shape and,
-// with time left, gives the model one more round with the gap said; the answer is the model's.
 const WORKDIR = 'C:/tmp' as EngineCwd
 const brain = (script: (job: ToolSessionJob) => Promise<ToolSessionResult>): Engine => ({ id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), runTools: script } as unknown as Engine)
 const search: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async args => `${String(args['query'])} results` }
@@ -25,10 +23,8 @@ it('c11b: a gap the host finds in the answer gets one more round with the draft 
   expect(prompts[1]).toContain('You had just written this answer')
   expect(prompts[1]).toContain('메모리 단가 반등')
   expect(prompts[1]).toContain('They asked for 3')
-  // One maxCall was used up by nobody, but the round gets its calls again: the search ran.
   expect(seen).toEqual(['반도체 수출 뉴스 다른 말로 results'])
   expect(result.answer).toContain('3. HBM 수출 최대')
-  // Checked once only: the second answer stands whatever it holds.
   expect(checked).toHaveLength(1)
 })
 
@@ -41,7 +37,6 @@ it('c11b: no gap, one round; a second round that writes nothing keeps the draft'
   expect([runs, empty.answer]).toEqual([2, '1. 하나 [a](https://a.example/1)'])
 })
 
-// c11b r2 (review #3): "Looking for the export figures first…" written before a call, with nothing after the call, was shown as the answer.
 it('c11b r2: words written only before a tool call are a note; the turn gets one round to say its answer, and the note is not shown', async () => {
   const prompts: string[] = []
   const engine = brain(async job => {
@@ -53,25 +48,20 @@ it('c11b r2: words written only before a tool call are a note; the turn gets one
   expect(prompts[1]).toContain('wrote no answer after it')
   expect(result.answer).toBe('이번 달 조선 수주는 3건이에요.')
   expect(result.answer).not.toContain('Let me')
-  // A turn that answered after its call gets no extra round.
   let runs = 0
   const plain = await runToolSession({ engine: brain(async () => { runs++; return { answer: '맑아요.', note: 'Checking.' } }), workdir: WORKDIR, tools: [search] }, '부산 날씨', { lookup: true })
   expect([runs, plain.answer]).toEqual([1, '맑아요.'])
-  // The round says nothing as well: the words said before a save ("…기억해 둘게요." then the save) stay, rather than a blank turn.
   runs = 0
   const kept = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: '수요일 회의 기억해 둘게요.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '수요일 회의 기억해', {})
   expect([runs, kept.answer]).toEqual([2, '수요일 회의 기억해 둘게요.'])
 })
 
-// c11b r3 (review #2): when the extra round wrote nothing too, an English note ("Searching the web for results") became the answer in a
-// Korean thread. A note stands in only when it is in the person's own language. Wordings are in no harness row.
 it('c11b r3: a note in a language the person did not write in is never the answer, even when both rounds say nothing', async () => {
   for (const note of ['Searching the web for results', '먼저 Bloomberg terminal feed 확인할게요.']) {
     let runs = 0
     const r = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '이번 주 해운 운임 기사 알려줘', { lookup: true })
     expect([runs, r.answer]).toEqual([2, ''])
   }
-  // Their own language, or a Latin word they wrote themselves, stays.
   let runs = 0
   const ok = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: 'Figma 링크 기억해 둘게요.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, 'Figma 링크 기억해', {})
   expect(ok.answer).toBe('Figma 링크 기억해 둘게요.')
@@ -80,8 +70,6 @@ it('c11b r3: a note in a language the person did not write in is never the answe
   expect(en.answer).toBe('Noted the dentist on Friday.')
 })
 
-// c11b r3 (review #3): the second round's answer was delivered unchecked, so a list still short of the count went out with no word of
-// what was missing. The delivered answer is checked by the same shortfall check and gets one plain line under it; the model's words stay.
 it('c11b r3: the delivered answer is checked after every round; a list still short gets one line under it saying how many met the ask', async () => {
   let runs = 0
   const shortfall = (answer: string) => (answer.match(/^\d+\./gm) ?? []).length < 4 ? `링크까지 확인된 건 4개 중 ${(answer.match(/^\d+\./gm) ?? []).length}개예요.` : undefined
@@ -89,18 +77,13 @@ it('c11b r3: the delivered answer is checked after every round; a list still sho
   const r = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '1. 오션 운임 반등 [a](https://a.example/1)' } : { answer: two })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, recheck: () => runs === 1 ? 'They asked for 4.' : undefined, shortfall })
   expect(runs).toBe(2)
   expect(r.answer).toBe(`${two}\n\n링크까지 확인된 건 4개 중 2개예요.`)
-  // The empty second round keeps the draft, and the draft is labeled too.
   runs = 0
   const kept = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '1. 하나 [a](https://a.example/1)' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, recheck: () => 'They asked for 4.', shortfall })
   expect(kept.answer).toBe('1. 하나 [a](https://a.example/1)\n\n링크까지 확인된 건 4개 중 1개예요.')
-  // A full list gets nothing added.
   const full = await runToolSession({ engine: brain(async () => ({ answer: '1. a\n2. b\n3. c\n4. d' })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, shortfall })
   expect(full.answer).toBe('1. a\n2. b\n3. c\n4. d')
 })
 
-// c12b r2 (review #1): the host's verdict on a draft may take seconds (a quick model judges the items); words said while it ran, or while
-// its extra round ran, were never taken, and the old-scope answer went out with the words left for a turn of their own (rule 3).
-// Wordings are in no harness row.
 it('c12b r2: words said while the draft is judged or while its extra round runs rewrite the one answer, and the rewrite is judged', async () => {
   const waiting: string[] = [], prompts: string[] = [], judged: string[] = []
   const engine = brain(async job => {
@@ -111,19 +94,16 @@ it('c12b r2: words said while the draft is judged or while its extra round runs 
     lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
     recheck: async answer => {
       judged.push(answer)
-      // The words land while the first verdict is still out.
       if (judged.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('아 전기차 말고 수소차로'); return 'They asked for 2.' }
       return 'They asked for 2.'
     },
   })
-  // The verdict on the 전기차 draft is dropped: the steered answer is judged, then gets its extra round.
   expect(judged).toEqual(['1. 전기차 보조금 개편 [a](https://a.example/1)', '1. 수소차 충전소 확대 [h](https://h.example/1)'])
   expect(prompts[1]).toContain('아 전기차 말고 수소차로')
   expect(prompts[2]).toContain('수소차 충전소 확대')
   expect(result.answer).not.toContain('전기차 보조금')
   expect(waiting).toEqual([])
 
-  // Words said during the extra round, after its last call, are taken too: one more rewrite, no turn of their own.
   const later: string[] = [], seen: string[] = []
   let runs = 0
   const r2 = await runToolSession({ engine: brain(async job => {
@@ -136,9 +116,6 @@ it('c12b r2: words said while the draft is judged or while its extra round runs 
   expect(r2.answer).toContain('3. 창원 항만')
 })
 
-// c12b r3 (review #1): after the session's last round the host still shaped the answer (writes from held rows, the item verdict, link
-// checks) before it went out; words said in that window were never taken and became a turn of their own after the old-scope answer.
-// The host's shaping now runs as the session's deliver step, inside the late-words drain. Wordings are in no harness row.
 it('c12b r3: words said while the host shapes the answer rewrite it, and only the rewrite, shaped again, is delivered', async () => {
   const waiting: string[] = [], prompts: string[] = [], shaped: string[] = []
   const engine = brain(async job => {
@@ -149,19 +126,16 @@ it('c12b r3: words said while the host shapes the answer rewrite it, and only th
     lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
     deliver: async answer => {
       shaped.push(answer)
-      // The words land while the link check on the 김포 answer is still out.
       if (shaped.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('김포 말고 일산으로 찾아줘') }
       return `${answer} (확인됨)`
     },
   })
   expect(shaped).toEqual(['1. 김포 맛집 [g](https://g.example/1)', '1. 일산 맛집 [i](https://i.example/1)'])
-  // The rewrite is asked with the raw draft, never the shaped one, and with the words said.
   expect(prompts[1]).toContain('김포 말고 일산으로 찾아줘')
   expect(prompts[1]).not.toContain('(확인됨)')
   expect(result.answer).toBe('1. 일산 맛집 [i](https://i.example/1) (확인됨)')
   expect(waiting).toEqual([])
 
-  // With no words said, deliver runs once, also on an empty answer (the host writes it from what it holds).
   const once: string[] = []
   const r2 = await runToolSession({ engine: brain(async () => ({ answer: '' })), workdir: WORKDIR, tools: [search] }, '파주 카페', {
     lookup: true, takeSteer: () => [], deliver: async answer => { once.push(answer); return '파주 카페는 [p](https://p.example/1)' },

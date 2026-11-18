@@ -2,15 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { isOfficeTool, officeStepSummary, officeTools, type OfficeOp } from '../src/office-tools.js'
 
 const CONTEXT = { task: 'work in Office' }
-// A usable look the model would pass; the tools build in the house look when it is absent.
 const THEME = { field: '1F3B5B', accent: 'C0603B', fonts: { title: 'Georgia', body: 'Segoe UI' } }
 function setup() {
   const calls: { op: OfficeOp; args: Record<string, unknown> }[] = []
   const run = vi.fn(async (op: OfficeOp, args: Record<string, unknown>) => { calls.push({ op, args }); return { echoed: op, revision: 'a'.repeat(32) } })
   const tools = officeTools({ run })
-  // A tool validates its arguments synchronously before it ever returns a
-  // promise; wrapping the call turns that early throw into a rejection the
-  // test can await, exactly as the agent loop's own try/catch would see it.
   const invoke = (name: string, args: unknown) => (async () => tools.find((one) => one.name === name)!.run((name === 'excel_read' || name === 'excel_write') ? { workbook: 'Book1', sheet: 'Sheet1', ...args as object } : args as Record<string, unknown>, CONTEXT))()
   const tool = (name: string) => ({ run: (args: unknown) => invoke(name, args) })
   return { calls, run, tools, tool }
@@ -114,7 +110,6 @@ describe('ppt_build audits before it touches PowerPoint', () => {
     expect(calls[0]!.args['saveAs']).toBe('C:\\d.pptx')
     expect((calls[0]!.args['theme'] as { colors: { field: string } }).colors.field).toBe('1F3B5B')
   })
-  // c8c D2: was "asks the person and never builds". With no theme, or one that does not resolve, the deck is built in the house look.
   it('builds in the house look, and says so in the receipt, when no usable theme is given', async () => {
     for (const theme of [undefined, { field: 'navy', accent: 'C0603B', fonts: { title: 'Georgia', body: 'Segoe UI' } }]) {
       const { tool, calls, run } = setup()
@@ -124,7 +119,6 @@ describe('ppt_build audits before it touches PowerPoint', () => {
       expect((JSON.parse(out) as { look: string }).look).toContain('house look')
       expect(out).not.toContain('Ask the person for')
     }
-    // A theme the model passes is used as before, with nothing said about the look.
     const { tool } = setup()
     expect(await tool('ppt_build').run({ theme: THEME, slides: [{ title: 'Plan', subtitle: 'Q4' }] })).not.toContain('house look')
   })
@@ -139,7 +133,6 @@ describe('word_write blocks', () => {
     await expect(tool('word_write').run({ theme: THEME, blocks: [{ kind: 'quote', text: 'x' }] })).rejects.toThrow()
     expect(run).toHaveBeenCalledOnce()
   })
-  // c8c D2: was "asks the person and never writes": the refusal made the model write the whole document twice (63.5 s).
   it('writes in the house look, and says so in the receipt, when no theme is given', async () => {
     const { tool, calls, run } = setup()
     const out = await tool('word_write').run({ blocks: [{ kind: 'heading', text: 'A' }] })

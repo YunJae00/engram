@@ -1,7 +1,6 @@
 import type { BotAvatar, BotPatch } from './bots.js'
 import { isCharacterId } from './bot-character.js'
 
-// Inclusive maxima; every part starts at 0.
 export const AVATAR_RANGES = { body: 5, face: 5, accessory: 8, palette: 7 } as const
 
 export const BOT_LABEL_CHARS = 40
@@ -30,12 +29,10 @@ export function isBotAvatar(value: unknown): value is BotAvatar {
 
 export function isStringList(value: unknown): value is string[] {
   if (!Array.isArray(value)) return false
-  // Index loop, not every(): every() skips holes in a sparse array.
   for (let i = 0; i < value.length; i++) if (!Object.hasOwn(value, i) || typeof value[i] !== 'string') return false
   return true
 }
 
-// Pure check of an already-copied patch; undefined means valid. An own undefined clears an optional field.
 export function botPatchError(copy: BotPatch): string | undefined {
   if (!isRecord(copy)) return 'a bot change must be an object'
   for (const key of Object.keys(copy)) if (!PATCH_KEYS.has(key)) return `${key} cannot be changed`

@@ -31,7 +31,6 @@ const note = (id: string, title: string, body: string): ErrandRetrievedNote => (
   created: '2026-07-01T00:00:00Z',
 })
 
-// A retrieve that returns the same pool for every query (the errand dedupes by id).
 const retrieverFrom =
   (pool: ErrandRetrievedNote[]) =>
   async (): Promise<ErrandRetrievedNote[]> =>
@@ -105,10 +104,8 @@ describe('runErrand — citation cleaning', () => {
     const result = await runErrand(paths, depsWith(engine, retrieverFrom(pool)), GOAL, { now: () => NOW })
 
     expect(result.ok).toBe(true)
-    // The invented id never reaches sources...
     expect(result.sources).toEqual(['n-a'])
     expect(result.sources).not.toContain('n-ghost')
-    // ...but the point whose only citation was invented still survives (body composed from it).
     expect(result.card!.proposed).toBe(composed)
   })
 })
@@ -127,10 +124,8 @@ describe('runErrand — empty vault', () => {
     expect(result.error).toContain('nothing')
     expect(result.card).toBeUndefined()
 
-    // The failed phase was persisted...
     const raw = JSON.parse(await readFile(join(paths.cache, 'errand-state.json'), 'utf8')) as ErrandState
     expect(raw.phase).toBe('failed')
-    // ...but loadErrandState returns null for a terminal (failed) run.
     expect(await loadErrandState(paths)).toBeNull()
   })
 })
@@ -158,7 +153,6 @@ describe('runErrand — unusable plan', () => {
 
 describe('runErrand — resume', () => {
   it('skips plan and distill when state carries their outputs', async () => {
-    // Prefill a state parked at 'compose': plan, gathered, and points already done.
     const resume: ErrandState = {
       goal: GOAL,
       startedAt: NOW.toISOString(),
@@ -188,7 +182,6 @@ describe('runErrand — resume', () => {
         return composed
       },
     })
-    // A retrieve that would blow up if the gather phase re-ran.
     const retrieve: ErrandDeps['retrieve'] = async () => {
       throw new Error('gather should not run on resume')
     }
@@ -222,8 +215,6 @@ describe('runErrand — thin compose', () => {
     expect(await listCards(paths, 'proposed')).toHaveLength(0)
   })
 })
-
-// ── Web extension ─────────────────────────────────────────────────────────
 
 import { pickFindings, stripNoteIds, type WebCourier, type WebFinding, type WebPage } from '../src/errand.js'
 
@@ -260,7 +251,6 @@ describe('pickFindings', () => {
 })
 
 describe('runErrand — web courier', () => {
-  // The plan says WHERE to look now — no engine sits between the two.
   const WEB_PLAN =
     '{"queries":["deploy policy","배포 정책"],"start_urls":["https://a.com/1","https://b.com/1"],"note_title":"조사 결과"}'
 

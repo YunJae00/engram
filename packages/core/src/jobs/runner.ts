@@ -5,23 +5,13 @@ import { AuthError, collectResult, engineCwd, OutageError, QuotaError, type Engi
 import type { VaultPaths } from '../vault.js'
 import type { JobKind } from './prompts.js'
 
-// Serial job queue: one job at a time, 5-minute timeout, one
-// retry, idempotent via an input-hash journal, human-readable logs under
-// _views/logs/. On quota exhaustion the remainder is deferred and the next
-// installed engine substitutes for the rest of this run.
 export interface JobSpec {
   kind: JobKind
   inputKey: string
   instruction: string
   prompt: string
-  // Librarian jobs are data-in→JSON-out and set this so the engine runs
-  // tool-free (see EngineJobInput.disallowTools). Threaded to engine.run below.
   disallowTools?: boolean
   jsonSchema?: unknown
-  // Per-job model tier. 'default' pins the smart model even when the run asks
-  // for 'fast' — judgment jobs (supersede/conflict/merge/brief) set this: a
-  // cheap model emitting a pointer instead of a real body breeds junk notes.
-  // Unset inherits the run-level hint (mechanical jobs).
   modelHint?: 'fast' | 'default'
   apply(resultText: string): Promise<string[]>
 }
@@ -38,14 +28,7 @@ export interface RunReport {
   failed: JobFailure[]
   deferred: number
   substitutedTo?: EngineId
-  // The CLI's own "when does the limit lift", when a quota message carried
-  // one — the desktop's shared backoff gate waits exactly instead of guessing.
   quotaRetryAfterMs?: number
-  // Why the run stopped early, when it did. Set only when there was no engine
-  // left to substitute, i.e. when the deferral is something the USER has to
-  // hear about: 'quota' resolves itself when the limit resets, 'auth' needs
-  // them to log in again. Nothing rendered this before, which is precisely how
-  // the librarian went quiet without ever saying why.
   haltReason?: 'quota' | 'auth' | 'outage'
 }
 
@@ -53,8 +36,6 @@ interface Journal {
   [hash: string]: { kind: JobKind; at: string }
 }
 
-// Growth caps: the journal keeps the newest completed-job hashes (old jobs
-// whose inputs changed re-run anyway), the log dir keeps the newest files.
 const JOURNAL_MAX = 2000
 const LOGS_MAX = 400
 
@@ -65,22 +46,12 @@ export function jobHash(job: Pick<JobSpec, 'kind' | 'inputKey' | 'instruction'>)
 export interface RunnerOptions {
   timeoutMs?: number
   now?: () => Date
-  // Fired right before a job executes — for surfacing sweep progress to the
-  // UI. `index` is the 1-based position of the job in the array passed to
-  // runAll; `total` is jobs.length. Journal-skipped jobs never fire the hook,
-  // so displayed indices can jump (that is honest). Pure: never changes runs.
   onJobStart?(job: string, index: number, total: number): void
   onJobDone?(job: string, index: number, total: number): void
   signal?: AbortSignal
-  // Cooperative stop, checked before each job (after its journal-skip check).
-  // When it returns true, the current job and every remaining job are counted
-  // as deferred and the loop stops — the caller can re-queue them.
   shouldStop?(): boolean
   concurrency?: number
-  // Threaded to every engine call of this run (librarian jobs → fast tier).
   modelHint?: 'fast'
-  // Breather between the failed attempt and its one retry — a buffer while
-  // the previous child's tree kill completes. Tests pass 0.
   retryDelayMs?: number
 }
 
@@ -125,8 +96,6 @@ export class JobRunner {
 
   private async saveJournal(journal: Journal): Promise<void> {
     await mkdir(this.paths.cache, { recursive: true })
-    // The journal gains one entry per unique job forever — prune to the
-    // newest entries so months of sweeps don't inflate every load/save.
     const entries = Object.entries(journal)
     if (entries.length > JOURNAL_MAX) {
       entries.sort((a, b) => (a[1].at < b[1].at ? 1 : -1))
@@ -135,9 +104,6 @@ export class JobRunner {
     await writeFile(this.journalPath(), JSON.stringify(journal, null, 2))
   }
 
-  // One markdown log lands per executed job and nothing ever pruned them —
-  // thousands of files slow every dir scan and git add -A. Ring-buffer cap
-  // (timestamped names sort chronologically).
   private async pruneLogs(): Promise<void> {
     try {
       const dir = join(this.paths.views, 'logs')
@@ -146,7 +112,6 @@ export class JobRunner {
         await rm(join(dir, file), { force: true })
       }
     } catch {
-      /* no logs dir yet */
     }
   }
 
@@ -178,35 +143,21 @@ export class JobRunner {
       timeoutMs: this.timeoutMs,
       idleTimeoutMs: 120_000,
       signal: this.signal,
-      // Judgment jobs ('default') pin the SMART tier (e.g. sonnet), never
-      // the subscription's default model — that stays reserved for chat.
-      // Mechanical jobs inherit the run hint (fast tier).
       modelHint: job.modelHint === 'default' ? 'smart' : (job.modelHint ?? this.modelHint),
     })
   }
 
-  // Bounded worker pool. At concurrency 1 this IS the serial queue
-  // (identical dispatch/defer/substitution behaviour); above 1 the workers pull
-  // jobs off a shared cursor, so independent jobs overlap their model round
-  // trips. Shared mutable state (engineIdx/halted/journal/report) is safe:
-  // JS is single-threaded, mutations happen between awaits.
   async runAll(jobs: JobSpec[]): Promise<RunReport> {
     const report: RunReport = { executed: 0, skipped: 0, failed: [], deferred: 0 }
     const journal = await this.loadJournal()
-    // Substitution pointer + halt flag are shared across workers: one quota
-    // exhaustion moves every subsequent call to the next engine, and running
-    // out of engines defers everything not yet dispatched.
     let engineIdx = 0
     let halted = false
     let next = 0
 
     const runOne = async (job: JobSpec, index: number): Promise<void> => {
       const hash = jobHash(job)
-      // Skipped/deferred jobs never execute, so the hook only fires for jobs
-      // that actually run — one call per executing job, in dispatch order.
       this.onJobStart?.(job.kind, index + 1, jobs.length)
       let done = false
-      // one retry on ordinary failure
       for (let attempt = 0; attempt <= 1 && !done; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, this.retryDelayMs))
         if (this.signal?.aborted) { report.deferred++; return }
@@ -226,22 +177,10 @@ export class JobRunner {
           this.onJobDone?.(job.kind, index + 1, jobs.length)
         } catch (err) {
           if (this.signal?.aborted) { report.deferred++; return }
-          // Quota and auth share one shape: retrying the SAME engine cannot
-          // help (a limit is not lifted in 0ms, an expired login does not
-          // refresh itself), so both substitute or halt instead of burning the
-          // retry. Auth was previously an ordinary failure — it retried once,
-          // landed in report.failed, and nothing rendered report.failed, so a
-          // dead token meant 2N doomed spawns and total silence.
-          // A provider failing on its side fails every job alike until it
-          // recovers, so it stops the run the same way.
           if (err instanceof QuotaError || err instanceof AuthError || err instanceof OutageError) {
             const reason = err instanceof QuotaError ? 'quota' : err instanceof AuthError ? 'auth' : 'outage'
             const note = reason === 'quota' ? 'usage limit reached' : reason === 'auth' ? 'login expired' : 'provider not answering'
             if (err instanceof QuotaError && err.retryAfterMs !== undefined) report.quotaRetryAfterMs = err.retryAfterMs
-            // Fixed substitution order: move to the next engine and retry this
-            // job there; with no engine left, halt so the rest defers. The
-            // identity guard advances the pointer ONCE even when several
-            // concurrent jobs hit the same exhausted engine together.
             if (this.engines[engineIdx] === engine) {
               engineIdx++
               if (engineIdx < this.engines.length) {
@@ -254,7 +193,7 @@ export class JobRunner {
               }
             }
             if (engineIdx < this.engines.length) {
-              attempt-- // an engine switch does not consume the retry
+              attempt--
               continue
             }
             report.deferred++
@@ -278,9 +217,6 @@ export class JobRunner {
           this.onJobDone?.(job.kind, i + 1, jobs.length)
           continue
         }
-        // Cooperative stop / engine exhaustion (checked after the journal
-        // skip): this job and everything still undispatched count as deferred;
-        // in-flight jobs on other workers finish and are journaled normally.
         if (halted || this.signal?.aborted || this.shouldStop?.()) {
           report.deferred++
           continue

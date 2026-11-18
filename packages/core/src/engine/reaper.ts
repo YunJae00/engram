@@ -9,8 +9,6 @@ export interface LedgerEntry {
   cmd: string
 }
 
-// win32 process creation time drifts from Date.now() stamped in the parent —
-// AV scans and disk pressure delay the child's real start.
 const CREATED_AT_TOLERANCE_MS = 10_000
 const PROBE_TIMEOUT_MS = 5_000
 const execFileAsync = promisify(execFile)
@@ -24,9 +22,6 @@ async function readLedger(file: string): Promise<LedgerEntry[]> {
   }
 }
 
-// Atomic + no-op-skipping writer, serialized through a chain so a burst of
-// spawns cannot interleave temp files (OneDrive-hosted userData throws EPERM
-// on concurrent renames).
 function ledgerWriter(file: string) {
   let last = ''
   let chain: Promise<void> = Promise.resolve()
@@ -39,22 +34,17 @@ function ledgerWriter(file: string) {
         await writeFile(`${file}.tmp`, body)
         await rename(`${file}.tmp`, file)
       } catch {
-        /* best-effort — a missed write means one extra probe next boot */
       }
     })
   }
 }
 
-// The observer the desktop injects at boot: mirrors the live registry into
-// the ledger file. Loads what a crashed run left behind ONLY to preserve it —
-// this process's entries are appended beside stale ones until the janitor
-// adjudicates them.
 export function createPidLedger(file: string): SpawnObserver {
   const mine = new Map<number, LedgerEntry>()
   let stale: LedgerEntry[] | null = null
   const write = ledgerWriter(file)
   const persist = (): void => {
-    if (stale === null) return // not loaded yet — the load below persists
+    if (stale === null) return
     write([...stale, ...mine.values()])
   }
   void readLedger(file).then((prior) => {
@@ -73,14 +63,10 @@ export function createPidLedger(file: string): SpawnObserver {
 }
 
 export interface ProcessProbe {
-  // null = no process with that PID (already dead)
   inspect(pid: number): Promise<{ createdAt: number; commandLine: string | null } | null>
   kill(pid: number): void | Promise<void>
 }
 
-// An engine invocation, recognizably: the program or our fixed flags. The
-// check only ever RESTRAINS a kill — an unreadable command line falls back to
-// the pid+time double check alone.
 function looksLikeEngine(commandLine: string): boolean {
   return /claude|--output-format|--version|auth\s+status/i.test(commandLine)
 }
@@ -122,7 +108,6 @@ function defaultProbe(): ProcessProbe {
       } catch {
         return null
       }
-      // POSIX: creation time via ps; a parse failure throws (= leave alone).
       const out = await execFileAsync('ps', ['-o', 'lstart=,command=', '-p', String(pid)], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS })
       const text = out.stdout.trim()
       if (!text) return null
@@ -138,14 +123,11 @@ function defaultProbe(): ProcessProbe {
       try {
         process.kill(pid, 'SIGKILL')
       } catch {
-        /* already gone */
       }
     },
   }
 }
 
-// Boot janitor: adjudicate every ledgered PID. Best-effort and bounded —
-// never allowed to slow or block a boot (callers fire-and-forget).
 export async function sweepStaleEnginePids(
   file: string,
   probe: ProcessProbe = defaultProbe(),
@@ -160,12 +142,11 @@ export async function sweepStaleEnginePids(
     try {
       alive = await probe.inspect(entry.pid)
     } catch {
-      // Could not find out — keep the entry for the next boot, touch nothing.
       keep.push(entry)
       continue
     }
     if (alive === null) {
-      released.push(entry.pid) // already dead — just bookkeeping
+      released.push(entry.pid)
       continue
     }
     const sameBirth = Math.abs(alive.createdAt - entry.startedAt) <= CREATED_AT_TOLERANCE_MS
@@ -174,7 +155,6 @@ export async function sweepStaleEnginePids(
       try { await probe.kill(entry.pid); killed.push(entry.pid) }
       catch { keep.push(entry) }
     } else {
-      // PID reused by someone else's process — release, NEVER kill.
       released.push(entry.pid)
     }
   }

@@ -7,8 +7,6 @@ import { noteTitle } from '../schema.js'
 import { generateSampleVault } from '../sample-vault.js'
 import { undeterminedNotes } from '../chronology.js'
 
-// `pnpm --filter core demo:vault` — regenerates fixtures/sample-vault and
-// prints chain/badge state as a table (M1 acceptance).
 const root = resolve(process.argv[2] ?? '../../fixtures/sample-vault')
 
 await rm(root, { recursive: true, force: true })

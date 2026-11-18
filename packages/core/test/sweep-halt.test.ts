@@ -27,11 +27,6 @@ beforeEach(async () => {
   await createNote(paths, { id: 'n-beta-0001', body: '# Beta\n\nAnother thought.' })
 })
 
-// Stamping last_sweep CONSUMES the delta — the next sweep diffs against it. A
-// run that could not do its work must therefore not stamp, or the notes that
-// were in flight fall out of every future delta permanently. This is the one
-// failure that outlives its own cause, which is why it reads as "it just
-// stopped working" long after the token was fixed.
 describe('a sweep that could not work does not consume the delta', () => {
   it('leaves last_sweep unset when the login is dead, and reports the reason', async () => {
     const report = await sweep(paths, [engineOf(deadLogin)])
@@ -53,10 +48,6 @@ describe('a sweep that could not work does not consume the delta', () => {
   })
 })
 
-// takeAbsorbBatch removes the batch from `pending` and persists immediately.
-// Only a quota deferral used to put it back, so an auth/network/timeout
-// failure dropped its 20 notes on the floor — the drain loop then ate the
-// whole import queue at full speed while every job failed.
 describe('the absorb batch survives a failed sweep', () => {
   it('puts the batch back when the engine is logged out', async () => {
     await saveAbsorbState(paths, { pending: ['n-alpha-0001', 'n-beta-0001'], total: 2 })

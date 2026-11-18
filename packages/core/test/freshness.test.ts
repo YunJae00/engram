@@ -33,7 +33,6 @@ describe('freshness calculator (decay × verified_until)', () => {
   })
 
   it('imminent expiry (≤20% of window) is aging', () => {
-    // fast = 30d window; 5 days remaining ≤ 6d threshold.
     const note = makeNote({ decay: 'fast', verified_until: '2026-07-06T00:00:00Z' })
     expect(freshnessOf(note, NOW)).toBe('aging')
   })

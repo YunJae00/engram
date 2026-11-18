@@ -14,12 +14,6 @@ import {
   type RoutineStep,
 } from './routine-model.js'
 
-// A procedure is knowledge: "this is how we file the weekly report" belongs
-// in the vault beside "this is what we decided" — searchable, synced by git,
-// editable by hand. So a routine is a NOTE of type 'routine': the replayable
-// steps ride in frontmatter, the body stays a human description. The old
-// cache file (.engram/routines.json) migrates in on first read.
-
 const LEGACY_FILE = 'routines.json'
 const MIGRATED_FILE = 'routines-migrated.json'
 
@@ -48,8 +42,6 @@ function routineBody(name: string, steps: RoutineStep[], task?: Routine['task'])
 }
 
 function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, run?: Routine, task?: Routine['task']): Note {
-  // Evergreen and off the timeline: a procedure does not go stale by itself
-  // and is not an event. parse() fills the remaining defaults.
   const front = frontmatterSchema.parse({
     id,
     type: 'routine',
@@ -71,8 +63,6 @@ function buildNote(id: string, name: string, steps: RoutineStep[], now: Date, ru
   return { front, body: routineBody(name, steps, task) }
 }
 
-// The old cache file becomes notes on first contact, then steps aside under
-// another name so this runs once. Nothing a person saved is thrown away.
 async function migrateLegacy(paths: VaultPaths, now: Date): Promise<void> {
   const legacyPath = join(paths.cache, LEGACY_FILE)
   let raw: string
@@ -90,14 +80,11 @@ async function migrateLegacy(paths: VaultPaths, now: Date): Promise<void> {
       await writeNote(paths, buildNote(legacy.id, legacy.name, legacy.steps, now, legacy))
     }
   } catch {
-    // an unreadable legacy file must not block the notes that already exist
   }
   await rename(legacyPath, join(paths.cache, MIGRATED_FILE)).catch(() => undefined)
 }
 
 const listings = new Map<string, Promise<Routine[]>>()
-// Share concurrent scans, but never retain a completed result: another
-// process or a manual note edit can change the library between calls.
 
 export function listRoutines(paths: VaultPaths, now: Date = new Date()): Promise<Routine[]> {
   const pending = listings.get(paths.cache)
@@ -121,7 +108,6 @@ async function readRoutines(paths: VaultPaths, now: Date): Promise<Routine[]> {
     const context = (await readBotTranscript(paths, bot.id)).map(turn => turn.text)
     for (const task of tasks) {
       const id = `rt-task-${bot.id}-${task.id}`
-      // A stable id makes migration repeatable; archived tasks stay archived.
       const created = new Date(bot.createdAt)
       const note = buildNote(id, task.name, [], Number.isFinite(created.getTime()) ? created : now, undefined, routineTask(task.goal, [], context))
       await writeNote(paths, note)
@@ -184,7 +170,6 @@ export async function renameRoutine(paths: VaultPaths, id: string, nextName: str
   listings.delete(paths.cache)
 }
 
-// Archive, not delete: the note keeps its history and leaves the list.
 export async function removeRoutine(paths: VaultPaths, id: string, now: Date = new Date()): Promise<void> {
   try {
     const note = await readNote(paths, id)
@@ -193,7 +178,6 @@ export async function removeRoutine(paths: VaultPaths, id: string, now: Date = n
     await writeNote(paths, note)
     listings.delete(paths.cache)
   } catch {
-    /* already gone */
   }
 }
 
@@ -206,8 +190,6 @@ async function patchRun(paths: VaultPaths, id: string, patch: (meta: NonNullable
   }
   if (!note.front.routine) return
   patch(note.front.routine)
-  // Deliberately does NOT touch `updated`: a run is not an edit, and stamping
-  // it would drag the note through the librarian's delta on every replay.
   await writeNote(paths, note)
   listings.delete(paths.cache)
 }
@@ -223,8 +205,6 @@ export async function markRoutineRun(
     meta.lastRunAt = now.toISOString()
     meta.lastOutcome = outcome
     if (posted) meta.posts = true
-    // A clean finish is what clears the in-flight submit marker. A failure or
-    // an abort deliberately leaves it standing: that is the whole signal.
     if (outcome === 'done') {
       meta.posts ??= false
       meta.lastSuccessAt = meta.lastRunAt
@@ -233,8 +213,6 @@ export async function markRoutineRun(
   })
 }
 
-// A run that stopped BEFORE the click — the person said "not yet" — leaves no
-// doubt about whether anything was posted, so it must leave no warning either.
 export async function clearRoutinePendingWrite(paths: VaultPaths, id: string): Promise<void> {
   await patchRun(paths, id, (meta) => {
     delete meta.pendingWrite

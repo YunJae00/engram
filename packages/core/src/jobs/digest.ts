@@ -20,9 +20,6 @@ function summary(n: Note) {
   return { id: n.front.id, title: noteTitle(n), type: n.front.type, excerpt: n.body.slice(0, 160) }
 }
 
-// The digest's evidence, assembled deterministically (zero token cost):
-// the week's touched notes, the cooling ones, the never-linked orphans and the
-// topic hubs that exist so far. Empty `recent` = an idle week = no digest.
 export function digestInput(notes: Note[], now: Date) {
   const current = notes.filter((n) => n.front.status === 'current')
   const weekAgo = now.getTime() - WEEK_MS
@@ -79,7 +76,7 @@ export function buildJ10(paths: VaultPaths, agentsMd: string, input: ReturnType<
   return {
     kind: 'J10',
     disallowTools: true,
-    modelHint: 'default', // user-facing synthesis prose — smart model
+    modelHint: 'default',
     inputKey: `${date}:${digestHash(JSON.stringify(input))}`,
     ...withPrompt(agentsMd, 'J10', J10_INSTRUCTION, input),
     async apply(result) {

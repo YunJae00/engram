@@ -19,7 +19,7 @@ async function oldRead(id: string, limit = 400) {
   const rows = []
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue
-    try { const parsed = JSON.parse(line); if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string') rows.push(parsed) } catch { /* Match the previous reader's corrupt-line handling. */ }
+    try { const parsed = JSON.parse(line); if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string') rows.push(parsed) } catch { }
   }
   return rows.slice(-limit)
 }

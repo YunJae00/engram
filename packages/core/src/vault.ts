@@ -6,11 +6,6 @@ import type { BinaryProvider } from './binary.js'
 import { defaultBinaryProvider } from './binary.js'
 import { GitLayer } from './git.js'
 
-// Physical layout per and §10:
-//   EngramRoot/
-//     workspace/   ← the ONLY cwd ever handed to engines; git repo root
-//       AGENTS.md  notes/  inbox/  sources/  _views/  .engram/(cache)
-//     private/     ← engines never receive this path
 export interface VaultPaths {
   root: string
   workspace: string
@@ -37,7 +32,6 @@ export function vaultPaths(root: string): VaultPaths {
 }
 
 export interface InitVaultOptions {
-  // Fixture vaults skip git so they can live inside another repo.
   git?: boolean
   provider?: BinaryProvider
 }
@@ -51,7 +45,6 @@ export async function initVault(root: string, options: InitVaultOptions = {}): P
       await rename(legacyCache, paths.cache)
     })
   } catch {
-    /* no legacy cache */
   }
   for (const dir of [paths.notes, paths.inbox, paths.sources, paths.views, paths.cache, paths.privateDir]) {
     await mkdir(dir, { recursive: true })
@@ -76,13 +69,10 @@ export async function initVault(root: string, options: InitVaultOptions = {}): P
     }
     if (changed) await writeFile(gitignorePath, ignore)
   } catch {
-    /* just written above */
   }
   if (options.git !== false) {
     const git = new GitLayer(paths.workspace, options.provider ?? defaultBinaryProvider)
     if (!(await isVaultRepo(paths))) await git.init()
-    // Existing vaults committed AGENTS.md before it was app-managed — retire it
-    // from tracking (keeps the local file) so no backup ever carries it.
     await git.untrack('AGENTS.md').catch(() => undefined)
   }
   return paths

@@ -12,7 +12,6 @@ beforeAll(async () => {
   paths = await initVault(await tmpVaultRoot('unlink'), { git: false })
 })
 
-// Build a note deriving from the given ids, with a reason per link.
 async function noteWithLinks(ids: string[]): Promise<string> {
   const note = await createNote(paths, { body: '# 링크 보유', derived_from: ids }, NOW)
   note.front.link_reasons = Object.fromEntries(ids.map((id) => [id, `reason for ${id}`]))

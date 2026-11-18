@@ -5,12 +5,6 @@ import { officeEditTools } from './office-edit-tools.js'
 import { HOUSE_THEME, resolveTheme, THEME_NEEDED } from './office-theme.js'
 import { NOTHING_BUILT } from './office-verification.js'
 
-// Office through its own doors. Excel, Word, PowerPoint and Outlook each
-// expose what their menus do as commands; these tools speak to that, so the
-// app on the person's screen changes in place while their mouse stays their
-// own. Nothing here sends mail or overwrites a file the person did not name:
-// a draft opens for them to send, and a save needs a path or an explicit yes.
-
 export type OfficeOp = 'probe' | 'excel.workbooks' | 'excel.read' | 'excel.write' | 'outlook.mail' | 'outlook.read' | 'outlook.draft' | 'outlook.calendar' | 'word.write' | 'ppt.build' | 'ppt.read' | 'ppt.edit' | 'word.read' | 'word.edit'
 
 export interface OfficeCourier {
@@ -44,11 +38,6 @@ function bounded(value: unknown, fallback: number, max: number): number {
 function only(args: Record<string, unknown>, keys: string[], tool: string): void {
   for (const key of Object.keys(args)) if (!keys.includes(key)) throw new Error(`${tool} does not take "${key}".`)
 }
-// c15c (cause D, D3: the first ppt_build of every deck run was refused in 3-6 ms, and each rebuild cost the model 20-25 s of writing): an
-// input that can be read only one way is taken as meant, never refused: an empty optional text is absent, one bullet given as text is a list
-// of one, numbers stand as their text, a grid given without {rows} or with short rows is padded square, and a chart number given as text is
-// that number. c15c r2: a blank written in brackets ("[금액 입력]") is an unfilled slot, not a near miss: it stays as written so the deck audit
-// refuses it and names it, and the model fills it in.
 const asText = (value: unknown): unknown => typeof value === 'number' ? String(value) : value
 const present = (value: unknown): boolean => value !== undefined && value !== null && !(typeof value === 'string' && !value.trim())
 export function nearMissSlide(given: unknown): unknown {
@@ -73,25 +62,16 @@ function text(value: unknown): string {
   return JSON.stringify(value)
 }
 
-// A document renders in the look the model passes here - two brand colours and
-// the fonts. When the model gives no theme, or one that is not usable, the tool
-// builds in the house look (office-theme.ts) and says so in its result: the
-// person is never asked for a brand before a document they asked for (c8c D2).
 const THEME_SCHEMA = { type: 'object', additionalProperties: false, required: ['field', 'accent', 'fonts'], properties: { field: { type: 'string' }, accent: { type: 'string' }, ink: { type: 'string' }, paper: { type: 'string' }, chart: { type: 'array', maxItems: 12, items: { type: 'string' } }, fonts: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } } } as const
 const THEME_NOTE = 'theme carries the look: {field:"1F3B5B", accent:"C0603B", fonts:{title:"Georgia", body:"Segoe UI"}} - a main colour, an accent, and heading/body fonts; add chart:["hex", ...] only for a chart with many series. theme is optional: without a usable one the file is built in a calm house look, so never ask the person for a brand or a look before making the document. Write Korean text as the characters themselves, never as \\u escapes.'
-// The model's theme, or the house look; and the tool's result with one sentence added when the house look was used.
 const themeOrHouse = (value: unknown): { theme: typeof HOUSE_THEME; house: boolean } => { const theme = resolveTheme(value); return theme ? { theme, house: false } : { theme: HOUSE_THEME, house: true } }
 function withLook(result: string, house: boolean): string {
   return house ? withNote(result, 'look', THEME_NEEDED) : result
 }
-// A receipt stays the JSON its readers parse; anything else gets the sentence after it.
 function withNote(result: string, key: string, note: string): string {
-  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, [key]: note }) } catch { /* Not a receipt: the sentence follows it. */ }
+  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, [key]: note }) } catch { }
   return `${result}\n${note}`
 }
-// c18b (D3 stack17: a deck built clean after one refusal was read back with file_read_package after 29 s of model writing, then edited):
-// a built file's result says what the host checked before it was built, as a closed verdict, so nothing is left for the model to verify.
-// Every office build (deck, document) states its own checks; a refusal is never this line.
 export const deckChecked = (slides: readonly DeckSlide[]): string => `Checked before it was built and passed: ${slides.length} slides (${slides.map((slide, at) => `${at + 1}. ${slide.title}`).join(' / ')}), no unfilled slot, no text past a slide's edge, no repeated title, no line about the deck itself. Nothing is left to check: do not read it back or change it; answer now.`
 const docChecked = (blocks: readonly unknown[]): string => `Built as given: ${blocks.length} blocks, each checked for its kind and length before it was built. Nothing is left to check: do not read it back or change it; answer now.`
 
@@ -318,7 +298,6 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         },
       },
       run: async (args, context) => {
-        // c15c: a refusal here is before any file exists, and says so (office-verification.ts NOTHING_BUILT): it is not a write left unread.
         let sent = false
         try { return await buildDeck(args, context, () => { sent = true }) } catch (error) {
           if (sent || context.signal?.aborted || !(error instanceof Error) || error.message.startsWith(NOTHING_BUILT)) throw error
@@ -329,7 +308,6 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     ...officeEditTools(courier),
   ]
 
-  // Reads and checks the input, then hands it to the courier (sending: from then on a failure may come after a file was written).
   async function buildDeck(args: unknown, context: AgentToolContext, sending: () => void): Promise<string> {
         if (!plain(args)) throw new Error('ppt_build takes an object.')
         only(args, ['slides', 'saveAs', 'theme'], 'ppt_build')
@@ -361,8 +339,6 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
           return out
         })
         const findings = auditDeck(clean)
-        // A deck that would not read clean is not built: the fix is words, and
-        // the words are the model's to change before PowerPoint is touched.
         if (findings.length > 0) return describeDeckFindings(findings)
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs')
         sending()

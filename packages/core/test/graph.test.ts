@@ -13,7 +13,6 @@ function adjOf(edges: [string, string][]): Adjacency {
 }
 
 const chain = (ids: string[]): [string, string][] => ids.slice(1).map((id, i) => [ids[i]!, id])
-// A clique — the shape of a real topic, where members cite each other.
 const clique = (ids: string[]): [string, string][] =>
   ids.flatMap((a, i) => ids.slice(i + 1).map((b): [string, string] => [a, b]))
 
@@ -26,21 +25,15 @@ describe('topicComponents — link communities', () => {
     ]
     const comps = topicComponents(adjOf(edges))
     expect(comps).toHaveLength(2)
-    // r lands with A, where most of its links live.
     const withR = comps.find((c) => c.includes('r'))!
     expect(withR.filter((id) => id.startsWith('a'))).toHaveLength(4)
     expect(comps.find((c) => !c.includes('r'))!.sort()).toEqual(['b1', 'b2', 'b3', 'b4'])
   })
 
-  // A young vault is mostly short lineages, which have no dense core —
-  // modularity alone would hand back two topics of two.
   it('keeps a short lineage chain as ONE topic', () => {
     expect(topicComponents(adjOf(chain(['c1', 'c2', 'c3', 'c4'])))).toEqual([['c1', 'c2', 'c3', 'c4']])
   })
 
-  // The failure that motivated the rewrite: with FIVE dump notes bridging two
-  // projects, no single removal disconnects anything, so the old
-  // articulation-point cut left all 13 notes welded in one topic.
   it('separates topics joined by MANY parallel bridges', () => {
     const edges: [string, string][] = [
       ...clique(['a1', 'a2', 'a3', 'a4']),
@@ -49,7 +42,6 @@ describe('topicComponents — link communities', () => {
     ]
     const comps = topicComponents(adjOf(edges))
     expect(comps.length).toBeGreaterThanOrEqual(2)
-    // The two projects never share a topic.
     const topicOf = new Map(comps.flatMap((c, i) => c.map((id) => [id, i] as const)))
     expect(topicOf.get('a2')).not.toBe(topicOf.get('b2'))
     expect(topicOf.get('a2')).toBe(topicOf.get('a3'))
@@ -57,7 +49,6 @@ describe('topicComponents — link communities', () => {
   })
 
   it('never splits a genuinely central note away from its own topic', () => {
-    // A star: k is the hub of ONE topic, not a bridge between two.
     const edges: [string, string][] = [
       ['k', 'n1'], ['k', 'n2'], ['k', 'n3'], ['k', 'n4'], ['k', 'n5'], ['k', 'n6'], ['k', 'n7'],
     ]

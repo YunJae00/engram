@@ -2,7 +2,6 @@ import { expect, it } from 'vitest'
 import { pageEachTool } from '../src/page-each.js'
 import type { WebCourier } from '../src/errand.js'
 
-// A record site where each project is chosen from a menu and searched.
 function site(log: string[]): WebCourier {
   let shown = 'pick a project'
   const hours: Record<string, string> = { 'P-01': 'Kim 6.0h, Lee 2.0h', 'P-02': 'Park 3.0h' }

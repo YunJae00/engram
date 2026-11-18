@@ -51,7 +51,6 @@ export function exportTemplate(bot: Bot): BotTemplate {
     name: mask(bot.name),
     purpose: mask(bot.purpose),
   }
-  // Masking can lengthen a label past the limit, and the export must import again.
   if (typeof bot.label === 'string') out.label = clip(mask(bot.label), BOT_LABEL_CHARS)
   const a = bot.avatar
   if (a && 'body' in a) out.avatar = { body: a.body, face: a.face, accessory: a.accessory, palette: a.palette }
@@ -59,7 +58,6 @@ export function exportTemplate(bot: Bot): BotTemplate {
   return out
 }
 
-// createBot's id is time plus 16 random bits; imports pick a creation time no stored id starts with.
 let importQueue: Promise<unknown> = Promise.resolve()
 let lastImportAt = 0
 
@@ -84,7 +82,6 @@ function validPatch(template: unknown): { name: string; purpose: string; patch: 
   const patch: BotPatch = { templateId: id }
   if (label !== undefined) patch.label = label as string
   if (avatar !== undefined) {
-    // Still checked so old templates fail the same way, but never applied: the new bot keeps its assigned face.
     if (!isBotAvatar(avatar) || !('body' in avatar)) throw new Error('a template avatar must be a character, not a photo')
   }
   if (skills !== undefined) {

@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { dueNow, guessSchedule, isSchedule } from '../src/schedule.js'
 
-// Local-time dates: the person's mornings are on the local clock.
 const at = (y: number, m: number, d: number, h: number, min = 0): Date => new Date(y, m - 1, d, h, min)
 
 describe('guessSchedule', () => {
   it('weekday mornings become weekdays at 9', () => {
-    // 2026-08-24 is a Monday.
     expect(guessSchedule([at(2026, 8, 24, 8, 50), at(2026, 8, 26, 9, 5), at(2026, 8, 27, 9, 20)])).toEqual({ days: [1, 2, 3, 4, 5], hour: 9, minute: 0 })
   })
   it('a single weekday stays that weekday, and a weekend lists the days seen', () => {

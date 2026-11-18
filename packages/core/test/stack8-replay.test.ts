@@ -2,14 +2,10 @@ import { expect, test, vi } from 'vitest'
 import { mergedReport, reportData, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 
-// stack-8 section 3: the stored results of stack7-b3ddda26 (tasks.json), fed through the host's merge. Each teammate came back with their
-// own sentence and a link, and the thread read three "… 쪽은 이번엔 못 찾았어요." lines under "셋 다 찾아봤어요." (C3).
 const member = (id: string, role: string, brief: string, result: string, topic?: string): TeamMember =>
   ({ id, parentId: null, depth: 1, role, brief, ...(topic ? { topic } : {}), lookup: true, state: 'released', sessionKey: `s-${id}`, hiredAt: '2026-11-17T04:21:10.414Z', result, review: { ok: true, note: 'auto' } }) as TeamMember
-// c11a: what each teammate handed back, as their fenced report block, read once (reportData) the way settleMember stores it.
 const withData = (m: TeamMember, report: object): TeamMember => ({ ...m, data: reportData('```report\n' + JSON.stringify(report) + '\n```', m)! })
 const latest = (text: string, url: string, date?: string): object => ({ nothing_in_period: { latest: { text, url, ...(date ? { date } : {}) } } })
-// Each part's block: its head names the teammate.
 const blocks = (out: string): string[] => out.split('\n\n')
 
 test('C3: a teammate who found nothing new this week keeps their own sentence and link, and the lead says nothing is new (c11a: structure)', () => {
@@ -19,7 +15,6 @@ test('C3: a teammate who found nothing new this week keeps their own sentence an
     withData(member('m3', '도윤', '이번 주 리니어 신기능 조사해서 알려줘', '', '리니어'), latest('리니어 대안/경쟁사 비교 글', 'https://clickup.com/ko/blog/67806/linear-alternatives')),
   ])
   expect(out).not.toMatch(/찾아봤어요|못 찾았어요|출처/)
-  // c15b (cause F): one block; the nothing-new all three share is said once, then each part's row names its teammate, its latest and link.
   expect(blocks(out)).toHaveLength(1)
   const [head, ...parts] = out.split('\n')
   expect(head).toMatch(/새로 나온 게 없/)
@@ -45,9 +40,7 @@ test('R2: price and date lines keep no empty "(출처: )", no "… — 출처" t
       { text: '출시일: 2026년 8월 20일 정식 출시', url: 'https://yellow.com/ko/news/pixel-11' }] }),
   ])
   expect(out).not.toMatch(/\(출처[:：]?\s*(출처\s*)?\)|— 출처|보고드려요|[一-鿿぀-ヿ]/u)
-  // No link is named 출처, even where the teammate gave that word as the site.
   expect(out).not.toMatch(/\[출처\]/)
-  // c12a B1: these members have no part name, so each is led by its teammate in a sentence, not "(name)".
   for (const name of ['아이폰18', '갤럭시S27', '픽셀11']) expect(out).toContain(name)
   expect(out).not.toMatch(/(?<!\]\()https?:\/\//)
   const hosts = [...out.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(found => new URL(found[1]!).host.replace(/^(?:www|blog|smartstore)\./, ''))
@@ -62,7 +55,6 @@ test('C3 (c8b run): when every teammate says first that nothing new was found, t
   ]
   const write = vi.fn(async () => '리니어만 새 소식이 있어요.')
   const out = await writtenReport({ ask: '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', members, write, now: new Date('2026-11-17T05:29:19.705Z') })
-  // The writer's message is not JSON and fails the host's check: the host's rendering of the data stands.
   expect(out).toBe(mergedReport(members))
   expect(out).not.toContain('새 소식이 있어요')
   expect(blocks(out).every(part => /새로 나온 게 없/.test(part))).toBe(true)

@@ -1,24 +1,14 @@
-// When a standing task runs, read off the times the person asked for it by
-// hand: the same weekday mornings become "weekdays at 9". Local time, since
-// that is the clock the person's mornings are on.
-
 export interface Schedule {
-  // Local getDay() values, sorted, unique.
   days: number[]
   hour: number
   minute: number
-  // A single day (YYYY-MM-DD, local) instead of a weekly pattern: the task
-  // runs once, on that day, and is then done.
   on?: string
-  // Again every so many minutes on the listed days, from hour:minute on.
   every?: number
 }
 
 const WEEKDAYS = [1, 2, 3, 4, 5]
 export const EVERY_MIN = 5
 export const EVERY_MAX = 1440
-// A task is due for two hours after its time; later than that the moment
-// has passed and it waits for the next listed day.
 export const DUE_WINDOW_MS = 2 * 3_600_000
 
 export function guessSchedule(times: Date[]): Schedule {
@@ -56,21 +46,17 @@ export function localDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-// Due: a listed day (or the one day it is for), inside the window after the
-// time, and not already run today.
 export function dueNow(schedule: Schedule, lastRunAt: string | undefined, now: Date): boolean {
   if (schedule.on ? schedule.on !== localDay(now) : !schedule.days.includes(now.getDay())) return false
   const at = new Date(now)
   at.setHours(schedule.hour, schedule.minute, 0, 0)
   const since = now.getTime() - at.getTime()
-  // The tick is a minute, so a run a few seconds late still counts as on time.
   if (schedule.every) return since >= 0 && (!lastRunAt || now.getTime() - Date.parse(lastRunAt) >= schedule.every * 60_000 - 30_000)
   if (since < 0 || since > DUE_WINDOW_MS) return false
   if (lastRunAt && sameLocalDay(new Date(lastRunAt), now)) return false
   return true
 }
 
-// A one-day schedule whose day is behind us will never be due again.
 export function scheduleOver(schedule: Schedule, now: Date): boolean {
   if (!schedule.on) return false
   const end = new Date(`${schedule.on}T00:00:00`)

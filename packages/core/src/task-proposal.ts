@@ -1,11 +1,3 @@
-// Turning a job that was just done into a button worth pressing again. The
-// ask itself is the wrong label for it: "go here and check it" names this
-// morning, not the work, and a row of buttons carrying whole sentences is
-// unreadable within a week. So the work is restated - a short name, the job
-// written as an instruction that will still make sense next month, and one
-// line saying what pressing it would do - and the person is shown all three
-// before anything is kept.
-
 import type { AgentTool } from './agent-loop.js'
 
 export function routineDraftTool(offer: (draft: TaskProposal) => void): AgentTool {
@@ -24,12 +16,8 @@ export function routineDraftTool(offer: (draft: TaskProposal) => void): AgentToo
   }
 }
 interface TaskProposal {
-  // What the button says. Short enough to read in a row of them.
   name: string
-  // The instruction the button carries: the same job, with this morning's
-  // particulars kept only where they are the job.
   goal: string
-  // What pressing it would do, in one sentence, in the person's language.
   does: string
 }
 
@@ -62,9 +50,6 @@ function field(raw: string, key: string): string {
   return line ? line.slice(line.indexOf(':') + 1).trim().replace(/^["'“”]|["'“”]$/g, '') : ''
 }
 
-// A model that answered in prose, or refused, leaves nothing to keep: the
-// caller falls back to what it already had rather than showing a button
-// labelled with half a sentence.
 export function parseProposal(raw: string): TaskProposal | null {
   if (/^\s*NONE\s*$/im.test(raw) && !/^\s*NAME:/im.test(raw)) return null
   const name = field(raw, 'NAME')
@@ -78,11 +63,6 @@ export function parseProposal(raw: string): TaskProposal | null {
   }
 }
 
-// "The language this was written in" is not something a model reliably reads
-// off a short ask, and the pages it goes on to read are often in another one:
-// an English request came back answered in French because the words the turn
-// filled up with outweighed the two lines that asked for it (measured). Where
-// the script says plainly which language it is, the instruction names it.
 export function scriptLanguage(text: string): string {
   const hangul = /[\uac00-\ud7a3]/.test(text)
   const kana = /[\u3040-\u30ff]/.test(text)

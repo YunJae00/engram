@@ -10,9 +10,6 @@ import type { Engine, EngineCwd, NativeTools, ToolSessionJob } from '../src/engi
 import { pageTools } from '../src/comet-page-tools.js'
 import type { WebPage } from '../src/errand.js'
 
-// c13c cause P: every session carried the whole desk/browser rule set (37-48k chars), and a short ask got three reply-shape rules that
-// disagreed ("just the line" vs "two to four messages" vs "say what you chose"). Rules are now chosen by the tools a session has and the
-// kind of turn it serves; asserted by rule identity, not by phrases.
 const native = { cwd: '/vault/workspace/tasks/bot-1', mode: 'auto', workspace: '/vault/workspace' } as NativeTools
 const base = { engineId: 'claude', desktop: false, browser: false, pageSteps: false, native }
 const SHORT_MENU = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats', 'file_read', 'find_files', 'ask_person', 'report_result_check']
@@ -33,7 +30,6 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
     for (const rules of [teammate, lone]) {
       for (const rule of [COLLECTION_RULE, OFFICE_FILE_RULE, DOCUMENT_CHECK_RULE, DESKTOP_TASK_RULE, ...WORK_ONLY]) expect(count(rules, rule)).toBe(0)
       expect(count(rules, COLLEAGUE_CORE_RULE)).toBe(1)
-      // r2 (Codex r1 #1): it is sent whole pages (no deltas), so it carries no page-delta rule.
       expect(count(rules, PAGE_DELTA_RULE)).toBe(0)
     }
     expect(count(teammate, TEAM_LEAD_RULE)).toBe(0)
@@ -75,7 +71,6 @@ describe('c13c: the turn kind reaches the session from its options', () => {
     const jobs: ToolSessionJob[] = []
     const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '休暇' } } } as unknown as Engine
     const tools = names.map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
-    // "‘내일 휴가입니다’를 일본어 한 줄로" is not a harness wording.
     await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '‘내일 휴가입니다’를 일본어 한 줄로', options)
     return jobs[0]!
   }
@@ -99,12 +94,10 @@ describe('c13c: the turn kind reaches the session from its options', () => {
   })
 })
 
-// c13c r2 (Codex r1): the delta rule and the native file rules were gated by tools only, not by the turn kind.
 describe('c13c r2: rules follow the turn kind, not just the tools offered', () => {
   const fileTools = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'open_page', 'read_open_page']
   it('a short ask or lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
     const work = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: fileTools })
-    // stack-13: the approval mode line ("Commands run without asking.") is a gate and stays with the file tools; the how-to lines go.
     const make = (text: string): boolean => /file_create_copy|file_move|Commands are not|short script/.test(text)
     expect(make(work)).toBe(true)
     expect(count(work, PAGE_DELTA_RULE)).toBe(1)
@@ -116,7 +109,6 @@ describe('c13c r2: rules follow the turn kind, not just the tools offered', () =
     }
   })
 
-  // Not a harness wording: a lookup scrolling one page three times.
   it('a lookup is sent whole pages, so it never sees a delta it has no rule for; a work turn still gets deltas', async () => {
     const page = (revision: number): WebPage => ({ url: 'https://example.com/', title: '시간표', text: Array.from({ length: 24 }, (_, n) => `${n}번 줄 ${n === 9 ? `값 ${revision}` : ''} ${'변하지 않는 내용. '.repeat(3)}`).join('\n'), controls: ['#1 [button] 다음'], observation: { page: 'one', document: 1, revision } })
     const reads = async (options: Parameters<typeof runToolSession>[2]): Promise<string[]> => {
@@ -137,8 +129,6 @@ describe('c13c r2: rules follow the turn kind, not just the tools offered', () =
   })
 })
 
-// c13c r3 (Codex r2 #2): DOCUMENT_CHECK_RULE was still gated by Office tools alone. Every act flag is now off for a non-work turn, so a short
-// ask or a lookup offered every capability gets exactly the rules it gets with none, beyond what its tool list itself names.
 describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and tools it has', () => {
   const every = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'file_read_package', 'word_write', 'ppt_build', 'excel_write', 'open_page', 'read_open_page', 'read_pages', 'page_steps', 'page_do', 'search_web', 'desktop_sequence']
   it('all flags on equals all flags off, and holds no Office, receipt, desktop or download rule', () => {
@@ -147,7 +137,6 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
       const off = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(on).toBe(off)
       for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(on, rule)).toBe(0)
-      // stack-13: the download approval line is a gate: it follows the page tool, whatever the turn kind.
       expect(count(on, 'For a requested file download')).toBe(1)
     }
     const work = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind: 'work', tools: every })
@@ -163,8 +152,6 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
   })
 })
 
-// stack-13: a small-talk or told turn is short yet is offered every tool and the person's files (ipc: no desk menu, native on). The act
-// how-to goes, the gates of what it holds stay: sandbox, command approval, delete, desktop send and approval, download approval.
 describe('stack-13: a gate follows the tools a session holds, never the turn kind', () => {
   const every = ['file_read', 'file_create_copy', 'file_move', 'open_page', 'app_press', 'app_set', 'desktop_sequence', 'search_web']
   it('a short or lookup session holding files and desktop tools keeps their gates; one holding neither gets none', async () => {
@@ -180,7 +167,6 @@ describe('stack-13: a gate follows the tools a session holds, never the turn kin
       expect(count(bare, DESKTOP_GATE_RULE)).toBe(0)
       expect(bare).not.toContain('Deleting a file of theirs')
     }
-    // Every gate sentence is DESKTOP_TASK_RULE's own, so a work session that has the whole rule loses nothing.
     for (const sentence of DESKTOP_GATE_RULE.split(/(?<=\.) /)) expect(DESKTOP_TASK_RULE.toLowerCase()).toContain(sentence.replace(/;.*$/, '').toLowerCase().replace(/\.$/, ''))
   })
 })

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseCodexSpan } from '../src/sessions.js'
 
-// The codex dialect: role+content at top level or one envelope down, text in
-// *_text blocks. Torn tails and junk lines never throw.
 describe('parseCodexSpan', () => {
   it('reads top-level and payload-wrapped messages', async () => {
     const span =
@@ -22,7 +20,7 @@ describe('parseCodexSpan', () => {
       'not json at all\n' +
       JSON.stringify({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'done' }] }) +
       '\n' +
-      '{"type":"message","role":"user","content":[{"ty' // torn
+      '{"type":"message","role":"user","content":[{"ty'
     const { turns, consumed } = await parseCodexSpan(span)
     expect(turns).toHaveLength(1)
     expect(consumed).toBeLessThan(Buffer.byteLength(span, 'utf8'))
