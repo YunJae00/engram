@@ -6,7 +6,7 @@ const logged = vi.hoisted(() => vi.fn())
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: logged }))
-import { askNow, checkedDesk, onlyAsked, reshapePrompt, routeAsk, withOffer } from '../src/main/desk-lane.js'
+import { askNow, checkedDesk, onlyAsked, reshapePrompt, routeAsk, shareReady, withOffer } from '../src/main/desk-lane.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { checkPrompt } from '../../../packages/core/src/written-check.js'
@@ -75,6 +75,20 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(onlyAsked(askNow('아 그거 말고 할 일만 다시', [{ role: 'user', text: 'docs/branch-week.md 요약해줘' }]), answer)).toBe('- 재고 점검')
     // Not a correction: unchanged behavior.
     expect(onlyAsked('docs/branch-week.md에서 할 일만 추려줘', answer)).toBe('- 재고 점검')
+  })
+  // c17b r3 (Codex r2): a later correction withdraws an earlier correction's narrowing. Wordings not in the harness.
+  it('along a chain, only the latest correction narrows', () => {
+    const answer = '할 일\n- 발주 확인\n\n미결\n- 회식 날짜'
+    const chain = [{ role: 'user', text: 'memo/store-plan.md 정리해줘' }, { role: 'user', text: '아 그거 말고 할 일만' }]
+    for (const widen of ['아니 그거 말고 전부 다', '음 그거 말고 처음처럼']) {
+      expect(onlyAsked(askNow(widen, chain), answer)).toBe(answer)
+      expect(onlyAsked(askNow('그거 말고 다 줘', [...chain, { role: 'user', text: widen }]), answer)).toBe(answer)
+    }
+    // Narrowing said again last still cuts, whatever came between.
+    expect(onlyAsked(askNow('아니 그거 말고 할 일만 줘', [...chain, { role: 'user', text: '음 그거 말고 전체로' }]), answer)).toBe('- 발주 확인')
+    // shareReady follows the same rule: an earlier "공유하기 좋게" withdrawn by a later correction no longer trims.
+    const notes = '일시: 12월 1일\n\n할 일\n- 발주 확인'
+    expect(shareReady(askNow('그거 말고 원래대로', [{ role: 'user', text: 'memo/a.md 요약해줘' }, { role: 'user', text: '아 그거 말고 공유하기 좋게' }]), notes)).toBe(notes)
   })
   it('successive corrections keep the original task as the route and every change in the meaning, oldest first', () => {
     const turns = [

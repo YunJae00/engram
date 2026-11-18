@@ -128,9 +128,13 @@ const routeOf = (meaning: string): string => meaning.split(CHANGED)[0]!
 // reads only narrowing they still stand by. After a correction the earlier ask's words may be withdrawn and the host cannot tell which, so
 // only the corrections' own words narrow; the model, told the later words hold, does the rest. A filter that holds back because the person
 // widened (tidyCounts, withoutSameDecisions) still reads every word, so both kinds fail toward keeping content.
+// c17b r3 (cause: "…말고 할 일만" then "…말고 전체로" still cut 미결): the same holds along the chain, since each correction may withdraw any
+// earlier one, so only the latest correction's own words narrow.
 const heldWords = (meaning: string): string => {
   const at = meaning.indexOf(CHANGED)
-  return at < 0 ? meaning : [...meaning.slice(at + CHANGED.length).matchAll(/"(?:[^"\\]|\\.)*"/g)].map(found => JSON.parse(found[0]) as string).join('\n')
+  if (at < 0) return meaning
+  const said = [...meaning.slice(at + CHANGED.length).matchAll(/"(?:[^"\\]|\\.)*"/g)]
+  return said.length ? JSON.parse(said[said.length - 1]![0]) as string : ''
 }
 
 // grokbar H1: "다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어" asked for nothing and became a 47-step
