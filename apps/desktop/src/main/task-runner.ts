@@ -257,8 +257,7 @@ export function taskRunner(deps: {
     const kept = (!!teamKept || !!outcome?.budgetExhausted && !!recheckOf) && after?.state === 'done'
     if (after && outcome?.held && after.result) {
       if (repeats || kept) await flush(after)
-      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id) && unshown.get(id) === after.result) {}
-      else {
+      else if (extra?.verification || after.state !== 'running' || !verifyNext.has(id) || unshown.get(id) !== after.result) {
         const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
         if (!replaced) await flush(after)
         await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, undefined, after.goal)
