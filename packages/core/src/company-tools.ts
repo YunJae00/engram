@@ -1178,7 +1178,7 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
   // Whose it is is said once, on the part's first line.
   const item = (f: MemberFact, i: number): string => `${datedText({ text: factWords(f), date: f.date })}${f.listing ? ` ${LISTING_LABEL}` : ''}${i ? '' : by} ${linkOf(f)}`
   // round 3: a listing page some items were taken from is where the full list is: one line after the items, never an item.
-  const shown = facts.filter(f => !f.rest), rest = facts.filter(f => f.rest), full = rest.length ? [`전체 목록은 여기 있어요. ${rest.map(linkOf).join(' · ')}`] : []
+  const shown = facts.filter(f => !f.rest), rest = facts.filter(f => f.rest), full = rest.length ? [`전체 목록은 여기 있어요. ${[...new Map(rest.map(f => [f.url, f])).values()].map(linkOf).join(' · ')}`] : [] // stack-15: one link per page (two entries of one page left two copies)
   if (shown.length === 1) return [`${row}${item(shown[0]!, 0)}`, ...full].join('\n')
   if (shown.length) return [...(row ? [row.trim()] : []), ...shown.map((f, i) => `- ${item(f, i)}`), ...full].join('\n')
   // Ended with nothing (stopped at its last limit, c13a): said once, plainly, with where it looked; its prose is never shown.
