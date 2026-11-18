@@ -99,7 +99,7 @@ async function showHand(page: Page, hand: Locator, kind: 'move' | 'press'): Prom
     const size = page.viewportSize()
     if (!box || !size) return
     pointerSink(page, (box.x + box.width / 2) / size.width, (box.y + box.height / 2) / size.height, kind)
-  } catch { return }
+  } catch {}
 }
 
 export async function pressOn(page: Page, target: string, signal?: AbortSignal, ask?: Ask): Promise<PageMove> {

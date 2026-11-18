@@ -14,7 +14,7 @@ export function loginUrl(id: CloudEngineId, value: string): string | undefined {
     const allowed = id === 'codex' ? ['auth.openai.com'] : ['claude.ai', 'console.anthropic.com', 'platform.claude.com']
     if (url.protocol !== 'https:' || url.username || url.password || url.port || !allowed.includes(url.hostname) || !/\/oauth\/authorize\/?$/.test(url.pathname)) return
     return url.href
-  } catch { return }
+  } catch {}
 }
 
 export function engineLogins(): EngineLoginDto[] { return [...logins.values()].map((login) => login.state) }

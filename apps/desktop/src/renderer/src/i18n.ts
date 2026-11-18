@@ -863,9 +863,7 @@ export async function followSettings(bridge: Pick<EngramApi, 'onEvent' | 'settin
     })
     const settings = await bridge.settingsGet()
     if (!changed) preference = settings?.uiLanguage
-  } catch {
-    return
-  }
+  } catch {}
 }
 
 if (typeof window !== 'undefined' && 'engram' in window) await followSettings(window.engram)
