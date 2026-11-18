@@ -132,9 +132,63 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
     const [cut] = helperParts([helper('')])
     expect(cut!.data!.facts).toEqual([{ text: '179만 원부터 출시일은 못 찾았어요.', url: 'https://apple.example/1', site: expect.any(String) }])
     // The host's table (a late writer) opens with one answer-first line naming what was not found.
-    const galaxy: TeamMember = { ...helper('갤럭시북 6는 159만 원이고 3월 6일 나와요. [삼성](https://samsung.example/1)'), id: 'g', topic: '갤럭시북 6', proof: [], missing: [] }
+    const galaxy: TeamMember = { ...helper('갤럭시북 6는 159만 원이고 3월 6일 나와요. [삼성](https://samsung.example/1)'), id: 'g', topic: '갤럭시북 6', proof: [{ point: '가격', quote: '159만 원', url: 'https://samsung.example/1' }, { point: '출시일', quote: '3월 6일', url: 'https://samsung.example/1' }], missing: [] }
     const table = mergedReport(helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)'), galaxy]), new Map(), [], true)
     expect(table.split('\n')[0]).toBe('갤럭시북 6는 찾았고, 맥북 에어 M6 출시일은 못 찾았어요.')
     expect(table).toContain('| 맥북 에어 M6 |')
+  })
+})
+
+// c17a r2: the evidence rule reaches every place a fact is shown or a search ends (wordings in no harness row and not the review's).
+describe('c17a r2: a helper\'s words stand only on a page with a verified quote', () => {
+  const at = new Date().toISOString()
+  const helper = (said: string, proof: Proof[], missing: string[]): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '수원 조사', topic: '수원', brief: '수원 이번 주말 꽃가루 농도 어때?', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, proof, missing })
+  it('cited prose on a page that verified nothing is no cell; the row has no fact and its point is said not found', () => {
+    const [m] = helperParts([helper('수원은 주말 꽃가루가 낮음이에요. [블로그](https://blog.example/7)', [], ['꽃가루 농도'])])
+    expect(m!.data).toBeUndefined()
+    const table = mergedReport([m!], new Map(), [], true)
+    expect(table).not.toContain('낮음')
+    expect(table.split('\n')[0]).toContain('못 찾았어요')
+  })
+  it('of two cited facts, only the one on the verified page stays (a trailing slash aside), and the missing point is labelled', () => {
+    const [m] = helperParts([helper('수원은 주말 꽃가루 \'보통\'이에요 [기상청](https://weather.example/pollen/). 일요일엔 비 소식이 있어요 [카페](https://cafe.example/3).', [{ point: '꽃가루 농도', quote: "꽃가루 '보통'", url: 'https://weather.example/pollen' }], ['강수'])])
+    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen/'])
+    expect(m!.data!.facts[0]!.text).toBe("수원은 주말 꽃가루 '보통'이에요 강수는 못 찾았어요.")
+  })
+  it('a page the helper opened and read itself is first-hand: its words on it stand; a results row it only saw does not', () => {
+    const [m] = helperParts([{ ...helper('수원은 주말 꽃가루 \'높음\'이에요 [기상청](https://weather.example/pollen). 토요일이 제일 심해요 [뉴스](https://news.example/9).', [], ['꽃가루 농도']), sources: ['https://weather.example/pollen', 'https://search.example/?q=x'] }])
+    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen'])
+  })
+  it('a helper whose lookup judged no points keeps its cited words as before', () => {
+    const [m] = helperParts([{ ...helper('수원은 주말 꽃가루가 낮음이에요. [블로그](https://blog.example/7)', [], []), proof: undefined, missing: undefined }] as TeamMember[])
+    expect(m!.data!.facts[0]!.url).toBe('https://blog.example/7')
+  })
+})
+
+describe('c17a r2: a counted ask with several points counts only items that state every point', () => {
+  const ask = '아이패드 미니 8이랑 갤럭시 탭 S12 무게랑 배터리 용량 비교해줘'
+  it('two weight-only rows do not end it: the judge\'s words for the battery run; at the due each row says the battery was not found', async () => {
+    const s = search([
+      page('q', [row(1, '아이패드 미니 8 무게', '아이패드 미니 8은 293g이다', 'apple.example'), row(2, '갤럭시 탭 S12 무게', '갤럭시 탭 S12는 498g이다', 'samsung.example')]),
+      page('태블릿 배터리 용량', [row(3, '태블릿 신제품 소식', '여러 태블릿이 곧 나온다')]),
+    ])
+    const verdicts = [
+      JSON.stringify({ keep: [1, 2], asked: 2, points: ['무게', '배터리 용량'], holds: { 1: { 무게: '293g' }, 2: { 무게: '498g' } }, search: '태블릿 배터리 용량' }),
+      JSON.stringify({ keep: [], asked: 2, holds: {}, search: '' }),
+    ]
+    let t = 0
+    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 4000; return verdicts.shift() }, since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
+    expect(s.queries).toEqual(['q', '태블릿 배터리 용량'])
+    // Both partial rows are shown (rule 7: never dropped), each with its missing point named.
+    expect(urls(out)).toEqual(['https://apple.example/1', 'https://samsung.example/2'])
+    expect(out).toContain('For https://apple.example/1, not found in anything read: 배터리 용량.')
+    expect(out).toContain('For https://samsung.example/2, not found in anything read: 배터리 용량.')
+  })
+  it('rows that state every point end it in one round', async () => {
+    const s = search([page('q', [row(1, '아이패드 미니 8', '293g, 배터리 5,078mAh', 'apple.example'), row(2, '갤럭시 탭 S12', '498g, 배터리 8,400mAh', 'samsung.example')])])
+    const out = await checkedSearch(s, { ask: () => ask, write: async () => JSON.stringify({ keep: [1, 2], asked: 2, points: ['무게', '배터리 용량'], holds: { 1: { 무게: '293g', '배터리 용량': '5,078mAh' }, 2: { 무게: '498g', '배터리 용량': '8,400mAh' } }, search: '더 찾기' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    expect(s.queries).toEqual(['q'])
+    expect(out).toContain('They hold the 2 asked for')
+    expect(out).not.toContain('not found')
   })
 })

@@ -77,7 +77,9 @@ describe('c17a (B): one due for helpers on the merge path', () => {
     expect(models).toHaveLength(3)
     const rows = tableRows(text)
     expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(TOWNS)
-    for (const row of rows) expect(row).toMatch(/https:\/\/cablecar\.example\//)
+    // c17a r2 (review #1): no row's fee was ever quoted and no helper opened a page, so the helpers' cited fee is not evidence: each row
+    // says it was not found, with the page looked at, never the unproven value.
+    for (const row of rows) { expect(row).toMatch(/\]\(https:\/\//); expect(row).not.toContain('2만 3천') }
     expect(hire.closesOn!(text)).toBe(true)
   }, 45_000)
 
