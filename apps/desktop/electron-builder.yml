@@ -1,7 +1,5 @@
-# Keep the application identity stable across updates.
 appId: dev.engram.app
 productName: Engram
-# Installed apps use this repository for release assets and update metadata.
 publish:
   provider: github
   owner: YunJae00
@@ -10,8 +8,6 @@ publish:
 directories:
   output: dist
   buildResources: build
-# out/** carries the bundled app; production node_modules (the prebuilt pty
-# + npm for the engine installer) are collected by electron-builder itself.
 files:
   - out/**
   - package.json
@@ -23,31 +19,18 @@ extraResources:
     to: bin
     filter: ["**/*"]
 asar: true
-# Seals the macOS bundle with the configured identity (ad-hoc locally) — see scripts/adhoc-sign.mjs
-# for why a missing signature is safer than the stale one electron-builder
-# would otherwise leave behind.
 afterPack: scripts/adhoc-sign.mjs
-# Bundled runtimes are executables and must be spawned from real
-# paths, so they cannot live inside the asar.
 asarUnpack:
   - "node_modules/@openai/codex-*/**"
 npmRebuild: false
 nsis:
-  # No spaces. The default name carries them, and then the two sides of the
-  # update disagree forever: electron-builder writes the url into latest.yml
-  # with the spaces turned into hyphens, while GitHub turns them into dots when
-  # it serves the asset — so every self-update 404s. Naming the file without
-  # spaces makes the built file, the published asset and the feed agree.
+  # No spaces: latest.yml and GitHub rewrite them differently, breaking self-update.
   artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: true
   perMachine: false
   createDesktopShortcut: always
   createStartMenuShortcut: true
-# onnxruntime-node (semantic search) ships binaries for every OS in one
-# package — each platform build strips the other platforms' ~100MB.
-# NOTE: every per-platform files list MUST repeat the positive patterns —
-# an exclusion-only list makes electron-builder implicitly add "**/*",
-# which once packed bundle-cache (the raw model!) and src into the asar
+# Per-platform files lists must repeat the positive patterns; an exclusion-only list implies "**/*".
 linux:
   target:
     - AppImage
@@ -63,8 +46,6 @@ linux:
     - "!node_modules/@openai/codex-win32-*/**"
     - "!node_modules/@openai/codex-darwin-*/**"
 win:
-  # nsis only — the zip twin re-uploaded the whole 600MB payload every release
-  # and nothing consumed it (the updater feeds on the nsis differential).
   target:
     - nsis
   files:
@@ -84,16 +65,8 @@ mac:
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
-  # Its own icon: macOS draws every app on one grid and puts the system shadow
-  # in the margin, so the full-bleed tile Windows wants renders oversized in
-  # the Dock. gen-icon.mjs writes this one on Apple's 824-of-1024 grid.
   icon: build/icon-mac.png
-  # Never electron-builder's own signing. On CI it finds no certificate and
-  # skips, leaving Electron's stale seal on a bundle we repacked; on a
-  # developer's Mac it finds whatever Xcode left in the keychain and signs a
-  # PUBLIC build with a personal development certificate, which is both a
-  # keychain prompt mid-build and an app that runs nowhere else. Null makes
-  # both machines take one path, and afterPack seals it ad-hoc.
+  # null: skip electron-builder signing (stale seal on CI, personal cert locally); afterPack signs ad-hoc.
   identity: null
   extendInfo:
     NSAppleEventsUsageDescription: Engram uses app automation to read and edit documents you choose.
@@ -108,7 +81,4 @@ mac:
     - "!node_modules/@anthropic-ai/claude-agent-sdk*/**"
     - "!node_modules/@openai/codex-win32-*/**"
     - "!node_modules/@openai/codex-linux-*/**"
-    # Both darwin runtimes ride along here: electron-builder STRIPS the
-    # ${arch} macro inside files globs instead of expanding it, so per-arch
-    # selection cannot happen in this list — the afterPack hook deletes the
-    # other chip's runtimes from the unpacked bundle before sealing it.
+    # Both darwin runtimes ship: files globs strip ${arch}; afterPack removes the other chip's runtime.
