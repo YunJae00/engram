@@ -113,7 +113,6 @@
   .desktop-source-picker, .desktop-controls, .computer-spinner { animation: none; }
 }
 
-/* The desktop overlay uses one activity colour across engines. */
 .control-host { background: transparent; }
 .control-overlay, .control-pill { --control-tint: #527fe3; }
 .control-overlay[data-state='paused'], .control-pill[data-state='paused'] { --control-tint: #c58c45; }

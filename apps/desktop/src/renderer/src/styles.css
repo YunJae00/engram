@@ -20,7 +20,6 @@
 @import './create-bot.css';
 
 :root {
-  /* Type scale: every font-size in this file resolves to one of these. */
   --fs-badge: 10px;
   --fs-micro: 11px;
   --fs-small: 12px;
@@ -34,7 +33,6 @@
   --fs-chat: 15px;
   --fs-meta: 13px;
   --lh-chat: 22px;
-  /* Shared geometry for controls, content surfaces and docked panels. */
   --radius-s: 8px;
   --radius-m: 12px;
   --radius-l: 16px;
@@ -68,7 +66,6 @@
 
 [data-theme='light'] {
   color-scheme: light;
-  /* Apple-like white + ink; aliases below map onto these tokens. */
   --bg-canvas: #FFFFFF;
   --bg-surface: #FFFFFF;
   --bg-surface-hover: #F5F5F7;
@@ -194,9 +191,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 [data-theme='light'] button:focus-visible, [data-theme='light'] input:focus-visible, [data-theme='light'] textarea:focus-visible, [data-theme='light'] select:focus-visible, [data-theme='light'] a:focus-visible, [data-theme='light'] [tabindex]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -1px; box-shadow: 0 0 0 4px var(--focus-outer); }
 [data-theme='light'] a, [data-theme='light'] a.answer-site { color: inherit; text-decoration: underline; }
-/* Buttons are flat: one fill, one hairline, no gradient or shadow to catch
-   the light. Icon and label share a centred 20px line inside a 30px pill, so
-   a button with an icon sits level with one without. */
 button.primary,
 button.secondary {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -210,8 +204,6 @@ button.secondary { border: 1px solid var(--border); background: var(--panel-bg);
 button.secondary:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--input-border); }
 button.primary:disabled, button.secondary:disabled { opacity: 0.45; cursor: default; }
 button.primary:active:not(:disabled), button.secondary:active:not(:disabled) { transform: translateY(0.5px); }
-/* The armed half of a two-step delete: it must not look like the quiet
-   secondary it was a click ago, or the second click is a surprise. */
 button.secondary.armed { background: var(--selected-soft); border-color: var(--accent-line); color: var(--fg-strong); }
 input, textarea, select {
   font: inherit;
@@ -234,7 +226,6 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .shell:has(.canvas-slot:not([hidden]) > .bots-view) { --sidebar-tint: none; }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .canvas { position: relative; display: flex; flex: 1; min-height: 0; background: var(--canvas-bg); }
-/* The slots wrap the kept-mounted views; the views fill them either way. */
 .canvas > .list-view, .canvas > .sky-view, .canvas-slot > .list-view, .canvas-slot > .bots-view { flex: 1; min-width: 0; }
 
 .settings-fact-sub { display: inline; font-size: var(--fs-small); color: var(--fg-faint); }
@@ -248,20 +239,14 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 }
 .setting-color { width: 46px; height: 26px; padding: 0; border: 1px solid var(--input-border); border-radius: var(--radius-s); background: var(--input-bg); }
 
-/* Folded: one quiet pill. The ring is the liveness signal — a thin arc
-   turning, not a spinner icon shouting from the corner. */
 .absorb-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ok); }
 .absorb-dot.paused { background: var(--clay); }
-/* The one ring in the app, for byte progress; everything that thinks uses
-   the breathing dots instead. */
 .absorb-ring, .chat-warming-dot {
   width: 11px; height: 11px; border-radius: 999px; flex: none;
   border: 1.6px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-top-color: var(--accent);
   animation: engram-spin 900ms linear infinite;
 }
-/* Header controls: two quiet ghosts in a row, not absolute squares fighting
-   for the corner. */
 .absorb-controls { display: flex; gap: 2px; margin-left: auto; }
 .absorb-fold, .absorb-dismiss {
   display: inline-flex; align-items: center; justify-content: center;
@@ -272,7 +257,6 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 }
 .absorb-fold:hover, .absorb-dismiss:hover { background: var(--hover-bg); color: var(--fg-dim); }
 
-/* ── Sky: the Engram home — every memory a star ─────────────────── */
 .sky-view { position: relative; overflow: hidden; background: var(--panel-bg); }
 .sky-view .topic-graph { position: absolute; inset: 0; }
 .sky-empty {
@@ -291,17 +275,10 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 }
 .sky-legend-item { display: inline-flex; align-items: center; gap: 5px; }
 .sky-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--card-top); border: 1.4px solid var(--fg-dim); }
-/* The legend's three dots must actually differ, or it teaches nothing. `dim`
-   and `halo` had rules and `bright` never did, so "fresh" was the bare dot —
-   legible next to dim, but not the lit star it is describing. */
 .sky-dot.bright { background: var(--gild, var(--accent)); border-color: transparent; box-shadow: 0 0 5px var(--gild, var(--accent)); }
 .sky-dot.dim { opacity: 0.4; }
 .sky-dot.halo { box-shadow: 0 0 0 2px color-mix(in srgb, var(--gild) 55%, transparent); }
 
-/* ── Librarian progress widget (floating, bottom-left) ───────────
-   Unified floating chrome (absorb / help): one calm translucent card —
-   blurred widget-bg, 1px input-border, --radius-card, --shadow-float;
-   the help button keeps the opposite bottom-right corner. */
 .absorb-progress { display: flex; flex-direction: column; gap: 4px; }
 .absorb-track { height: 4px; border-radius: 999px; background: var(--hover-bg); overflow: hidden; }
 .absorb-btn {
@@ -316,7 +293,6 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 }
 .absorb-btn.primary:hover { background: var(--hover-bg); }
 
-/* ── App sidebar ─────────────────────────────────────────────── */
 .app-sidebar {
   position: relative; z-index: 70; width: 0; min-width: 0; height: 100%;
   display: flex; flex-direction: column; overflow: hidden;
@@ -341,7 +317,6 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .app-sidebar-head .workspace-switcher, .app-sidebar-head button { -webkit-app-region: no-drag; }
 :root[data-platform='darwin']:not([data-fullscreen]) .app-sidebar-head { padding-left: 84px; }
 .app-sidebar-head .workspace-switcher { min-width: 0; flex: 1; }
-/* The name gives way (ellipsis) instead of spilling over the mode toggle when the head is crowded. */
 .app-sidebar-head .workspace-trigger { max-width: min(206px, 100%); min-width: 0; margin: 0; padding-left: 7px; }
 .app-sidebar-head .workspace-name { max-width: 156px; }
 .sidebar-icon-button, .sidebar-section-open {
@@ -404,23 +379,14 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .sidebar-footer button:hover { background: var(--hover-bg); color: var(--fg); }
 .sidebar-scrim { display: none; }
 
-/* ── Top bar ─────────────────────────────────────────────────── */
 .topbar {
   display: flex; align-items: center; gap: 8px;
   height: var(--titlebar-height); padding: 0 var(--page-gutter); flex-shrink: 0;
   background: var(--panel-bg);
-  /* frameless window: the top bar IS the title bar — draggable, with the
-     native window controls overlaying its right edge */
   -webkit-app-region: drag;
   width: calc(env(titlebar-area-width, 100vw) - var(--sidebar-width));
   max-width: 100%;
 }
-/* macOS: the native traffic lights overlay the bar's LEFT edge (Windows puts
-   its controls on the right, handled by titlebar-area-width above) — start
-   the content after them. Fullscreen hides the lights, so the padding drops.
-   The width env var must NOT apply here: on macOS it subtracts the traffic
-   light area, which sits on the left — keeping it would cut the bar short on
-   the right instead. The left inset is what the padding already covers. */
 :root[data-platform='darwin'] .topbar { width: 100%; }
 :root[data-platform='darwin']:not([data-fullscreen]) .sidebar-closed .topbar { padding-left: 84px; }
 .topbar button, .topbar input { -webkit-app-region: no-drag; }
@@ -434,32 +400,23 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .topbar-status { font-family: var(--font); font-size: var(--fs-micro); color: var(--fg-faint); padding: 0 7px; white-space: nowrap; }
 .topbar-status.as-button { cursor: pointer; border-radius: 999px; height: 28px; flex-shrink: 0; }
 .topbar-status.as-button:hover { background: var(--hover-bg); color: var(--fg); }
-/* live status line (sweep / absorb): spinner + label. Long text ellipsizes
-   so it can never push the right-side actions out of the bar. */
 .topbar-status.live { display: inline-flex; align-items: center; gap: 5px; min-width: 0; flex-shrink: 1; max-width: 300px; animation: fade-in 200ms ease; }
 .topbar-status.live > svg, .topbar-status.live > .bubble-dots { flex-shrink: 0; }
 .topbar-status.live .status-label { overflow: hidden; text-overflow: ellipsis; }
 @keyframes engram-spin { to { transform: rotate(360deg); } }
 .spin { animation: engram-spin 1s linear infinite; }
 
-/* ── Motion: what changes on screen arrives, rather than appearing ────────
-   One vocabulary, short and eased: a name fades to its new words, a thread
-   or a tab rises in, a new work line fades in, a menu unfolds, a page
-   crossfades to the next comet's. Nothing bounces; nothing takes longer
-   than a glance. */
 @keyframes name-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
 .bots-chat { animation: view-in 180ms ease-out; }
 .canvas-slot:not([hidden]) { animation: view-in 180ms ease-out; }
-/* Surfaces that used to appear between two frames now arrive. */
 .bots-memory, .comet-keep, .routine-submit, .bots-offer { animation: view-in 160ms ease-out; }
 .note-sheet, .review-sheet, .brief-box { animation: view-in 200ms ease-out; }
 .comet-work-line { animation: fade-in 180ms ease; }
 .model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom left; }
 .web-pane-tab-label { animation: name-in 220ms ease; }
 .mirror-screen { transition: opacity 180ms ease; }
-/* The pane leaves to the right edge when folded, and arrives from it. */
 .web-pane { animation: pane-in 260ms var(--ease-out); }
 .web-pane.closing { animation: pane-out 220ms var(--ease-out) forwards; pointer-events: none; }
 @keyframes pane-in {
@@ -484,7 +441,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 }
 .bots-working { animation: view-in 160ms ease-out; }
 .settings-loaded { animation: view-in 180ms ease-out; }
-/* engine presence dot — a filled circle, ok-tinted halo when connected */
 .engine-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--fg-faint); flex-shrink: 0; }
 .engine-dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
 .engine-dot.warn { background: var(--gild); }
@@ -525,11 +481,8 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
   font-size: var(--fs-small); font-weight: 600; white-space: nowrap;
 }
 .connect-banner-btn:hover { filter: brightness(1.06); }
-/* Update-ready: the same pill, but it persists (a toast is easy to miss) and
-   carries the button that applies the update. */
 .update-banner { color: var(--fg); }
 .update-banner svg { color: var(--gild, var(--accent)); }
-/* ── Sheets (note / review overlays) ─────────────────────────── */
 .sheet-overlay {
   position: fixed; inset: 0; z-index: 120;
   background: rgba(22, 22, 27, 0.38);
@@ -555,8 +508,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .note-sheet .note-editor { flex: 1; min-height: 0; }
 .review-sheet { flex-direction: row; }
 .review-list { width: 280px; border-right: 1px solid var(--border); background: var(--sidebar-bg); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
-/* One row per issue: the lead question, plus fold-chips for sibling cards
-   that the lead's answer will settle (they auto-dismiss on approval). */
 .issue-row { display: flex; flex-direction: column; border-radius: var(--radius-s); }
 .issue-row.selected { background: var(--selected-soft); }
 .issue-row.selected .side-title { color: var(--fg-strong); }
@@ -575,11 +526,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .review-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
 .review-close { position: absolute; top: 8px; right: 10px; z-index: 5; }
 .review-main .review-detail { flex: 1; }
-/* Open loops sit above the brief and are separated by a rule, so the live
-   half of the sheet never blurs into the markdown the librarian wrote. */
-/* Placeholders, not dimmed text: 0.45 opacity over real content read as a
-   broken render rather than a wait. Grey bars are unambiguous — nothing is
-   pretending to be readable. */
 .skeleton-bar {
   height: 11px; border-radius: 5px; background: var(--hover-bg);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -587,8 +533,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .skeleton-bar.head { height: 15px; width: 42%; margin-top: 10px; background: var(--border); }
 .skeleton-bar.head.short { width: 28%; margin-top: 18px; }
 @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-/* Same courtesy the app's other spinner gets: no pulse for anyone who asked
-   the OS to stop moving things. */
 @media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
 @keyframes slide-left { from { transform: translateX(24px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
 
@@ -629,8 +573,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .engine-banner .warn-icon { color: var(--gild); vertical-align: -2px; margin-right: 5px; }
 
 .empty-view { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-dim); padding: 24px; font-size: var(--fs-body); }
-/* A canvas tab can render these as its direct root (loading/empty) — without
-   flex:1 they shrink to content and hug the left edge of the canvas row. */
 .canvas > .empty-view, .canvas > .empty-state { flex: 1; }
 body.bubble-host { background: transparent; }
 .bubble-dot {
@@ -642,8 +584,6 @@ body.bubble-host { background: transparent; }
 }
 .bubble-dot:hover { background: var(--accent-hover); }
 .bubble-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* The wait, made visible: three breathing dots, a plain-language status and
-   a second counter, so a long local answer never reads as a hang. */
 .bubble-thinking {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: var(--fs-small); color: var(--fg-faint); font-variant-numeric: tabular-nums;
@@ -689,8 +629,6 @@ body.bubble-host { background: transparent; }
 .bubble-msg-body :is(p, ul, ol):last-child { margin-bottom: 0; }
 .bubble-msg-body :is(ul, ol) { padding-left: 22px; }
 .bubble-msg-body code { font-family: var(--mono); font-size: 0.9em; line-height: inherit; overflow-wrap: anywhere; background: var(--hover-bg); padding: 2px 5px; border-radius: 5px; }
-/* A narrow floating window has nowhere to scroll sideways to — wrap instead,
-   so a long line is always readable rather than clipped. */
 .bubble-msg-body pre {
   max-width: 100%; margin: 12px 0; padding: 16px; border: 1px solid var(--border-soft); border-radius: var(--radius-m); background: var(--rail-bg);
   white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
@@ -702,24 +640,20 @@ body.bubble-host { background: transparent; }
 .bubble-msg-body :is(th, td) { border-bottom: 1px solid var(--border-soft); padding: 9px 12px; text-align: left; }
 .bubble-msg-body th { font-weight: 600; color: var(--fg-strong); }
 .bubble-msg-body a { color: inherit; text-decoration: underline; cursor: pointer; }
-/* A citation is a thing you click, not a word you read past. */
 .bubble-msg-body a[href^="note://"] {
   display: inline-flex; align-items: center; text-decoration: none;
   border: 1px solid currentColor; border-radius: 999px;
   padding: 0 7px; margin: 0 1px; font-size: var(--fs-small); opacity: 0.85;
 }
 .bubble-msg-body a[href^="note://"]:hover { opacity: 1; background: var(--hover-bg); }
-/* Warming line above the composer while the local model loads. */
 .chat-warming {
   display: flex; align-items: center; gap: 7px; padding: 6px 12px;
   font-size: var(--fs-small); color: var(--fg-dim); border-top: 1px solid var(--border-soft);
 }
 
-/* The librarian's spoken morning — prose, not a list. */
 .nudge-spoken { display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-body); line-height: 1.55; color: var(--fg-dim); }
 .nudge-spoken p { margin: 0; }
 .nudge-spoken p:first-child { color: var(--fg); font-weight: 600; }
-/* ✕'s "really?" — an in-card sheet, top of the chat, no second window. */
 .bubble-confirm { padding: 12px 14px; border-bottom: 1px solid var(--border-soft); background: var(--card-bot); }
 .bubble-confirm-q { font-size: var(--fs-body); font-weight: 700; color: var(--fg); }
 .bubble-confirm-why { font-size: var(--fs-small); color: var(--fg-faint); line-height: 1.45; margin: 4px 0 9px; }
@@ -731,7 +665,6 @@ body.bubble-host { background: transparent; }
 .bubble-confirm-actions button:hover { background: var(--hover-bg); }
 .bubble-confirm-yes { background: var(--clay-soft); border-color: var(--clay); color: var(--clay); }
 .bubble-write { padding: 9px; font-size: var(--fs-small); }
-/* The panel's twin: retrieval receipts inside the pre-first-token bubble. */
 .nudge-why {
   margin: 0; max-height: 190px; overflow-y: auto;
   font-size: var(--fs-small); color: var(--fg-faint);
@@ -762,7 +695,6 @@ body.bubble-host { background: transparent; }
   color: var(--fg-dim); white-space: pre-wrap; word-break: keep-all;
 }
 
-/* The typed answer — Enter files it as the user's own note above the rest. */
 .nudge-write input {
   width: 100%; padding: 7px 11px; border-radius: 9px;
   border: 1px solid var(--border); background: transparent;
@@ -775,18 +707,12 @@ body.bubble-host { background: transparent; }
   color: var(--accent); font-size: var(--fs-micro); text-decoration: underline;
 }
 
-/* Boot states. Both had no rule at all: .vault-opening was left behind by the
-   CaptureBar sweep (414aa35) and .vault-failed is new, and an unstyled element
-   does not throw — it just renders wrong, which is how a deleted rule shipped
-   unnoticed for four days. */
 .vault-opening { animation: skeleton-pulse 1.8s ease-in-out infinite; }
 .vault-failed {
   flex-direction: column; gap: 10px; max-width: 520px; margin: 0 auto; text-align: center;
 }
 .vault-failed strong { color: var(--fg); font-size: var(--fs-lead); }
 .vault-failed p { margin: 0; }
-/* The path and the error, selectable: the first question anyone answering a
-   report will ask is which folder, and the second is what it actually said. */
 .vault-failed-path, .vault-failed-why {
   max-width: 100%; padding: 6px 10px; border-radius: var(--radius-s);
   background: var(--widget-bg); color: var(--fg-dim);
@@ -800,7 +726,6 @@ body.bubble-host { background: transparent; }
   font-size: var(--fs-small); font-weight: 600;
 }
 .vault-failed-actions button:hover { filter: brightness(1.06); }
-/* The shared empty-state grammar (the Sky keeps its starter card). */
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; height: 100%; min-height: 40vh; padding: 24px; text-align: center;
@@ -815,29 +740,16 @@ body.bubble-host { background: transparent; }
 
 .topic-graph { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; }
 .sky-surface { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-/* Ghost anchors: one transparent 12px box per star mirroring its screen
-   position. They give the canvas the DOM it does not have — a stable
-   [data-node-id] handle and an aria-label a screen reader can read — and they
-   move only when the camera COMMITS (settle, reset, focus fit, resize), never
-   per gesture frame. The layer is inert; each anchor stays hittable so a
-   driver's click resolves to the star it aimed at, and the coordinates it fires
-   reach the host's own picker either way. */
 .tg-ghost { position: absolute; inset: 0; pointer-events: none; }
 .tg-ghost-node {
   position: absolute; width: 12px; height: 12px;
   background: transparent; pointer-events: auto;
 }
-/* Paint-free state markers. The canvas draws the topic spotlight; these only
-   say out loud, where a test or an accessibility tree can read it, which stars
-   are lit and which have receded. */
 .tg-ghost-node.spot, .tg-ghost-node.faded { background: transparent; }
 
-/* Dim memories (activation below the luminance floor): readable, visibly
-   cooler, never hidden — stale is not gone. */
 .memory-dim { opacity: 0.58; }
 .memory-dim:hover, .memory-dim:focus-visible { opacity: 1; }
 
-/* ── Note editor ──────────────────────────────────────────────── */
 .note-editor { display: flex; flex-direction: column; height: 100%; }
 .editor-save { align-self: flex-end; font-size: var(--fs-micro); color: var(--fg-faint); padding: 2px 4px; }
 .editor-save-failed { color: var(--danger); }
@@ -894,7 +806,6 @@ body.bubble-host { background: transparent; }
 }
 .links-row:hover .links-row-open { color: var(--fg); }
 .links-row-open svg { flex: none; align-self: center; color: var(--fg-faint); }
-/* Cut a wrong link — hover-revealed so the panel stays calm. */
 .links-row-cut {
   flex: none; display: none; align-items: center; justify-content: center;
   width: 18px; height: 18px; margin-right: 4px; border-radius: 5px;
@@ -917,9 +828,6 @@ body.bubble-host { background: transparent; }
 .cm-host .cm-editor { height: 100%; font-size: var(--fs-body); }
 .cm-host .cm-editor.cm-focused { outline: none; }
 .cm-host .cm-gutters { border-right: none; }
-/* CodeMirror defaults to bare `monospace`, which routes Hangul to the OS
-   fallback (GulimChe on Windows). Our --mono stack carries Pretendard for
-   Korean glyphs — apply it to the source panes and gutters explicitly. */
 .cm-host .cm-content, .cm-host .cm-gutters, .diff-host .cm-content, .diff-host .cm-gutters {
   font-family: var(--font);
   line-height: 1.65;
@@ -936,7 +844,6 @@ body.bubble-host { background: transparent; }
 .preview-toggle { align-self: flex-end; color: var(--fg-faint); font-size: var(--fs-micro); padding: 3px 16px; }
 .preview-toggle:hover { color: var(--fg); }
 
-/* ── Diff ─────────────────────────────────────────────────────── */
 .diff-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .diff-labels { display: flex; padding: 5px 16px; color: var(--fg-faint); font-family: var(--font); font-size: var(--fs-badge); letter-spacing: 0.12em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
 .diff-labels span { flex: 1; }
@@ -944,10 +851,7 @@ body.bubble-host { background: transparent; }
 .diff-host .cm-mergeView { height: 100%; }
 .diff-host .cm-editor { font-size: var(--fs-body); }
 
-/* ── Review ───────────────────────────────────────────────────── */
 .review-detail { display: flex; flex-direction: column; height: 100%; }
-/* Right padding clears the absolutely-positioned ✕ so the keys hint never
-   slides under it (field report: "A approve · R reject" overlapped the close). */
 .review-header { display: flex; gap: 14px; align-items: baseline; padding: 12px 44px 12px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .review-type { font-weight: 700; font-size: var(--fs-lead); color: var(--fg-strong); text-transform: capitalize; letter-spacing: -0.01em; }
 .review-rationale { color: var(--fg-dim); }
@@ -959,7 +863,6 @@ body.bubble-host { background: transparent; }
 .reject-form { display: flex; gap: 8px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--sidebar-bg); }
 .reject-form input { flex: 1; }
 
-/* ── Home ─────────────────────────────────────────────────────── */
 .zap { display: inline-flex; align-items: center; gap: 6px; }
 .zap:disabled { opacity: 0.6; cursor: default; }
 .brief { max-width: 760px; font-size: var(--fs-lead); line-height: 1.7; margin-top: 12px; }
@@ -971,7 +874,6 @@ body.bubble-host { background: transparent; }
 .brief strong { font-weight: 600; color: var(--fg-strong); }
 .brief code { font-family: var(--mono); font-size: 0.86em; }
 
-/* ── Palette (cmdk) ───────────────────────────────────────────── */
 .palette {
   position: fixed; top: 12vh; left: 50%; transform: translateX(-50%);
   width: 620px; max-width: 90vw;
@@ -993,13 +895,11 @@ body.bubble-host { background: transparent; }
 .palette [cmdk-item][data-selected='true'] .side-sub { color: var(--fg-dim); }
 .palette [cmdk-empty] { padding: 12px 14px; color: var(--fg-dim); }
 
-/* freshness dots — canvas tone (teal / gild / clay) with a subtle inset edge */
 .fresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .fresh-green { background: var(--teal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 62%, #000); }
 .fresh-amber { background: var(--gild); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gild) 62%, #000); }
 .fresh-red { background: var(--clay); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clay) 62%, #000); }
 
-/* Concrete capture examples — the Sky's first-run starter chips. */
 .starter-try {
   margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
@@ -1013,8 +913,6 @@ body.bubble-host { background: transparent; }
 }
 .starter-chip:hover { border-color: var(--fg-faint); background: var(--card-top); }
 
-/* ── List view chrome ────────────────────────────────────────────
-   One filter strip, one sticky section-head voice, one row grammar. */
 .view-filter-bar { display: flex; align-items: center; gap: var(--space-2); min-height: var(--section-height); padding: var(--space-2) var(--page-gutter); flex-shrink: 0; border-bottom: 1px solid var(--border-soft); background: var(--panel-bg); }
 .view-filter {
   width: 100%; min-width: 0; max-width: 420px;
@@ -1024,10 +922,7 @@ body.bubble-host { background: transparent; }
 }
 .view-filter::placeholder { color: var(--fg-faint); }
 .view-filter:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 14%, transparent); }
-/* Sticky section heads — the List's month sections. */
 .view-section-head {
-  /* -1px + shadow seal: subpixel scroll rounding used to leave a hairline
-     seam above the sticky head where row text showed through. */
   position: sticky; top: -1px; z-index: 2;
   display: flex; align-items: baseline; gap: 8px;
   padding: var(--space-3) calc(var(--page-gutter) + var(--space-3)) var(--space-1);
@@ -1037,16 +932,12 @@ body.bubble-host { background: transparent; }
   font-size: var(--fs-small); color: var(--fg-faint);
 }
 .view-section-count { font-family: var(--font); font-weight: 500; font-size: var(--fs-micro); color: var(--fg-faint); }
-/* Empty state centers in the space BELOW the filter strip. */
 .list-view > .empty-state { flex: 1; min-height: 0; height: auto; }
 
-/* Chronology anchor mark on a row (timeline: pinned) — also worn by MetaBar. */
 .pin-mark { display: inline-flex; align-items: center; color: var(--fg-faint); }
 .meta-pin { vertical-align: -2px; margin-left: 4px; }
 
-/* ── List view (chronological browse of the living notes) ────────── */
 .list-view { display: flex; flex-direction: column; height: 100%; background: var(--panel-bg); }
-/* Owner lens (team vaults only): a quiet select beside the text filter. */
 .list-owner-filter {
   flex-shrink: 0;
   padding: 7px 10px; border-radius: var(--radius-m);
@@ -1089,11 +980,8 @@ body.bubble-host { background: transparent; }
 }
 .list-more:hover { background: var(--hover-bg); color: var(--fg); }
 
-/* ── First-run tour (coach marks, once) ──────────────────────────── */
 .tour-overlay { position: fixed; inset: 0; z-index: 140; }
 .tour-overlay.dimmed { background: rgba(15, 17, 26, 0.55); }
-/* The cutout: a ring around the real element, dimming everything else via
-   one giant shadow — the element itself stays fully visible. */
 .tour-highlight {
   position: fixed; border-radius: 12px; pointer-events: none;
   box-shadow: 0 0 0 9999px rgba(15, 17, 26, 0.55), 0 0 0 2px var(--editor-bg);
@@ -1121,16 +1009,12 @@ body.bubble-host { background: transparent; }
 }
 .tour-next:hover { filter: brightness(1.15); }
 
-/* Private mode caption + the echo strip: both used to float above the capture
-   card and now sit directly above the composer they belong to. */
 .private-caption {
   display: flex; align-items: center; justify-content: center; gap: 5px;
   padding: 8px 14px 0; text-align: center; line-height: 1.4;
   font-size: var(--fs-micro); color: var(--fg-dim);
 }
 .private-caption svg { color: var(--gild); flex-shrink: 0; }
-/* The echo: notes the vault already holds on what is being typed — a quiet
-   widget strip, rows jump to the note. */
 .capture-echo {
   margin: 8px 12px 0;
   padding: 7px 10px 6px;
@@ -1167,7 +1051,6 @@ body.bubble-host { background: transparent; }
 }
 .chat-composer:focus-within { border-color: var(--focus-ring); }
 .chat-composer.locked { border-color: var(--gild); }
-/* quiet affordance line: says the composer takes more than typed text */
 .capture-hint {
   padding: 0 14px 10px; text-align: center;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1180,8 +1063,6 @@ body.bubble-host { background: transparent; }
 }
 .chat-textarea::placeholder { color: var(--fg-faint); }
 .chat-textarea:focus { outline: none; }
-/* Two verbs need two buttons. At the panel's 320px minimum they wrap onto their
-   own row rather than squeezing the engine picker out of the toolbar. */
 .chat-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px 6px 8px; }
 .chat-toolbar-left { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; }
 .chat-toolbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -1191,8 +1072,6 @@ body.bubble-host { background: transparent; }
 }
 .chat-toolbar .lock-toggle:hover { background: var(--hover-bg); color: var(--fg); }
 .chat-toolbar .lock-toggle.locked { color: var(--gild); background: var(--accent-soft); }
-/* The Remember chip keeps the index card's quiet pin look — it is the primary
-   verb here, so it must not read as a second send button. */
 .capture-pin {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--fs-small); font-weight: 600; color: var(--fg);
@@ -1212,8 +1091,6 @@ body.bubble-host { background: transparent; }
 }
 .chat-engine-pill:hover { background: var(--hover-bg); }
 .chat-engine-chevron { position: absolute; right: 5px; color: var(--fg-faint); pointer-events: none; }
-/* ── Composer: one look wherever a message is typed ───────────────── */
-/* One line at rest; long drafts grow without moving the controls. */
 .chat-write {
   --write-control: 32px;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 6px;
@@ -1279,15 +1156,10 @@ body.bubble-host { background: transparent; }
 .chat-send-btn:hover:not(:disabled) { background: var(--accent-hover); }
 .chat-send-btn:active:not(:disabled) { transform: scale(0.94); }
 .chat-send-btn:disabled { opacity: 0.25; cursor: default; }
-/* Two verbs, one Enter key. Whichever verb Enter is loaded with keeps its
-   emphasis and the other recedes to a plain affordance, so the toolbar can be
-   read at a glance instead of guessed at — the filled send button used to look
-   like THE action while Enter quietly remembered. */
 .capture-pin:not(.armed) { background: transparent; border-color: var(--input-border); color: var(--fg-dim); }
 .chat-send-btn:not(.armed) { background: transparent; border: 1px solid var(--input-border); color: var(--fg-dim); }
 .chat-send-btn:not(.armed):hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
 
-/* ── Quick capture ──────────────────────────────────────────── */
 body.quick-host { background: transparent; }
 .quick-capture {
   height: 100vh; display: flex; flex-direction: column; justify-content: flex-end;
@@ -1317,16 +1189,12 @@ body.quick-host { background: transparent; }
 }
 .quick-error { display: block; padding: 0 22px 4px 38px; font-size: var(--fs-micro); line-height: 1.3; color: var(--danger); }
 
-/* ── Onboarding ───────────────────────────────────────────────── */
 .onboarding {
   height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--panel-bg);
   background-image: radial-gradient(circle at 1px 1px, var(--canvas-dot) 1px, transparent 0);
   background-size: 26px 26px;
 }
-/* Frameless window, no top bar yet: give onboarding a draggable title strip
-   (it also hosts the native controls — traffic lights left on macOS,
-   overlay buttons right on Windows). */
 .onboarding::before {
   content: ''; position: fixed; top: 0; left: 0; right: 0; height: 52px;
   -webkit-app-region: drag;
@@ -1362,26 +1230,17 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
   border-radius: 999px; padding: 1px 8px;
 }
 
-/* ── Settings & diagnostics ──────────────────────────────────── */
 .settings-box { width: min(720px, 92vw); gap: 0; padding: 0; overflow: hidden; }
 .settings-box .brief-title { margin-bottom: 2px; }
 .settings-scroll { min-height: 0; overflow-y: auto; padding: var(--space-6) var(--dialog-gutter); display: flex; flex-direction: column; gap: var(--space-3); }
-/* diagnostics grows to fit the embedded terminal — no inner scrolling */
 .setting-row { display: flex; align-items: center; gap: 12px; min-height: 36px; font-size: var(--fs-body); }
 .setting-row > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--fg); }
-/* A one-line label never breaks mid-phrase: "Start at login" split across two
-   lines beside a floating tick read as a rendering fault, not a setting. A
-   label longer than the row then has to end in an ellipsis rather than paint
-   over the control it belongs to. */
 .setting-row:not(.column) > span:first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* A single on/off reads better as a switch than as a lone tick box: it shows
-   its state by position and colour instead of by a 13px glyph, and it gives
-   the row a right-hand control with real weight to align to. */
 .switch {
   appearance: none; -webkit-appearance: none;
   flex: 0 0 auto; position: relative; cursor: pointer;
@@ -1398,25 +1257,16 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .switch:checked { background: var(--accent); }
 .switch:checked::after { transform: translateX(14px); background: var(--button-fg); }
 .switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-/* A column row is a small paragraph: a title, a few lines under it, then
-   its buttons - with room between one and the next, and a measure the eye
-   can carry, so the section reads as items rather than as one grey block. */
 .setting-row.column { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 0 12px; }
 .setting-row.column + .setting-row.column { border-top: 1px solid var(--border-soft); }
 .setting-row.column > span:first-child { font-weight: 600; color: var(--fg-strong); }
 .setting-hint { font-family: var(--font); font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.55; max-width: 62ch; }
-/* MCP connect row: compact left-aligned pills — a stretched grid treatment
-   here once wrapped the labels onto two lines. */
 .mcp-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
 .mcp-actions button.secondary { white-space: nowrap; flex: 0 0 auto; }
 .setting-row.column > span:first-child { flex: none; }
-/* Bounded, not full-bleed: a 570px-wide box for one short value looked like a
-   mistake next to a 13px checkbox. Both now end at the same right margin. */
 .setting-row select, .setting-row input[type='time'], .setting-row input[type='text'], .setting-row input:not([type]) {
   flex: 0 1 320px; min-width: 0;
 }
-/* Section heading — a quiet divider, not a second title competing with the
-   sheet's own. */
 .settings-group-head {
   font-size: var(--fs-small); font-weight: 650; letter-spacing: 0.02em;
   color: var(--fg-dim); margin: var(--space-2) 0 0;
@@ -1427,9 +1277,6 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
   border: 0; border-radius: 0; background: transparent;
 }
 .settings-group > .setting-row:not(.column), .settings-group > .settings-fact { padding: 8px 0; }
-/* Facts, not settings: what this install IS. Every row shares one grid -
-   the name in a fixed column, the state and its one action beside it - so
-   the sheet reads as a table rather than a set of ragged lines. */
 .settings-facts { display: flex; flex-direction: column; gap: 6px; }
 .settings-fact {
   display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 8px 16px;
@@ -1439,9 +1286,6 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .settings-fact-value { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; color: var(--fg-dim); }
 .settings-fact-btn { margin: 0; }
 
-/* Onboarding login terminal: a centred modal, not a raw panel jammed in the
-   corner. The dialog is a flex column so the terminal fills the space it's
-   given instead of collapsing to a cut-off strip. */
 .brief-overlay {
   position: fixed; inset: 0; z-index: 180;
   background: rgba(22, 22, 27, 0.38);
@@ -1473,19 +1317,13 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .dialog-close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; color: var(--fg-dim); }
 .dialog-close:hover { background: var(--hover-bg); color: var(--fg); }
 .brief-text { white-space: pre-wrap; font-size: var(--fs-body); font-family: var(--font); }
-/* Dialog footer: primary action rightmost, everywhere (settings, diagnostics,
-   onboarding all share this reading order). */
 .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 6px; }
 .settings-box > .dialog-actions { flex: none; min-height: var(--section-height); margin: 0; padding: var(--space-3) var(--dialog-gutter); border-top: 1px solid var(--border-soft); background: var(--widget-bg); }
-/* Quiet actions keep to the left of the footer; the decision stays on the right. */
 .dialog-actions .link-button { margin-right: auto; }
 .dialog-actions .link-button + .link-button { margin-right: auto; margin-left: -4px; }
-/* Version label: pushed to the far left of the action row by its own margin,
-   so the buttons keep their right-aligned order. */
 .brief-box input:not([type='checkbox']) { width: 100%; }
 .brief-box code { font-family: var(--mono); font-size: var(--fs-small); }
 
-/* ── Cosmos chat ─────────────────────────────────────────────── */
 .cosmos-chat {
   position: absolute; top: var(--panel-gutter); right: var(--panel-gutter); bottom: var(--panel-gutter); z-index: 4;
   width: min(420px, calc(100% - 2 * var(--panel-gutter)));
@@ -1535,28 +1373,17 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .cosmos-chat-thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--panel-gutter); display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--fs-chat); }
 .cosmos-chat-hint { margin: auto; text-align: center; max-width: 300px; font-size: var(--fs-body); line-height: 1.55; color: var(--fg-dim); padding: 0; }
 .cosmos-chat-write { margin: var(--space-2) var(--panel-gutter) var(--panel-gutter); }
-/* ── Bots: the first tab — colleagues over the same brain ──────────── */
 .bots-view { position: relative; flex: 1; min-height: 0; display: flex; }
-/* A mounted-but-hidden canvas keeps its state and costs no paint. */
 .canvas-slot { flex: 1; min-width: 0; min-height: 0; display: flex; }
 .canvas-slot[hidden] { display: none; }
 .bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; position: relative; background: var(--panel-bg); }
 .bots-chat, .dev-pane { --composer-gutter: max(var(--page-gutter), calc((100% - var(--composer-width)) / 2)); --reading-gutter: max(calc(var(--composer-gutter) + var(--space-4)), calc((100% - var(--reading-width)) / 2)); }
 .bots-chat { flex: 1; min-width: 320px; min-height: 0; display: flex; flex-direction: column; }
-/* The page as the other half of the screen: full height, its own bar, the
-   picture as large as the pane allows. The grip on its left edge drags the
-   split; folded, it is a sliver that names the page it is holding. */
 .web-pane {
   position: relative; width: var(--web-pane-width, 52%); min-width: 380px; max-width: calc(100% - 328px); box-sizing: border-box; flex: none;
   display: flex; margin: 0; border-left: 1px solid var(--border-soft);
-  /* Above the floating notices: a banner must never cover the pane's own
-     controls. */
   z-index: 31;
 }
-/* A window too small to hold a conversation and a page side by side holds
-   the conversation, and the page slides over it: the chat keeps its full
-   measure, the pane arrives as a sheet from the right edge, and the folded
-   tab is how it is called back. Nothing is squeezed into a blank sliver. */
 @media (max-width: 1180px) {
   .web-pane {
     position: absolute; top: 0; right: 0; bottom: calc(var(--composer-space, 112px) + 8px); margin: 8px 8px 0;
@@ -1608,15 +1435,8 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 }
 .web-pane-note { flex: none; padding: var(--space-1) var(--panel-gutter) var(--space-2); font-size: var(--fs-micro); color: var(--fg-faint); min-height: 26px; }
 .web-pane .routine-submit, .web-pane .press-gate { margin: 0 12px 10px; }
-/* The interactive picture: the canvas keeps its own shape centred in the
-   box, and the invisible key sink covers the whole surface. */
 .mirror-surface { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: default; }
-/* The picture hangs from the top of its box the way a page does in a
-   browser; the box's spare height stays below it. */
 .mirror-screen { position: relative; display: flex; align-items: flex-start; justify-content: center; width: 100%; height: 100%; }
-/* The comet's hand on the picture: a pointer that travels to the control it
-   is about to press and rings once when it does, then fades once it has
-   been still. Where the hand is, not what it is thinking. */
 .hand-ghost {
   position: absolute; width: 0; height: 0; pointer-events: none; z-index: 3;
   transition: left 260ms cubic-bezier(0.2, 0.8, 0.2, 1), top 260ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 400ms ease;
@@ -1640,9 +1460,6 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .mirror-screen canvas:not([data-painted]) { visibility: hidden; }
 .mirror-waiting { position: absolute; inset: auto; }
 .bots-head-name { font-size: var(--fs-body); font-weight: 550; line-height: 1.4; color: var(--fg-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Under the last answer: the web, and keeping the ask. Offered after the
-   answer rather than beside the composer — a second send button was the thing
-   nobody could tell apart from the first. */
 .bots-followups { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 2px 2px; }
 .bots-followup {
   display: inline-flex; align-items: center; gap: 5px;
@@ -1650,16 +1467,10 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
   border: 1px solid var(--border); color: var(--fg-dim); background: transparent;
 }
 .bots-followup:hover { background: var(--hover-bg); color: var(--fg); }
-/* The loop narrating its work: the status line over its earlier steps. */
 .bots-work-lines { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .bots-work-line { font-family: var(--mono); font-size: var(--fs-micro); color: var(--fg-faint); }
-/* The offer: the comet knows which saved procedure does this, and asks for
-   the one press it will not make on its own. */
 .bots-offer { display: block; }
 .bots-offer-text { flex: 1; min-width: 180px; font-size: var(--fs-small); color: var(--fg); }
-/* Keeping a job reads as the comet speaking, then the button it would make:
-   the sentence sits in the thread like any other line, and the card under it
-   is the thing being agreed to - its name is the part a person changes. */
 .comet-keep { display: flex; flex-direction: column; gap: 8px; }
 .comet-keep-say { margin: 0; font-size: var(--fs-small); color: var(--fg); }
 .comet-keep-card {
@@ -1676,9 +1487,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .comet-keep-does { font-size: var(--fs-small); color: var(--fg-dim); }
 .comet-keep-acts { display: flex; align-items: center; gap: 8px; }
 .bots-question-heading { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
-/* One pick among three, as a segmented control: the chosen one is lifted
-   onto the page's white, the others rest on the strip. */
-/* A short free-form value beside a fact key (a model id). */
 .settings-input {
   width: min(320px, 100%); min-width: 0; height: var(--control); padding: 0 10px; box-sizing: border-box; border-radius: var(--radius-m);
   background: var(--rail-bg); border: 0; box-shadow: inset 0 0 0 1px var(--border-soft);
@@ -1717,8 +1525,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-memory-forget:hover { color: var(--fg); background: var(--hover-bg); }
 .bots-offer-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .bots-working { display: flex; align-items: flex-start; gap: 9px; max-width: 94%; }
-/* The thread reads in one column of a readable measure; on a wide window
-   the padding grows so the column stays centred under the composer. */
 .bots-thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--reading-gutter); display: flex; flex-direction: column; gap: var(--space-4); }
 .bot-empty { margin: auto 0; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; text-align: center; }
 .bot-empty-name { margin: 8px 0 0; font-size: 18px; font-weight: 600; color: var(--fg); }
@@ -1734,7 +1540,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-write .chat-send-btn:disabled { opacity: 1; background: var(--selected-soft); color: var(--fg-dim); }
 [data-theme='light'] .bots-write .chat-send-btn:disabled { opacity: 0.4; background: var(--cta); color: var(--cta-fg); }
 .bots-write .bubble-stop, .bots-write .bubble-stop:hover:not(:disabled) { background: var(--clay); }
-/* Not read yet: a quiet pulse, no claim about what will be there. */
 .bots-loading { color: var(--fg-faint); }
 .bots-empty {
   margin: auto; display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -1748,14 +1553,11 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   .cosmos-chat-launch { transition: none; }
 }
 
-/* ── Routines sheet (saved replays; borrows the errand live chrome) ── */
 .routines-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .routine-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-s); transition: background 100ms ease; }
 .routine-row:hover { background: var(--hover-bg); }
 .routine-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
 .routine-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
-/* The X arms on the first press and turns danger-red for the second — the
-   same two-beat delete the comet header uses, without a modal. */
 .routine-delete {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 50%; color: var(--fg-faint);
@@ -1770,16 +1572,12 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .routine-step-remove:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
 .routine-step-remove:disabled { opacity: 0.4; }
 .routine-add-step { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
-/* Teach mode: the sheet steps back and narrates while the person shows the
-   work in the agent window; afterwards the captured steps wait under a name. */
 .routine-teach {
   display: flex; flex-direction: column; gap: 8px;
   border: 1px dashed var(--accent-line); border-radius: var(--radius-card); padding: 10px 12px;
 }
 .routine-teach-line { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
 .routine-teach-hint { font-size: var(--fs-small); color: var(--fg-dim); }
-/* The submit gate: the words that are about to be posted, and two answers.
-   Warm-bordered because this is the one place a wrong click is expensive. */
 .routine-submit {
   display: flex; flex-direction: column; gap: 8px;
   border: 1px solid var(--clay); border-radius: var(--radius-card); padding: 10px 12px;
@@ -1795,7 +1593,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .routine-submit-label { flex: none; min-width: 90px; color: var(--fg-faint); }
 .routine-submit-value { color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 
-/* The rerun question: a routine that types into pages asks before repeating. */
 .routine-ask {
   display: flex; align-items: center; gap: 9px;
   padding: 10px 12px; border-radius: var(--radius-card);
@@ -1804,12 +1601,8 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .routine-ask-text { flex: 1; min-width: 0; font-size: var(--fs-small); line-height: 1.45; }
 .routine-warn { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; color: var(--danger); }
 
-/* ── GitHub backup dialog (two numbered steps) ───────────────── */
 .github-connect .brief-title { display: flex; align-items: center; gap: 8px; }
 .github-intro { font-size: var(--fs-body); font-family: var(--font); color: var(--fg-dim); line-height: 1.5; margin: 0; }
-/* Already backed up: the dialog stops being a wizard and reports. Teal and a
-   check, because "is my vault safe" should be answerable at a glance — and the
-   repo is named, so the answer is verifiable rather than merely reassuring. */
 .github-connected {
   display: flex; flex-direction: column; gap: 8px;
   padding: 12px 14px; border-radius: var(--radius-m);
@@ -1824,8 +1617,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   word-break: break-all; line-height: 1.4;
 }
 .github-connected .setting-row { padding: 0; }
-/* A text-weight action: present for the one user who needs it, never competing
-   with the primary button next to it. */
 .link-button {
   background: none; border: 0; padding: 4px 2px;
   font-size: var(--fs-small); color: var(--fg-faint); text-decoration: underline;
@@ -1849,9 +1640,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 }
 .github-error .setting-hint { color: var(--fg-dim); }
 
-/* ── Toast ────────────────────────────────────────────────────── */
-
-/* ── Workspace switcher (top-bar vault selector) ─────────────── */
 .workspace-switcher { position: relative; flex: none; -webkit-app-region: no-drag; }
 .workspace-trigger {
   display: inline-flex; align-items: center; gap: 8px;
@@ -1897,8 +1685,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   animation: fade-in 120ms ease-out;
 }
 
-/* ── Web errand: the human-wall strip in the top bar ────────────────────── */
-/* The errand is parked in main until one of these buttons answers. */
 .topbar-status.errand-wall { gap: 7px; }
 .errand-wall-done, .errand-wall-skip {
   flex-shrink: 0; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--border);
@@ -1908,8 +1694,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .errand-wall-done:hover { background: var(--accent-hover); }
 .errand-wall-skip:hover { background: var(--hover-bg); color: var(--fg); }
 
-/* Settings opens at once and empty: rows in outline, breathing, until every
-   one knows its state and the real rows take their place. */
 .settings-skeleton { display: flex; flex-direction: column; padding: 0; }
 .settings-skeleton-row { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border-soft); }
 .settings-skeleton-row:last-child { border-bottom: 0; }
@@ -1923,17 +1707,12 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 @keyframes skeleton-breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .skeleton-line { animation: none; } }
 
-/* The agent browser's mirror. A small card in the thread while the page is
-   worked on; opened up, a stage the person acts on as if in the window. */
 .live-card-host { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-waiting {
   display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 10;
   font-size: var(--fs-small); color: var(--fg-faint);
 }
 .live-overlay { z-index: 240; }
-/* As wide as the window allows, and never taller than it: the page keeps
-   its own proportions, so the width follows the height when that is what
-   runs out. */
 .live-panel {
   --live-aspect: 1.6;
   width: min(94vw, calc((100vh - 150px) * var(--live-aspect))); background: var(--panel-bg); border-radius: var(--radius-panel);
@@ -1953,31 +1732,20 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .live-keys {
   position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; resize: none; cursor: default;
   border: 0; padding: 0; background: transparent; caret-color: transparent;
-  /* The sink only listens; the picture takes the pointer. It is focused by
-     hand on mousedown, so it needs no clicks of its own. */
   pointer-events: none;
 }
 .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); height: 32px; padding: 0 12px; border-radius: 999px; border-color: var(--border-soft); background: var(--rail-bg); }
 .live-panel-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; flex-wrap: wrap; }
-/* A question asked inside the view takes the width and leads the row. */
 .live-panel-foot .routine-submit { order: -1; flex: 1 1 100%; }
 .live-panel-foot .primary, .live-panel-foot .secondary { font-size: var(--fs-small); }
 
-/* What the comet is doing, under the answer it is writing: the steps in the
-   order they happened, and the page it is on. */
-/* The work sits at the foot of the thread whether the conversation is long
-   or short: pushed down when there is room, stuck there when there is not. */
-/* Above the answer it leads to, tight under the question: no room is made
-   for it beyond its own lines. */
 .comet-work { display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: 100%; margin: 0 0 2px; }
-/* Nothing to say and no page to show: the strip takes no room at all. */
 .comet-work:empty { display: none; }
 .comet-work-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .comet-work-line { display: flex; align-items: flex-start; gap: 10px; font-size: var(--fs-small); color: var(--fg-dim); padding: 5px 0; position: relative; }
 .comet-work-line > svg { flex: none; margin-top: 3px; color: var(--fg-faint); }
 .comet-work-line > span { min-width: 0; overflow-wrap: anywhere; }
 .comet-work-line.current { color: var(--fg-dim); }
-/* What it said between actions: its own words, kept, set apart from the steps. */
 .comet-work-line.said { display: block; padding: 6px 0; font-size: var(--fs-chat); line-height: 1.75; color: var(--fg); }
 .work-group summary { display: flex; align-items: center; gap: 9px; color: var(--fg-faint); cursor: pointer; font-size: var(--fs-small); padding: 5px 0; list-style: none; }
 .work-group summary::-webkit-details-marker { display: none; }
@@ -1998,14 +1766,8 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .answer-code-head button:hover { background: var(--hover-bg); color: var(--accent); }
 .bubble-msg-body .answer-code pre { margin: 0; border: 0; border-radius: 0; }
 .bubble-msg-body a[href^="engram-artifact:"] { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
-/* The page it left behind, once the browser has gone: still there to look at. */
-/* Before the first frame the card is a thin line, not a wall of nothing. */
 .routine-submit-hint { font-size: var(--fs-small); color: var(--fg-faint); }
 
-/* The page the comet is working on, under the conversation and over the
-   composer: as wide as the column above it, in one place whatever the thread
-   does, and dragged taller by its top edge. A page is wider than it is tall,
-   so this is where it fits without leaving half a column empty. */
 .live-dock {
   display: flex; flex-direction: column; flex: none;
   background: var(--panel-bg); border-radius: var(--radius-card);
@@ -2026,20 +1788,15 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .live-dock-fold:hover, .live-dock-act:hover { background: var(--hover-bg); color: var(--fg); }
 .live-dock-chevron { transition: transform 140ms ease; }
 .live-dock-chevron.up { transform: rotate(-90deg); }
-/* The picture sits in a field of its own, so it reads as a screen rather
-   than an image floating on the card. */
 .live-dock-body {
   flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
   margin: 0 8px 8px; background: var(--rail-bg); border-radius: var(--radius-m); overflow: hidden;
 }
 .live-dock-body canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
-/* The picture is painted onto a canvas as frames land, so it is sized here
-   rather than by the pixels it happens to be carrying. */
 .live-screen { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
 .live-screen canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
 .live-dock .routine-submit { margin: 0 8px 8px; }
 
-/* Keep these overrides after the motion rules, including visible split panes. */
 @media (prefers-reduced-motion: reduce) {
   .spin, .absorb-ring, .chat-warming-dot { animation: none; }
   .cosmos-chat, .cosmos-chat.closing, .app-sidebar, .sidebar-nav-row, .sidebar-item { transition: none; animation: none; }

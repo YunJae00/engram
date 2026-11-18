@@ -1,8 +1,4 @@
 @import './team-tree.css';
-/* Everything that waits on the person - a press to allow, a question, a
-   sign-in, a post to look over, an offer, a choice - is one kind of card:
-   a small mark, a line naming the kind, the thing itself, where, and the
-   answers on the right; more to read sits below. */
 .decision-card { container-type: inline-size; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 10px 10px 12px; border-radius: 16px; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); text-align: left; animation: fade-in 180ms ease; }
 .decision-card-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .decision-card-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 9px; background: var(--hover-bg); color: var(--clay); }
@@ -27,13 +23,11 @@
 .decision-card .comet-keep-instructions textarea { min-height: 64px; margin: 6px 0 4px; }
 .decision-stack { display: flex; flex-direction: column; gap: 6px; }
 
-/* By the message box, a card is as wide as the box. */
 .bots-view .bots-chat > :is(.chat-approval, .decision-card) { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
 .bots-run-status:empty { display: none; }
 .bots-run-status { display: flex; flex-direction: column; gap: 6px; }
 .mini-chat-thread :is(.bots-offer, .comet-keep) { margin: 2px 0; }
 
-/* A card with little room puts its answers on a line of their own. */
 @container (max-width: 480px) {
   .decision-card-row { flex-wrap: wrap; }
   .decision-card-actions { justify-content: flex-end; width: 100%; }
@@ -41,9 +35,6 @@
 }
 @media (prefers-reduced-motion: reduce) { .decision-card { animation: none; } }
 
-/* In the conversation a card is the comet's own next message: a bubble on
-   its side, the question in its words, the answers under it. While it waits
-   on the person, it does not also say it is thinking. */
 :is(.bots-thread, .mini-chat-thread) .decision-card { align-self: flex-start; width: min(88%, 560px); padding: 16px; border-radius: var(--radius-panel); background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--border-soft); }
 :is(.bots-thread, .mini-chat-thread) .decision-card-row { flex-wrap: wrap; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions { justify-content: flex-start; width: 100%; padding-left: 42px; box-sizing: border-box; }
@@ -55,10 +46,6 @@
 :is(.bots-thread, .mini-chat-thread) .decision-card-body { padding-left: 42px; }
 :is(.bots-thread, .mini-chat-thread):has(.decision-card.ask) .bubble-typing { display: none; }
 .mini-chat-thread .decision-card-actions, .mini-chat-thread .decision-card-body { padding-left: 0; }
-/* The floating page preview sits over the top of the conversation; a short
-   conversation starts below it, so nothing the person must answer hides
-   under it. */
-/* A narrow card puts its answers on as many lines as they need. */
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions { flex-wrap: wrap; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions button { max-width: 100%; white-space: normal; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions button { min-height: 36px; box-sizing: border-box; }
@@ -67,7 +54,6 @@
   :is(.bots-thread, .mini-chat-thread) .decision-card-actions, :is(.bots-thread, .mini-chat-thread) .decision-card-body { padding-left: 0; }
 }
 
-/* Permission card: fades in once, never on reduced motion. */
 .permission-card { animation: permission-card-in 180ms ease-out both; }
 @keyframes permission-card-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .permission-card { animation: none; } }

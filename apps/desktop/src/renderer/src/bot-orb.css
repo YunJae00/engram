@@ -1,8 +1,3 @@
-/* S1 Glass: a dark glass ball with a thin silver rim, mist lit from below, and one S-shaped wave of light across the middle:
-   a white core, a peach fringe above it and a blue one below. The ball is the same on a light and a dark surface.
-   Back to front: the mist (this element's background), the light layer (the dark upper half and the wave, then the working overlay),
-   the glass (::before: a highlight at the top, a glow inside the rim, a caustic where the wave meets the glass) and the rim (::after).
-   The core stays white; the orb's color tints the mist most, the haze and the floor glow less, and the rim and fringes a little. Silver is untinted. */
 .bot-orb {
   --orb: #8B7CF6; --tint-rim: 30%; --tint-glow: 50%; --tint-mist: 60%;
   position: relative; display: block; width: 100%; height: 100%;
@@ -13,7 +8,6 @@
   --warm: color-mix(in srgb, #FF9952, var(--orb) var(--tint-rim)); --cool: color-mix(in srgb, #4D9EFF, var(--orb) var(--tint-rim));
   --warm-haze: color-mix(in srgb, #FFBD94, var(--orb) var(--tint-glow)); --cool-haze: color-mix(in srgb, #80A8E6, var(--orb) var(--tint-glow));
   --rim: color-mix(in srgb, #EDF5FF, var(--orb) var(--tint-rim)); --caustic: color-mix(in srgb, #FFCC99, var(--orb) var(--tint-rim));
-  /* The mist is a bright column in the middle that falls off to the sides, with a warm glow on the floor. */
   background:
     radial-gradient(ellipse 42% 30% at 50% 90%, color-mix(in srgb, var(--floor) 34%, transparent), transparent),
     linear-gradient(90deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.36) 25%, rgba(0, 0, 0, 0.12) 40%, transparent 55%, rgba(0, 0, 0, 0.12) 70%, rgba(0, 0, 0, 0.36) 85%, rgba(0, 0, 0, 0.55)),
@@ -37,20 +31,17 @@
     radial-gradient(ellipse 34% 20% at 50% 5%, color-mix(in srgb, var(--rim) 14%, transparent), transparent),
     radial-gradient(closest-side, transparent 84%, color-mix(in srgb, var(--rim) 16%, transparent) 96%);
 }
-/* The rim is brightest underneath, where the light inside spills onto it, and dimmest on the upper sides. */
 .bot-orb::after {
   --lit: color-mix(in srgb, var(--rim) 90%, #000000); --dim: color-mix(in srgb, var(--rim) 58%, #000000);
   background: conic-gradient(color-mix(in srgb, var(--rim) 72%, #000000), var(--dim) 55deg, var(--dim) 85deg, var(--lit) 130deg, var(--lit) 185deg, var(--dim) 265deg, var(--dim) 305deg, color-mix(in srgb, var(--rim) 72%, #000000));
   mask: radial-gradient(closest-side, transparent 96%, #000000 98%);
 }
-/* The small master (32px and under): a rim thick enough to read at 16px, and no caustics. The rim carries more of the color, so small orbs can be told apart. */
 .bot-orb[data-master='small'] { --rim: color-mix(in srgb, #EDF5FF, var(--orb) var(--tint-mist)); }
 .bot-orb[data-master='small']::before { background: radial-gradient(ellipse 34% 20% at 50% 5%, color-mix(in srgb, var(--rim) 14%, transparent), transparent); }
 .bot-orb[data-master='small']::after { mask: radial-gradient(closest-side, transparent 85%, #000000 91%); }
 
 .bot-orb-light { position: absolute; inset: 0; transform-origin: 50% 50%; }
 .bot-orb-wave, .bot-orb-work { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-/* Blur lengths on svg content are in the svg's own 100-unit box, so they scale with the orb. */
 .bot-orb-shade { fill: var(--shade); filter: blur(0.7px); }
 .bot-orb-warm-haze { fill: var(--warm-haze); fill-opacity: 0.6; filter: blur(2.6px); }
 .bot-orb-cool-haze { fill: var(--cool-haze); fill-opacity: 0.42; filter: blur(3px); }
@@ -60,12 +51,9 @@
 .bot-orb-work-warm { fill: var(--warm-haze); fill-opacity: 0.75; filter: blur(4px); }
 .bot-orb-work-cool { fill: var(--cool-haze); fill-opacity: 0.6; filter: blur(4.5px); }
 .bot-orb-work-core { fill: #FFFFFF; filter: blur(0.9px); }
-/* The small master halves the fringes. */
 .bot-orb[data-master='small'] .bot-orb-warm { fill-opacity: 0.4; }
 .bot-orb[data-master='small'] .bot-orb-cool { fill-opacity: 0.45; }
 
-/* Working: the overlay fades in (a core about 55% thicker, a wider haze) and fades out again when the work ends.
-   Under 64px the idle motion is a breathe of the whole light layer; the small master sits still. From 64px BotOrb redraws the wave instead. */
 .bot-orb-work { opacity: 0; transition: opacity 0.9s ease-in-out; }
 .bot-orb[data-motion='working'] .bot-orb-work { opacity: 1; animation: bot-orb-pulse 12s ease-in-out infinite; will-change: opacity; }
 .bot-orb[data-motion='idle'][data-master='full']:not([data-ripple]) .bot-orb-light,
@@ -76,13 +64,11 @@
   25% { transform: translateY(-1.2%) skewY(-2deg); }
   75% { transform: translateY(1.2%) skewY(2deg); }
 }
-/* Two swells per loop, so it closes with the loop. */
 @keyframes bot-orb-pulse {
   0%, 50%, 100% { opacity: 0.72; }
   25%, 75% { opacity: 1; }
 }
 
-/* !important: the rules that start an animation use the shorthand, which sets the play state back to running, and the breathe rule is the more specific one. */
 :root:not([data-window-focused='true']) .bot-orb,
 :root:not([data-window-focused='true']) .bot-orb * { animation-play-state: paused !important; }
 

@@ -1,6 +1,5 @@
 .preview-card { --pc-w: 320px; flex: 0 0 auto; align-self: flex-end; box-sizing: border-box; width: min(var(--pc-w), 100%); max-width: calc(100% - 2 * var(--panel-gutter)); margin: var(--space-2) var(--panel-gutter) 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); container: preview / inline-size; transform-origin: top right; animation: preview-card-in 180ms ease; }
 .mini-chat .preview-card { --pc-w: 264px; }
-/* Height follows width/ratio through the card container, so a new ratio animates the height without animating a custom property every frame; the max-height keeps the chat cap during the transition. */
 .preview-card-stage { position: relative; width: 100%; height: calc(100cqi / var(--pc-ratio, 1.6)); max-height: min(var(--pc-stage-cap, 50vh), var(--live-fit-stage, 100vh)); margin: 0; transition: height 200ms ease; overflow: hidden; border-radius: inherit; background: var(--hover-bg); }
 .preview-card-stage img, .preview-card-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
 .preview-card-stage canvas { opacity: 0; transition: opacity 180ms ease; }
@@ -32,14 +31,12 @@
 .preview-card-stale { flex: 0 1 auto; min-width: 0; max-width: 50%; margin-left: auto; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-badge); }
 .preview-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); opacity: 0; color: inherit; }
 .preview-card:hover .preview-card-actions, .preview-card:focus-within .preview-card-actions { opacity: 1; }
-/* Activity cards have no picture to keep clear, and they float over the thread, so the close controls stay reachable without hover. */
 .preview-card-stage[data-phase="activity"] .preview-card-actions { opacity: 1; }
 .preview-card-actions button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: 999px; background: color-mix(in srgb, black 45%, transparent); color: inherit; cursor: pointer; }
 .preview-card-caption, .preview-card-actions { color: #fff; }
 .preview-card-actions button:focus-visible, .preview-card-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .preview-card, .preview-card-stage img, .preview-card-held, .preview-deck[data-leaving], .preview-card-reopen, .computer-spinner { animation: none; } .preview-card-stage, .preview-card-stage canvas { transition: none; } }
 .preview-deck { --pc-w: 320px; position: relative; flex: 0 0 auto; align-self: flex-end; width: min(var(--pc-w), calc(100% - 30px * var(--deck-depth, 0))); max-width: calc(100% - 2 * var(--panel-gutter) - 30px * var(--deck-depth, 0)); margin: calc(12px + 30px * var(--deck-depth, 0)) var(--panel-gutter) 0; isolation: isolate; }
-/* The mini chat keeps a permanent top slot so a card never squeezes or covers the transcript. */
 .mini-chat-preview { position: relative; flex: 0 1 min(35%, 220px); min-height: 0; container-type: size; }
 .mini-chat { position: relative; }
 .mini-chat-preview:has(> .preview-deck) { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
@@ -48,9 +45,7 @@
 .mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 12px)); --deck-y: calc(-2 * var(--live-fit-space, 12px)); }
 .mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 12px)); --deck-y: calc(-3 * var(--live-fit-space, 12px)); }
 .mini-chat-preview > .preview-card-reopen { position: absolute; top: 8px; right: var(--panel-gutter); margin: 0; }
-/* Cards dock over the thread (live-card-fit), so an empty slot takes no room: the chat would jump when a card arrives. */
 .mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
-/* Two tall panes keep a slim card slot so the conversation fills the pane. */
 @container tile (min-height: 560px) { .mission-grid-2 .mini-chat-preview { flex-basis: min(12%, 96px); } }
 .preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease; }
 .preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; animation: preview-deck-back-in 180ms ease; }

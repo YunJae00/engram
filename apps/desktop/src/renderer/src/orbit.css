@@ -7,7 +7,6 @@
 .mission-layout { gap: 2px; padding: 3px; background: var(--hover-bg); border-radius: 11px; }
 .mission-layout button { display: grid; place-items: center; width: 30px; height: 28px; border-radius: 8px; color: var(--fg-faint); }
 .mission-layout button[aria-pressed='true'] { color: var(--fg); background: var(--panel-bg); box-shadow: var(--shadow-card-rest); }
-/* Above a tile's floating page preview. */
 .mission-chooser { position: absolute; inset: 42px 8px auto; z-index: 40; }
 .mission-chooser .sidebar-disclosure-content { border-radius: 12px; }
 .mission-add-menu { display: flex; flex-direction: column; gap: 2px; padding: 6px; max-height: min(320px, calc(100cqh - 52px)); overflow-y: auto; background: var(--widget-bg); border: 1px solid var(--border-soft); border-radius: 12px; }
