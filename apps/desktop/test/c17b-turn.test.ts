@@ -52,10 +52,12 @@ describe('a correction is checked against the ask as the person changed it', () 
     const out = await checkedDesk({
       ask: askNow(message, earlier), draft: '2분기는 980개예요.', source: '분기,입고\n2,980\n3,1240', fromSource: true, since: Date.now(),
       // The rewriter writes the quarter its prompt says the person wants now.
-      quick: async p => { prompts.push(p); return p.startsWith('You wrote the answer') ? `${quarterAsked(p)}분기 입고 수량은 ${quarterAsked(p) === '2' ? '980' : '1,240'}개예요.` : said.shift() ?? fakeCheck(p) },
+      // c18b: the one repair is scoped (core repairedWrite): a missing part is added as a line, from the quarter its prompt says is wanted now.
+      quick: async p => { prompts.push(p); return p.startsWith('You fix a message') ? JSON.stringify({ insert_after: { 1: [`${quarterAsked(p)}분기 입고 수량은 ${quarterAsked(p) === '2' ? '980' : '1,240'}개예요.`] } }) : said.shift() ?? fakeCheck(p) },
     })
-    expect(out).toBe('2분기 입고 수량은 980개예요.')
-    expect(prompts.find(p => p.startsWith('You wrote the answer'))).toContain('Where the two differ, the later words hold.')
+    expect(out).toContain('2분기 입고 수량은 980개예요.')
+    expect(out).not.toContain('3분기')
+    expect(prompts.find(p => p.startsWith('You fix a message'))).toContain('Where the two differ, the later words hold.')
   })
   it('the filters and the offer read the corrected meaning', () => {
     const before = [{ role: 'user', text: 'notes/branch-sync.md에서 서울 지점 할 일만 뽑아줘' }, { role: 'assistant', text: '- 김하늘: 재고 점검 — 12월 2일' }]

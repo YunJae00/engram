@@ -75,12 +75,13 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
   it('a writer that gives prose twice (no table) leaves the host\'s table: three rows, each linked', async () => {
     const { hire, quick } = await lane('prose', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { prose: true })
     const out = await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })
-    // The writer, then its repair (the "table" rule): both prose, so the host's rendering.
+    // c18b: the table rule is one of form only: the writer's prose is shown as written (no repair, never the host's rendering), each
+    // part on its own line with its link. Calls: the writer and its meaning check.
     expect(quick).toHaveLength(2)
-    expect(quick[1]).toContain('one markdown table with one row per part')
-    const rows = tableRows(out)
-    expect(rows).toHaveLength(3)
-    for (const [i, city] of ['도쿄', '오사카', '후쿠오카'].entries()) { expect(rows[i]!.startsWith(`| ${city} |`)).toBe(true); expect(rows[i]).toContain(PAGE[city]) }
+    expect(quick[1]).toContain(CHECK)
+    const lines = out.split('\n').filter(Boolean)
+    expect(lines).toHaveLength(3)
+    for (const [i, city] of ['도쿄', '오사카', '후쿠오카'].entries()) { expect(lines[i]!.startsWith(`${city}: `)).toBe(true); expect(lines[i]).toContain(PAGE[city]) }
     expect(hire.closesOn!(out)).toBe(true)
   })
 
@@ -118,8 +119,9 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     const out = await helperAnswer({ ask: '도쿄 오사카 환율 영향', members: helpers, since: at - 5000, write: async prompt => { calls.push(prompt); return new Promise<string>(() => undefined) }, due: at + 20_000, signal: ctl.signal })
     expect(Date.now() - at).toBeLessThan(500)
     expect(calls).toHaveLength(1)
-    // What comes back is the host's table; mergingHire drops it on a stop, and the session posts nothing after one.
-    expect(tableRows(out!)).toHaveLength(2)
+    // What comes back is the host's rendering (c18b: two parts in sentences, each linked); mergingHire drops it on a stop, and the session
+    // posts nothing after one.
+    for (const city of ['도쿄', '오사카']) expect(out).toContain(PAGE[city])
     const hire = mergingHire({ name: 'hire_members', description: '', argsSchema: {}, run: async () => JSON.stringify({ members: [{ accepted: true }], note: 'Members with accepted true are lookups' }) }, async () => { ctl.abort(); return 'written' })
     const stopped = await hire.run({}, { task: '', signal: ctl.signal })
     expect(stopped).not.toBe('written')
@@ -144,7 +146,9 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
   const good = JSON.stringify({ message: '토요일 강릉은 맑아요. 하람이 봤는데 낮 12도예요. [기상](https://weather.example.kr/gangneung)', kept: ['f1'] })
   const nameless = JSON.stringify({ message: '토요일 강릉은 맑고 낮 12도예요. [기상](https://weather.example.kr/gangneung)', kept: ['f1'] })
   // The first draft leaves 하람 unnamed (a shape problem); its repair takes 10 s; the check answers at once.
-  const slowRepair = (calls: string[]) => (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? Promise.resolve(none) : calls.filter(one => !one.includes(CHECK)).length === 1 ? Promise.resolve(nameless) : new Promise(resolve => setTimeout(() => resolve(good), 10_000)) }
+  // c18b: the repair is scoped: it adds a line naming 하람; the draft's sentence stays.
+  const slowRepair = (calls: string[]) => (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? Promise.resolve(none) : calls.filter(one => !one.includes(CHECK)).length === 1 ? Promise.resolve(nameless) : new Promise(resolve => setTimeout(() => resolve(JSON.stringify({ insert_after: { 1: ['하람이 봤는데 바람도 잔잔해요.'] } })), 10_000)) }
+  void good
 
   it('a hand-off due 45 s after the message, 17 s left: a repair that needs 10 s lands', async () => {
     vi.useFakeTimers({ now: T0 })
@@ -164,8 +168,11 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
     await vi.advanceTimersByTimeAsync(3000)
     expect(at).toBeDefined()
     expect(at! - T0).toBeLessThanOrEqual(3000)
-    expect(await out).toBe(mergedReport([m]))
-    expect(calls).toHaveLength(2)
+    // c18b: the unnamed rule is one of shape: with its repair late, the draft is shown as written (never the host's rendering).
+    // c18b r2 (GROKBOT 7): whose find it was is the host's to guarantee: unrepaired, 하람 is named in the sentence their link closes.
+    expect(await out).toMatch(/^하람이 찾아보니 토요일 강릉은 맑고 낮 12도예요\. \[/)
+    expect(await out).not.toContain('하람이 봤는데')
+    expect(calls).toHaveLength(3)
     expect(REPORT_WRITER_MS).toBeGreaterThan(3000)
   })
 
@@ -271,11 +278,13 @@ describe('c16a r2: review findings', () => {
     expect(tab[0]!.text).toContain('119만 9천 원'); expect(tab[0]!.link).toContain(SAM); expect(tab[0]!.text).not.toContain('9월 5일')
     expect(tab[1]!.text).toContain('9월 5일'); expect(tab[1]!.link).toContain(YNA)
     // The host's table: in that part's row each fact is followed by its own page.
-    const row = tableRows(out!).find(line => line.includes('갤럭시 탭 S11'))!
-    expect(row).toMatch(new RegExp(`119만 9천 원이에요\\.? \\[[^\\]]+\\]\\(${SAM.replace(/[.?/]/g, '\\$&')}\\) · .*9월 5일[^|]*\\]\\(${YNA.replace(/[.?/]/g, '\\$&')}\\)`))
-    // A part with one page keeps the one link in its source cell only.
-    const ipad = tableRows(out!).find(line => line.includes('아이패드'))!
-    expect(ipad.match(/apple\.com/g)).toHaveLength(1)
+    // c18b: two things are said in sentences (no table): each fact of that part is a line of its own, followed by its own page.
+    expect(tableRows(out!)).toHaveLength(0)
+    const lines = out!.split('\n')
+    expect(lines.find(line => line.includes('119만 9천 원'))).toMatch(new RegExp(`\\]\\(${SAM.replace(/[.?/]/g, '\\$&')}\\)$`))
+    expect(lines.find(line => line.includes('9월 5일'))).toMatch(new RegExp(`\\]\\(${YNA.replace(/[.?/]/g, '\\$&')}\\)$`))
+    // A part with one page keeps the one link.
+    expect(out!.match(/apple\.com/g)).toHaveLength(1)
   })
 
   it('#2: a named team\'s answer is due the writer\'s least time after its parts; a late parts\' follow-up has no due', () => {

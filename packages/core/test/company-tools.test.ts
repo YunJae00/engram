@@ -662,10 +662,12 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   // A teammate not named, a line that opens on a name, a nothing-new part without its latest link, a kept fact unlinked or a linked one
   // not kept, a raw address, an English sentence, a word the person must not read, no JSON, nothing: the host's rendering.
   // c12a A2: so is a message that says the part with no data (found or empty).
-  for (const bad of [said(full), said(message.replace(/\n\n리니어는 .*$/m, '')), said(message.replace('노션은 지민이', '지민: 노션은')), said(message.replace(/ \[출처\]\(https:\/\/www\.bing[^)]*\)/, '')),
+  for (const bad of [said(full), said(message.replace(/\n\n리니어는 .*$/m, '')), said(message.replace(/ \[출처\]\(https:\/\/www\.bing[^)]*\)/, '')),
     said(message.replace(/ \[출처\]\(https:\/\/linear[^)]*\)/, '')), said(message, ['f1', 'f2']), said(message.replace('[다른 곳](https://evil.example/x)', 'https://evil.example/x')),
     said(message.replace('크게 개선된 게', 'This week the agent was rebuilt, 그게')), said(message.replace('자체 키 연결을', '세션 키 연결을')), message, said(''), ''])
     expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => bad }), bad.slice(0, 60)).toBe(fallback)
+  // c18b: a line that opens on a name is a rule of shape: unrepaired (this writer answers no repair), the draft is shown as written.
+  expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => said(message.replace('노션은 지민이', '지민: 노션은')) })).toContain('지민: 노션은')
   expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async () => { throw new Error('no model') } })).toBe(fallback)
   expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics, timeoutMs: 20, write: () => new Promise(resolve => setTimeout(() => resolve(good), 200)) })).toBe(fallback)
   expect(await writtenReport({ ask: stored.c3.goal, members: c3d, topics })).toBe(fallback)
@@ -718,8 +720,10 @@ test('a hand-off result is written in the hand-off shape, and the background rep
   expect(own!.split('\n').filter(line => /^\d+\. /.test(line))).toEqual(items.map((item, i) => `${i + 1}. ${item}`))
   expect(own).toContain('서연')
   expect(own).toContain('지민이 찾은')
-  for (const bad of [said(written.replace('하루를', '이틀을')), said(written.replace('서연이 지민이', '서연: 지민이')), '서연 결과예요.'])
+  for (const bad of [said(written.replace('하루를', '이틀을')), '서연 결과예요.'])
     expect(await employeesAnswer(task, async () => bad)).toBe(own)
+  // c18b: a line that opens on a name is a rule of shape: with no repair it is shown as written, never the host's lines.
+  expect(await employeesAnswer(task, async () => said(written.replace('서연이 지민이', '서연: 지민이')))).toContain('서연: 지민이')
   expect(await employeesAnswer({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'waiting' }] } }, async () => said(written))).toBeUndefined()
   // c9 fix 2: the find the copy was made from is linked, on its page.
   expect(prompt).toContain(notion)
@@ -1240,9 +1244,9 @@ test('c4b r3: with no written answer, a part that read only English pages is sai
     expect(shown).toBe(mergedReport([kim]))
     expectParts(shown, [['지민', 'https://www.notion.com/releases']])
     expect(shown).not.toMatch(/Agents rebuilt|New workspace/)
-    // c15b (cause F): a draft that breaks a rule gets one repair with that rule (here it breaks it again: the host's rendering).
-    expect(asked).toHaveLength(2)
-    expect(asked[1]).toContain('"kind":"shape"')
+    // c18b (cause F): a draft that breaks a hard rule is checked and gets one scoped repair with that rule (here unreadable: the host's
+    // rendering); a message with no Korean at all is no draft to repair.
+    if (bad.startsWith('지민')) { expect(asked).toHaveLength(3); expect(asked[2]).toContain('You fix a message'); expect(asked[2]).toContain('"kind":"shape"') } else expect(asked).toHaveLength(1)
   }
   // Nobody brought data back: nobody is asked at all.
   asked.length = 0
@@ -1438,7 +1442,11 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   // c16a: updated (pinned "지우가 찾은 걸로 …" with no subject, read as 지우's job): a person's second job keeps its subject.
   const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 서연은 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요. 서연은 이제 팀에 없어요.'
   // c7 C10: the clause chain the run showed ("…했는데 …없었고, …도 …없었어요") and five sentences are refused too.
-  for (const bad of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.', '', undefined]) expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => bad })).toBe(plain)
+  // c18b: five sentences is a rule of form only: with no repair it is shown as written (never the host's summary). The clause chain and the
+  // list also leave a job's subject out (a hard rule), so they still give way.
+  const five = '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.'
+  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => five })).toBe(five)
+  for (const bad of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.', '', undefined]) expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => bad })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, timeoutMs: 10, write: () => new Promise(() => undefined) })).toBe(plain)
   // Nothing in the time asked is said by the host; the kept weekly ask ("지난주 …") reads last week.
@@ -2034,8 +2042,10 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   expect([...passed.matchAll(/\[([^\]]+)\]\(/g)].map(one => one[1])).toEqual(c3.map(m => m.data!.nothing!.latest!.site))
   expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => json(good) })).toBe(passed)
   // A missing teammate, a missing latest link, a line that opens on a name and a colon, English and no JSON are refused; the host's own lines stand in.
-  for (const bad of [json(good.replace(/\n\n슬랙은 .*/, '')), json(good.replace(` [슬랙](${slack})`, '')), json(good.replace('리니어는 도윤이 봤는데', '도윤: 리니어는')), json(good.replace('이번 주엔 셋 다 새로 낸 게 없어요.', 'Nothing new shipped this week at all.')), good])
+  for (const bad of [json(good.replace(/\n\n슬랙은 .*/, '')), json(good.replace(` [슬랙](${slack})`, '')), json(good.replace('이번 주엔 셋 다 새로 낸 게 없어요.', 'Nothing new shipped this week at all.')), good])
     expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => bad }), bad.slice(0, 60)).toBe(said)
+  // c18b: a line that opens on a name and a colon is a rule of shape: with no repair, the writer's text is shown as written.
+  expect(await writtenReport({ ask: stack6.c3.goal, members: c3, now: NOV17, timeoutMs: 1000, write: async () => json(good.replace('리니어는 도윤이 봤는데', '도윤: 리니어는')) })).toContain('도윤: 리니어는')
   // One part still at work: its own labeled line (GROKBOT rules 7, 8), and the writer must say it.
   const waiting = [c3[0]!, c3[1]!, { ...s6.c3[2]!, state: 'working' as const, result: undefined, empty: undefined, read: undefined }]
   const early = mergedReport(waiting)

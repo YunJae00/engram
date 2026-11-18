@@ -1304,7 +1304,7 @@ function helperLead(parts: readonly TeamMember[], topics: ReadonlyMap<string, st
 // c18b (cause F, R2/T1: "가격: …인상하는 방안을 검토하고 있다 엠투데이(링크)" cells and 기온 / 날씨 상태 label cells, read as an automatic dump):
 // with no writer, the host says each part in sentences, answer first, its link inline: the helper's own -요 sentence when one stands, else
 // the value of the evidenced words as a clause ("부산 기온은 낮 최고 18도로 나와 있어요."). A table only when three or more things are
-// compared on two or more points, every cell a short value. Never a "point: quote" cell, a 내용/출처 label or a whole quoted headline.
+// compared on the same points, every cell a short value. Never a "point: quote" cell, a 내용/출처 label or a whole quoted headline.
 // By form only (a point label before a colon, a figure, a -요 ending), for any part, point or topic.
 const POINTED = /^([^:：\d]{1,15}?)\s*[:：]\s*(.+)$/su
 const OWN_SENTENCE = /요[.!]?$/u
@@ -1330,19 +1330,23 @@ const pieceSentence = (part: string, piece: Piece): string => piece.point ? clau
 function helperBody(parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
   const name = (m: TeamMember): string => partName(m, topics) || m.role
   const facts = (m: TeamMember): MemberFact[] => atWork(m) ? [] : m.data?.facts ?? []
+  // c18b r2: what was not found keeps the page looked at (as helperTable did): a missing part is shown with where it was looked for.
+  const looked = (m: TeamMember): string => { const at = facts(m).length ? undefined : lookedAt(m); return at ? ` ${linkOf(at)}` : '' }
   const points = [...new Set(parts.flatMap(m => [...facts(m).flatMap(f => pieces(factWords(f)).flatMap(p => p.point ? [p.point] : [])), ...(m.missing ?? []).map(pointName)]))]
-  const pointsOnly = parts.every(m => facts(m).every(f => pieces(factWords(f)).every(p => p.point || OWN_SENTENCE.test(p.value))))
-  if (parts.length >= 3 && points.length >= 2 && pointsOnly) {
+  // c18b r2: a piece with no point (a part's own sentence) has no cell: in a table it would read as not found, so it keeps the table out.
+  const pointsOnly = parts.every(m => facts(m).every(f => pieces(factWords(f)).every(p => p.point)))
+  // c18b r2 (review: three places on one common price came out as three paragraphs): comparing three or more things is a table (rule 5), on one shared point or more.
+  if (parts.length >= 3 && points.length >= 1 && pointsOnly) {
     const cell = (m: TeamMember, point: string): string => {
       if (atWork(m)) return STILL.split('.')[0]!
       const f = facts(m).find(one => pieces(factWords(one)).some(p => p.point === point))
-      return f ? `${valueOf(pieces(factWords(f)).find(p => p.point === point)!.value).replace(/\|/g, '/')} ${linkOf(f)}` : '못 찾았어요'
+      return f ? `${valueOf(pieces(factWords(f)).find(p => p.point === point)!.value).replace(/\|/g, '/')} ${linkOf(f)}` : `못 찾았어요${looked(m)}`
     }
     return [`| | ${points.join(' | ')} |`, `|---|${points.map(() => '---').join('|')}|`, ...parts.map(m => `| ${name(m).replace(/\|/g, '/')} | ${points.map(point => cell(m, point)).join(' | ')} |`)].join('\n')
   }
   return parts.map(m => {
     if (atWork(m)) return `${josa(name(m), '은', '는')} ${STILL}`
-    if (!facts(m).length) return `${josa(name(m), '은', '는')} ${NOTHING}`
+    if (!facts(m).length) return `${josa(name(m), '은', '는')} ${NOTHING}${looked(m)}`
     return facts(m).map(f => `${pieces(factWords(f)).map(piece => pieceSentence(name(m), piece)).join(' ')} ${linkOf(f)}`).join('\n')
   }).join('\n\n')
 }
@@ -1655,6 +1659,28 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   shown[at] = `${shown[at]!.trimEnd()} ${sources.map(linkOf).join(' · ')}`
   return { text: spaced(shown.join('\n')), soft }
 }
+// c18b r2 (review: with "unnamed" soft, a repair that failed showed 민지's find with nobody named, GROKBOT 7): whose part each is, is content
+// the person is owed, not a matter of form, so the host guarantees it whatever the writer and its repair did. A teammate still unnamed is
+// named in the sentence their own link closes ("민지가 찾아보니 …", quietLines' form), else in one short sentence after the message.
+// By the member's own links and name only, for any teammate, part or wording.
+export function withEveryone(text: string, members: readonly TeamMember[], said: readonly string[] = []): string {
+  const plain = (t: string): string => t.replace(/\[[^\]]*\]\([^)]*\)/g, ' '), left: string[] = []
+  let lines = text.split('\n')
+  for (const m of shownParts(members).filter(one => !missing(one))) {
+    if (plain(lines.join('\n')).includes(m.role) || toldHandoff(m, said)) continue
+    // Every page that is theirs: what they found, their latest when nothing was new, where they looked.
+    const urls = [...shownFacts(m), m.data?.nothing?.latest, lookedAt(m)].flatMap(f => f ? [`](${named('x', f.url).slice(4, -1)})`] : [])
+    const at = lines.findIndex(line => !/^\s*\|/.test(line) && urls.some(url => line.includes(url)))
+    const line = lines[at] ?? '', link = line.lastIndexOf('[', Math.min(...urls.map(url => line.indexOf(url)).filter(i => i >= 0)))
+    // The sentence the link closes: from the last sentence end, a link that closed the sentence before (or the list marker) before it.
+    const head = line.slice(0, Math.max(0, link)).trimEnd(), marker = /^\s*(?:[-*•·]|\d+[.)])\s*/.exec(line)?.[0].length ?? 0
+    const start = Math.max(marker, ...[...head.slice(0, -1).matchAll(/(?:[.!?。]|\]\([^)\s]*\))\s+/gu)].map(one => one.index! + one[0].length))
+    if (at < 0 || !head.slice(start).trim() || /^\[/.test(head.slice(start))) { left.push(m.role); continue }
+    lines = lines.map((one, i) => i === at ? `${line.slice(0, start)}${josa(m.role, '이', '가')} 찾아보니 ${line.slice(start)}` : one)
+  }
+  const out = lines.join('\n')
+  return left.length ? `${out.trimEnd()}\n${josa(listed(left), '이', '가')} 맡아서 했어요.` : out
+}
 // c12a: where the conductor reads why a team answer was the writer's or the host's (the desktop sets it to its log).
 let reportLog: (line: string) => void = () => undefined
 export const setReportLog = (log: (line: string) => void): void => { reportLog = log }
@@ -1699,7 +1725,8 @@ export async function writtenReport(input: { ask: string; members: readonly Team
       log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.filter(p => p.kind !== 'shape').map(p => p.kind))].join('+') },
     })
     // A hard rule is met only by a repair the check took: otherwise there is no draft that may be shown.
-    const text = hard ? accept(written.text) : written.text.trim() ? written.text : undefined
+    // c18b r2: with no repair the hard refusal stands (accept re-reads the draft without its "kept", so it cannot see a links mismatch).
+    const shown = hard ? written.outcome === 'repaired' ? accept(written.text) : undefined : written.text.trim() ? written.text : undefined, text = shown === undefined || helpers ? shown : withEveryone(shown, members, said)
     if (text === undefined) { log(hard ? `fallback:${hard.refused}` : `refused:meaning:${kinds}`); return fallback }
     // Every outcome says why (c15b): what the check found, and the host's rules the draft broke.
     const broke = ('text' in out ? out.soft : [out]).map(one => one.refused)

@@ -10,10 +10,12 @@ import { tmpVaultRoot } from './helpers.js'
 
 // c14b (cause W): written text is checked for meaning against the data it was written from. Wordings are not the harness's: 동네 도서관
 // opening hours, 카페 후보, teammates 하은 / 준호 → 준 / 소윤.
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (written-check repairedWrite), answered as replacements of numbered units.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
+const repair = (replace: Record<number, string>): string => JSON.stringify({ replace })
 const none = JSON.stringify({ problems: [] })
 const problem = (kind: string, quote: string) => JSON.stringify({ problems: [{ kind, quote, why: '데이터와 달라요' }] })
-/** A fake quick model: the writer's draft, its rewrite, and the checker's verdicts in order. */
+/** A fake quick model: the writer's draft, its repair, and the checker's verdicts in order. */
 function model(draft: string, rewrite: string, verdicts: string[]) {
   const calls: string[] = []
   const write = async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? verdicts.shift() ?? none : prompt.includes(REDO) ? rewrite : draft }
@@ -39,10 +41,12 @@ const body = `중앙도서관은 하은이 봤는데 휴관이에요. [a](${A})\
 
 test('a merged answer whose lead contradicts a row ("세 곳 모두 닫았어요" over one open) is rewritten once from the problem, and the rewrite is shown', async () => {
   const members = libraries()
-  const { write, calls } = model(said(`세 곳 모두 이번 주말엔 문을 닫았어요.\n\n${body}`), said(`해맑은도서관만 토요일에 열고, 나머지 두 곳은 쉬어요.\n\n${body}`), [problem('contradicts', '세 곳 모두 이번 주말엔 문을 닫았어요.'), none])
+  // c18b: the repair replaces the one quoted sentence; the rows stay as written.
+  const { write, calls } = model(said(`세 곳 모두 이번 주말엔 문을 닫았어요.\n\n${body}`), repair({ 1: '해맑은도서관만 토요일에 열고, 나머지 두 곳은 쉬어요.' }), [problem('contradicts', '세 곳 모두 이번 주말엔 문을 닫았어요.'), none])
   const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000 })
   expect(out).toMatch(/^해맑은도서관만 토요일에 열고/)
   expect(out).not.toContain('세 곳 모두')
+  expect(out).toContain('해맑은도서관은 준이 봤는데 토요일 오전 9시부터 열어요.')
   // Writer, check, rewrite (with the problem as data), check of the rewrite: never more.
   expect(calls).toHaveLength(4)
   expect(calls[1]).toContain(CHECK)
@@ -57,8 +61,12 @@ test('a question back to the person about a part the team can redo ("다시 찾�
   const members = libraries()
   const asking = said(`${body}\n\n별빛도서관은 다시 찾아볼까요, 아니면 다른 도서관 이름을 알려주실래요?`)
   const { write, calls } = model(asking, asking, [problem('asks', '다시 찾아볼까요'), problem('asks', '다시 찾아볼까요')])
-  expect(await writtenReport({ ask: ASK, members, write, timeoutMs: 5000 })).toBe(mergedReport(members))
-  expect(calls).toHaveLength(4)
+  // c18b: a repair that is no repair (the draft again) is discarded; the question is a removable problem, so only its sentence goes and
+  // the rows stay (never the host rendering while a draft holds).
+  const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000 })
+  expect(out).not.toContain('찾아볼까요')
+  expect(out).toContain('별빛도서관은 소윤이 봤는데 휴관이에요.')
+  expect(calls).toHaveLength(3)
   // A clean verdict keeps the writer's text as it is (one check, no rewrite).
   const clean = model(said(`해맑은도서관만 열어요.\n\n${body}`), '', [none])
   expect(await writtenReport({ ask: ASK, members, write: clean.write, timeoutMs: 5000 })).toMatch(/^해맑은도서관만 열어요\./)
@@ -126,7 +134,7 @@ test('the week summary names a teammate who has left as gone: the writer\'s text
   const ask = '이번 주 다들 뭐 했는지 정리해줘'
   const draft = '이번 주엔 하은이 성수동 카페 두 곳을 찾았어요. 준은 회의실을 목요일 오후로 잡았어요.'
   const fixed = '이번 주엔 하은이 성수동 카페 두 곳을 찾았어요. 하은은 지금은 팀을 떠났어요. 준은 회의실을 목요일 오후로 잡았어요.'
-  const { write, calls } = model(draft, fixed, [problem('unsaid', '하은이 성수동 카페 두 곳을 찾았어요'), none])
+  const { write, calls } = model(draft, repair({ 1: '이번 주엔 하은이 성수동 카페 두 곳을 찾았어요. 하은은 지금은 팀을 떠났어요.' }), [problem('unsaid', '하은이 성수동 카페 두 곳을 찾았어요'), none])
   expect(await teamSummary(paths, { bots, tasks: [task], message: ask, now, write })).toBe(fixed)
   // The checker reads the record with its flags: who left is marked, the renamed teammate is not.
   const data = JSON.parse(calls[1]!.split('\nData: ')[1]!.split('\nMessage: ')[0]!) as { who: string; left?: boolean }[]
@@ -162,7 +170,7 @@ test('a lead that says every part came back, over a part that brought nothing, i
   const members = [libraries()[0]!, libraries()[1]!, { ...part('m3', '소윤', '이번 주말 별빛도서관 운영 확인', '별빛도서관'), state: 'done' as const }]
   const two = `중앙도서관은 하은이 봤는데 휴관이에요. [a](${A})\n해맑은도서관은 준이 봤는데 토요일 오전 9시부터 열어요. [b](${B})`
   const both = (lead: string) => JSON.stringify({ message: `${lead}\n\n${two}`, kept: ['f1', 'f2'] })
-  const { write, calls } = model(both('세 곳 다 확인했는데 해맑은도서관만 열어요.'), both('해맑은도서관은 토요일에 열고 중앙도서관은 쉬어요.'), [problem('contradicts', '세 곳 다 확인했는데'), none])
+  const { write, calls } = model(both('세 곳 다 확인했는데 해맑은도서관만 열어요.'), repair({ 1: '해맑은도서관은 토요일에 열고 중앙도서관은 쉬어요.' }), [problem('contradicts', '세 곳 다 확인했는데'), none])
   const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000 })
   expect(calls).toHaveLength(4)
   // The checker reads the part with nothing to show and the host's own line for it.
@@ -179,7 +187,7 @@ test('a lead that says every part came back, over a part that brought nothing, i
 // c14b r2 (Codex r1 #2): a deliverable counted "세 행사" after the team's message before it had named two; the check never read that message.
 test('the check reads the team message before this one, so a count that differs from what the person already read is checkable', async () => {
   const members = libraries(), before = '이번 주말엔 두 곳만 문을 열어요: 해맑은도서관과 별빛도서관이에요.'
-  const { write, calls } = model(said(`해맑은도서관만 열어요.\n\n${body}`), said(`지난번과 달리 이번에 다시 보니 해맑은도서관만 열어요.\n\n${body}`), [problem('contradicts', '해맑은도서관만 열어요.'), none])
+  const { write, calls } = model(said(`해맑은도서관만 열어요.\n\n${body}`), repair({ 1: '지난번과 달리 이번에 다시 보니 해맑은도서관만 열어요.' }), [problem('contradicts', '해맑은도서관만 열어요.'), none])
   const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000, previous: before })
   expect(calls[1]).toContain('"teamMessageBefore":"이번 주말엔 두 곳만 문을 열어요')
   expect(calls[1]).toContain('an earlier message the person already read')

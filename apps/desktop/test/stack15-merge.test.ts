@@ -13,7 +13,8 @@ type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-stack15-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (core repairedWrite): replacements and insertions of numbered units, as JSON.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const T0 = Date.parse('2026-11-18T03:00:00Z')
 const part = (id: string, role: string, topic: string, text: string, url: string, at = T0): TeamMember => {
@@ -47,13 +48,15 @@ describe('stack-15 merge: one clock', () => {
     // c15b: the writer's draft leaves 이든 out (structural "unnamed"): the refusal goes into the one rewrite, which is checked clean.
     const members = [part('m1', '하람', '여수', '여수 바다는 오늘 물결이 1미터로 잔잔해요.', YEOSU), part('m2', '이든', '통영', '통영 바다는 오늘 풍랑주의보가 있어요.', TONGYEONG)]
     const calls: string[] = []
-    const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => { calls.push(prompt); resolve(prompt.includes(CHECK) ? none : prompt.includes(REDO) ? both('여수는 잔잔하고 통영은 풍랑주의보가 있어요.') : both('여수는 잔잔하고 통영은 풍랑주의보가 있어요.', ['하람'])) }, 800))
+    const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => { calls.push(prompt); resolve(prompt.includes(CHECK) ? none : prompt.includes(REDO) ? JSON.stringify({ insert_after: { 3: ['통영은 이든이 봤어요.'] } }) : both('여수는 잔잔하고 통영은 풍랑주의보가 있어요.', ['하람'])) }, 800))
     const writing = writtenReport({ ask: '여수 통영 오늘 바다 날씨 나눠서 알아봐줘', members, write })
     await vi.runAllTimersAsync()
     const out = await writing
-    expect(calls).toHaveLength(3) // draft, repair, check of the repair
-    expect(calls[1]).toContain('"kind":"shape"')
-    expect(out).toContain('통영은 이든이 봤는데')
+    // c18b: draft, its meaning check, the one scoped repair (a shape problem only: no second check).
+    expect(calls).toHaveLength(3)
+    expect(calls[1]).toContain(CHECK)
+    expect(calls[2]).toContain('"kind":"shape"')
+    expect(out).toContain('통영은 이든이 봤어요.')
     expect(Date.now() - T0).toBeLessThanOrEqual(TEAM_ANSWER_MS + ITEM_CHECK_MS + REPORT_WRITER_MS)
     expect(Date.now() - T0).toBeLessThan(35_000)
   })
@@ -76,7 +79,9 @@ describe('stack-15 merge: the repair keeps rule 7', () => {
     const team = members()
     const write = async (prompt: string): Promise<string> => prompt.includes(CHECK) ? none : both('여수는 잔잔하고 통영은 풍랑주의보가 있어요.', ['하람'])
     const out = await writtenReport({ ask, members: team, write, timeoutMs: 8_000 })
-    expect(out).toBe(mergedReport(team))
+    // c18b: a shape rule never withholds the draft: unrepaired it is shown as written, and the missing-part line still follows it.
+    expect(out).not.toBe(mergedReport(team))
+    expect(out).toMatch(/^여수는 잔잔하고 통영은 풍랑주의보가 있어요\./)
     expect(out).toContain('거제(이든)')
     for (const url of [YEOSU, TONGYEONG]) expect(out).toContain(url)
     expect(out.trim()).not.toBe('')
@@ -121,8 +126,11 @@ describe('stack-15 merge: stop', () => {
     const at = Date.now()
     const out = await writtenReport({ ask: '여수 통영 바다 날씨', members, write, timeoutMs: 6_000, signal: ctl.signal })
     expect(Date.now() - at).toBeLessThan(500)
-    expect(out).toBe(mergedReport(members))
-    expect(calls).toHaveLength(2)
+    // c18b: draft, its check, the repair the stop cut: no call after it. A shape rule never withholds the draft, so the draft comes back
+    // (the session posts nothing after a stop).
+    expect(calls).toHaveLength(3)
+    expect(calls[2]).toContain(REDO)
+    expect(out).toMatch(/^여수는 잔잔해요\./)
   })
   it('"멈춰" during the lead-answer check gives the draft back at once', async () => {
     const ctl = new AbortController()

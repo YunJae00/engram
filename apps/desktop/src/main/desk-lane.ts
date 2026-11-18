@@ -624,12 +624,21 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   return readsKorean(input.ask) ? '원문이랑 맞춰 보니 제가 정리한 내용이 원문과 안 맞아서, 틀린 채로 드리진 않을게요.' : 'Checked against the source, what I put together did not match it, so I am not passing it on wrong.'
 }
 /** The text with a part the check found missing added at its end, under the part's name as the ask gives it, from the source lines the
- * check named for it: only lines that are in the source, as they stand there. Nothing to add (no such lines) leaves the text as it is. */
+ * check named for it: only lines that are in the source, as they stand there. Nothing to add (no such lines) leaves the text as it is.
+ * c18b r2 (review: the four tasks sat under 결정사항, so every named line was "already there" and 할 일 was never added): a missing part
+ * whose lines stand under another part is that part's content in the wrong place (MISSING_LINE), so its lines are moved, not skipped:
+ * taken from where they stand (a heading left with nothing under it goes too) and said under the part's own name. */
 export function withPart(text: string, problem: Pick<WrittenProblem, 'quote' | 'lines'>, source: string): string {
   const flat = (line: string): string => bare(line).replace(/[.,]/g, ''), held = flat(source)
-  const lines = (problem.lines ?? []).map(line => line.trim()).filter(line => flat(line).length >= 2 && held.includes(flat(line)) && !flat(text).includes(flat(line)))
+  const lines = (problem.lines ?? []).map(line => line.trim()).filter(line => flat(line).length >= 2 && held.includes(flat(line)))
   const name = problem.quote.trim()
-  return lines.length && name ? `${text.trimEnd()}\n\n${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}` : text
+  if (!lines.length || !name) return text
+  const wanted = lines.map(flat)
+  // A row the model worded a little differently from its source line is the same row when one holds the other.
+  const same = (line: string): boolean => { const f = flat(line); return f.length >= 2 && wanted.some(w => w === f || (row(line) && f.length >= 4 && (f.includes(w) || w.includes(f)))) }
+  const at = text.split('\n'), gone = new Set(at.flatMap((line, i) => same(line) ? [i] : []))
+  const rest = withoutLines(at, gone)
+  return `${rest ? `${rest}\n\n` : ''}${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`
 }
 const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
 const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\-–—]/g, '').replace(/\s+/g, '')
@@ -663,7 +672,10 @@ export function withoutQuoted(text: string, problems: readonly WrittenProblem[])
     const named = cands.filter(({ i, b }) => { const ctx = bare(heading(lines, i)) + b; return ctx.length > b.length && (ctx.includes(q) || q.includes(ctx)) })
     for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) gone.add(j)
   }
-  // A heading (a line that is not a list item) loses its place when every line under it, up to the next heading, went.
+  return withoutLines(lines, gone)
+}
+/** The lines without those in `gone`; a heading (a line that is not a list item) loses its place when every line under it, up to the next heading, went. */
+function withoutLines(lines: readonly string[], gone: Set<number>): string {
   lines.forEach((line, i) => {
     if (!line.trim() || row(line) || gone.has(i)) return
     const under: number[] = []

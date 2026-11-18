@@ -25,7 +25,8 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
   })
   it('parts that say the same thing are found ("overlap") and the answer is rewritten once from the source', async () => {
     const prompts: string[] = []
-    const verdicts = ['{"problems":[{"kind":"overlap","quote":"단점 - 가벼워서 오래 껴도 편해요","why":"장점과 같은 내용"}]}', FIXED, '{"problems":[]}']
+    // c18b: the check quotes both copies under 단점; the repair replaces those units only (core repairedWrite), never the whole answer.
+    const verdicts = ['{"problems":[{"kind":"overlap","quote":"단점 - 가벼워서 오래 껴도 편해요","why":"장점과 같은 내용"},{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같은 내용"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요', 6: '' } }), '{"problems":[]}']
     const quick = vi.fn(async (prompt: string) => { prompts.push(prompt); return verdicts.shift() })
     const logged: string[] = []
     const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick, since: Date.now(), log: (outcome, kinds) => logged.push(`${outcome}:${kinds.join(',')}`) })
@@ -33,9 +34,10 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(quick).toHaveBeenCalledTimes(3)
     expect(prompts[0]).toContain('"overlap"')
     expect(prompts[0]).toContain('배터리가 5시간밖에')
-    expect(prompts[1]).toContain('Source:')
+    expect(prompts[1]).toContain('You fix a message')
+    expect(prompts[1]).toContain('배터리가 5시간밖에')
     expect(prompts[1]).toContain('overlap')
-    expect(logged).toEqual(['rewritten:overlap'])
+    expect(logged).toEqual(['repaired:overlap,overlap'])
   })
   it('a one-line answer is never held: no call at all', async () => {
     const quick = vi.fn(async () => '{"problems":[]}')
@@ -56,11 +58,13 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
   it('a rewrite that is still wrong never shows the lines the check named: the last text read, without them (r2)', async () => {
     // The rewrite moved one item but still lists 노이즈 캔슬링 under 단점; its own check quotes that line.
     const STILL = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요\n- 노이즈 캔슬링이 좋아요'
-    const again = ['{"problems":[{"kind":"overlap","quote":"가벼워서 오래 껴도 편해요","why":"두 번"}]}', STILL, '{"problems":[{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같음"}]}']
+    const again = ['{"problems":[{"kind":"overlap","quote":"가벼워서 오래 껴도 편해요","why":"두 번"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요' } }), '{"problems":[{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같음"}]}']
     const logged: string[] = []
     const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => again.shift(), since: Date.now(), log: outcome => logged.push(outcome) })
-    expect(logged).toEqual(['refused'])
+    // c18b: the repair stands; the line its own check still names is taken out (withoutQuoted), nothing else.
+    expect(logged).toEqual(['repaired'])
     expect(out).not.toBe(DRAFT)
+    void STILL
     expect(out).toBe('장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요')
   })
   it('a rewrite that came too late leaves the draft without the list its check found wrong (r2; stack-15: the whole list)', async () => {

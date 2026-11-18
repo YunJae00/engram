@@ -50,6 +50,22 @@ describe('a missing named part is inserted, never re-sorted', () => {
   })
 })
 
+// c18b r2 (review): the named lines already stood under the wrong part, so the part was never added.
+describe('r2: a missing part whose lines sit under another part is moved, not skipped', () => {
+  it('the tasks under 결정 move under 담당자별 업무; the decisions stay; nothing is said twice', () => {
+    const misplaced = [...DRAFT.split('\n'), ...TASKS].join('\n')
+    const out = withPart(misplaced, { quote: '담당자별 업무', lines: TASKS }, SOURCE)
+    expect(out).toBe(`${DRAFT}\n\n담당자별 업무\n${TASKS.join('\n')}`)
+    for (const task of TASKS) expect(out.split(task)).toHaveLength(2)
+  })
+  it('a part that held only the moved lines goes with them; a line worded a little differently is the same row', () => {
+    const only = '인사팀 회의 정리했어요.\n\n채용\n- 공고 초안 작성 — 박서윤 11월 30일\n- 면접관 교육 — 이도경, 12월 3일'
+    const source = '## 할 일\n- 공고 초안 작성 — 박서윤, 11월 30일\n- 면접관 교육 — 이도경, 12월 3일'
+    const out = withPart(only, { quote: '할 일', lines: ['- 공고 초안 작성 — 박서윤, 11월 30일', '- 면접관 교육 — 이도경, 12월 3일'] }, source)
+    expect(out).toBe('인사팀 회의 정리했어요.\n\n할 일\n- 공고 초안 작성 — 박서윤, 11월 30일\n- 면접관 교육 — 이도경, 12월 3일')
+  })
+})
+
 describe('register of copied lines', () => {
   it('a copied "…확정한다." line is turned into 해요체 and every other line is byte-equal', async () => {
     const draft = `${DRAFT}\n\n미결\n- 판촉물 업체는 다음 주에 확정한다.`

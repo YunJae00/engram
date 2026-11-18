@@ -135,7 +135,9 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
     const galaxy: TeamMember = { ...helper('갤럭시북 6는 159만 원이고 3월 6일 나와요. [삼성](https://samsung.example/1)'), id: 'g', topic: '갤럭시북 6', proof: [{ point: '가격', quote: '159만 원', url: 'https://samsung.example/1' }, { point: '출시일', quote: '3월 6일', url: 'https://samsung.example/1' }], missing: [] }
     const table = mergedReport(helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)'), galaxy]), new Map(), [], true)
     expect(table.split('\n')[0]).toBe('갤럭시북 6는 찾았고, 맥북 에어 M6 출시일은 못 찾았어요.')
-    expect(table).toContain('| 맥북 에어 M6 |')
+    // c18b: two things are said in sentences (a table only for three or more compared on two or more points): the row's date said not found.
+    expect(table).not.toMatch(/^\|/m)
+    expect(table).toMatch(/^맥북 에어 M6 가격은 [^\n]*출시일은 못 찾았어요\. \[[^\]]+\]\(https:\/\/apple\.example\/1\)$/m)
   })
 })
 

@@ -12,7 +12,8 @@ type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-stack14-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (core repairedWrite): replacements of numbered units, as JSON.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const problem = (kind: string, quote: string): string => JSON.stringify({ problems: [{ kind, quote, why: '데이터와 달라요' }] })
 const rows = (from: number, n: number): string => Array.from({ length: n }, (_, i) => `- 전주 한옥 카페 ${from + i}호점 개업 — https://news.example.kr/${from + i} — 11월 ${from + i}일`).join('\n')
@@ -49,7 +50,7 @@ describe('stack-14 merge: one clock', () => {
     const said = (lead: string): string => JSON.stringify({ message: `${lead}\n\n${body}`, kept: ['f1', 'f2'] })
     const writer = (each: number) => {
       const verdicts = [problem('contradicts', '두 곳 다 잔잔해요.'), none], calls: string[] = []
-      return { calls, write: (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => { calls.push(prompt); resolve(prompt.includes(CHECK) ? verdicts.shift() ?? none : prompt.includes(REDO) ? said('강릉은 잔잔하고 속초는 풍랑주의보가 있어요.') : said('두 곳 다 잔잔해요.')) }, each)) }
+      return { calls, write: (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => { calls.push(prompt); resolve(prompt.includes(CHECK) ? verdicts.shift() ?? none : prompt.includes(REDO) ? JSON.stringify({ replace: { 1: '강릉은 잔잔하고 속초는 풍랑주의보가 있어요.' } }) : said('두 곳 다 잔잔해요.')) }, each)) }
     }
     const quick = writer(800)
     const pending = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: quick.write })
@@ -59,13 +60,18 @@ describe('stack-14 merge: one clock', () => {
     expect(out).toMatch(/^강릉은 잔잔하고 속초는 풍랑주의보가 있어요\./)
     expect(took).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
     expect(took).toBeLessThan(35_000)
-    // Too slow for a rewrite inside the cap: the host's rendering, never the wrong draft, and still on the same clock.
+    // Too slow for a repair inside the cap: never the wrong draft (c18b: only its wrong sentence goes, the rows stay), still on the same clock.
     vi.setSystemTime(T0 + TEAM_ANSWER_MS)
     const slow = writer(1_500)
-    const late = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: slow.write })
+    // The time is read when the answer lands: the repair it gave up on may still have a timer pending after it.
+    let landed = 0
+    const late = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: slow.write }).then(text => { landed = Date.now(); return text })
     await vi.runAllTimersAsync()
-    expect(await late).toBe(mergedReport(members))
-    expect(Date.now() - T0).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
+    const shown = await late
+    expect(shown).not.toContain('두 곳 다 잔잔해요')
+    expect(shown).toContain('속초는 이든이 봤는데 풍랑주의보가 있어요.')
+    void mergedReport
+    expect(landed - T0).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
   })
 })
 
@@ -87,13 +93,12 @@ describe('stack-14 merge: a part retried empty reaches the writer as a missing p
     }
     const asked: string[] = []
     const asking = JSON.stringify({ message: '강릉은 하람이 봤는데 물결이 잔잔해요. [a](https://sea.example.kr/gangneung)\n\n속초는 다시 찾아볼까요?', kept: ['f1'] })
-    const fixed = JSON.stringify({ message: '강릉은 하람이 봤는데 물결이 잔잔해요. [a](https://sea.example.kr/gangneung)', kept: ['f1'] })
     const verdicts = [problem('asks', '속초는 다시 찾아볼까요?'), none]
     const quick = async (prompt: string): Promise<string | undefined> => {
       asked.push(prompt)
       if (prompt.includes(CHECK)) return verdicts.shift() ?? none
       if (prompt.includes('"lists"')) return '{"keep":[1],"lists":[]}'
-      if (prompt.includes(REDO)) return fixed
+      if (prompt.includes(REDO)) return JSON.stringify({ replace: { 2: '' } })
       return asking
     }
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })

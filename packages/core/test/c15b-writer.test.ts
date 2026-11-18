@@ -11,10 +11,11 @@ import { tmpVaultRoot } from './helpers.js'
 
 // c15b (cause F: a draft that broke one structural rule was thrown away and the host's frames shown; cause L: the lead's own answer over
 // helper results was never checked). Wordings are not the harness's: 피그마 / 미로 / 캔바, 하은 / 준 / 소윤, 도쿄 / 오사카 / 후쿠오카 호텔.
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (written-check repairedWrite), answered as replacements and insertions of numbered units.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const problem = (kind: string, quote: string) => JSON.stringify({ problems: [{ kind, quote, why: '데이터와 달라요' }] })
-/** A fake quick model: drafts in order for writer calls (first draft, then the rewrite), verdicts in order for check calls. */
+/** A fake quick model: drafts in order for writer calls (first draft, then the repair), verdicts in order for check calls. */
 function model(drafts: string[], verdicts: string[]) {
   const calls: string[] = []
   const write = async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? verdicts.shift() ?? none : drafts.shift() ?? '' }
@@ -49,25 +50,32 @@ const all = msg(`이번 주엔 셋 다 조용했어요. 피그마는 하은이 �
 
 test('a team draft that leaves one teammate unnamed is repaired once with that rule, and the repair is shown (no host frame)', async () => {
   setReportLog(line => logged.push(line))
-  const members = quietThree(), { write, calls } = model([noSoyoon, all], [none])
+  // c18b: the repair adds the missing name as a line of its own; every sentence of the draft stays as written.
+  const members = quietThree(), { write, calls } = model([noSoyoon, JSON.stringify({ insert_after: { 0: ['캔바는 소윤이 봤어요.'] } })], [none])
   const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 6000 })
-  expect(out).toContain('캔바는 소윤이 봤는데')
+  expect(out).toMatch(/^캔바는 소윤이 봤어요\.\n이번 주엔 셋 다 조용했어요\./)
   expect(out).not.toBe(mergedReport(members))
-  // Writer, its repair (the rule as a problem, naming who is missing), the meaning check of the repair: never more.
+  // Writer, the meaning check, its one repair (the rule as a problem, naming who is missing): never more.
   expect(calls).toHaveLength(3)
-  expect(calls[1]).toContain(REDO)
-  expect(calls[1]).toContain('"kind":"shape"')
-  expect(calls[1]).toMatch(/every teammate is named[^"]*소윤 is missing/)
-  expect(calls[2]).toContain(CHECK)
-  expect(logged).toEqual([expect.stringMatching(/^writer=rewritten:shape:unnamed /)])
+  expect(calls[1]).toContain(CHECK)
+  expect(calls[2]).toContain(REDO)
+  expect(calls[2]).toContain('"kind":"shape"')
+  expect(calls[2]).toMatch(/every teammate is named[^"]*소윤 is missing/)
+  expect(logged).toEqual([expect.stringMatching(/^writer=repaired:unnamed /)])
 })
 
 test('a team draft whose repair breaks the rule again falls to the host rendering: the shared state said once, each latest a row of its own, every sentence ended', async () => {
   setReportLog(line => logged.push(line))
   const members = quietThree(), { write } = model([noSoyoon, noSoyoon], [])
-  const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 6000 })
-  expect(out).toBe(mergedReport(members))
-  expect(logged).toEqual([expect.stringMatching(/^writer=fallback:unnamed>unnamed /)])
+  // c18b: a rule of shape never withholds the draft: a repair that is no repair leaves the draft shown as written. The host's rendering
+  // (checked below) is for when there is no draft at all.
+  // c18b r2 (GROKBOT 7): the host names whoever is still unnamed, in the sentence their link closes; a draft naming everyone is left as it is.
+  expect(await writtenReport({ ask: ASK, members, write, timeoutMs: 6000 })).toContain('소윤이 찾아보니 캔바는 매직 스튜디오 확장이 마지막이에요.')
+  expect(logged).toEqual([expect.stringMatching(/^writer=kept:unnamed /)])
+  const everyone = await writtenReport({ ask: ASK, members, write: model([all], []).write, timeoutMs: 6000 })
+  expect(everyone).toContain('캔바는 소윤이 봤는데')
+  expect(everyone).not.toContain('찾아보니')
+  const out = mergedReport(members)
   const [head, ...rows] = out.split('\n')
   expect(head).toBe('셋 다 이번엔 새로 나온 게 없어요. 가장 최근 소식은 이래요.')
   // The host says the state once; what the teammates' own sentences say is theirs, never put inside a host frame that restates it.
@@ -108,12 +116,15 @@ test('a week summary that leaves one teammate unnamed is repaired once, and the 
   setReportLog(line => logged.push(line))
   const { paths, bots, now } = await week()
   const fixed = '이번 주엔 하은이 망원동 빵집 세 곳을 찾았어요. 준은 워크숍 장소를 강릉 숙소 두 곳으로 좁혔어요.'
-  const { write, calls } = model(['이번 주엔 하은이 망원동 빵집 세 곳을 찾았어요. 워크숍 장소도 두 곳으로 좁혀졌어요.', fixed], [none])
-  expect(await teamSummary(paths, { bots, message: WEEK_ASK, now, write })).toBe(fixed)
+  // c18b: the quoted-nothing rule is fixed by an added line; the draft's own sentences stay.
+  const draft = '이번 주엔 하은이 망원동 빵집 세 곳을 찾았어요. 워크숍 장소도 두 곳으로 좁혀졌어요.'
+  const { write, calls } = model([draft, JSON.stringify({ insert_after: { 2: [fixed.split('. ')[1]!] } })], [none])
+  expect(await teamSummary(paths, { bots, message: WEEK_ASK, now, write })).toBe(`${draft}\n${fixed.split('. ')[1]!}`)
   expect(calls).toHaveLength(3)
-  expect(calls[1]).toContain('"kind":"shape"')
-  expect(calls[1]).toContain('준 is missing')
-  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:unnamed /)])
+  expect(calls[1]).toContain(CHECK)
+  expect(calls[2]).toContain('"kind":"shape"')
+  expect(calls[2]).toContain('준 is missing')
+  expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:unnamed /)])
 })
 
 test('a week summary refused twice is the host\'s: a sentence mark between every person, and the fallback is logged with its rule', async () => {
@@ -125,7 +136,7 @@ test('a week summary refused twice is the host\'s: a sentence mark between every
   // The result's own sentence ("…찾았어요") gets its mark before the next person's sentence starts.
   expect(out).not.toMatch(/요 (?:하은|준)/)
   expect(out).not.toMatch(/요 [가-힣]/)
-  expect(logged).toEqual([expect.stringMatching(/^summary=fallback:unnamed>unnamed /)])
+  expect(logged).toEqual([expect.stringMatching(/^summary=fallback:unnamed /)])
 })
 
 // --- the lead's own answer over helper results (cause L) ---
@@ -142,7 +153,7 @@ const table = `| 도시 | 1박 가격 | 출처 |\n|---|---|---|\n| 도쿄 | 18�
 test('the lead\'s answer that says "세 곳 모두" over a part that brought nothing is checked against the helper results and rewritten once', async () => {
   const draft = `세 곳 모두 1박 12만~18만 원 사이예요.\n\n${table}`
   const fixed = `도쿄와 오사카는 따로 알아봤고, 후쿠오카는 아직 못 찾았어요.\n\n${table}`
-  const { write, calls } = model([fixed], [problem('contradicts', '세 곳 모두'), none])
+  const { write, calls } = model([JSON.stringify({ replace: { 1: fixed.split('\n')[0] } })], [problem('contradicts', '세 곳 모두'), none])
   const lines: string[] = []
   const out = await checkedLead({ ask: HOTEL_ASK, helpers: hotels(), draft, quick: write, due: Date.now() + 8000, log: line => lines.push(line) })
   expect(out).toBe(fixed)
@@ -154,20 +165,22 @@ test('the lead\'s answer that says "세 곳 모두" over a part that brought not
   expect(calls[0]).toContain('"dropped": the person\'s ask says how the work is to be done')
   expect(calls[1]).toContain(REDO)
   expect(calls[1]).toContain('"kind":"contradicts"')
-  expect(lines).toEqual([expect.stringMatching(/^lead=rewritten:contradicts ms=\d+ parts=3 missing=1$/)])
+  expect(lines).toEqual([expect.stringMatching(/^lead=repaired:contradicts ms=\d+ parts=3 missing=1$/)])
 })
 
 test('the lead\'s answer that never shows the split the ask asked for is a "dropped" problem: rewritten once', async () => {
   const draft = `오사카가 가장 싸요.\n\n${table}`, fixed = `한 곳씩 따로 알아봤는데 오사카가 가장 싸요.\n\n${table}`
-  const { write } = model([fixed], [problem('dropped', '오사카가 가장 싸요.'), none])
+  const { write } = model([JSON.stringify({ replace: { 1: fixed.split('\n')[0] } })], [problem('dropped', '오사카가 가장 싸요.'), none])
   expect(await checkedLead({ ask: HOTEL_ASK, helpers: hotels(), draft, quick: write, due: Date.now() + 8000 })).toBe(fixed)
 })
 
 test('a lead rewrite with an address nobody read, a late check, or a stop keeps the lead\'s own draft (never worse than before)', async () => {
   const draft = `세 곳 모두 비슷해요.\n\n${table}`
-  // A rewrite that cites a page no helper read.
-  const invented = model([`${draft}\n[다른 곳](https://made.up/page)`], [problem('contradicts', '세 곳 모두')])
-  expect(await checkedLead({ ask: HOTEL_ASK, helpers: hotels(), draft, quick: invented.write, due: Date.now() + 8000 })).toBe(draft)
+  // A repair that cites a page no helper read is never shown. c18b: the wrong sentence still goes; the table stays.
+  const invented = model([JSON.stringify({ replace: { 1: '세 곳 다 비슷해요. [다른 곳](https://made.up/page)' } })], [problem('contradicts', '세 곳 모두')])
+  const kept = await checkedLead({ ask: HOTEL_ASK, helpers: hotels(), draft, quick: invented.write, due: Date.now() + 8000 })
+  expect(kept).not.toContain('made.up')
+  expect(kept).toContain(table)
   // The person stops while the check runs: it ends at once and gives the draft back (the turn posts nothing after a stop).
   const stop = new AbortController(), began = Date.now()
   const hanging = async (): Promise<string | undefined> => new Promise(() => undefined)
@@ -186,20 +199,17 @@ test('turnHelpers takes the helpers the lead hired on this turn only, never a te
 })
 
 test('checkedWrite with shape problems: no time → host fallback; a repair with no meaning verdict is not shown (round 2)', async () => {
-  const shape = [{ kind: 'shape' as const, quote: '', why: '하은 is missing' }]
-  let now = 0
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => 'r', due: 1500, now: () => now })).toBeUndefined()
-  // The repair took the time: no check after it, so the repair is unverified → the host fallback.
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => { now = 4500; return 'r' }, due: 5000, now: () => now })).toBeUndefined()
-  now = 0
-  // A repair the host refuses again: the fallback.
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => undefined, due: 5000, now: () => now })).toBeUndefined()
-  // No meaning checker at all: nothing can verify the repair, so it is not even asked for.
-  let redos = 0
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: undefined, redo: async () => { redos++; return 'r' }, due: 5000, now: () => now })).toBeUndefined()
-  expect(redos).toBe(0)
-  // With a clean verdict the repair is shown.
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => 'r', due: 5000, now: () => now })).toBe('r')
+  // c18b: a shape problem never withholds the draft: no time, no checker, or no usable repair leaves the draft as written; a repair is
+  // spliced in (the draft's own line stays) and, touching only what was named, shown without a second check.
+  const shape = [{ kind: 'shape' as const, quote: '', why: '하은 is missing' }], now = () => 0
+  const fix = JSON.stringify({ insert_after: { 1: ['하은도 같이 봤어요.'] } })
+  const quick = (repair: string) => async (prompt: string): Promise<string> => prompt.includes(REDO) ? repair : none
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: quick(fix), due: 500, now })).toBe('d')
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: undefined, due: 5000, now })).toBe('d')
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: quick('not json'), due: 5000, now })).toBe('d')
+  let calls = 0
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async prompt => { calls++; return quick(fix)(prompt) }, due: 5000, now })).toBe('d\n하은도 같이 봤어요.')
+  expect(calls).toBe(2)
 })
 
 test('round 2 (finding 1): a structural repair whose meaning check gives no verdict, or an unreadable one, is never shown', async () => {
@@ -207,12 +217,14 @@ test('round 2 (finding 1): a structural repair whose meaning check gives no verd
   const data = { branch: '광주 지점', sales: '1,240만 원' }
   for (const verdict of ['', 'not json', '{"verdict":"ok"}']) {
     let checks = 0
-    const out = await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: async () => { checks++; return verdict }, redo: async () => '대구 지점 매출은 900만 원이에요.', due: Date.now() + 6000 })
-    expect(out).toBeUndefined()
-    expect(checks).toBe(1)
+    // c18b: no verdict and an unreadable repair: nothing new is shown; the draft stands as written (a rule of shape never withholds it).
+    const out = await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: async () => { checks++; return verdict }, due: Date.now() + 6000 })
+    expect(out).toBe('대전 지점만 있어요.')
+    expect(checks).toBe(2)
   }
   // A repair found wrong on its check is not shown either.
-  expect(await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: async () => JSON.stringify({ problems: [{ kind: 'contradicts', quote: '900만 원', why: '1,240만 원' }] }), redo: async () => '광주 지점 매출은 900만 원이에요.', due: Date.now() + 6000 })).toBeUndefined()
+  const wrongRepair = async (prompt: string): Promise<string> => prompt.includes(REDO) ? JSON.stringify({ insert_after: { 1: ['광주 지점 매출은 900만 원이에요.'] } }) : JSON.stringify({ problems: [{ kind: 'contradicts', quote: '900만 원', why: '1,240만 원' }] })
+  expect(await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: wrongRepair, due: Date.now() + 6000 })).toBe('대전 지점만 있어요.')
 })
 
 test('round 2 (finding 2): a rewrite of the lead\'s answer that drops the comparison table or a link is refused, the draft stands; one that keeps them is shown', async () => {
@@ -225,12 +237,14 @@ test('round 2 (finding 2): a rewrite of the lead\'s answer that drops the compar
     let n = 0
     return checkedLead({ ask: '배드민턴 라켓 두 브랜드 가격 비교표로, 출처 달아서', helpers, draft, quick: async () => ++n === 1 ? wrong : n === 2 ? rewrite : none, due: Date.now() + 8000 })
   }
-  // Prose without the table and links.
-  expect(await run('요넥스는 21만 원, 윌슨은 25만 원이에요.')).toBe(draft)
-  // The table kept, one row and its link lost.
-  expect(await run(`| 브랜드 | 가격 | 출처 |\n|---|---|---|\n| 요넥스 | 21만 원 | [링크](${S}) |`)).toBe(draft)
+  // c18b: a repair touching any unit the problem does not quote is discarded; the wrong row then goes and every other row stays.
+  const withoutWrong = draft.replace(/\n\| 요넥스[^\n]*/, '')
+  // Prose instead of the table (the header replaced).
+  expect(await run(JSON.stringify({ replace: { 1: '요넥스는 21만 원, 윌슨은 25만 원이에요.', 3: '' } }))).toBe(withoutWrong)
+  // The table kept, another row and its link lost.
+  expect(await run(JSON.stringify({ replace: { 3: `| 요넥스 | 21만 원 | [링크](${S}) |`, 4: '' } }))).toBe(withoutWrong)
   const fixed = draft.replace('23만 원', '21만 원')
-  expect(await run(fixed)).toBe(fixed)
+  expect(await run(JSON.stringify({ replace: { 3: `| 요넥스 | 21만 원 | [링크](${S}) |` } }))).toBe(fixed)
   expect(keepsForm(draft, fixed)).toBe(true)
 })
 
@@ -244,11 +258,13 @@ test('round 3: a rewrite of the lead\'s answer that keeps the row and link count
     let n = 0
     return checkedLead({ ask: '동네 헬스장 세 곳 월 회비 표로 비교해 줘', helpers, draft, quick: async () => ++n === 1 ? wrong : n === 2 ? rewrite : none, due: Date.now() + 8000 })
   }
-  // 판교's row now says 분당 again, still carrying 판교's link: same rows, same links (the reviewer's 도쿄/오사카 case in other words).
-  expect(await run(draft.replace('7만 원', '6만 원').replace('| 판교 | 8만 원', '| 분당 | 6만 원'))).toBe(draft)
-  // Subjects kept, two sources swapped between rows.
-  expect(await run(draft.replace('7만 원', '6만 원').replace(`[보기](${B})`, '@@').replace(`[보기](${P})`, `[보기](${B})`).replace('@@', `[보기](${P})`))).toBe(draft)
-  // Only the value fixed (emphasis dropped, separator realigned): shown.
-  const fixed = draft.replace('7만 원', '6만 원').replace('**정자**', '정자').replace('|---|---|---|', '|:--|--:|---|')
-  expect(await run(fixed)).toBe(fixed)
+  // c18b: a repair may change only the quoted 분당 row; the wrong row goes when the repair is discarded, 판교 and 정자 stay as written.
+  const withoutWrong = draft.replace(/\n\| 분당[^\n]*/, '')
+  // 판교's row now says 분당 again, still carrying 판교's link: the 판교 row is not the repair's to touch.
+  expect(await run(JSON.stringify({ replace: { 3: `| 분당 | 6만 원 | [보기](${B}) |`, 4: `| 분당 | 6만 원 | [보기](${P}) |` } }))).toBe(withoutWrong)
+  // The quoted row's value fixed but 판교's source moved onto it: a source nobody cited for 분당 is not shown.
+  expect(await run(JSON.stringify({ replace: { 3: `| 분당 | 6만 원 | [보기](${P}) |` } }))).not.toContain(`| 분당 | 6만 원 | [보기](${P}) |`)
+  // Only the value fixed: shown.
+  const fixed = draft.replace('7만 원', '6만 원')
+  expect(await run(JSON.stringify({ replace: { 3: `| 분당 | 6만 원 | [보기](${B}) |` } }))).toBe(fixed)
 })

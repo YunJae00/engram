@@ -105,7 +105,10 @@ describe('stack-16: missing on the team path (c16c inside c16a)', () => {
     const at = new Date().toISOString()
     const helpers: TeamMember[] = ['강릉', '속초', '고성'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: `s${i}`, hiredAt: at, result: `${town}은 파도 1m예요. [예보](${PAGE[town]})`, sources: [PAGE[town]!] }))
     const out = await helperAnswer({ ask: '강릉 속초 고성 파도 각각', members: helpers, since: Date.now() - 1000, write: quickModel(log, { missing: 2 }), due: Date.now() + 20_000 })
-    expect(log.map(l => l.kind)).toEqual(['write', 'check', 'write', 'check'])
+    // c18b: write, check, the one scoped repair (a missing part is added, never re-sorted); this repair is unreadable, so the draft stands
+    // (a missing part is never a reason to withhold it), with every part a row.
+    expect(log.map(l => l.kind)).toEqual(['write', 'check', 'write'])
+    expect(log[2]!.prompt).toContain('You fix a message')
     expect(log[1]!.prompt).toContain('"missing": the person\'s ask names parts')
     const rows = tableRows(out)
     expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(['강릉', '속초', '고성'])
@@ -119,15 +122,17 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     const { hire, quick, models, searches, since } = await lane('clock', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { searchMs: 2500, judgeMs: 2500, modelMs: 6000, writeMs: 3000, checkMs: 2500, prose: 1 })
     const text = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
     expect(Date.now() - since).toBeLessThan(35_000)
-    expect(tableRows(text)).toHaveLength(3)
+    // c18b: the table rule is one of form only: the writer's prose is shown as written, every part in it.
+    expect(tableRows(text)).toHaveLength(0)
+    for (const town of ['강릉', '속초', '양양']) expect(text).toContain(town)
     expect(hire.closesOn!(text)).toBe(true)
     // Every helper's search went through the item judge; its verdict (no row holds the height) ran a second round with the held rows as context.
     expect(searches.filter(q => q.includes('예보'))).toHaveLength(3)
     expect(quick.filter(l => l.kind === 'judge' && l.prompt.includes('were already judged'))).toHaveLength(3)
-    // Call count on this C3-shape answer: 3 helper model calls, no lead write; quick: 6 judge + the writer, its repair (a draft refused
-    // for its shape goes straight to the one repair), then the meaning check of the repaired draft.
+    // Call count on this C3-shape answer: 3 helper model calls, no lead write; quick: 6 judge + the writer and its meaning check (c18b: a
+    // rule of form goes to no repair).
     expect(models).toHaveLength(3)
-    expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'write', 'check'])
+    expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'check'])
   }, 45_000)
 
   it('a part added mid-work lands as a row of the one table; one answer after the first, non-closing call', async () => {
@@ -139,7 +144,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect(hire.closesOn!(out)).toBe(true)
   })
 
-  it.each([['a judge round', { judgeMs: 5000 }, 50], ['a writer repair', { writeMs: 5000, prose: 1 }, 5300]] as const)('"멈춰" during %s halts within 3 s and nothing is written after', async (_what, timing, stopAt) => {
+  it.each([['a judge round', { judgeMs: 5000 }, 50], ['a writer repair', { writeMs: 5000, missing: 1 }, 5300]] as const)('"멈춰" during %s halts within 3 s and nothing is written after', async (_what, timing, stopAt) => {
     const { hire, quick, stop } = await lane('stop', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { ...timing, stopAt })
     const began = Date.now()
     const out = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '', signal: stop.signal })
@@ -199,8 +204,9 @@ describe('stack-16: the person reads only a helper\'s own words', () => {
     const m: TeamMember = { id: 'h2', parentId: null, depth: 1, role: '통영 조사', topic: '통영', brief: '통영 케이블카 요금', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
     settleMember(m, { answer: '', timedOut: true, read: '통영 케이블카 요금 안내: 공식, 2026.11.01 https://tongyeong.example/fare', sources: ['https://tongyeong.example/fare'] }, new Date().toISOString(), true)
     const table = mergedReport(helperParts([{ ...m, state: 'released', review: { ok: true, note: 'auto' } }]), new Map(), [], true)
-    expect(tableRows(table)).toHaveLength(1)
-    expect(table).toContain('| 통영 |')
+    // c18b: one part is said in a sentence (no table), plainly.
+    expect(tableRows(table)).toHaveLength(0)
+    expect(table).toMatch(/^통영은 /m)
     expect(table).not.toContain('요금 안내')
     expect(table).not.toContain('한도')
   })

@@ -10,7 +10,8 @@ const ASK = '광합성이 뭔지 초등학생 아이에게 설명하듯 써줘'
 const LAST = '식물은 햇빛을 밥처럼 먹어요. 잎에서 햇빛이랑 물, 공기를 섞어서 자기가 먹을 달콤한 양분을 만들어요. 그래서 식물한테는 햇빛이 아주 중요해요.'
 const was = LAST
 const voiceSaid = (reply: string): string => JSON.stringify({ form: 'shorter', was, reply })
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (core repairedWrite), answered as replacements of numbered units.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 
 function voice(draft: string, rewrite: string, verdicts: string[]) {
@@ -38,7 +39,7 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
   })
 
   it('a shorter reply in adult jargon is "dropped", rewritten once, and the rewrite is shown', async () => {
-    const { quick, calls } = voice(voiceSaid(jargon), voiceSaid(childlike), [JSON.stringify({ problems: [{ kind: 'dropped', quote: jargon, why: '아이에게 설명하듯이 아니에요' }] }), none])
+    const { quick, calls } = voice(voiceSaid(jargon), JSON.stringify({ replace: { 1: childlike } }), [JSON.stringify({ problems: [{ kind: 'dropped', quote: jargon, why: '아이에게 설명하듯이 아니에요' }] }), none])
     expect(await reshapeAsk('더 짧게', LAST, quick, ASK)).toBe(childlike)
     expect(calls).toHaveLength(4)
     // The checker reads the earlier ask and the earlier reply as data.
@@ -52,7 +53,8 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
     const dropped = JSON.stringify({ problems: [{ kind: 'dropped', quote: jargon, why: '어른 말투' }] })
     const { quick, calls } = voice(voiceSaid(jargon), voiceSaid(jargon), [dropped, dropped])
     expect(await reshapeAsk('더 짧게', LAST, quick, ASK)).toBeUndefined()
-    expect(calls).toHaveLength(4)
+    // c18b: voice, check, a repair that is no repair (not the JSON asked for): no second check.
+    expect(calls).toHaveLength(3)
     // The same draft with a clean verdict is a valid shorter reply: the check alone turned it away.
     expect(await reshapeAsk('더 짧게', LAST, voice(voiceSaid(jargon), '', [none]).quick, ASK)).toBe(jargon)
   })

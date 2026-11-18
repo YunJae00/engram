@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createBot, createTask, listTasks, loadBots, RELEVANCE_RULE, setReportLog, staffTool, teamSummary, updateTask, vaultPaths, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { checkedSearch, createBot, createTask, listTasks, loadBots, mergedReport, RELEVANCE_RULE, setReportLog, staffTool, teamSummary, updateTask, vaultPaths, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
@@ -13,7 +13,8 @@ import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 // by prompt kind; the texts are the teammates' and the rows' own words from those threads. Each result is printed for the DONE file.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const RUN = '/Users/kwon-yunjae/engram-orch/tmp/grokbar/runs/stack14-63bdfb8a'
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (core repairedWrite): replacements and insertions of numbered units, as JSON.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const scratch = async (tag: string): Promise<string> => { await mkdir(temporary, { recursive: true }); return mkdtemp(join(temporary, `engram-stack15-${tag}-`)) }
@@ -33,10 +34,14 @@ describe('C3 replay', () => {
   const draft = (names: string[]): string => JSON.stringify({ message: `셋 다 이번 주엔 새로 나온 기능이 없어요.\n\n노션은 ${names[0]}이 봤는데 10월 19일 업데이트가 가장 최근이에요. [노션](${said.지민[2]})\n슬랙은 ${names[1]}이 봤는데 11월 9일 보안 업데이트가 마지막이에요. [슬랙](${said.서연[2]})\n리니어는 ${names[2] ? `${names[2]}이 봤는데 ` : ''}11월 12일 BYOK가 가장 최근이에요. [리니어](${said.도윤[2]})`, kept: [] })
   it('a draft that leaves one name out is repaired; a writer that fails twice gives a fallback that says the shared state once', async () => {
     const calls: string[] = []
-    const repaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => { calls.push(prompt); return prompt.includes(CHECK) ? none : prompt.includes(REDO) ? draft(['지민', '서연', '도윤']) : draft(['지민', '서연']) } })
+    const repaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => { calls.push(prompt); return prompt.includes(CHECK) ? none : prompt.includes(REDO) ? JSON.stringify({ insert_after: { 4: ['리니어는 도윤이 봤어요.'] } }) : draft(['지민', '서연']) } })
     console.log(`[replay C3] repaired (${calls.length} calls, ${logs.at(-1)}):\n${repaired}`)
     expect(repaired).toContain('도윤')
-    const fallback = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => prompt.includes(CHECK) ? none : draft(['지민', '서연']) })
+    // c18b: a writer that fails its repair too is shown as written (a shape rule never withholds the draft); the host's rendering is for
+    // when there is no draft at all, and it says the shared state once.
+    const unrepaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => prompt.includes(CHECK) ? none : draft(['지민', '서연']) })
+    expect(unrepaired).toMatch(/^셋 다 이번 주엔 새로 나온 기능이 없어요\./)
+    const fallback = mergedReport(members())
     console.log(`[replay C3] fallback (${logs.at(-1)}):\n${fallback}`)
     expect(fallback.match(/이번엔 새로 나온 게 없어요/g)).toHaveLength(1)
     expect(fallback).not.toMatch(/가장 최근엔 \S+는/)
@@ -56,18 +61,25 @@ describe('C10 replay', () => {
     const record = (prompt: string): { who: string; did: string }[] => JSON.parse(prompt.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
     const people = (prompt: string): string[] => [...new Set(record(prompt).map(job => job.who))]
     // c17c: the repaired draft names what each job was about (a summary that says only "맡은 일" is refused as missing).
+    const josa = (one: string): string => (one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'
     const writeAs = (all: (prompt: string) => boolean) => async (prompt: string): Promise<string> => {
       if (prompt.includes(CHECK)) return none
+      // c18b: the repair adds one line naming everyone and what they did; the draft's own sentences stay.
+      if (all(prompt)) {
+        const jobs = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
+        const line = [...new Set(jobs.map(job => job.who))].map(one => `${one}${josa(one)} ${[...new Set(jobs.filter(job => job.who === one).map(job => job.did))].join('·')}을 끝냈어요.`).join(' ')
+        return JSON.stringify({ insert_after: { 1: [`${line} 서연은 이제 팀에 없어요.`] } })
+      }
       const who = people(prompt), named = all(prompt) ? who : who.slice(0, -1)
       const what = (one: string): string => all(prompt) ? [...new Set(record(prompt).filter(job => job.who === one).map(job => job.did))].join('·') : '맡은 일'
       return `이번 주엔 ${named.map(one => `${one}${(one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'} ${what(one)}을 끝냈어요.`).join(' ')}${all(prompt) ? ' 서연은 이제 팀에 없어요.' : ''}`
     }
     const repaired = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(prompt => prompt.includes(REDO)) })
     console.log(`[replay C10] repaired (${logs.at(-1)}): ${repaired}`)
-    expect(logs.at(-1)).toMatch(/^summary=rewritten/)
+    expect(logs.at(-1)).toMatch(/^summary=repaired/)
     const fallback = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(() => false) })
     console.log(`[replay C10] fallback (${logs.at(-1)}): ${fallback}`)
-    expect(logs.at(-1)).toMatch(/^summary=fallback:unnamed>unnamed/)
+    expect(logs.at(-1)).toMatch(/^summary=fallback:unnamed/)
     // A sentence end before every person's name that starts a new clause: no "…요 서연은" run-on.
     expect(fallback).not.toMatch(/요 [가-힣]+[은는이가] /)
   })
