@@ -1,5 +1,5 @@
 import type { ErrandRetrievedNote, WebFinding, WebPage, ErrandDeps, ErrandState, ErrandResult, ErrandOptions, ErrandPhase } from './errand-types.js'
-export type { ErrandRetrievedNote, WebFinding, WebPage, PageMove, WebCourier, ErrandDeps, ErrandPhase, ErrandState, ErrandResult, ErrandOptions } from './errand-types.js'
+export type { ErrandRetrievedNote, WebFinding, WebPage, PageMove, WebCourier, ErrandDeps, ErrandState, ErrandResult } from './errand-types.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createCard } from './cards.js'
