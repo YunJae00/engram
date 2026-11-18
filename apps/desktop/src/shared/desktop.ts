@@ -36,7 +36,6 @@ export interface DesktopObservationDto {
   truncated?: boolean
   captureSafe?: boolean
 }
-// Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
   runtimeId?: string
   id: string
@@ -80,8 +79,6 @@ export interface QuietObservationDto {
 export interface QuietSetResultDto { snapshot?: string; nearby?: { name: string; id: string; runtimeId?: string; enabled: boolean; appeared: boolean }[]; how?: 'ax' | 'typed' | 'focus-key' | 'posted'; message?: string; landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
 export interface QuietPressResultDto { landed?: boolean; message?: string; how?: 'ax' | 'typed' | 'focus-key' | 'posted'; satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
 export interface QuietReadResultDto { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean; text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
-// The brain that holds the computer, named for the person: the banner on the
-// screen says who is moving the mouse.
 export type DesktopEngineId = 'claude' | 'codex'
 export interface DesktopControlStatusDto {
   state: 'idle' | 'ready' | 'running' | 'paused' | 'needs-person'
@@ -93,8 +90,6 @@ export interface DesktopControlStatusDto {
   engineLabel?: string
   inputActive?: boolean
   application?: { name: string; bounds: { x: number; y: number; width: number; height: number }; visible: boolean; nativeFrame?: boolean }
-  // Paused because a hand touched the mouse or keyboard: the comet carries on
-  // once that hand has been still for a moment. Esc and Stop are not resumable.
   resumable?: boolean
 }
 export interface DesktopApi {
@@ -116,8 +111,6 @@ export interface DesktopApi {
   desktopControlStatus(): Promise<DesktopControlStatusDto>
   desktopControlStart(lane: string): Promise<DesktopControlStatusDto>
   desktopControlStop(): Promise<void>
-  // Ends a hands-on pause early, from the on-screen pill.
   desktopControlResume(): Promise<void>
-  // What the on-screen overlay is showing; the overlay windows prime from it.
   desktopOverlayStatus(): Promise<DesktopControlStatusDto>
 }

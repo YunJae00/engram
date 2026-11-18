@@ -65,7 +65,6 @@ export interface DevSession {
   usage: DevUsage
   outbox?: DevQueuedMessage[]
 }
-// accountProfile: which account's history the session was found in, when several were listed.
 export interface DevExternalSession { id: string; provider: DevProvider; title: string; cwd: string; updatedAt: number; active?: boolean; accountProfile?: string }
 export interface DevCommand { name: string; description: string; prompt: string }
 export interface DevState { preferences: DevPreferences; repos: DevRepo[]; sessions: Omit<DevSession, 'items' | 'pending'>[] }

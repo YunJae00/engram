@@ -60,7 +60,6 @@ export type EngramEvent =
       text: string
       evidence?: import('core').TurnEvidence
 
-      // Only a question the bot asked leaves choices; running, keeping or repeating a job is said in chat.
       offer?: { kind: 'asked'; question: string; options: string[] }
     }
   | { type: 'chat:error'; channel: string; message: string; kind?: EngineHealthReason; provider?: string }

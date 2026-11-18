@@ -84,7 +84,6 @@ const api: EngramApi = {
   chatSend: (request: ChatRequestDto) => ipcRenderer.invoke('chat:send', request),
   chatAttach: (name, data) => ipcRenderer.invoke('chat:attach', name, data),
   copyText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
-  // fire-and-forget: drag deltas at pointer-move rate must never await
   activityToday: () => ipcRenderer.invoke('activity:today'),
   activityGet: () => ipcRenderer.invoke('activity:get'),
   activitySet: (enabled: boolean) => ipcRenderer.invoke('activity:set', enabled),
@@ -107,7 +106,6 @@ const api: EngramApi = {
   enginesDetected: () => ipcRenderer.invoke('engines:isDetected'),
   appVersion: () => ipcRenderer.invoke('app:version'),
   vaultReady: () => ipcRenderer.invoke('vault:isReady'),
-  // Recovery actions for a vault that failed to open (vault:error).
   revealVaultRoot: (root: string) => ipcRenderer.invoke('vault:revealRoot', root),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
