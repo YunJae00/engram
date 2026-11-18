@@ -388,10 +388,15 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       // c18a (cause V, L3: a fifth round began with 1.8 s left and ended 6 s past the due): a step starts only when this lookup's own last
       // measured round fits before the due.
       const fitsRound = (): boolean => now() + Math.max(roundMs, 1) <= due()
-      const timed = async <T>(work: () => Promise<T>): Promise<T> => { const began = now(); try { return await work() } finally { roundMs = now() - began } }
+      // stack-18 (Codex cap: a 9 s first round with 8 s left ended the lookup with nothing read): a page open is a step of its own size,
+      // measured by itself (first guessed as the first judgment alone, with no search in it), so a lookup with time left reads a page.
+      let openMs = 0
+      const fitsOpen = (): boolean => now() + Math.max(openMs, 1) <= due()
+      const timed = async <T>(work: () => Promise<T>, open = false): Promise<T> => { const began = now(); try { return await work() } finally { if (open) openMs = now() - began; else roundMs = now() - began } }
       const t1 = now()
       let words = (await judge(rowsOf(out), page1))?.search, retried = false
-      roundMs += now() - t1
+      openMs = now() - t1
+      roundMs += openMs
       const seen = new Set(rowsOf(out).map(row => row.url)), opened = new Set<string>()
       // c18a: a page is read with the lookup's own page reader, raced with a stop; a wall or a failed read is no text.
       const readPage = async (url: string): Promise<string> => {
@@ -423,8 +428,8 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       // c18a (cause V): open, don't re-search. While a point has no held quote, up to OPEN_AT_ONCE pages are opened together; their text
       // joins their rows, the judge's quotes are read against it again, and only rows it did not settle are judged again. A new search runs
       // when no kept row is left to open. A counted ask still short with no new words reads its listings' entries, then searches by its kind.
-      while (need() && fitsRound() && !signal?.aborted) {
-        const urls = first && by.read ? toOpen() : []
+      while (need() && (fitsRound() || fitsOpen()) && !signal?.aborted) {
+        const urls = first && by.read && fitsOpen() ? toOpen() : []
         if (urls.length) {
           const read = await timed(async () => {
             const texts = await Promise.all(urls.map(readPage))
@@ -442,12 +447,13 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
             await Promise.all(rows.map(one => reread(one.row)))
             if (signal?.aborted) return undefined
             for (const { was, row } of rows) if (short(row)) { unsettled.push(row); if (was) st.unsure = st.unsure.filter(one => one !== was) }
-            return unsettled.length && need() && fitsRound() ? judge(unsettled) : undefined
-          })
+            return unsettled.length && need() && fitsOpen() ? judge(unsettled) : undefined
+          }, true)
           if (signal?.aborted) break
           if (read?.search) { words = read.search; retried = false }
           continue
         }
+        if (!fitsRound()) break
         if (first && (!words || searched.has(words)) && count && whole().length < count) {
           // A round-up lists several of the kind: its entries are judged as items.
           const listing = by.read ? [...listings.keys()].filter(url => !opened.has(url)).slice(0, OPEN_AT_ONCE) : []

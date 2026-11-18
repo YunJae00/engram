@@ -227,7 +227,8 @@ describe('c17a r3: a helper cell holds only verified points', () => {
   // c18a (closes c17a r3 #1 as the brief decides): a page read first-hand is evidence. What the helper says there stands, a point it states
   // there is found, and "못 찾았어요" is said only of a point no read text holds.
   it('on a page it read whole itself, its prose stands, and a point it states there is not said as not found', () => {
-    const [m] = helperParts([helper('부산 해수욕장 수온이랑 파고', '해운대 수온은 22도예요 [해양청](https://sea.example/busan). 파고는 1.5m예요 [해양청](https://sea.example/busan)', { proof: [], missing: ['파고'], sources: ['https://sea.example/busan'] })])
+    // stack-18 (c18a r3 #1): the point is cleared when the blind meaning read says the helper's words state it (helperAnswer gives that here).
+    const [m] = helperParts([helper('부산 해수욕장 수온이랑 파고', '해운대 수온은 22도예요 [해양청](https://sea.example/busan). 파고는 1.5m예요 [해양청](https://sea.example/busan)', { proof: [], missing: ['파고'], sources: ['https://sea.example/busan'] })], new Map([['h', new Set(['파고'])]]))
     const text = m!.data!.facts.map(f => f.text).join(' ')
     expect(text).toContain('22도')
     expect(text).toContain('1.5m')

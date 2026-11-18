@@ -196,7 +196,7 @@ describe('c18a rule 3: a first-hand read is the helper\'s evidence', () => {
       helper('제천', '제천 청풍 케이블카는 어른 왕복 1만 8천 원이에요 [청풍](https://cable.example/jc)', { proof: [], missing: ['요금: 원화 금액'], sources: ['https://cable.example/jc', 'https://search.example/?q=x'] }),
       helper('밀양', '밀양 얼음골 케이블카는 왕복 1만 6천 원이에요 [검색 결과](https://news.example/my)', { proof: [], missing: ['요금: 원화 금액'], sources: ['https://search.example/?q=y'] }),
       helper('여주', '여주 케이블카는 왕복 1만 5천 원이에요 [여주](https://cable.example/yj)', { proof: [], missing: ['요금: 원화 금액'], sources: ['https://cable.example/yj'] }),
-    ])
+    ], new Map([...['제천', '밀양', '여주'].map(id => [id, new Set(['요금: 원화 금액'])] as const)]))
     expect(parts[0]!.data!.facts.map(f => f.text).join(' ')).toBe('제천 청풍 케이블카는 어른 왕복 1만 8천 원이에요')
     expect(parts[1]!.data).toBeUndefined()
     expect(parts[2]!.data!.facts[0]!.text).not.toContain('못 찾았어요')

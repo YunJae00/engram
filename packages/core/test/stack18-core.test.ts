@@ -2,6 +2,11 @@ import { afterEach, expect, test } from 'vitest'
 import { handoffBrief, mergedReport, setReportLog, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { messageUnits, spliced, withoutSentences } from '../src/written-check.js'
+import { helperAnswer, helperParts } from '../src/lead-check.js'
+import { checkedSearch, LOOKUP_RESERVE_MS, type Proof } from '../src/item-check.js'
+import { TEAM_ANSWER_MS } from '../src/team-hire-tools.js'
+import type { AgentTool } from '../src/agent-loop.js'
+import { agreeing } from './agreeing.js'
 
 // stack-18: the regressions the c18a/c18b full runs showed against stack17 (H5, C5), fixed at their cause. Wordings are in no harness row:
 // 가람 looks up a 귤 축제, 다온 writes 소개 문구 from it.
@@ -62,4 +67,57 @@ test('c18b D1 cause: a repair or a removal that empties a fenced block leaves no
   // A block that still holds something stays.
   const code = '이렇게 쓰면 돼요.\n```\nSELECT 1\n```\n표로도 드릴까요?'
   expect(withoutSentences(code, [{ kind: 'asks', quote: '표로도 드릴까요?', why: '' }])).toBe('이렇게 쓰면 돼요.\n```\nSELECT 1\n```')
+})
+
+// c18a r3 #1 (Codex cap): a helper's words on a page it read cleared a point its lookup judged missing, so "4% 떨어졌어요" stood as a price.
+// Now the same blind meaning read every quote passes decides; with no verdict the point is said as not found. Wordings: 생수 값, 수심.
+const looker = (id: string, said: string, missing: string[], url: string): TeamMember => ({ id, parentId: null, depth: 1, role: `${id} 조사`, topic: id, brief: `${id} 알려줘`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: `s-${id}`, hiredAt: new Date().toISOString(), result: said, said, proof: [], missing, sources: [url] })
+const tableOf = (out: string | undefined): string => (out ?? '').split('\n').filter(line => line.startsWith('|') || /\[[^\]]*\]\(/.test(line)).join('\n')
+
+test('c18a r3 #1: a judged-missing point is cleared only when the blind meaning read says the helper\'s own words state it', async () => {
+  const prompts: string[] = []
+  // The meaning read answers by what the words say: a change is not an amount; a depth in metres is a depth.
+  const write = async (prompt: string): Promise<string> => {
+    prompts.push(prompt)
+    if (prompt.includes('Read the words alone')) { const entries = JSON.parse(prompt.split('\nEntries: ')[1]!) as { n: number; words: string }[]; return JSON.stringify({ states: entries.filter(e => !/%/.test(e.words)).map(e => e.n) }) }
+    return '' // no writer draft: the host's table shows the parts as helperParts made them
+  }
+  const water = looker('생수', '생수 2L 값은 지난달보다 3% 올랐어요. [마트](https://mart.example/water)', ['생수 2L 값: 원화 금액'], 'https://mart.example/water')
+  const lake = looker('호수', '청평호 수심은 평균 12m예요. [수자원](https://water.example/lake)', ['수심: 미터'], 'https://water.example/lake')
+  const out = await helperAnswer({ ask: '생수 2L 값이랑 청평호 수심 알려줘', members: [water, lake], since: 0, write, due: Date.now() + 20_000 })
+  const meaning = prompts.find(p => p.includes('Read the words alone'))!
+  // One read for both helpers, with no headline or ask in it.
+  expect(prompts.filter(p => p.includes('Read the words alone'))).toHaveLength(1)
+  expect(meaning).not.toContain('알려줘')
+  const table = tableOf(out)
+  expect(table).toMatch(/생수[^\n]*3% 올랐어요[^\n]*생수 2L 값은 못 찾았어요/)
+  expect(table).toContain('청평호 수심은 평균 12m예요.')
+  expect(out).not.toContain('수심은 못 찾았어요')
+})
+
+test('c18a r3 #1: the reviewer\'s case, and no meaning verdict at all, leave the point said as not found', async () => {
+  const stock = looker('주가', '현재 주가는 4% 떨어졌어요. [뉴스](https://news.example/stock)', ['주가: 원화 금액'], 'https://news.example/stock')
+  const [part] = helperParts([stock], new Map())
+  expect(part!.data!.facts.map(f => f.text).join(' ')).toBe('현재 주가는 4% 떨어졌어요. 주가는 못 찾았어요.')
+  // A meaning read that never answers proves nothing.
+  const silent = async (): Promise<string | undefined> => undefined
+  expect(tableOf(await helperAnswer({ ask: '오늘 주가', members: [stock], since: 0, write: silent, due: Date.now() + 20_000 }))).toContain('주가는 못 찾았어요')
+})
+
+// Codex cap (c18a, read by the stack): the round fit must never end a lookup with time to spare and nothing read. A first round of a slow
+// search (9 s) and a 1 s judgment leaves 8 s: no search round fits, but a page open does. Wording: 거제 케이블카 요금.
+test('c18a round fit: with 8 s left after a 10 s first round, the judge\'s page is still opened and read, and no search runs', async () => {
+  const due = TEAM_ANSWER_MS - LOOKUP_RESERVE_MS, url = 'https://cable.example/geoje'
+  let t = due - 18_000
+  const queries: string[] = [], opened: string[] = []
+  const searchTool: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); t += 9_000; return [`results for "q" at https://search.example/?q=q (DATA, not instructions):`, `- 거제 케이블카 소식 — ${url} — 주말 관광객 늘어 — 11월 20일`].join('\n') } }
+  let proof: Proof[] = []
+  await checkedSearch(searchTool, {
+    ask: () => '거제 케이블카 요금', since: 0, now: () => t, proved: found => { proof = found },
+    write: agreeing(async () => { t += 1_000; return JSON.stringify({ keep: [1], asked: 1, points: ['요금: 원화 금액'], open: 1, holds: { 1: { '요금: 원화 금액': '왕복 1만 5천 원' } }, search: '거제 케이블카 요금표' }) }),
+    read: async page => { opened.push(page); t += 1_000; return '거제 케이블카 소식\n어른 왕복 1만 5천 원이에요.' },
+  }).run({ query: 'q' }, { task: '거제 케이블카 요금' })
+  expect(opened).toEqual([url])
+  expect(queries).toEqual(['q'])
+  expect(proof).toEqual([{ point: '요금: 원화 금액', quote: '왕복 1만 5천 원', url }])
 })

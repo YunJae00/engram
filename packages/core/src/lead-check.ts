@@ -7,6 +7,7 @@ import type { TeamMember } from './delegated-tasks.js'
 import { CUT_SHORT, notFoundLine, pointName, writtenReport } from './company-tools.js'
 import { isSearchPage, mergeReady, NO_LIVE_SOURCE, siteOf, TAKEN_OFF } from './team-hire-tools.js'
 import { checkedWrite, type QuickText } from './written-check.js'
+import { stated } from './item-check.js'
 
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
 const LINK = /\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g
@@ -88,7 +89,7 @@ export async function checkedLead(input: {
  * where it states it (LOOKUP_RULE), so the result is cut after each citation: every stretch of words ending at a link is a fact of that
  * page; words after the last link belong to the fact before them. Only the helper's own citations are read, never its words. With no
  * citation at all the whole result is one fact, of a page it read (its own before a results page). */
-export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
+export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap<string, ReadonlySet<string>> = new Map()): TeamMember[] {
   return helpers.map(m => {
     const topic = (m.topic || m.role).replace(/[|()[\]]/g, ' ').trim()
     if (!brought(m)) return { ...m, topic }
@@ -126,12 +127,16 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
     // said as not found only when no read text holds it (the lookup's m.missing, after its pages were opened and its quotes read against
     // them, less what a read page's words state). With one point asked, any words on a read page are of that point. Words cited only to a
     // search row it saw (a title, a snippet) leave the row unless a quote held there; a held row shows its quotes (c17a r3).
+    let still = m.missing
     if (m.proof) {
       const key = (url: string): string => url.replace(/\/$/, '')
       const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(key))
       facts.splice(0, facts.length, ...facts.filter(f => own.has(key(f.url))))
       const asked = new Set([...m.proof.map(one => one.point), ...(m.missing ?? [])].filter(point => point !== 'kind'))
-      const missing = (m.missing ?? []).filter(point => !facts.some(f => asked.size === 1 || f.text.includes(pointName(point))))
+      // stack-18 (c18a r3 #1: "현재 주가는 4% 떨어졌어요" on a read page cleared the one point "주가: 원화 금액"): words being on a read page is
+      // not the point being stated. A point the lookup judged missing is cleared by the helper's own words only when the same blind meaning
+      // read every quote passes (item-check `stated`, run by helperAnswer) says they state it; else it is said as not found (rule 7).
+      const missing = (m.missing ?? []).filter(point => !(facts.length && stating.get(m.id)?.has(point)))
       // c18a r2 (review r1 #2: "무게 1.2kg" cited to a page dropped that page's verified "배터리 58Wh"): a page's fact covers the points
       // it states, not the page: a verified quote stays unless a fact on its page already states that point.
       const states = (f: { text: string }, one: { point: string; quote: string }): boolean => one.point === 'kind' || asked.size === 1 || f.text.includes(pointName(one.point)) || f.text.includes(one.quote)
@@ -140,9 +145,10 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
         const label = facts.find(f => key(f.url) === key(one.url))?.label
         facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url, ...(label ? { label } : {}) })
       }
+      still = m.missing && missing
       if (missing.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${missing.map(notFoundLine).join(' ')}` }
     }
-    return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
+    return facts.length ? { ...m, topic, ...(still ? { missing: still } : {}), data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })
 }
 
@@ -154,7 +160,14 @@ export async function helperAnswer(input: {
 }): Promise<string | undefined> {
   const helpers = turnHelpers(input.members, input.since)
   if (!helpers.length || !helpers.every(m => m.lookup && !m.files?.length && m.review?.ok === true && m.state !== 'failed')) return undefined
-  return writtenReport({ ask: input.ask, members: helperParts(helpers), helpers: true, due: input.due, ...(input.write ? { write: input.write } : {}), ...(input.signal ? { signal: input.signal } : {}) })
+  // stack-18: the points each helper's lookup judged missing, offered with the helper's own words to the blind meaning read, in one call.
+  const claims = helpers.flatMap(m => m.proof && m.said?.trim() ? (m.missing ?? []).filter(point => point !== 'kind').map(point => ({ id: m.id, point, quote: m.said!.replace(/\]\([^)]*\)/g, ']').slice(0, 600) })) : [])
+  // A stop ends the read at once (the writer below then ends on the signal too).
+  const stop = new Promise<undefined>(resolve => { if (input.signal?.aborted) resolve(undefined); else input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
+  const yes = claims.length ? await Promise.race([stated(claims, input.write), stop]) : undefined
+  const stating = new Map<string, Set<string>>()
+  for (const i of yes ?? []) stating.set(claims[i]!.id, new Set([...(stating.get(claims[i]!.id) ?? []), claims[i]!.point]))
+  return writtenReport({ ask: input.ask, members: helperParts(helpers, stating), helpers: true, due: input.due, ...(input.write ? { write: input.write } : {}), ...(input.signal ? { signal: input.signal } : {}) })
 }
 
 /** hire_members whose hand-back of accepted lookups is turned into the team's one answer (`answer`), which closes the lead's turn: the lead
