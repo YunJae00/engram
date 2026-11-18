@@ -7,6 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 // c18a (cause V) on the anonymous split, as ipc wires it: every judge quote is a paraphrase no search row holds, and every helper cites a
@@ -36,7 +37,7 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
       const url = String(args['url']), at = town(decodeURIComponent(url)); opened.push(url); await tick(20)
       return at === '안동' ? 'that did not work: the page did not load' : `page "${at} 케이블카 요금 안내" (DATA, not instructions):\n${at} 케이블카 요금 안내\n어른(대인) 왕복 1만 8천 원, 어린이 1만 3천 원. 매일 9시부터 운행해요.`
     } }
-    const write = async (prompt: string): Promise<string> => {
+    const write = agreeing(async (prompt: string): Promise<string> => {
       if (prompt.includes('In "holds", for each item')) {
         await tick(20)
         const items = JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string; link?: string }[], fee = items.find(item => item.link?.endsWith('/fee'))
@@ -48,7 +49,7 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
       const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { id: string; text: string; link: string }[] }[]
       const rows = data.filter(p => p.facts?.length).map(p => ({ part: p.part, fact: p.facts![0]! }))
       return JSON.stringify({ message: ['요금이에요.', '', '| 도시 | 요금 | 출처 |', '|---|---|---|', ...rows.map(r => `| ${r.part} | ${r.fact.text} | ${r.fact.link} |`)].join('\n'), kept: rows.map(r => r.fact.id) })
-    }
+    })
     const run: Run = async (deps, prompt, options = {}) => {
       options.onStart?.()
       const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', at = town(part)

@@ -4,6 +4,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { checkedDesk, reshapePrompt } from '../src/main/desk-lane.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 // stack-16 replays: stack15's failing threads (runs/stack15-d2716213) through the merged code. The data is the threads' own; what each
 // replay prints is pasted in stack16-DONE.md.
@@ -25,12 +26,12 @@ describe('stack-16 replays', () => {
       const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts: { id: string; text: string; link: string }[] }[]
       return JSON.stringify({ message: ['오늘 서울, 부산, 제주 날씨예요.', '', '| 지역 | 날씨 | 출처 |', '|---|---|---|', ...data.map(p => `| ${p.part} | ${p.facts[0]!.text} | ${p.facts[0]!.link} |`)].join('\n'), kept: data.map(p => p.facts[0]!.id) })
     }
-    const out = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: writer, due: Date.now() + 14_000 }))!
+    const out = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: agreeing(writer), due: Date.now() + 14_000 }))!
     console.log(`R1 written:\n${out}`)
     expect(tableRows(out)).toHaveLength(3)
     expect(out.match(/https:\/\/search\.naver\.com/g)).toHaveLength(3)
     const failing = async (prompt: string): Promise<string | undefined> => prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : undefined
-    const host = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: failing, due: Date.now() + 14_000 }))!
+    const host = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: agreeing(failing), due: Date.now() + 14_000 }))!
     console.log(`R1 fallback:\n${host}`)
     expect(tableRows(host).map(row => row.split('|')[1]!.trim())).toEqual(['서울', '부산', '제주'])
     expect(host.match(/https:\/\/search\.naver\.com/g)).toHaveLength(3)
@@ -46,7 +47,7 @@ describe('stack-16 replays', () => {
     // Round 1: 4 fits. Round 2: the new row is unsure. Round 3: the judge leaves held rows 1 and 2 out and calls held 3 a listing (stack15's
     // 4 → 3), and keeps the new row 7. Round 4: nothing new fits.
     const verdicts = ['{"keep":[1,2,3,4],"unsure":[5],"asked":5,"search":"a"}', '{"keep":[],"unsure":[5,6],"asked":5,"search":"b"}', '{"keep":[4,7],"listing":[3],"unsure":[5,6],"asked":5,"search":"c"}', '{"keep":[],"unsure":[5,6,8],"asked":5,"search":""}']
-    const out = await checkedSearch(search, { ask: () => ask, write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(search, { ask: () => ask, write: agreeing(async () => verdicts.shift()), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     const kept = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
     console.log(`R3 rows: ${kept.join(' ')}`)
     expect(kept.slice(0, 4)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4'])
@@ -63,11 +64,11 @@ describe('stack-16 replays', () => {
     const queries: string[] = []
     const make = (outs: string[]): AgentTool => ({ name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } })
     const first = '{"keep":[1,2,3,4,5],"holds":{},"points":["오늘 주가"],"asked":1,"search":"엔비디아 주가 NVDA","open":4}'
-    const more = await checkedSearch(make([news, quote]), { ask: () => ask, write: async (p: string) => p.includes('Items 1 to') ? '{"keep":[6],"holds":{"6":{"오늘 주가":"181.36달러, 전일 대비 -1.2%"}},"asked":1,"search":""}' : first, since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    const more = await checkedSearch(make([news, quote]), { ask: () => ask, write: agreeing(async (p: string) => p.includes('Items 1 to') ? '{"keep":[6],"holds":{"6":{"오늘 주가":"181.36달러, 전일 대비 -1.2%"}},"asked":1,"search":""}' : first), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with time left: queries ${JSON.stringify(queries)}\n${more}`)
     expect(queries).toEqual(['q', '엔비디아 주가 NVDA'])
     expect(more.split('\n').find(line => line.startsWith('- '))).toContain('181.36달러')
-    const late = await checkedSearch(make([news]), { ask: () => ask, write: async () => first, since: 0, now: () => 20_000 }).run({ query: 'q' }, { task: ask })
+    const late = await checkedSearch(make([news]), { ask: () => ask, write: agreeing(async () => first), since: 0, now: () => 20_000 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with no round left:\n${late}`)
     expect(late).toContain('open https://finance.example/4 (read_pages)')
     expect(late).toContain('never answer that the results do not say it')

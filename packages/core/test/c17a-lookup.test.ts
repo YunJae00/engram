@@ -4,6 +4,7 @@ import { helperParts } from '../src/lead-check.js'
 import { mergedReport } from '../src/company-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
+import { agreeing } from './agreeing.js'
 
 // c17a (cause E): the lookup stops and shows on evidence, the item's own words for each point the ask wants, checked by the host to be in
 // that item; never on a bare "keep" or a bare row number. Wordings are in no harness row (광주 미세먼지, 바이오 인수합병, 맥북 에어 M6).
@@ -37,7 +38,7 @@ describe('c17a: headline vs value (광주 미세먼지)', () => {
   const value = row(2, '광주 대기질 예보', "내일 광주 미세먼지 '나쁨', 초미세먼지 38㎍/㎥", 'air.example')
   it('a judge that quotes the headline as the value: only the row whose own words state it holds, and it alone is shown', async () => {
     const s = search([page('q', [headline, value])])
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => JSON.stringify({ keep: [1, 2], points: ['미세먼지 등급'], asked: 1, search: '', holds: { 1: { '미세먼지 등급': '광주 내일 미세먼지 전망 정리' }, 2: { '미세먼지 등급': "내일 광주 미세먼지 '나쁨', 초미세먼지 38㎍/㎥" } } }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => JSON.stringify({ keep: [1, 2], points: ['미세먼지 등급'], asked: 1, search: '', holds: { 1: { '미세먼지 등급': '광주 내일 미세먼지 전망 정리' }, 2: { '미세먼지 등급': "내일 광주 미세먼지 '나쁨', 초미세먼지 38㎍/㎥" } } })), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q'])
     expect(urls(out)).toEqual(['https://air.example/2'])
     expect(out).toContain(`· 미세먼지 등급: "내일 광주 미세먼지 '나쁨', 초미세먼지 38㎍/㎥" (https://air.example/2)`)
@@ -48,7 +49,7 @@ describe('c17a: headline vs value (광주 미세먼지)', () => {
     const verdicts = [JSON.stringify({ keep: [1], points: ['미세먼지 등급'], asked: 1, search: '', open: 1, holds: { 1: { '미세먼지 등급': '광주 내일 미세먼지 전망 정리' } } }), JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { '미세먼지 등급': "광주는 내일 미세먼지 '나쁨'" } } })]
     let found: { proof: Proof[]; missing: string[] } | undefined
     const out = await checkedSearch(s, {
-      ask: () => ask, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => 0,
+      ask: () => ask, write: agreeing(async p => { prompts.push(p); return verdicts.shift() }), since: 0, now: () => 0,
       read: async url => { opened.push(url); return "광주 내일 미세먼지 전망 정리\n기상청에 따르면 광주는 내일 미세먼지 '나쁨' 수준이 예상돼요." },
       proved: (proof, missing) => { found = { proof, missing } },
     }).run({ query: 'q' }, { task: ask })
@@ -62,7 +63,7 @@ describe('c17a: headline vs value (광주 미세먼지)', () => {
   it('only the headline, no page reader: a second search round runs on the judge\'s words while time is left', async () => {
     const s = search([page('q', [headline]), page('광주 미세먼지 예보 등급', [value])])
     const verdicts = [JSON.stringify({ keep: [1], points: ['미세먼지 등급'], asked: 1, search: '광주 미세먼지 예보 등급', holds: {} }), JSON.stringify({ keep: [2], asked: 1, search: '', holds: { 2: { '미세먼지 등급': "미세먼지 '나쁨'" } } })]
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => verdicts.shift()), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q', '광주 미세먼지 예보 등급'])
     expect(urls(out)).toEqual(['https://air.example/2'])
   })
@@ -72,7 +73,7 @@ describe('c17a: headline vs value (광주 미세먼지)', () => {
     let calls = 0
     const started = Date.now()
     const out = checkedSearch(s, {
-      ask: () => ask, write: async () => { calls++; return JSON.stringify({ keep: [1], points: ['미세먼지 등급'], asked: 1, search: '', open: 1, holds: {} }) }, since: 0, now: () => 0,
+      ask: () => ask, write: agreeing(async () => { calls++; return JSON.stringify({ keep: [1], points: ['미세먼지 등급'], asked: 1, search: '', open: 1, holds: {} }) }), since: 0, now: () => 0,
       read: () => { setTimeout(() => stop.abort(), 50); return new Promise<string>(() => undefined) },
     }).run({ query: 'q' }, { task: ask, signal: stop.signal })
     await out
@@ -101,7 +102,7 @@ describe('c17a: kind (바이오 인수합병 4개)', () => {
       JSON.stringify({ keep: [6], asked: 4, search: '', holds: {} }),
     ]
     let t = 0
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 3000; return verdicts.shift() }, since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 3000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     // c18a: still short with no new words and time left, it searches by its kind line before the due.
     expect(s.queries).toEqual(['q', '바이오 스타트업 피인수', kind])
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3', 'https://news.example/5'])
@@ -117,7 +118,7 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
     const s = search([page('q', [row(1, '맥북 에어 M6 국내 가격', '맥북 에어 M6는 179만 원부터 시작한다', 'apple.example')]), page('맥북 에어 M6 출시일', [row(2, '애플 신제품 루머', '내년 상반기 여러 제품이 나올 전망')])])
     const verdicts = [JSON.stringify({ keep: [1], points: ['가격', '출시일'], asked: 1, search: '맥북 에어 M6 출시일', holds: { 1: { 가격: '179만 원부터' } } }), JSON.stringify({ keep: [2], asked: 1, search: '맥북 에어 M6 발매 날짜', holds: {} })]
     let t = 0, found: { proof: Proof[]; missing: string[] } | undefined
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 8000; return verdicts.shift() }, since: 0, now: () => t, proved: (proof, missing) => { found = { proof, missing } } }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 8000; return verdicts.shift() }), since: 0, now: () => t, proved: (proof, missing) => { found = { proof, missing } } }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q', '맥북 에어 M6 출시일'])
     expect(out).toContain('· 가격: "179만 원부터" (https://apple.example/1)')
     expect(out).toContain('Not found in anything read: 출시일')
@@ -181,7 +182,7 @@ describe('c17a r2: a counted ask with several points counts only items that stat
       JSON.stringify({ keep: [], asked: 2, holds: {}, search: '' }),
     ]
     let t = 0
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 4000; return verdicts.shift() }, since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 4000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q', '태블릿 배터리 용량'])
     // Both partial rows are shown (rule 7: never dropped), each with its missing point named.
     expect(urls(out)).toEqual(['https://apple.example/1', 'https://samsung.example/2'])
@@ -190,7 +191,7 @@ describe('c17a r2: a counted ask with several points counts only items that stat
   })
   it('rows that state every point end it in one round', async () => {
     const s = search([page('q', [row(1, '아이패드 미니 8', '293g, 배터리 5,078mAh', 'apple.example'), row(2, '갤럭시 탭 S12', '498g, 배터리 8,400mAh', 'samsung.example')])])
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => JSON.stringify({ keep: [1, 2], asked: 2, points: ['무게', '배터리 용량'], holds: { 1: { 무게: '293g', '배터리 용량': '5,078mAh' }, 2: { 무게: '498g', '배터리 용량': '8,400mAh' } }, search: '더 찾기' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => JSON.stringify({ keep: [1, 2], asked: 2, points: ['무게', '배터리 용량'], holds: { 1: { 무게: '293g', '배터리 용량': '5,078mAh' }, 2: { 무게: '498g', '배터리 용량': '8,400mAh' } }, search: '더 찾기' })), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     expect(s.queries).toEqual(['q'])
     expect(out).toContain('They hold the 2 asked for')
     expect(out).not.toContain('not found')

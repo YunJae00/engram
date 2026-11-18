@@ -5,6 +5,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { askNow, checkedDesk } from '../src/main/desk-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
+import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 // stack-17 replays: the stack16 threads that failed (R1, R3, R2, H2, C10, C6), their rows and records, through the merged code.
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
@@ -21,7 +22,7 @@ describe('R1 (stack16: 서울 cell was the headline "서울 11월 18일 오늘 �
   const weather = row('https://weather.example/seoul', '서울 날씨', '서울 현재 기온 6.1도, 흐림, 오후 한때 비')
   it('headline + a weather row with a temperature: only the second holds and is shown', async () => {
     const s = search([page('q', [headline, weather])])
-    const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: async () => JSON.stringify({ keep: [1, 2], asked: 1, search: '', points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' }, 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } }) }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing(async () => JSON.stringify({ keep: [1, 2], asked: 1, search: '', points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' }, 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })) }).run({ query: 'q' }, { task: ask })
     console.log(`R1 replay (both rows):\n${out}`)
     expect(urls(out)).toEqual(['https://weather.example/seoul'])
     expect(out).not.toContain('joseilbo')
@@ -29,10 +30,10 @@ describe('R1 (stack16: 서울 cell was the headline "서울 11월 18일 오늘 �
   it('the headline alone: the host opens the page (a reader) or searches again (none); the headline is never the answer', async () => {
     const quotedHeadline = JSON.stringify({ keep: [1], asked: 1, search: '서울 현재 기온', open: 1, points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' } } })
     const opened: string[] = []
-    const withReader = await checkedSearch(search([page('q', [headline])]), { ask: () => ask, since: 0, now: () => 0, write: (() => { const v = [quotedHeadline, JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '낮 최고 9도, 맑음' } } })]; return async () => v.shift() })(),
+    const withReader = await checkedSearch(search([page('q', [headline])]), { ask: () => ask, since: 0, now: () => 0, write: agreeing((() => { const v = [quotedHeadline, JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '낮 최고 9도, 맑음' } } })]; return async () => v.shift() })()),
       read: async url => { opened.push(url); return '서울 11월 18일 오늘 날씨 요약\n오늘 서울은 낮 최고 9도, 맑음이에요.' } }).run({ query: 'q' }, { task: ask })
     const s = search([page('q', [headline]), page('서울 현재 기온', [weather])])
-    const noReader = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: (() => { const v = [quotedHeadline, JSON.stringify({ keep: [2], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })]; return async () => v.shift() })() }).run({ query: 'q' }, { task: ask })
+    const noReader = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing((() => { const v = [quotedHeadline, JSON.stringify({ keep: [2], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })]; return async () => v.shift() })()) }).run({ query: 'q' }, { task: ask })
     console.log(`R1 replay (headline alone): opened ${opened.join(', ')}\n${withReader}\n--- no reader, searches: ${s.queries.join(' | ')}\n${noReader}`)
     expect(opened).toEqual(['https://news.example/joseilbo'])
     expect(withReader).toContain('낮 최고 9도, 맑음')
@@ -60,7 +61,7 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
       JSON.stringify({ keep: [8], asked: 5, search: '', holds: {} }),
     ]
     let t = 0
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 4000; return verdicts.shift() }, since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 4000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     console.log(`R3 replay: searches ${s.queries.join(' | ')}\n${out}`)
     // c18a: still short with no new words and time left, it searches by its kind line before the due.
     expect(s.queries).toEqual(['q', 'AI 스타트업 시리즈 투자 유치', kind])
@@ -77,7 +78,7 @@ describe('R2 (stack16: prices only, 출시일 never looked for)', () => {
     const s = search([page('q', [row('https://samsung.example/s27', '갤럭시 S27 가격', '갤럭시 S27 기본 모델 출고가 125만 4천 원')]), page('갤럭시 S27 출시일', [row('https://blog.example/rumor', '삼성 신제품 루머', '내년 초 여러 제품 전망')])])
     const verdicts = [JSON.stringify({ keep: [1], asked: 1, points: ['가격: 기본 모델 국내 출고가', '출시일'], search: '갤럭시 S27 출시일', holds: { 1: { '가격: 기본 모델 국내 출고가': '기본 모델 출고가 125만 4천 원' } } }), JSON.stringify({ keep: [], asked: 1, search: '', holds: {} })]
     let t = 0, found: { proof: Proof[]; missing: string[] } | undefined
-    const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 8000; return verdicts.shift() }, since: 0, now: () => t, proved: (proof, missing) => { found = { proof, missing } } }).run({ query: 'q' }, { task: ask })
+    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 8000; return verdicts.shift() }), since: 0, now: () => t, proved: (proof, missing) => { found = { proof, missing } } }).run({ query: 'q' }, { task: ask })
     const [part] = helperParts([{ id: 'h', parentId: null, depth: 1, role: '갤럭시 조사', topic: '갤럭시 S27', brief: ask, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: new Date().toISOString(), result: 'x', said: '', proof: found!.proof, missing: found!.missing }])
     const table = mergedReport([part!], new Map(), [], true)
     console.log(`R2 replay: searches ${s.queries.join(' | ')}\n${out}\n--- the row:\n${table}`)
@@ -124,7 +125,7 @@ describe('C10 (stack16: "신기능 세 곳", no 노션·슬랙·리니어)', () 
     const folded = '이번 주엔 도윤, 지민, 서연이 신기능 세 곳을 조사했는데 새로 나온 게 없었어요. 지민이 서울 IT 행사 일정을 정리했고, 서연이 그걸로 홍보 문구를 썼어요.'
     const bots = await loadBots(paths), now = new Date(2026, 10, 18, 15)
     const calls: string[] = []
-    const out = await teamSummary(paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { calls.push(prompt); return prompt.includes('Judge meaning only') ? '{"problems":[]}' : folded } })
+    const out = await teamSummary(paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: agreeing(async prompt => { calls.push(prompt); return prompt.includes('Judge meaning only') ? '{"problems":[]}' : folded }) })
     console.log(`C10 replay (draft refused twice → host fallback):\n${out}`)
     expect(calls[1]).toContain('노션 신기능')
     for (const name of ['노션', '슬랙', '리니어']) expect(out).toContain(name)
@@ -140,7 +141,7 @@ describe('C6 (stack16: "(서연, 지민이 찾은 서울 IT 행사 일정) 코�
     const jimin = settled({ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', topic: '서울 IT 행사 일정', botId: 'bot-m1', lookup: true, background: true, state: 'done', sessionKey: 's1', hiredAt: at, then: { botId: 'bot-m2', who: '서연', brief: '홍보 문구 3개 뽑기' } }, { facts: [{ text: '소프트웨이브 2026은 12월 2일부터 4일까지 코엑스에서 열려요.', url: COEX }, { text: 'ACC 2026이 12월에 서울에서 열려요.', url: ZDNET }] })
     const seoyeon = settled({ id: 'm2', parentId: null, depth: 1, role: '서연', brief: handoffBrief('홍보 문구 3개 뽑기', '지민', jimin.result!, jimin.brief), botId: 'bot-m2', writer: true, background: true, state: 'done', sessionKey: 's2', hiredAt: at }, { items: ['12월 코엑스, 소프트웨이브에서 만나요', '서울 IT 행사, 한 달 미리 챙기세요', 'ACC 2026, 올해 마지막 기술 축제'] })
     // The writer refused twice (stack16 log: writer=fallback:made-from): the host's rendering.
-    const out = await writtenReport({ ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', members: [jimin, seoyeon], write: async () => JSON.stringify({ message: '서연이 문구를 써 봤어요.\n\n1. 12월 코엑스', kept: [] }) })
+    const out = await writtenReport({ ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', members: [jimin, seoyeon], write: agreeing(async () => JSON.stringify({ message: '서연이 문구를 써 봤어요.\n\n1. 12월 코엑스', kept: [] })) })
     console.log(`C6 replay:\n${out}`)
     expect(out).not.toMatch(/\(서연|\(지민/)
     expect(out.split('\n')[0]).toBe('1. 12월 코엑스, 소프트웨이브에서 만나요')
