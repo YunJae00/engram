@@ -22,7 +22,7 @@ function chunk(type, data) {
   return Buffer.concat([length, body, crc])
 }
 
-export function pageScene(x, y, width, height) {
+function pageScene(x, y, width, height) {
   if (y < height * 0.12) return [24, 40, 72]
   if (x > width * 0.1 && x < width * 0.5 && y > height * 0.25 && y < height * 0.6) return [220, 60, 60]
   if (x > width * 0.6 && x < width * 0.9 && y > height * 0.7 && y < height * 0.85) return [40, 90, 220]
@@ -47,7 +47,7 @@ export function pngFrame({ width = 1280, height = 800, paint = pageScene } = {})
   return { data: png.toString('base64'), width, height }
 }
 
-export function sendEvents(app, events) {
+function sendEvents(app, events) {
   return app.evaluate(({ BrowserWindow }, events) => {
     const win = BrowserWindow.getAllWindows().find((one) => !one.isDestroyed() && one.webContents.getURL().includes('index.html'))
     if (!win) throw new Error('no app window to send events to')
@@ -64,7 +64,7 @@ export function showWebFrame(app, { lane, url, frame, title = 'Live overlay' }) 
   ])
 }
 
-export function appFrame(lane, id, frame, extra = {}) {
+function appFrame(lane, id, frame, extra = {}) {
   return { id, lane, title: id, at: Date.now(), data: `data:image/png;base64,${frame.data}`, captureState: 'ready', ...extra }
 }
 
