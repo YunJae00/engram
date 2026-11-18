@@ -106,6 +106,16 @@ const CORRECTION = /^(아[,\s]+|아니[,\s]+|음[,\s]+)*(그거|그건|그게|�
 export const isCorrection = (message: string): boolean => { const text = message.trim(); return [...text].length <= 60 && !text.includes('\n') && !KEEP.test(text) && CORRECTION.test(text) }
 export const routeAsk = (message: string, earlier: readonly { role: string; text: string }[]): string =>
   isCorrection(message) ? [...earlier].reverse().find(turn => turn.role === 'user')?.text ?? message : message
+// c17b (cause C, H2: "아 그거 말고 11월 걸로" was checked against "12월 매출 합계 알려줘" and rewritten back to December): the route of a
+// correction is the earlier ask's, but what the person wants is that ask as they have now changed it. routeAsk gives the route; askNow gives
+// the meaning, which every check, rewrite, filter and offer reads. The detector (isCorrection) is the same one, so nothing new is matched.
+const CHANGED = ' The person then changed it: '
+export const askNow = (message: string, earlier: readonly { role: string; text: string }[]): string => {
+  const route = routeAsk(message, earlier)
+  return route === message ? message : `${[...route.trim()].slice(0, ASK_MAX).join('')}${CHANGED}${JSON.stringify(message.trim())}. Where the two differ, the later words hold.`
+}
+// The words that decide a route, in a meaning askNow wrote: the earlier ask alone.
+const routeOf = (meaning: string): string => meaning.split(CHANGED)[0]!
 
 // grokbar H1: "다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어" asked for nothing and became a 47-step
 // web research task. A message that only tells something gets one warm line from the quick voice (first-line.ts toldPrompt) and no work.
@@ -187,7 +197,7 @@ const closesOnOffer = (text: string): boolean => lastLines(text).some(line => /(
 // An earlier reply: only a plain offer counts ("기억해 둘게요." is not one).
 const offered = (text: string): boolean => lastLines(text).some(line => /원하시면|필요하시면|필요하면|드릴까요\?$|\bif you(['’]d| would)? like\b|\bwant me to\b|\bwould you like\b|\bshall i\b/i.test(line))
 export function withOffer(ask: string, answer: string, earlier: readonly { role: string; text: string; progress?: boolean; error?: unknown }[], korean: boolean): string {
-  if (deskKind(ask) !== 'note' || !EXTRACT.test(ask) || !answer.trim() || closesOnOffer(answer)) return answer
+  if (deskKind(routeOf(ask)) !== 'note' || !EXTRACT.test(ask) || !answer.trim() || closesOnOffer(answer)) return answer
   if (earlier.some(turn => turn.role === 'assistant' && !turn.progress && !turn.error && offered(turn.text))) return answer
   // c8c H4: "원하시면 담당자별로 표로 묶어 드릴게요." under four owner lines (judge: 표로 다시 묶어 주겠다는 제안은 불필요). An offer is the next
   // step of the work, never the same lines in another shape: reminders to write for the owners, a timeline for dated items; else none.
@@ -511,7 +521,9 @@ export const reshapePrompt = (message: string, lastReply: string, ask?: string):
   'The new reply is the asked thing in the asked form and nothing else: in the language and the polite register of your last reply (in Korean the -요 form), no lead-in about what you changed, and no line on what it means or why.',
   ...(ask?.trim() ? ['It still keeps every constraint of what the person had asked that the new form does not change (register such as polite or formal, audience, format, language, what it is for): "shorter" makes it shorter, not more casual.',
     // c16c (cause D2, Q4: "…회의 늦어서 죄송합니다…" → "더 짧게" lost "to the meeting"): constraints were kept, the ask's own facts were not.
-    'Every fact the person had put in their ask (who, what, for what, when) is still in the new reply, in every form: "shorter" or "simpler" removes words, never one of those facts.'] : []),
+    'Every fact the person had put in their ask (who, what, for what, when) is still in the new reply, in every form: "shorter" or "simpler" removes words, never one of those facts.',
+    // c17b (cause C): a fact the person changed since takes its new value, never the old one.
+    'A fact the person has since changed in this conversation takes its new value.'] : []),
   'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()

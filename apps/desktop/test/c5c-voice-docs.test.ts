@@ -242,7 +242,7 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     for (const other of ['엔비디아 오늘 주가 알려줘', '1년은 몇 초야?', '안녕', '고마워 수고했어', 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'fixtures/sales.csv에서 12월 매출 합계 알려줘',
       '지민, 서연, 도윤한테 나눠서 시켜', '할 일 세 개만 골라줘', 'fixtures/meeting-notes.md에서 할 일 뽑아서 워드로 만들어줘']) expect(withOffer(other, answer, [], true), other).toBe(answer)
     expect(withOffer(ask, '', [], true)).toBe('')
-    expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))")
+    expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(meant, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))")
   })
 })
 

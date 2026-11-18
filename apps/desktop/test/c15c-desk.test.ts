@@ -4,7 +4,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { checkedDesk, structured, withoutQuoted } from '../src/main/desk-lane.js'
 import { readProblems } from 'core'
-import { MEMORY_YIELDS, turnStarting, yielding } from '../src/main/comet-memory.js'
+import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
 
 // c15c (cause D). Wordings are not the harness's: a product review split into 장점/단점.
 const SOURCE = '# 무선 이어폰 리뷰\n\n## 써 본 느낌\n- 무게가 4g이라 오래 껴도 귀가 안 아프다.\n- 배터리가 5시간밖에 안 간다.\n- 노이즈 캔슬링이 지하철에서도 잘 된다.\n'
@@ -83,7 +83,7 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
   const tick = () => new Promise(resolve => setTimeout(resolve, 0))
   it('a call queued while a turn starts waits until the turn has its first token', async () => {
     const started = vi.fn()
-    const done = turnStarting()
+    const done = turnRunning()
     const call = yielding(async () => { started(); return 'kept' })
     await tick()
     expect(started).not.toHaveBeenCalled()
@@ -100,7 +100,7 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
     }))
     await tick()
     expect(runs).toBe(1)
-    const done = turnStarting()
+    const done = turnRunning()
     await tick()
     expect(runs).toBe(1)
     done()
@@ -109,7 +109,7 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
   it('is dropped, not kept waiting forever, when turns keep starting', async () => {
     let runs = 0
     const call = yielding(signal => new Promise<string>((_resolve, reject) => { runs++; signal.addEventListener('abort', () => reject(new Error('cut'))) }))
-    for (let i = 0; i < MEMORY_YIELDS; i++) { await tick(); turnStarting()() }
+    for (let i = 0; i < MEMORY_YIELDS; i++) { await tick(); turnRunning()() }
     expect(await call).toBeUndefined()
     expect(runs).toBe(MEMORY_YIELDS)
   })

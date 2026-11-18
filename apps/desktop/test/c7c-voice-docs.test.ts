@@ -80,7 +80,7 @@ describe('decisions and tasks are said once (D1)', () => {
   it('is called on a desk note answer only, after shareReady', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)")
-    expect(ipc.indexOf('result.answer = shareReady(routed, result.answer)')).toBeLessThan(ipc.indexOf("if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)"))
+    expect(ipc.indexOf('result.answer = shareReady(meant, result.answer)')).toBeLessThan(ipc.indexOf("if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)"))
   })
 })
 

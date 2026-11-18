@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkedLead, createBot, createTask, ITEM_CHECK_MS, judgeTime, kindChecked, mergedReport, officeTools, REPORT_WRITER_MS, reportData, settleMember, TEAM_ANSWER_MS, updateTask, writtenReport, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { turnStarting, yielding } from '../src/main/comet-memory.js'
+import { turnRunning, yielding } from '../src/main/comet-memory.js'
 
 // stack-15: c15a (one item-judge clock, judge retry), c15b (a refused draft repaired in the one rewrite, the lead's answer checked) and c15c
 // (memory yields to a starting turn, ppt_build) meet here. Wordings are not the harness's: 여수/통영 바다 날씨, teammates 하람 / 이든 / 보라.
@@ -88,7 +88,7 @@ describe('stack-15 merge: the lead\'s answer check and background memory do not 
     let memoryRuns = 0
     const memory = yielding(signal => new Promise<string>((resolve, reject) => { memoryRuns++; if (memoryRuns > 1) return resolve('kept'); signal.addEventListener('abort', () => reject(new Error('cut'))) }))
     await new Promise(resolve => setTimeout(resolve, 0))
-    const started = turnStarting() // the next turn opens: the memory call is cut and waits for its first token
+    const started = turnRunning() // the next turn opens: the memory call is cut and waits for its first token
     const helpers: TeamMember[] = [{ id: 'h1', parentId: null, depth: 1, role: '여수', brief: '여수 바다 날씨', state: 'done', sessionKey: 's1', hiredAt: new Date().toISOString(), result: `여수 바다는 잔잔해요 ${YEOSU}`, sources: [YEOSU] }]
     const at = Date.now()
     const draft = `여수 바다는 잔잔해요. [a](${YEOSU})`
@@ -103,7 +103,7 @@ describe('stack-15 merge: the lead\'s answer check and background memory do not 
   it('a "기억해" turn nothing kept is never dropped, however many turns start (c15c review)', async () => {
     let runs = 0
     const call = yielding(signal => new Promise<string>((resolve, reject) => { runs++; if (runs > 5) return resolve('kept'); signal.addEventListener('abort', () => reject(new Error('cut'))) }), undefined, true)
-    for (let i = 0; i < 5; i++) { await new Promise(resolve => setTimeout(resolve, 0)); turnStarting()() }
+    for (let i = 0; i < 5; i++) { await new Promise(resolve => setTimeout(resolve, 0)); turnRunning()() }
     expect(await call).toBe('kept')
     expect(runs).toBe(6)
   })

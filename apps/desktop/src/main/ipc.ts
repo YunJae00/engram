@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { checkedDesk, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { checkedDesk, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, askNow, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -156,7 +156,7 @@ import { botAvatarImage, clearBotAvatarImage, setBotAvatarImage } from './bot-av
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList } from './bot-templates-ipc.js'
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { deleteSummary } from 'core/src/bot-delete'
-import { registerCometMemoryIpc, rememberTurn, taskRecall, turnStarting } from './comet-memory.js'
+import { registerCometMemoryIpc, rememberTurn, taskRecall, turnRunning } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { isPersonSentence, preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
@@ -336,9 +336,6 @@ export {
   revalidateEngines,
   startEngineWatch,
 } from './engine-health.js'
-
-// A person's turn per channel that has not yet had its first token or tool: background memory calls wait on it.
-const startingTurns = new Map<string, () => void>()
 
 export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 
@@ -2335,16 +2332,14 @@ export function registerIpc(ctx: VaultContext): void {
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
-    // c15c: background memory calls wait until this turn has its first token or tool (comet-memory.ts turnStarting).
-    const memoryWait = !request.scheduled && !savedRoutine && !turn?.quiet ? turnStarting() : undefined
-    if (memoryWait) { startingTurns.get(entry.channel)?.(); startingTurns.set(entry.channel, memoryWait) }
+    // c17b (cause W a): background memory calls wait while this turn runs, until it is released (comet-memory.ts turnRunning).
+    const memoryWait = !request.scheduled && !savedRoutine && !turn?.quiet ? turnRunning() : undefined
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
       // A person's own turn holds its engine like a delegated task; nested task contexts keep their ids.
       return await withTurnPriority({ interactive: !request.scheduled && !savedRoutine && !turn?.quiet, korean: threadKorean(request.message, request.history ?? []), say: line => broadcast({ type: 'comet:step', channel: entry.channel, line }) }, () => withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn)))
     } finally {
       memoryWait?.()
-      if (startingTurns.get(entry.channel) === memoryWait) startingTurns.delete(entry.channel)
       chatAborts.delete(entry)
       answering.delete(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); endFirstLine(entry.channel)
@@ -2887,6 +2882,8 @@ export function registerIpc(ctx: VaultContext): void {
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
         // A correction of the ask before it ("아 그거 말고 11월 걸로") takes that ask's route (desk-lane.ts routeAsk).
         const routed = routeAsk(request.message, savedHistory)
+        // c17b (cause C): what the person wants now (the earlier ask as this message changed it): every check, rewrite, filter and offer reads it, never routed.
+        const meant = askNow(request.message, savedHistory)
         const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
         // Everyday desk work (remember, a short question or ask, tidy a folder, a slide deck): the smart tier, and for a plain kind only that kind's tools (desk-lane.ts).
         const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined
@@ -2903,8 +2900,10 @@ export function registerIpc(ctx: VaultContext): void {
         if (lane) void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`))
         const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
         // A small text file the person named in the ask (or in the ask this one corrects) is read here, so the turn has no read round (desk-lane.ts namedText).
-        const given = kind === 'note' || kind === 'file' ? await namedText(routed, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(routed, path)) : undefined
+        const given = kind === 'note' || kind === 'file' ? await namedText(meant, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(meant, path)) : undefined
         const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\n\n') : ''
+        // A correction's turn reads the ask as now changed, whatever lane took it.
+        const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : ''
         if (given) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-preread', bytes: given.text.length }))
         if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane', kind }))
         // c5c M2: a plain "X 말고 Y야" on one kept fact is corrected here through keep_in_mind itself, with no model round (desk-lane.ts keptFix):
@@ -3028,7 +3027,7 @@ export function registerIpc(ctx: VaultContext): void {
             tokenBudget: turn?.tokenBudget,
             onUsage: tokens => { tokensUsed += tokens },
             waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
-            onToolStart: () => { toolStarted = true; startingTurns.get(channel)?.() },
+            onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
@@ -3047,7 +3046,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || changedNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -3063,7 +3062,7 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { if (!quiet) firstLineSpoke(channel); if (firstToken) { firstToken = false; startingTurns.get(channel)?.(); flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
+            onToken: (text) => { if (!quiet) firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
             // A waiting line is not frozen into a bubble by a tool call: it stays live text until the first real words (first-line.ts).
             onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
             onObservation: (tool: string, observation: string) => {
@@ -3108,26 +3107,26 @@ export function registerIpc(ctx: VaultContext): void {
         if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
         // c6c H3: a 결정사항 block that only repeats the 할 일 lines is dropped (desk-lane.ts withoutSameDecisions).
         if (kind === 'note' && !result.asked) result.answer = inKoreanWords(result.answer)
-        if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(routed, result.answer)
+        if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(meant, result.answer)
         // c6c r2 H3: an open-form summary opens on what was chosen, without 일시 / 참석 / 논의 (desk-lane.ts shareReady).
-        if (kind === 'note' && !result.asked) result.answer = shareReady(routed, result.answer)
+        if (kind === 'note' && !result.asked) result.answer = shareReady(meant, result.answer)
         // c7c D1: a note answer does not open with a promise of the summary it then gives ("회의록 요약해서 정리해볼게요."); H3's past-tense lead stays (first-line.ts answerAlone).
         if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)
         // stack-6 H4: "할 일만" gets the tasks only, no 미결 block under them (desk-lane.ts onlyAsked).
-        if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)
+        if (kind === 'note' && !result.asked) result.answer = onlyAsked(meant, result.answer)
         // c6c F1: a tidy job answers with the count per folder on one line, not twenty file names (desk-lane.ts tidyCounts).
-        if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
+        if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(meant, result.answer)
         // c15c (cause D): a desk answer with structure is read against its ask and the source it was built from, one rewrite at most (desk-lane.ts checkedDesk).
         // A host-made answer (a kept fact, a sorted folder, a retitled slide, a reshape) is not a draft; nor is a sort or a keep, which have no source.
         if (desk && kind !== 'tidy' && kind !== 'keep' && !handed && !fixed && !keptPlain && !retitled && !sorted && !reshaped && !result.asked && !result.stopped) result.answer = await checkedDesk({
-          ask: routed, draft: result.answer, fromSource: kind === 'note' || kind === 'file', quick: writer, since: nativeSince, signal,
+          ask: meant, draft: result.answer, fromSource: kind === 'note' || kind === 'file', quick: writer, since: nativeSince, signal,
           source: given?.text ?? result.steps.filter(step => /^file_read/.test(step.tool)).map(step => step.observation).join('\n'),
           log: (outcome, kinds) => flog('chat-phase', JSON.stringify({ channel, phase: 'desk-check', outcome, kinds, ms: Date.now() - nativeSince })),
         })
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
         // stack-15 (c15c run H4: the check read the host's own offer as a question to the person and its rewrite dropped it): the host's offer is
         // not the model's draft, so it is added after the check, to whatever text the check let through.
-        if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
+        if (kind === 'note' && !result.asked) result.answer = withOffer(meant, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
         // stack-11: in a Korean thread, a line the quick model judges a working note goes (first-line.ts dropWorkingNotes), and a reply with no
         // Korean word in it gets the few words that hand it over (withTheirWords). Neither changes the words that stay.
         if (!result.asked && !laneShaped && threadKorean(request.message, request.history ?? [])) {

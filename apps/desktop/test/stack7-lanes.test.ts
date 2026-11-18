@@ -14,7 +14,7 @@ it('stack-7: the desk corrections run only for a desk answer: the desk kind exis
   expect(ipc).toContain("const short = kind === 'ask' || kind === 'question'")
   for (const line of [
     'if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)',
-    "if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(routed, result.answer)",
+    "if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(meant, result.answer)",
     "if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)",
   ]) expect(ipc).toContain(line)
   // Each is called exactly there and nowhere else in the turn.
