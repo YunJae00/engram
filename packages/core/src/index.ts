@@ -102,6 +102,7 @@ export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export * from './company-tools.js'
 export * from './item-check.js'
 export * from './written-check.js'
+export * from './lead-check.js'
 export { backgroundOpen, datedText } from './delegated-tasks.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {

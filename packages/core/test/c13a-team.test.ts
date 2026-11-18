@@ -47,15 +47,15 @@ test('rule 7\'s "still looking" is the writer\'s only while a part is at work; a
   const json = (message: string) => JSON.stringify({ message, kept: ['f1'] })
   const link = '[미로](https://miro.com/changelog/agents)'
   // Nothing is at work: a message that still says it is being looked into is refused.
-  expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toEqual({ refused: 'still' })
+  expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toMatchObject({ refused: 'still' })
   // c13a r2: rule 12 has no exemption: the data holding "Agents" does not let 에이전트 through; the name kept as written passes.
-  expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toEqual({ refused: 'jargon' })
+  expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toMatchObject({ refused: 'jargon' })
   expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}`), [found])).toHaveProperty('text')
   // The cause: the writer is told to keep a name as the data writes it, and its own example holds none of the words.
   const prompt = reportPrompt('미로 이번 주 업데이트', [found])
   expect(prompt).toContain('stays exactly as the data writes it')
   expect(prompt.split('Data: ')[0]).not.toMatch(/에이전트|세션|토큰|프롬프트|런타임|컨텍스트/)
-  expect(reportCheck(json(`소율이 보니 미로가 보드를 요약해 줘요. 세션도 길어졌어요. ${link}`), [found])).toEqual({ refused: 'jargon' })
+  expect(reportCheck(json(`소율이 보니 미로가 보드를 요약해 줘요. 세션도 길어졌어요. ${link}`), [found])).toMatchObject({ refused: 'jargon' })
 })
 
 test('each part has one outcome, from its state and data', () => {

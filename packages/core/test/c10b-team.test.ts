@@ -67,12 +67,12 @@ const c3 = (): TeamMember[] => [
 const ASK = '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜'
 
 test('c10b fix 2 and 3: nothing new this week is said, each line gives its latest day, and no English debris is left (c11a: structure)', async () => {
-  const said = mergedReport(c3()), parts = said.split('\n\n')
-  expect(parts).toHaveLength(3)
+  // c15b (cause F): the verdict all three share leads once; then one row per part with its latest, its day and its own link.
+  const said = mergedReport(c3()), [head, ...parts] = said.split('\n')
+  expect(head).toMatch(/^셋 다 이번엔 새로 나온 게 없/)
+  expect(said.match(/새로 나온 게 없/g)).toHaveLength(1)
   expect(parts.map(part => /\((\S+)\):/.exec(part)?.[1])).toEqual(['지민', '서연', '도윤'])
-  // c10b r2 (Codex): the verdict leads, then the latest find with its day and its own link.
   for (const [i, day] of ['2026년 10월 19일', '2026년 11월 9일', '11월 12일'].entries()) {
-    expect(parts[i]!.replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없/)
     expect(parts[i]).toContain(day)
     expect(parts[i]).toMatch(/\]\(https:\/\/[^)]+\)$/)
   }
@@ -92,7 +92,7 @@ test('c10b fix 2 and 3: nothing new this week is said, each line gives its lates
   const fresh = withData(member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief }), { facts: [{ text: '노션은 11월 18일에 AI 회의록 기능을 냈어요.', url: 'https://www.notion.com/ko/releases' }] })
   const mixed = mergedReport([fresh, doyun!])
   // c12a B2: the day once, after a text that does not state it.
-  expect(partOf(mixed, '도윤').replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없.*BYOK 기능이 나왔어요 \(11월 12일\)\./)
+  expect(partOf(mixed, '도윤').replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없[^]*BYOK 기능이 나왔어요 \(11월 12일\)\./)
   expect(partOf(mixed, '지민')).toContain('11월 18일')
 })
 
@@ -121,7 +121,8 @@ test('c10b r2 (Codex): an item that runs over several lines goes or stays whole 
 })
 
 test('c10b r2 (Codex): a line for a part with nothing new in the time asked opens with that, whatever the teammate wrote first (c11a: structure)', () => {
-  for (const part of mergedReport(c3()).split('\n\n')) expect(part.replace(/^[^:]+:\s*/, '').split(/(?<=[.!?])\s+/)[0]).toMatch(/새로 나온 게 없/)
+  // c15b: when every part found nothing new, that verdict opens the message once, before every part's row.
+  expect(mergedReport(c3()).split(/(?<=[.!?])\s+/)[0]).toMatch(/새로 나온 게 없/)
   // Another wording: the old find first, the verdict second. The verdict leads, and the old find keeps its day.
   const old = withData(member({ id: 'f', role: '하린', topic: '피그마', brief: '이번 주 피그마 새 기능 찾아줘' }), { note: '이번 주에는 발표가 없었어요.', nothing_in_period: { latest: { text: '자동 레이아웃 개선', date: '11월 3일', url: 'https://www.figma.com/release-notes' } } })
   const other = withData(member({ id: 'g', role: '태오', topic: '캔바', brief: '이번 주 캔바 새 기능 찾아줘' }), { facts: [{ text: '캔바는 11월 18일에 AI 사진 편집을 냈어요.', url: 'https://www.canva.com/newsroom' }] })
