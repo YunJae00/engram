@@ -3,10 +3,6 @@ import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
 import { api } from '../api.js'
 import { Comet } from '../components/Icon.js'
 
-// One see-through window per display: a glow along the screen edges while a
-// comet has the computer, and the comet mark riding beside the pointer. No
-// words here — the pill on the pointer's display carries those.
-
 const COMPANION_DX = 14
 const COMPANION_DY = 12
 const COMPANION_REST_MS = 1800
@@ -14,8 +10,6 @@ const COMPANION_REST_MS = 1800
 interface Point { x: number; y: number }
 type Mode = 'running' | 'paused' | 'off'
 
-// The window is transparent: the boot word and the app ground must not be
-// painted over the person's screen before React's first frame.
 if (typeof document !== 'undefined') {
   document.getElementById('boot')?.remove()
   document.body.classList.add('control-host')
@@ -35,12 +29,10 @@ export function ControlOverlay() {
   const [status, setStatus] = useState<DesktopControlStatusDto>({ state: 'idle' })
   const [pointer, setPointer] = useState<Point | null>(null)
   const [awake, setAwake] = useState(false)
-  // Counts presses; the mark remounts on each so its pulse plays once.
   const [presses, setPresses] = useState(0)
   const restTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
-    // The broadcast may have landed before this mounted; ask once.
     let stale = false
     void api.desktopOverlayStatus().then((current) => { if (!stale) setStatus(current) }).catch((error: unknown) => console.error('control overlay status', error))
     const off = api.onEvent((event) => {

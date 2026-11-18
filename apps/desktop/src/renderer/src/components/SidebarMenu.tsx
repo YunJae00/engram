@@ -3,8 +3,6 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, List, MessageSquare, Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 
-// The sidebar's title and the three places it leads to. There is one Engram:
-// nothing here creates, switches or deletes a workspace.
 export function SidebarMenu({ activity, onNavigate }: {
   activity: string
   onNavigate(activity: 'bots' | 'sky' | 'list'): void
@@ -27,7 +25,6 @@ export function SidebarMenu({ activity, onNavigate }: {
     return () => window.removeEventListener('resize', place)
   }, [open])
 
-  // Close on an outside mousedown or Escape (window-level so clicks anywhere on the canvas dismiss it).
   useEffect(() => {
     if (!open) return
     const onDown = (event: MouseEvent) => {

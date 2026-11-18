@@ -24,6 +24,5 @@ export function ComputerStatus() {
     window.addEventListener('keydown', escape, true)
     return () => window.removeEventListener('keydown', escape, true)
   }, [active, control?.state, control?.resumable])
-  // Control feedback stays on the desktop; tool failures remain in the chat.
   return null
 }

@@ -14,12 +14,8 @@ import { MOD_LABEL } from '../i18n.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { ResetSettings } from '../components/ResetSettings.js'
 
-// Only local settings gate the sheet. Network and runtime probes fill their
-// own rows without blocking it.
 const READY_WAIT_MS = 8_000
 
-// One page, five things: theme, the shortcut, the AI account, start fresh, and the version.
-// Everything else is asked for in chat (main/preferences-chat.ts).
 export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
@@ -35,7 +31,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     const loads = [
       api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
-      // Refresh the feed even when an older release is already downloaded.
       api.updateCheck().then(value => { if (alive) setUpdate(value) })
         .catch(() => { if (alive) setUpdate({ state: 'error', message: t('settingsUi.updateCheckFailed'), selfInstalls: false }) })
         .finally(() => { if (alive) setCheckingUpdate(false) }),
@@ -53,8 +48,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
     }
   }, [attempt])
 
-  // While the download runs, the percent moves — follow it, and catch the
-  // flip to ready even if the broadcast landed before this sheet opened.
   useEffect(() => {
     if (update?.state !== 'downloading') return
     const timer = setInterval(() => void api.updateState().then(setUpdate).catch(() => {}), 2000)
@@ -76,8 +69,6 @@ export function SettingsView({ onClose }: { onClose(): void }) {
 
   return (
     <div className="brief-overlay settings-overlay" onClick={onClose}>
-      {/* settings-loaded: the skeleton gives way with a short rise instead
-          of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
         <DialogHeader closeLabel={t('settingsUi.close')} onClose={onClose}>{t('settings.title')}</DialogHeader>
         <div className="settings-body"><div className="settings-scroll"><section className="settings-panel" aria-label={t('settings.title')}>

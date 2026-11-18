@@ -21,27 +21,12 @@ import { CometWelcome } from '../components/CometWelcome.js'
 import { BotEmpty } from '../components/BotEmpty.js'
 import { takeOnboardBot } from '../lib/onboardBot.js'
 
-// The first tab: bots as colleagues, not a feature behind a palette. Each bot
-// is a charter over the same brain — its own conversation, the vault behind
-// every answer, and the errand pipeline as hands. The rail's suggestions grow
-// from the folders the user actually works in, so the empty state is an offer,
-// not a lecture. The conversations themselves live in cometThreads, outside
-// this component: the tab unmounts on every switch and they must not.
-
-
 export const BotsView = memo(function BotsView({ active }: { active: boolean }) {
   const [bots, setBots] = useState<BotDto[]>([])
-  // What the model is doing, from main's own word. Only 'loading' changes
-  // what the thread says, and 'loading' is only ever learned from a live
-  // broadcast — a missed one degrades to the plain line, never to a claim.
   const listRef = useRef<HTMLDivElement | null>(null)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const selected = bots.find((b) => b.id === selectedId) ?? null
   const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
-  // One local model answers one comet at a time: while another comet holds
-  // it, the box says so instead of swallowing a send in silence.
-  // Each comet works on its own tab with its own brain session: only this
-  // thread's own turn locks its composer.
   const frames = usePreviewFrames(cometChannel(selected?.id ?? ''))
   const { compact } = useCompactBrowser()
   const locked = false
@@ -49,9 +34,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const latestStep = workLines[workLines.length - 1]
   const status = pendingStatus(threadT(threadLang(messages)))
 
-  // Until the first read comes back, an empty list means "not read yet",
-  // and the screen says nothing rather than "no comets" - a claim it cannot
-  // make - before turning into the list a moment later.
   const [loaded, setLoaded] = useState(false)
   const reloadGeneration = useRef(0)
   const reload = async () => {
@@ -77,15 +59,12 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
 
   useEffect(() => {
     void reload()
-    // A comet named by its first words shows the new name without a press.
     const off = api.onEvent((event) => {
       if (event.type === 'bots:changed') void reload()
     })
     return () => { reloadGeneration.current++; off() }
   }, [])
 
-  // Selecting a comet shows what the store already holds and refreshes it
-  // from disk underneath; a turn still streaming stays on top of the reload.
   useEffect(() => {
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
@@ -93,7 +72,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const older = cometThreads.thread(selected?.id ?? null).older
   useStickToBottom(listRef, messages.slice(older), selectedId)
   useLoadEarlier(listRef, selected?.id ?? null, older)
-  // The bubble the current work belongs to: the last one the comet wrote.
 
   const sendText = async (message: string, attachments: ChatAttachmentDto[] = []) => {
     if ((!message && !attachments.length) || !selected) return
@@ -112,12 +90,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
       <section className="bots-main">
         {selected ? (
           <>
-          {/* Keyed by the comet: looking at another one brings its thread
-              in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
-              {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} />}
               <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork}> 
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
@@ -134,8 +109,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               onStop={() => void stop()}
             />
           </div>
-          {/* The page the comet works on, beside the conversation: watched,
-              acted in, and stoppable right where the work is. */}
           <CometSurface channel={cometChannel(selected.id)} name={selected.name} busy={busy} onStop={() => void stop()} />
           </>
         ) : loaded ? (

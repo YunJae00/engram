@@ -3,7 +3,6 @@ import { withoutReplies } from '../../../../../../packages/core/src/agent-histor
 const OPENER = '```replies'
 const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
 
-// A last line that may still grow into the replies opener is not text yet.
 function held(text: string): string {
   const cut = text.lastIndexOf('\n') + 1
   const line = text.slice(cut).trim()
@@ -16,7 +15,6 @@ function after(prefix: string, shown: string, raw: string): string {
   return (base === undefined ? withoutReplies(raw) : shown.slice(base.length)).trimStart()
 }
 
-// Final text under that message, keeping the full answer's closed replies block for the chips; null when nothing visible is left.
 export function doneText(full: string, prefix: string | undefined, streamed: string): string | null {
   if (!prefix || !full.startsWith(prefix)) return full || streamed
   const tail = after(prefix, withoutReplies(full), full.slice(prefix.length))

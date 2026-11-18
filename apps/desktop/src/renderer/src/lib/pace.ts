@@ -1,4 +1,3 @@
-// About how long the rest takes at the pace so far, once a few are done.
 export function timeLeft(completed: number, total: number, pace: { at: number; from: number } | null, now = performance.now()): string {
   const done = completed - (pace?.from ?? completed)
   if (!pace || done < 2 || completed >= total) return ''

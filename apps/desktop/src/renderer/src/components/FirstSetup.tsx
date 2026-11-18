@@ -3,15 +3,11 @@ import type { FirstSetupDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { Comet } from './Icon.js'
 
-// The wait after setup: one line for where it is, a bar for how far, and the
-// time so far by the second. Set aside only once the work could not go on;
-// it then goes on in the background.
 const clock = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-// Why it paused, in words a person can act on.
 const pauseText = (reason = ''): string =>
   /outage|not answering|stream|resting/i.test(reason) ? 'The AI is not answering right now'
     : /quota|limit/i.test(reason) ? 'The AI reached its usage limit'

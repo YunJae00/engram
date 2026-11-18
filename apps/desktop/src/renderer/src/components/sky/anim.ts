@@ -23,11 +23,9 @@ function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number
   }
 }
 
-/** The two CSS timing functions the sky inherited, kept to the letter. */
 export const EASE = cubicBezier(0.25, 0.1, 0.25, 1)
 export const EASE_OUT = cubicBezier(0, 0, 0.58, 1)
 
-/** A keyframed run: fixed start, fixed duration, optional delay. */
 interface Run {
   p: number
   live: boolean
@@ -40,15 +38,6 @@ export function run(now: number, start: number, duration: number, delay = 0): Ru
   return { p: t / duration, live: true }
 }
 
-/**
- * A scalar that travels to a target over a fixed span and then STOPS.
- *
- * Interrupts start a replacement tween from the value the eye is currently
- * looking at, never from the old origin — hover in, hover out halfway, hover
- * back in, and the star never jumps. Retargeting to where it is already going
- * is a no-op, so a repeated request cannot restart the clock and keep the
- * scheduler awake.
- */
 export class Tween {
   private from: number
   private target: number
@@ -68,7 +57,6 @@ export class Tween {
     this.ms = Math.max(ms, 1)
   }
 
-  /** Jump with no motion — the reduced-motion path, and first paint. */
   set(target: number): void {
     this.from = target
     this.target = target

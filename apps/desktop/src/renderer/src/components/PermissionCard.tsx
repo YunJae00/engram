@@ -7,7 +7,6 @@ import { DecisionCard } from './DecisionCard.js'
 export function PermissionCard({ lane }: { lane: string }) {
   const [card, setCard] = useState<PermissionCardDto | null>(null)
   useEffect(() => {
-    // A push that lands while the fetch is in flight is newer than the fetch.
     let heard = false
     setCard(null)
     const off = api.onPermissionCard((from, next) => { if (from === lane) { heard = true; setCard(next) } })

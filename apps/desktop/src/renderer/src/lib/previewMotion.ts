@@ -23,7 +23,6 @@ export function rememberPaint(lane: string, id: string, width: number, height: n
   const key = `${lane}\n${id}`
   const previous = memory.get(key)
   const size = recordStageSize(previous?.size ?? null, id, width, height)
-  // Only data URLs are kept: the picture is later placed in a CSS url().
   const kept = image?.startsWith('data:image/') ? image : previous?.image
   memory.delete(key)
   memory.set(key, { size, image: kept })
@@ -67,7 +66,6 @@ export function useLinger<T extends { key: string }>(items: T[], ms: number): Ar
   const due = next.length ? Math.min(...next.map(one => one.until)) : 0
   useEffect(() => {
     if (!due) return
-    // An early timer still expires its entry, otherwise `due` would never change again.
     const timer = setTimeout(() => setGone(list => lingerStep(list, [], [], Math.max(Date.now(), due), ms)), Math.max(0, due - Date.now()) + 1)
     return () => clearTimeout(timer)
   }, [due, ms])

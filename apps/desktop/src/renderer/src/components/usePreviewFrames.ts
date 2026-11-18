@@ -23,8 +23,6 @@ export function appPreviewFrame(frame: WorkPreviewDto): PreviewFrame {
   return { id: frame.id, source: 'app', title: frame.title, at: frame.at, image: frame.data,
     activity: frame.activity, phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }
 }
-// A bound window that never showed a frame and whose stream has given up is
-// not a preview: no card, instead of "connecting" for good (QA145 S11).
 export function previewGaveUp(frame: Pick<PreviewFrame, 'image' | 'phase'>, stream?: { exhausted: boolean; live: boolean; image?: string }): boolean {
   return !!stream?.exhausted && !stream.live && !stream.image && !frame.image && frame.phase === 'waiting'
 }
@@ -95,7 +93,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     && (pane.wanted || (mirror.lane === lane && (mirror.on || mirror.frame)))
   if (showing) {
     let title = ''
-    try { if (url && url !== 'about:blank') title = new URL(url).hostname } catch { /* Use the localized browser title. */ }
+    try { if (url && url !== 'about:blank') title = new URL(url).hostname } catch { }
     frames.push({ id: `${lane}:web:${url ?? ''}`, source: 'web', title, at: painted.current.key === paintKey ? painted.current.at : 0, onPaint,
       phase: !url || url === 'about:blank' ? 'empty' : unavailable ? 'unavailable' : paintedKey === paintKey ? 'ready' : 'waiting',
       stream: native || !url || url === 'about:blank' ? source : tile?.frames })

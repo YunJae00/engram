@@ -1,13 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { agentMirror } from '../lib/agentMirrorLive.js'
 
-// The mirrored page, painted straight onto a canvas as each frame lands.
-// Nothing here goes through React: a page being scrolled sends frames several
-// times a second, and rendering the thread around them that often is what
-// made a smooth page look like a slideshow. One decode is in flight at a
-// time - a frame that arrives while the last is still being read replaces it,
-// so the picture stays current and the queue never grows.
-
 export type FrameSource = (paint: (data: string) => void) => () => void
 
 export function FrameScreen({ className, lane, source, onSize, onPaint, title, keep }: { className?: string; keep?: boolean; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void; onPaint?(image: string): void; title?: string }) {
@@ -17,7 +10,6 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title, k
     if (!surface) return
     const context = surface.getContext('2d', { alpha: false })
     if (!context) return
-    // A kept canvas shows its last picture until the new source paints.
     if (!keep) {
       delete surface.dataset['painted']
       delete surface.dataset['format']
@@ -33,9 +25,6 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title, k
         onSize?.(width, height)
       }
       context.drawImage(source, 0, 0, width, height)
-      // An opaque canvas is black until something lands on it; it stays
-      // out of sight until this first drawImage, or opening the pane is a
-      // black rectangle for as long as the first frame takes.
       surface.dataset['painted'] = ''
       onPaint?.(source.src)
     }
@@ -51,8 +40,6 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title, k
         waiting = null
         if (next && alive) read(next)
       }
-      // Let the image decoder consume base64 directly: copying every byte
-      // in JavaScript blocks input while several large previews arrive.
       const url = `data:${data.startsWith('iVBOR') ? 'image/png' : 'image/jpeg'};base64,${data}`
       const image = new Image()
       image.decoding = 'async'
@@ -64,8 +51,6 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title, k
         }
       }).catch(() => undefined).finally(done)
     }
-    // Looking at another comet: its last picture goes up at once, and the
-    // fresh still replaces it when it lands.
     const kept = !source && lane ? agentMirror.heldFor(lane) : null
     if (kept) read(kept.data)
     const off = source ? source(read) : agentMirror.onFrame((data) => {

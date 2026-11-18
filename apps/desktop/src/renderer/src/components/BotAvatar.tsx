@@ -18,7 +18,6 @@ export function BotAvatar({ id, override, primary, size, state }: BotAvatarProps
   const orb = avatarCharacter(id, override)
   const [shown, setShown] = useState<number>(size)
   const box = useRef<HTMLSpanElement>(null)
-  // CSS can scope a caller's size (sidebar 24, header 32); motion follows the size actually drawn.
   useMeasure(() => {
     const width = box.current?.getBoundingClientRect().width
     if (width) setShown(Math.round(width))

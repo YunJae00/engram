@@ -16,11 +16,6 @@ import { ArtifactSheet } from './components/ArtifactSheet.js'
 import type { FirstSetupDto, UpdateCheckDto } from '../../shared/types.js'
 import { FirstSetup } from './components/FirstSetup.js'
 
-// Only what the first screen needs is in the first bundle. An editor, a sky
-// full of stars, a settings sheet and a walkthrough are all real weight, and
-// none of them is on screen when the window opens - fetched when they are
-// first asked for, they cost nothing until then. Each is a local file, so
-// the wait is a frame, not a download.
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
@@ -35,7 +30,6 @@ const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({
 const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
 const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) => ({ default: m.DevelopersView })))
 
-// A language switch remounts the whole app (main.tsx keys it by language); Settings, where the switch is, stays open through it.
 let settingsHeld = { open: false }
 
 function Shell() {
@@ -60,26 +54,17 @@ function Shell() {
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
   useSidebarEscape(sidebarOpen, closeSidebar)
-  // "View in the cosmos" hands over the topic's member ids; the sky consumes
-  // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
-  // The list mounts the first time it is looked at, then stays.
   const [listSeen, setListSeen] = useState(false)
   useEffect(() => {
     if (activity === 'list') setListSeen(true)
   }, [activity])
-  // Version of a downloaded update waiting to be applied.
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   useEffect(() => {
     return api.onEvent((e) => {
-      // A toast was not enough: closing the window only hides to the tray, so
-      // "installs on next quit" never happened and the update sat downloaded
-      // forever. This stays on screen with a button that actually applies it.
       if (e.type === 'update:changed') {
         setUpdate(e.update)
       }
-      // A citation clicked in another window: the main process already
-      // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'task:notice') showToast(e.foreground ? threadWords(threadLang(cometThreads.thread(e.foreground.lane.replace(/^bot-/, '')).messages)).foregroundTaken(e.foreground.app) : e.message)
       else if (e.type === 'brain:setup') setSettingsOpen(true)
@@ -91,11 +76,7 @@ function Shell() {
     })
   }, [openNote, showToast])
 
-  // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
-  // A vault just made by setup waits for its first filing before the shell
-  // opens. Nothing is drawn until that is known, so the shell never flashes
-  // first; once it is done, "ready" holds a moment and the shell fades in.
   const [setup, setSetup] = useState<FirstSetupDto | null>()
   const [leaving, setLeaving] = useState(false)
   const [fromSetup, setFromSetup] = useState(false)
@@ -118,9 +99,6 @@ function Shell() {
     return () => window.clearTimeout(timer)
   }, [leaving])
   const settingUp = !!setup?.waiting || leaving || (vaultReady && setup === undefined)
-  // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
-  // a button title) before passive effects commit, so a keypress in that gap
-  // would be silently dropped. Layout effects attach before the first paint.
   useLayoutEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
@@ -140,15 +118,9 @@ function Shell() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Cross-component intents from the help panel (and future affordances) arrive
-  // as window events so leaf components can drive the shell without prop drilling.
   useEffect(() => {
     const openDiag = () => setDiagOpen(true)
-    // The help panel's Remember action and the
-    // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
-      // The dock itself reads the seed off this same event; the shell only
-      // makes sure the cosmos (where the dock lives) is on screen.
       setActivity('sky')
     }
     const focusSky = (event: Event) => {
@@ -160,7 +132,6 @@ function Shell() {
     window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
-    // A file the thread cannot show as text opens in its own program.
     const openArtifact = (event: Event) => {
       const id = String((event as CustomEvent<string>).detail)
       if (/\.(md|txt|csv|tsv|json)$/i.test(id)) setArtifactId(id)
@@ -207,12 +178,7 @@ function Shell() {
           onOpenSettings={() => setSettingsOpen(true)}
         />
         <div className="canvas">
-        {/* While a big vault is still being read the views would all claim
-            "nothing here" — show the opening state until vault:ready. */}
         {vaultError ? (
-          // A dead end must look like one. This state used to be an endless
-          // "Opening your vault…" with the reason only in a console nobody
-          // reads, which is indistinguishable from a slow disk.
           <div className="empty-view vault-failed" data-testid="vault-failed">
             <strong>{t('shell.failedTitle')}</strong>
             <p>{t('shell.failedBody')}</p>
@@ -229,11 +195,6 @@ function Shell() {
           <div className="empty-view vault-opening" data-testid="vault-opening">{t('shell.opening')}</div>
         ) : (
           <>
-            {/* Every canvas stays mounted and the inactive ones are hidden:
-                switching tabs is then a repaint, not a rebuild, and a thread
-                mid-answer or a half-typed draft is exactly where it was. The
-                sky is the exception - its canvas animates on its own clock,
-                so it mounts when looked at and unmounts when left. */}
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView active={activity === 'bots'} />
             </div>
@@ -246,15 +207,12 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'list'}>
               <Suspense fallback={<div className="empty-view" />}>{listSeen && <ListView />}</Suspense>
             </div>
-            {/* The launcher IS the panel at rest — never both on screen at once. */}
             <Suspense fallback={null}>{activity === 'sky' && <CosmosChat />}</Suspense>
           </>
         )}
         </div>
       </main>
 
-      {/* Every one of these is off screen until something opens it, so a
-          chunk still on its way shows nothing rather than a spinner. */}
       <Suspense fallback={null}>
         <NoteSheet />
         <ReviewOverlay />
@@ -270,7 +228,6 @@ function Shell() {
 }
 
 export function App() {
-  // The quick-capture and onboarding windows load the same bundle with a hash route.
   if (window.location.hash === '#quick')
     return (
       <Suspense fallback={null}>
@@ -283,7 +240,6 @@ export function App() {
         <Onboarding />
       </Suspense>
     )
-  // The computer-control overlay: one glow window per display, one pill.
   if (window.location.hash === '#overlay')
     return (
       <Suspense fallback={null}>

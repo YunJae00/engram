@@ -14,18 +14,10 @@ const CARD_LABEL_KEY: Record<string, StringKey> = {
   closure: 'review.cardClosure',
 }
 
-// Review overlay: the librarian's question stack. Skim with ↑↓, act with
-// A/R/E — same grammar as before, now it comes to you instead of being a
-// place you go.
 export function ReviewOverlay() {
   const { reviewOpen, closeReview, cards, notes, selectedCardId, selectCard, t } = useApp()
   const proposed = cards.filter((c) => c.status === 'proposed')
-  // One row per ISSUE, not per card: sibling cards about the same notes fold
-  // under a lead (answering any of them dismisses the rest, so ten cards
-  // reading as ten questions was a lie about the actual work left).
   const issues = useMemo(() => groupIssues(proposed), [proposed])
-  // Cards store target note IDS; the list must speak in titles — nobody
-  // recognizes "n-mrghai4y-xyhs6y" as their vacation-form deadline note.
   const titleOf = useMemo(() => new Map(notes.map((n) => [n.id, n.title])), [notes])
   const targetLabel = (targets: string[]) => targets.map((id) => titleOf.get(id) ?? id).join(' · ')
   const activeId = selectedCardId ?? issues[0]?.lead.id
@@ -39,9 +31,6 @@ export function ReviewOverlay() {
     return () => window.removeEventListener('keydown', handler)
   }, [reviewOpen, closeReview])
 
-  // Keep the detail pane on the SAME card the list highlights: without an
-  // explicit selection the detail falls back to proposed[0] (raw card order),
-  // which may be a sibling buried under a different issue row.
   useEffect(() => {
     if (!reviewOpen) return
     const lead = issues[0]?.lead.id

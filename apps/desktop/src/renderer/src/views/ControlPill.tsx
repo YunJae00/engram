@@ -3,20 +3,11 @@ import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
 import { api } from '../api.js'
 import { Comet } from '../components/Icon.js'
 
-// The small window at the top of the display that holds the controlled app:
-// who is moving the mouse, how to take it back, and Stop. Its window never
-// activates, so a click here cannot pull the foreground off that app.
-
-// The window is transparent: the boot word and the app ground must not be
-// painted over the person's screen before React's first frame.
 if (typeof document !== 'undefined') {
   document.getElementById('boot')?.remove()
   document.body.classList.add('control-host')
 }
 
-// The status lives outside React so the first frame can already carry it,
-// and so a status event that lands while the initial query is still in
-// flight is not overwritten by that older answer.
 let current: DesktopControlStatusDto = { state: 'idle' }
 let generation = 0
 const listeners = new Set<() => void>()

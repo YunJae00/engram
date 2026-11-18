@@ -1,15 +1,10 @@
 import type { CardDto } from '../../../shared/types.js'
 
-// One ISSUE = the connected component of pending cards sharing target notes.
-// Judgment jobs raise several card types about the same pair; the user only
-// ever answers one (siblings auto-dismiss on approval), so every surface
-// should COUNT and LIST issues, not cards. Mirrors core's groupByTargetOverlap
-// in jobs/librarian.ts (renderer cannot import core — keep in lockstep).
 const TYPE_RANK = ['conflict', 'supersede', 'merge', 'stale', 'chronology', 'new-note']
 
 interface Issue {
   lead: CardDto
-  siblings: CardDto[] // other pending cards folded into this issue
+  siblings: CardDto[]
 }
 
 export function groupIssues(cards: CardDto[]): Issue[] {
@@ -41,8 +36,6 @@ export function groupIssues(cards: CardDto[]): Issue[] {
   })
 }
 
-// Pending cards that will auto-dismiss when `card` is approved — used for
-// honest feedback ("N related questions resolved with it").
 export function overlapSiblings(card: CardDto, pending: CardDto[]): CardDto[] {
   if (card.targets.length === 0) return []
   const touched = new Set(card.targets)

@@ -34,7 +34,6 @@ const MessageTurn = memo(function MessageTurn({ message: m, live, divider: label
 }, sameTurn)
 
 export function CometMessages({ firstKey = 0, messages, busy, status, since, workLines, keptWork, children }: {
-  // Key of the first message, so a page put in front keeps every existing key.
   firstKey?: number
   messages: CometMessage[]
   busy: boolean
@@ -42,12 +41,10 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
   since?: number
   workLines: string[]
   keptWork: string[]
-  // Cards waiting on the person sit under the answer.
   children?: ReactNode
 }) {
   const lastAssistant = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   const lang = threadLang(messages)
-  // Each bubble gets its own anchor name so its copy control binds to it and not to the last bubble.
   const anchorBase = `--copy-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const dividers = dividerBefore(messages), now = new Date(), skips = laterFiles(messages), restated = restatedAnswers(messages)
   return <ChatFiles.Provider value={linkedFiles(messages)}>

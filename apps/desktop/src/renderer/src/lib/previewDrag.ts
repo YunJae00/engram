@@ -11,7 +11,6 @@ const DOCK_INSET = 12
 const TEXT_LANE = 120
 const CLEAR_GAP = 12
 const CLEAR_VAR = '--live-clear-right'
-// Committed lane preferences for this renderer lifetime; a drag writes one only on release.
 const positions = new Map<string, Point>()
 
 function clampPreview(point: Point, width: number, height: number, cardWidth: number, cardHeight: number, depth = 0): Point {
@@ -42,7 +41,6 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const shown = (): Point => ({ x: deck.offsetLeft, y: deck.offsetTop })
     const stack = () => Math.min(3, Math.max(0, Number(deck.style.getPropertyValue('--deck-depth')) || 0))
     const spaced = () => stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0)
-    // The docked deck leaves chat text a readable lane on its left: the thread's own left padding plus TEXT_LANE and a gap.
     const textLane = () => (thread ? parseFloat(getComputedStyle(thread).paddingLeft) || 0 : 0) + TEXT_LANE + CLEAR_GAP
     const bounds = (docked = false): Bounds | undefined => {
       const width = chat.clientWidth, height = chat.clientHeight
@@ -51,7 +49,6 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       if (docked) return { width, room: width - textLane() - DOCK_INSET, floor: floor - DOCK_INSET, depth: 0 }
       return { width, room: width, floor, depth: spaced() }
     }
-    // Only the docked deck pushes bubbles left; a card the person dragged floats over the chat as before.
     const clear = () => {
       if (!thread || deck.hasAttribute('data-suspended') || deck.hasAttribute('data-floating')) { chat.style.removeProperty(CLEAR_VAR); return }
       const value = `${Math.ceil(chat.clientWidth - (deck.offsetLeft - spaced()) + CLEAR_GAP)}px`
@@ -70,7 +67,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       drag = undefined
       flag('data-dragging', false)
       if (commit && active.moved && active.provisional) positions.set(lane, active.provisional)
-      try { if (deck.hasPointerCapture(active.id)) deck.releasePointerCapture(active.id) } catch { /* The pointer is already gone. */ }
+      try { if (deck.hasPointerCapture(active.id)) deck.releasePointerCapture(active.id) } catch { }
       if (settle) layout()
     }
     const fit = (space: Bounds) => {
@@ -81,7 +78,6 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       style('--live-fit-stage', `${Math.max(0, space.floor - depth)}px`)
       return { ...space, depth }
     }
-    // The CSS anchor docks the deck at the chat's top inset over the thread; the fit keeps its bottom at or above the thread floor.
     const dock = () => {
       for (const name of ['left', 'top', 'right']) style(name, '')
       flag('data-floating', false)
@@ -90,7 +86,6 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       flag('data-suspended', !room)
       if (space && room) fit(space)
     }
-    // An untouched deck stays docked at the top right; only a moved drag or a committed spot floats it over the chat.
     const layout = () => {
       if (!live) return
       const requested = !draggable ? undefined : drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)

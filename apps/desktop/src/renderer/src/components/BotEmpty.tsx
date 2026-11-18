@@ -1,7 +1,6 @@
 import type { BotDto } from '../../../shared/types.js'
 import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 
-// An empty thread shows who is on the other side; the first words are the person's own.
 export function BotEmpty({ bot }: { bot: BotDto }) {
   return <div className="bot-empty" data-testid="bot-empty">
     <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={64} state="idle" theme={useAvatarTheme()} />

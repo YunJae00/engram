@@ -8,8 +8,6 @@ import { renderMarkdown } from '../lib/markdown.js'
 import { useThreadT } from '../lib/useThreadT.js'
 import { DecisionCard } from './DecisionCard.js'
 
-// A job the comet did not know how to do: offered as a study, and what it
-// learned brought back to be confirmed. Kept, the job is done again that way.
 export function StudyAsk({ botId }: { botId: string }) {
   const t = useThreadT(botId)
   const [study, setStudy] = useState<StudyDto | null>(null)

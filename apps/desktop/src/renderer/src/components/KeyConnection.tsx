@@ -5,9 +5,6 @@ import { api } from '../api.js'
 import { t, type StringKey } from '../i18n.js'
 import { SettingsItem } from './SettingsLayout.js'
 
-// A brain reached with a key instead of a sign-in: the address that speaks the
-// runtime's API, the key it issued, and the model to ask for. The key is shown
-// once, on entry; afterwards only its last letters come back.
 const label = (provider: BrainConnectionProvider): string => provider === 'claude' ? 'Claude' : provider === 'codex' ? 'ChatGPT' : t('settingsUi.decisionModel')
 const HINT: Record<BrainConnectionProvider, StringKey> = {
   claude: 'settingsUi.hintClaude',
@@ -15,7 +12,6 @@ const HINT: Record<BrainConnectionProvider, StringKey> = {
   decision: 'settingsUi.hintDecision',
 }
 
-// One line under the row when no key is set: what a key is for here.
 const SHORT: Record<BrainConnectionProvider, StringKey> = {
   claude: 'settingsUi.shortKey',
   codex: 'settingsUi.shortKey',

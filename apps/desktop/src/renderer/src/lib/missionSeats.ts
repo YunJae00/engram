@@ -13,8 +13,6 @@ export function readSeats(raw: string | null): Seats {
   } catch { return [null, null, null, null] }
 }
 
-// Work finishing never changes a seat. New work only fills a vacant seat;
-// only a deliberate replacement or a deleted chat removes its occupant.
 export function fillSeats(previous: Seats, existing: string[], running: string[]): Seats {
   const next = previous.map((id) => id && existing.includes(id) ? id : null)
   for (const id of running) {

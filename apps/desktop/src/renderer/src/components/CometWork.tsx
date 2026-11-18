@@ -2,7 +2,6 @@ import { workBlocks } from '../lib/pendingStatus.js'
 import { readsKorean } from '../lib/threadLang.js'
 import { Answer } from './Answer.js'
 
-// In a Korean conversation a note the model made to itself in English ("Now I have solid sources"), alone or after a Korean opener, is not something it said to the person.
 export function CometWork({ busy, lines, lang }: { busy: boolean; lines: string[]; lang?: 'en' | 'ko' }) {
   const said = workBlocks(lines).filter(block => block.type === 'you' || (block.type === 'said' && (lang !== 'ko' || readsKorean(block.text))))
   if (!said.length) return null

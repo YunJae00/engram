@@ -4,11 +4,7 @@ import { uiLanguage } from '../i18n.js'
 import { FILE_CARD_KO } from '../lib/threadLangKo.js'
 import type { AnswerFile } from '../markdown.js'
 
-// linkedFiles() of the conversation the cards are in.
 export const ChatFiles = createContext('')
-// The version a remade file's card links: the nearest earlier one on record (main: previousVersions, written where the task-folder file was
-// replaced in place) that this chat also linked. A draft the chat never showed is passed over; a file of another chat is never linked.
-// shortcut: a remake back to the exact bytes of an earlier version shares that version's id, so the earlier card links forward; rare, upgrade by recording the turn with the id.
 export const previousOf = (versions: readonly string[], chat: string): string | undefined => versions.find(id => chat.split('\n').includes(id))
 
 declare global { interface Window { engramOutputs: { info(id: string): Promise<{ size: number; previous?: string[]; thumb?: { data: Uint8Array; mime: string } }> } } }
@@ -40,7 +36,6 @@ function AnswerFileCard({ file }: { file: AnswerFile }) {
   const Icon = KINDS.find(([pattern]) => pattern.test(file.name))?.[1] ?? File
   const kind = /\.([a-z0-9]+)$/i.exec(file.name)?.[1]?.toUpperCase()
   const windows = navigator.platform.startsWith('Win')
-  // The app's language: the page's lang attribute is never set to it (qa146 S03: "Show in Finder" in Korean).
   const ko = uiLanguage() === 'ko'
   const reveal = ko ? (windows ? FILE_CARD_KO.revealWin : FILE_CARD_KO.reveal) : windows ? 'Show in Explorer' : 'Show in Finder'
   const previous = previousOf(versions, useContext(ChatFiles))
@@ -60,7 +55,6 @@ function AnswerFileCard({ file }: { file: AnswerFile }) {
   </div>
 }
 
-// The files an answer made, as cards under its words: one click opens each.
 export function AnswerFiles({ files }: { files: AnswerFile[] }) {
   return <div className="chat-file-list answer-files">{files.map(file => <AnswerFileCard key={file.id} file={file} />)}</div>
 }

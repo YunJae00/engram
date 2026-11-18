@@ -44,7 +44,6 @@ export function watchAccountUsage(): () => void {
   const timer = window.setInterval(refresh, 60_000)
   document.addEventListener('visibilitychange', refresh)
   const off = api.onEvent(event => {
-    // A sign-in still opening or waiting on the browser has changed nothing yet.
     const settled = event.type !== 'engines:login' || !['opening', 'browser'].includes(event.login.phase)
     if (settled && ['engines:detected', 'engines:changed', 'engines:login', 'accounts:changed'].includes(event.type)) { checked = 0; if (!document.hidden) void refreshAccountUsage(true) }
     if (event.type === 'dev:changed' && event.update?.usage.windows?.length) {

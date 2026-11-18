@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react'
 
-// Settings read as a few titled cards of rows: what a row is on the left,
-// one line under it when it needs one, and its control on the right.
 export function SettingsGroup({ title, label, note, children, testId }: { title?: ReactNode; label?: string; note?: ReactNode; children: ReactNode; testId?: string }) {
   return <section className="settings-section" aria-label={label ?? (typeof title === 'string' ? title : undefined)} data-testid={testId}>
     {title && <h3 className="settings-section-title">{title}</h3>}
@@ -17,7 +15,6 @@ export function SettingsItem({ icon, title, description, htmlFor, children, test
   htmlFor?: string
   children?: ReactNode
   testId?: string
-  // Something that opens under the row, such as a form.
   below?: ReactNode
 }) {
   const Title = htmlFor ? 'label' : 'span'
@@ -34,7 +31,6 @@ export function SettingsItem({ icon, title, description, htmlFor, children, test
   </div>
 }
 
-// Keys shown the way a keyboard prints them.
 export function Keys({ keys }: { keys: readonly string[] }) {
   return <span className="settings-keys">{keys.map((key) => <kbd key={key}>{key}</kbd>)}</span>
 }

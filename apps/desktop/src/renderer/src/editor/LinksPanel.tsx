@@ -4,9 +4,6 @@ import { api } from '../api.js'
 import { stripEmoji, typeIdentity } from '../lib/grouping.js'
 import { useApp } from '../state.js'
 
-// Connections panel (the second-brain surface): every note this one links to
-// (derived_from, with J2's reason) and every note that links back to it.
-// Clicking a row swaps the sheet to that note — the graph becomes walkable.
 interface Row {
   id: string
   title: string
@@ -17,10 +14,6 @@ interface Row {
 export function LinksPanel({ noteId }: { noteId: string }) {
   const { notes, openNote, showToast, t } = useApp()
 
-  // Cutting a wrong link is the human's correction of the librarian's wiring —
-  // the pair lands in AGENTS.md counterexamples so it isn't re-proposed. The
-  // row's outgoing/backlink direction decides which note's frontmatter holds
-  // the link. The store delta refreshes the panel; no local state needed.
   const unlink = async (row: Row, direction: 'out' | 'in') => {
     if (direction === 'out') await api.unlinkNote(noteId, row.id)
     else await api.unlinkNote(row.id, noteId)

@@ -3,8 +3,6 @@ import { useApp } from '../state.js'
 import { api } from '../api.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 
-// The scrap pile, unfolded: unfiled captures + failed items with a retry.
-// A failed capture never disappears.
 export function InboxOverlay() {
   const { inboxOpen, closeInbox, inbox, refresh, engines, t } = useApp()
 

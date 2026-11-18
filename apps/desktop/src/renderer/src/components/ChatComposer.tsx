@@ -37,13 +37,10 @@ export const ChatComposer = memo(
     const [error, setError] = useState('')
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
-    // A draft put back after a failed send arrives focused and selected, so what is typed next replaces it;
-    // a click then places the caret as usual, so a small correction keeps the draft.
     useLayoutEffect(() => {
       const input = inputRef.current
       if (!putBack || !input || (document.activeElement !== input && document.activeElement !== document.body)) return
       input.focus(); input.select()
-      // value: the put-back text can reach the box a render after the mark; typing clears the mark in the same render.
     }, [putBack, value])
     const attach = async (files: File[]) => {
       if (!onAttachmentsChange || (busy && !canQueue) || disabled || attachingRef.current || !files.length) return
@@ -110,7 +107,6 @@ export const ChatComposer = memo(
           <div className="chat-write-tools">{onAttachmentsChange && <>
             <input ref={fileRef} type="file" hidden multiple accept={ATTACHMENT_ACCEPT} data-testid={testId ? `${testId}-files` : undefined} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void attach(files) }} />
           </>}{tools}</div>
-          {/* One button: words in the box send, an empty box stops. */}
           {busy && !(canQueue && (value.trim() || attachments.length > 0)) ? (
             <button className="chat-send-btn armed bubble-stop" aria-label={t('bubble.stop')} onClick={onStop}>
               <Square size={11} strokeWidth={2.5} aria-hidden />

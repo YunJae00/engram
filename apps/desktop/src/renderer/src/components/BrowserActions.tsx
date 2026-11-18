@@ -4,7 +4,6 @@ import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { useApp } from '../state.js'
 
-// Back, forward and reload: what a person needs while they sign in on the page themselves.
 export function BrowserActions({ lane, url, live }: { lane: string; url?: string; live: boolean }) {
   const { showToast } = useApp()
   const [history, setHistory] = useState({ back: false, forward: false })

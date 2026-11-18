@@ -24,7 +24,6 @@ function resolve(particle: string, final: Final): string {
   return form[0]
 }
 
-// Fills {name} placeholders and picks the Korean particle form that fits each filled value.
 export function withParticles(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}([”’"')\]]*)(\uC774\(\uAC00\)|\uC744\(\uB97C\)|\uC740\(\uB294\)|\uACFC\(\uC640\)|\(\uC73C\)\uB85C)?/g, (match, name: string, closers: string, particle?: string) => {
     if (!(name in vars)) return match

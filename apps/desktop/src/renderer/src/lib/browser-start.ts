@@ -9,7 +9,6 @@ export function browserAddress(input: string): string {
   return url.href
 }
 
-// Origins avoid persisting OAuth codes, search text and private document paths.
 export function recentSite(value: unknown): string | null {
   if (typeof value !== 'string') return null
   try {

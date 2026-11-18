@@ -3,14 +3,12 @@ import { loadEarlierTurns } from './cometThreadsLive.js'
 
 const AT_TOP = 4
 
-// Reaching the top of the thread reads one earlier page; the bubble at the top edge keeps its screen position.
 export function useLoadEarlier(ref: RefObject<HTMLElement | null>, botId: string | null, older: number): void {
   const anchor = useRef<{ botId: string; element: Element; top: number } | null>(null)
   useEffect(() => {
     const list = ref.current
     if (!list || !botId) return
     const prior = list.style.overflowAnchor
-    // The layout effect below corrects the position; native anchoring would correct it a second time.
     list.style.overflowAnchor = 'none'
     let armed = true
     const capture = () => {
@@ -42,7 +40,6 @@ export function useLoadEarlier(ref: RefObject<HTMLElement | null>, botId: string
     const hold = () => {
       if (!held.element.isConnected) return
       list.scrollTop += held.element.getBoundingClientRect().top - held.top
-      // Skipped bubbles above (content-visibility) take their real height a frame or two after the commit.
       if (++frames < 8) frame = requestAnimationFrame(hold)
     }
     hold()

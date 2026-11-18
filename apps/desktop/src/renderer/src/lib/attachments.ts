@@ -11,8 +11,6 @@ const active = new WeakMap<CometThreadsStore, Set<string>>()
 const draining = new WeakMap<CometThreadsStore, Set<string>>()
 const seats = (map: WeakMap<CometThreadsStore, Set<string>>, store: CometThreadsStore) => { let set = map.get(store); if (!set) { set = new Set(); map.set(store, set) } return set }
 
-// A reload from disk drops bubbles only shown here; a queued message counts the
-// bubbles bearing its words when queued, so fewer later means its own is gone.
 const shownCounts = new WeakMap<object, number>()
 const bubbleCount = (store: CometThreadsStore, botId: string, text: string) => store.thread(botId).messages.filter(one => one.role === 'user' && one.text === text).length
 function enqueueShown(store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[]): void {
@@ -55,13 +53,10 @@ export async function flushQueuedCometMessages(api: ChatApi, store: CometThreads
     if (!message) return
     const still = !!message.shown && bubbleCount(store, botId, chatMessage(message.draft, message.attachments)) >= (shownCounts.get(message) ?? Infinity)
     await sendNow(api, store, botId, message.draft, message.attachments, true, still)
-  } catch { /* What could not start is not kept waiting out of sight. */ }
+  } catch { }
   finally { seats(draining, store).delete(botId); queueWatches.get(store)?.(); if (!store.thread(botId).busy && store.thread(botId).queued.length) setTimeout(() => void flushQueuedCometMessages(api, store, botId), retry ? 500 : 0) }
 }
 
-// Nothing waits in a queue the person can see. Said while a comet works, the
-// words show at once at the foot of the conversation and the voice answers
-// them; whatever is for after this turn starts by itself when it ends.
 export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[] = []): Promise<void> {
   watchQueue(api, store)
   if (!chatMessage(draft, attachments)) return
@@ -69,12 +64,9 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     const stopCount = store.thread(botId).stopCount
     const said = chatMessage(draft, attachments)
     const words = threadT(threadLang(store.thread(botId).messages))
-    // Files cannot join a turn already under way; words alone are handed to it and stay where they were said.
     const joins = !attachments.length && !!api.chatSay
     store.noteUser(botId, said, attachments.map(file => file.id), joins)
-    // The words left the box (sent trimmed); a reply chip leaves what is typed alone.
     if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
-    // Files cannot join a turn already under way: they start the next one.
     if (attachments.length || !api.chatSay) {
       if (attachments.length) store.setAttachments(botId, [])
       store.noteWork(botId, `said: ${words('aside.next')}`)
@@ -90,13 +82,11 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
       void flushQueuedCometMessages(api, store, botId)
       return
     }
-    // A stop is said where the work ends; anything else in the running work.
     if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? '', answer.reply); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
     if (answer.reply) store.noteReply(botId, said, answer.reply)
     void flushQueuedCometMessages(api, store, botId)
     return
   }
-  // The previous IPC call can still be settling after its completion event.
   if (store.thread(botId).queued.length || seats(active, store).has(botId) || seats(draining, store).has(botId)) {
     store.noteUser(botId, chatMessage(draft, attachments), attachments.map(file => file.id))
     if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
@@ -112,7 +102,6 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
   const message = chatMessage(draft, attachments)
   seats(active, store).add(botId)
   const ids = attachments.map(one => one.id)
-  // A put-back draft sent again unchanged is put back only once.
   const again = !!store.thread(botId).restored
   const nextDraft = store.thread(botId).draft
   const nextFiles = store.thread(botId).attachments

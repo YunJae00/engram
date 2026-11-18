@@ -5,12 +5,7 @@ import { flushQueuedCometMessages } from './attachments.js'
 
 const SELECTED_KEY = 'engram.comets.selected'
 
-// One store for the renderer's lifetime. The view mounts and unmounts with
-// the tab; the conversations do not.
-// A launch reopens the chat that was open at quit. A reload inside the same
-// window (sessionStorage outlives it, a relaunch does not) starts at the welcome.
 const LAUNCHED_KEY = 'engram.comets.launched'
-// Without browser storage (a unit test) there is no last chat: the welcome.
 const stored = typeof sessionStorage !== 'undefined' && typeof localStorage !== 'undefined'
 const fresh = stored && sessionStorage.getItem(LAUNCHED_KEY) === null
 if (stored) sessionStorage.setItem(LAUNCHED_KEY, '1')
@@ -31,15 +26,9 @@ const reloadFromDisk = (id: string) => {
     .catch(() => undefined)
 }
 
-// One page of older turns per call, applied to this bot only; a failed read stays quiet.
 export const loadEarlierTurns = (id: string, beforeCommit?: () => void) =>
   cometThreads.loadEarlier(id, (bot, before, limit) => api.botTranscriptPage(bot, before, limit), beforeCommit)
 
-// Disk first, then whatever main is still producing for this comet: a
-// renderer that reloaded mid-answer would otherwise never see it land. The
-// two reads are sequenced, and a completion that lands between them (noted
-// by the listener below) withdraws the seat before it is taken - a seat
-// adopted for an answer already finished would never be released.
 export async function loadCometThread(id: string): Promise<void> {
   const seenBefore = cometThreads.thread(id).doneSeen
   const turns = await api.botTranscript(id)
@@ -79,8 +68,6 @@ api.onEvent((event) => {
   const adoptedBefore = 'channel' in event && event.channel ? cometThreads.thread(cometOfChannel(event.channel)).adopted : false
   const handled = cometThreads.handleEvent(event)
   if (handled) {
-    // A seat taken for someone else's send only ever held the reply; the
-    // question that produced it is on disk, so disk is the whole story now.
     if (event.type === 'chat:done' && adoptedBefore) {
       if (cometThreads.thread(handled).taskWorking) pendingReloads.add(handled)
       void reloadFromDisk(handled).then(() => flushQueuedCometMessages(api, cometThreads, handled))
@@ -92,15 +79,10 @@ api.onEvent((event) => {
     return
   }
   if (event.type === 'errand:logged') {
-    // A finished errand appends its outcome to the delegating comet's thread.
     const id = cometThreads.getSnapshot().selectedId
     if (id) void reloadFromDisk(id)
     return
   }
-  // An answer nobody here was watching (it finished while this renderer was
-  // not yet alive) is on disk by the time done is broadcast - unless the
-  // person pressed Stop, in which case this is the abort's own echo and disk
-  // holds nothing of the exchange the thread already settled by itself.
   if (event.type === 'chat:done' || event.type === 'chat:error') {
     const id = cometOfChannel(event.channel)
     if (!id || !cometThreads.getSnapshot().threads[id]) return

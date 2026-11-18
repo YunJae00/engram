@@ -27,16 +27,8 @@ export const en = {
   'mission.chat': 'Conversation',
   'capture.lockPrivate': 'Private — engines never see this',
   'capture.lockWorkspace': 'Workspace capture',
-  // One verb for one action. The UI used to say "jot", "toss" and "remember"
-  // for the same thing, so nobody learned a name for it — and "jot" is a word
-  // non-native speakers do not know. Everything says REMEMBER now — including
-  // the floating launcher that opens the composer.
   'capture.submit': 'Remember',
-  // Which verb Enter is loaded with, in the hint slot, live as the text
-  // changes. One box for two verbs is only an improvement if the box admits
-  // which one it is about to fire.
 
-  // top chrome strip
   'settings.searchTitle': 'Where your comet searches',
   'settings.searchHint':
     'Search for anything in your own browser, then paste the address of the results page here. Your comet will search the same way you do — whichever search that is.',
@@ -81,8 +73,6 @@ export const en = {
   'model.autoDetail': 'The runtime picks',
   'model.listing': 'Asking your plan which models it offers…',
   'onboard.importing': 'Importing {done} / {total} notes…',
-  // Second click confirms. The file is gigabytes and getting it back is a
-  // fresh download, so the button asks once before it goes.
   'topbar.tabBots': 'Bots',
   'rail.hide': 'Hide the sidebar',
   'rail.show': 'Show the sidebar',
@@ -458,7 +448,6 @@ export const en = {
   'sky.legendFading': 'fading',
   'sky.legendRecalled': 'recalled this week',
 
-  // Brain view — the organized memory, readable
   'brain.railTitle': 'Topics ({count})',
   'brain.railFilter': 'Filter topics…',
   'brain.railNoMatch': 'No topic matches',
@@ -488,21 +477,16 @@ export const en = {
   'topbar.engineConnect': 'Connect an AI engine',
   'topbar.engineConnectShort': 'Connect AI',
 
-  // no-engine banner (canvas top): the connect nudge + waiting-capture count
   'banner.noBrain': 'Filing is paused. Connect or choose an AI for filing in Settings.',
   'banner.getBrain': 'AI settings',
   'banner.waiting': '{n} waiting',
   'banner.login': 'Log in',
-  // Four failures, four sentences — they need four different actions from the
-  // user, and collapsing them into "the login may have expired" told a user who
-  // was merely over their limit to re-authenticate, which never helped.
   'banner.notResponding': '{ids} is connected but its last calls failed — nothing is lost, Engram retries',
   'banner.tooSlow': '{ids} answered too slowly and was stopped — usually a network stall; it retries on the next run',
   'banner.loginExpired': '{ids} needs you to log in again — Engram is paused until you do',
   'banner.quota': '{ids} limited a request. Filing is waiting to retry. Test the selected model or choose another AI in Settings.',
   'banner.offline': "{ids} can't reach the internet — Engram resumes as soon as the connection is back",
   'banner.check': 'Check',
-  // The label is the affordance: this is the one button a morning starts with.
   'topbar.searchTitle': 'Search & commands (Ctrl+P)',
   'topbar.settingsTitle': 'Settings',
   'topbar.teamChanges': 'What the team changed',
@@ -510,8 +494,6 @@ export const en = {
   'topbar.sweepRunning': 'Filing your notes…',
   'topbar.filing': 'Filing your capture…',
   'topbar.sweepDone': 'Filing done',
-  // A halted sweep used to report it had finished over work it had not done.
-  // These say what stopped it AND that the work is kept, not lost.
   'topbar.sweepDeferred': 'Filing paused — {n} left for the next run',
   'topbar.sweepQuota': 'Filing paused — {n} left, the AI hit its usage limit',
   'topbar.sweepAuth': 'Filing paused — {n} left, log in to the AI again',
@@ -525,7 +507,6 @@ export const en = {
   'topbar.jobJ7': 'Deep pass',
   'topbar.jobJ8': 'Writing brief',
 
-  // librarian progress widget (floating, bottom-left)
   'absorb.title': 'Librarian at work',
   'absorb.paused': 'Paused — {n} waiting',
   'absorb.waitingEngine': '{n} waiting for an AI engine',
@@ -535,17 +516,11 @@ export const en = {
   'absorb.pillPaused': '{n} waiting',
   'absorb.stop': 'Stop after this step',
   'absorb.resume': 'Resume',
-  // Quota is the same shape as no-engine and was simply missed: Resume can only
-  // re-hit the same limit, so the widget explains instead of offering a button
-  // that does nothing. Auth is the same, except the user CAN fix it.
   'absorb.quotaPaused': '{n} waiting — the AI hit its usage limit',
   'absorb.quotaHint': 'Nothing is lost. Filing resumes on its own once the limit resets.',
   'absorb.authPaused': '{n} waiting — the AI needs you to log in again',
   'absorb.login': 'Log in',
 
-  // The floating question — a card at the edge of the screen while the user is
-  // working somewhere else. Every string here is read in about a second, from
-  // across a monitor, by someone who did not ask for it.
   'editor.saving': 'Saving…',
   'editor.saved': 'Saved',
   'editor.saveFailed': 'Save failed — edits kept in the editor, retrying on close',
@@ -553,16 +528,11 @@ export const en = {
   'bubble.stopped': 'Stopped.',
   'bubble.thinking': 'Searching your memory',
 
-  // shell opening state (shown while a big vault is still being read)
   'shell.opening': 'Opening your vault…',
-  // …and the state where it is never going to open. Name the folder: the
-  // usual causes are all visible once you look at it (moved, renamed, on a
-  // disconnected drive, mid-sync).
   'shell.failedTitle': 'Could not open your vault',
   'shell.failedBody': 'Engram was pointed at this folder but could not read it.',
   'shell.failedReveal': 'Show the folder',
   'shell.failedRetry': 'Try again',
-  // sky starter chips (first-run empty state)
   'starter.try': 'Not sure what to remember? Try one:',
   'starter.ex1': 'A decision made today',
   'starter.ex1Seed': 'Decided today: ',
@@ -571,9 +541,6 @@ export const en = {
   'starter.ex3': 'Something coming up next week',
   'starter.ex3Seed': 'Next week: ',
 
-  // librarian activity feed (under the briefing)
-
-  // today sheet (right slide-over — live open loops, then the latest brief)
   'today.deskTotal': 'At the desk today · {hours}h',
   'today.fadingHead': 'Fading memories — worth a glance',
   'today.fadingDays': 'quiet for {n}d',
@@ -584,8 +551,6 @@ export const en = {
   'today.refreshing': 'Going over your vault again…',
   'today.checkedAt': 'Checked at {time}',
   'today.loopsTitle': 'Still open',
-  // Truthful, not cheerful: an empty list means nothing was MARKED, which is
-  // not the same as nothing being left to do — say which one this is.
   'today.loopsNone': 'Nothing in your vault is marked as still open. Notes get a deadline when a capture mentions one, or when you add due_at yourself.',
   'today.loopOverdue': 'Overdue',
   'today.loopToday': 'Due today',
@@ -603,7 +568,6 @@ export const en = {
   'digest.title': 'Weekly digest',
   'digest.empty': 'No weekly digest yet — Engram writes one once a week of work has piled up.',
 
-  // note type identity (row/page labels + help legend)
   'type.decision': 'Decision',
   'type.concept': 'Concept',
   'type.howto': 'Guide',
@@ -620,15 +584,11 @@ export const en = {
   'type.reference': 'Reference',
   'type.note': 'Note',
 
-  // relative time on meta rows
-
-  // list view
   'list.filter': 'Filter notes…',
   'list.allOwners': 'All owners',
   'list.more': 'Show all {n}',
   'list.empty': 'No notes to show',
 
-  // workspace switcher
   'ws.switch': 'Switch workspace',
   'ws.new': 'New workspace…',
   'ws.join': 'Join team workspace…',
@@ -643,7 +603,6 @@ export const en = {
   'ws.switchingSub': 'Engram restarts into the selected workspace — just a moment.',
   'workspace.githubBackup': 'Back up to GitHub…',
 
-  // GitHub backup (browser-assisted, no OAuth app)
   'github.title': 'Back up to GitHub',
   'github.intro': 'This backs your vault up to a private GitHub repo that only you own. Two quick steps — no tokens, no setup.',
   'github.openRepo': 'Open GitHub to create the repo',
@@ -668,7 +627,6 @@ export const en = {
   'github.synced': 'Synced with GitHub',
   'github.done': 'Done',
 
-  // settings — GitHub backup entry (near the MCP section)
   'settings.auditTitle': 'Activity log',
   'settings.auditHint': 'Everything a comet does on your behalf is written down in your vault, one file per day: what it pressed, what picture it showed a brain (with secret fields covered), what you approved, where it was stopped.',
   'settings.auditOpen': 'Open the log folder',
@@ -676,7 +634,6 @@ export const en = {
   'settings.githubHint': 'Push this workspace to a private GitHub repo you own, so it is backed up and syncs across your machines. Opens a browser to sign in the first time.',
   'settings.githubButton': 'Back up to GitHub…',
 
-  // command palette / search
   'palette.label': 'Command palette',
   'palette.searchPlaceholder': 'Find a note — title or anything inside it…',
   'palette.commandPlaceholder': 'Run a command…',
@@ -692,7 +649,6 @@ export const en = {
   'palette.teamJoin': 'Team: join via invite URL…',
   'palette.errand': 'Delegate an errand…',
 
-  // errand dialog + top-bar progress (a delegated goal run on-device)
   'errands.title': 'Errands',
   'errands.hint': 'Hand Engram a goal. It searches your memory, browses in its own Chrome when the vault is not enough, and comes back with a proposal — nothing lands without your approval.',
   'errands.stop': 'Stop',
@@ -710,7 +666,6 @@ export const en = {
   'errand.title': 'Delegate an errand',
   'errand.placeholder': 'What should Engram do? e.g. gather what we decided about deploys last month',
   'errand.start': 'Delegate',
-  // One parameterized line for the whole run — {phase} is one of the labels below.
   'topbar.errand': 'Errand: {phase}',
   'topbar.errandPlan': 'planning…',
   'topbar.errandGather': 'gathering…',
@@ -718,7 +673,6 @@ export const en = {
   'topbar.errandDistill': 'distilling…',
   'topbar.errandCompose': 'writing…',
 
-  // transient toasts
   'toast.synced': 'Synced',
   'toast.syncedConflicts': 'Synced — {count} merge card(s) to review',
   'toast.noTeam': 'No team connected — “Team: create” in the command palette (Ctrl+Shift+P)',
@@ -762,15 +716,12 @@ export const en = {
   'toast.routineFailed': 'Routine stopped — {reason}',
   'palette.routines': 'Run a routine…',
 
-  // feature-action toasts (phase 2)
   'toast.approved': 'Approved [{type}]',
   'toast.rejected': 'Rejected — recorded as a counterexample',
   'toast.promoted': 'Promoted to the inbox — the librarian will file it',
   'toast.engineReady': '{id} connected — auto-organizing is on',
   'banner.updateReady': 'Engram {version} is downloaded and ready to install',
   'banner.updateRestart': 'Restart now',
-  // Unsigned macOS builds cannot swap themselves — the same banner has to ask
-  // for a download instead of promising a restart that would fail.
   'banner.updateAvailable': 'Engram {version} is out — this build updates by hand',
   'banner.updateDownload': 'Download',
   'settings.updateKey': 'Updates',
@@ -791,7 +742,6 @@ export const en = {
   'toast.teamJoined': 'Joined the team vault',
   'toast.imported': 'Imported {count} notes — absorbing gradually',
 
-  // note sheet + editor
   'sheet.back': '← Back to note',
   'sheet.hint': 'Esc to close · edits save automatically',
   'sheet.closeNote': 'Close note',
@@ -808,14 +758,12 @@ export const en = {
   'sheet.noOwner': 'no owner',
   'sheet.lineage': 'Lineage · {count} versions',
 
-  // connections panel (note sheet) + preview link rows
   'sheet.connections': 'Connections · {count}',
   'sheet.linksOut': 'Linked to',
   'sheet.linksIn': 'Linked from',
   'sheet.unlinkTitle': 'Cut this link — Engram remembers not to reconnect them',
   'sheet.unlinked': 'Link cut — noted so it is not re-proposed',
 
-  // review overlay + detail
   'review.empty': 'Nothing to review — Engram has no questions',
   'review.oneAnswer': 'one answer settles {count} more:',
   'toast.approvedIssue': 'Approved — {count} related question(s) resolved with it',
@@ -848,7 +796,6 @@ export const en = {
   'review.cardChronology': 'Chronology',
   'review.cardClosure': 'Done?',
 
-  // scrap pile (inbox)
   'inbox.title': 'Scrap pile — waiting for Engram',
   'inbox.empty': 'Nothing waiting — press Remember and write a thought',
   'inbox.failedItems': 'Failed items',
@@ -856,12 +803,9 @@ export const en = {
   'inbox.connectEngine': 'Connect an AI engine to start auto-organizing',
   'inbox.close': 'Close',
 
-  // the panel: transcript + the one composer
-  // The empty state teaches both gestures, because one box now serves both.
   'chat.offlineSaveFailed': 'Could not save that thought — the vault folder rejected the write. Try again.',
   'chat.send': 'Send',
 
-  // settings
   'settings.title': 'Settings',
   'settings.groupConnections': 'Connections',
   'settings.autoStart': 'Start at login',
@@ -896,7 +840,6 @@ export const en = {
   'settings.semanticIndexing': 'Indexing memories',
   'settings.semanticReady': 'Ready',
   'settings.semanticError': 'Unavailable',
-  // first-run guided tour (once, packaged builds)
   'tour.welcomeTitle': 'Welcome to Engram',
   'tour.welcomeBody': 'A colleague that does the small chores you show it, and a memory that keeps what you tell it. A twenty-second tour of the three things that matter.',
   'tour.cometsTitle': 'Bots — colleagues for small chores',
@@ -912,7 +855,6 @@ export const en = {
   'settings.diagnostics': 'Diagnostics',
   'settings.cancel': 'Cancel',
 
-  // diagnostics + embedded terminal
   'diag.title': 'Diagnostics',
   'diag.checking': 'Checking…',
   'diag.apiKeyWarning': '{keys} detected — that means API billing, not your subscription. Engram never uses these keys.',
@@ -925,7 +867,6 @@ export const en = {
   'diag.exportLogs': 'Export logs',
   'diag.close': 'Close',
 
-  // onboarding
   'onboard.continue': 'Continue',
   'onboard.setupError': 'Setup hit a snag — nothing is lost, just try again.',
   'onboard.s1Title': 'Where should your vault live?',
@@ -935,9 +876,6 @@ export const en = {
   'onboard.brainsRetry': 'Retry',
   'onboard.s2Title': 'Your AI brain',
   'onboard.s2Sub': 'Sign in to the one you already pay for. Your notes stay in your vault; only the question and what it needs are sent.',
-  // Logging in is the one step that cannot be automated (it is the user's own
-  // Anthropic account), so the UI does the next best thing: run it in place
-  // and say plainly which of the three states they are in.
   'onboard.skipForNow': 'Skip for now',
   'onboard.s3Title': 'Bring everything in',
   'onboard.s3Sub': 'Point at any folder of .md/.txt — Obsidian vault or plain files. Copied, never modified.',
@@ -987,7 +925,6 @@ export const en = {
   'onboard.settingUp': 'Setting things up…',
   'onboard.start': 'Start using Engram',
 
-  // quick-capture window
   'quick.title': 'Quick capture',
   'quick.lockedPrivate': 'private',
   'quick.lockedWorkspace': 'workspace',
@@ -995,18 +932,14 @@ export const en = {
   'quick.hint': 'Enter to capture · Shift+Enter for a new line · Esc to dismiss',
   'quick.saveFailed': 'Could not save — your text is kept here. Check the vault folder and press Enter to retry.',
 
-  // Palette-launched team dialog.
   'palette.cancel': 'Cancel',
   'palette.teamJoinTitle': 'Join a team vault',
   'palette.working': 'Working…',
   'palette.invitePlaceholder': 'Invite URL (git remote)',
   'palette.join': 'Join',
 
-  // floating help panel
   'help.open': 'Help & quick actions',
   'help.quickActions': 'Quick actions',
-  // One verb everywhere — this said "Capture" for the action the rest of the
-  // UI calls Remember, which is the split the merged composer just closed.
   'help.quickCapture': 'Remember',
   'help.quickChat': 'Comets',
   'help.quickSearch': 'Search',
@@ -1330,7 +1263,6 @@ export const en = {
 
 export type StringKey = keyof typeof en
 
-// Only en* locales read English; every other system locale, Japanese included, reads Korean.
 export function resolveUiLanguage(preference: unknown, locale: string): 'ko' | 'en' {
   if (preference === 'ko' || preference === 'en') return preference
   return /^en(?:[-_]|$)/i.test(locale) ? 'en' : 'ko'
@@ -1341,10 +1273,8 @@ const systemLocale = (): string => (typeof navigator === 'undefined' ? 'en-US' :
 export const uiLanguage = (): 'ko' | 'en' => resolveUiLanguage(preference, systemLocale())
 export const uiLocale = (): 'ko-KR' | 'en-US' => (uiLanguage() === 'en' ? 'en-US' : 'ko-KR')
 
-// Subscribe before reading so a change broadcast during the read is not overwritten by the older value.
 export async function followSettings(bridge: Pick<EngramApi, 'onEvent' | 'settingsGet'>): Promise<void> {
   let changed = false
-  // A failed read or a partial bridge (test doubles) keeps the current language.
   try {
     bridge.onEvent(event => {
       if (event.type !== 'settings:changed') return
@@ -1360,20 +1290,12 @@ export async function followSettings(bridge: Pick<EngramApi, 'onEvent' | 'settin
 
 if (typeof window !== 'undefined' && 'engram' in window) await followSettings(window.engram)
 
-// macOS reads Cmd where Windows/Linux read Ctrl. Handlers already accept both
-// (metaKey || ctrlKey everywhere); the string tables stay written with "Ctrl"
-// and this one pass rewrites the labels, so no key needs a per-OS variant.
-// Guarded so the tables also load outside the preload bridge (tests, tooling).
 const isMac = typeof window !== 'undefined' && window.engram?.platform === 'darwin'
 
-// Platform-correct modifier label for UI built from parts (e.g. HelpPanel).
 export const MOD_LABEL = isMac ? 'Cmd' : 'Ctrl'
 
 export type Translate = (key: StringKey, vars?: Record<string, string | number>) => string
 
-// Look up a key and fill {name} placeholders from `vars`. Unknown placeholders
-// are left untouched so a template mistake is visible. On macOS the "Ctrl+"
-// labels are rewritten to "Cmd+" in one pass.
 export function tIn(lang: 'ko' | 'en', key: StringKey, vars?: Record<string, string | number>): string {
   let template: string = (lang === 'en' ? en : ko)[key]
   if (isMac) template = template.replace(/\bCtrl\+/g, 'Cmd+')

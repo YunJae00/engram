@@ -6,8 +6,6 @@ import { markdown } from '@codemirror/lang-markdown'
 import { useEffect, useRef } from 'react'
 import { useApp } from '../state.js'
 
-// Side-by-side diff (CodeMirror merge) — used by supersede/merge cards and
-// lineage version tabs. Conflict cards reuse it as A|B panes.
 export function DiffView({ left, right, leftLabel, rightLabel }: { left: string; right: string; leftLabel?: string; rightLabel?: string }) {
   const { theme } = useApp()
   const host = useRef<HTMLDivElement>(null)

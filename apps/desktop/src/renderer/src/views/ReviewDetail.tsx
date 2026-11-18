@@ -6,8 +6,6 @@ import { DiffView } from '../editor/DiffView.js'
 import { overlapSiblings } from '../lib/issues.js'
 import { useApp } from '../state.js'
 
-// Review flow: A approve · R reject · E edit-proposal · ↑↓ move.
-// Approving advances straight to the next card.
 export function ReviewDetail() {
   const { cards, selectedCardId, selectCard, refresh, showToast, t } = useApp()
   const proposed = cards.filter((c) => c.status === 'proposed')
@@ -30,7 +28,7 @@ export function ReviewDetail() {
       setDetail(d)
       setDraft(d.card.proposed)
     })
-  }, [current?.id]) // deliberately keyed on the card id only
+  }, [current?.id])
 
   const advance = useCallback(
     (fromId: string) => {
@@ -43,8 +41,6 @@ export function ReviewDetail() {
   const approve = useCallback(
     async (options: { choice?: 'A' | 'B' | 'both'; action?: 'keep' | 'retire' } = {}) => {
       if (!current) return
-      // Approval auto-dismisses sibling questions about the same notes —
-      // say so, or cards vanishing from the stack reads as a glitch.
       const folded = overlapSiblings(current, proposed)
       await api.approveCard(current.id, { ...options, proposed: editing ? draft : undefined })
       showToast(
@@ -52,7 +48,6 @@ export function ReviewDetail() {
           ? t('toast.approvedIssue', { count: folded.length })
           : t('toast.approved', { type: current.cardType }),
       )
-      // Advance past the WHOLE issue — its siblings are already dismissed.
       const gone = new Set([current.id, ...folded.map((c) => c.id)])
       selectCard(proposed.find((c) => !gone.has(c.id))?.id ?? null)
       await refresh()
@@ -74,8 +69,6 @@ export function ReviewDetail() {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
-      // Bare letters only: Ctrl/Cmd+A is select-all, and it used to approve the
-      // card and write the change to the vault with no undo.
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key === 'a' || e.key === 'A') void approve()
       else if (e.key === 'r' || e.key === 'R') setRejecting(true)
@@ -95,7 +88,6 @@ export function ReviewDetail() {
 
   const { card, targets } = detail
   const first = targets[0]
-  // The keys hint carries the ↑↓ move affordance as inline icons ({arrows}).
   const [keysBefore, keysAfter = ''] = t('review.keys').split('{arrows}')
 
   return (

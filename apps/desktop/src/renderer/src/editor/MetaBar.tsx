@@ -7,8 +7,6 @@ import { freshTone } from '../lib/grouping.js'
 
 const DECAYS: NoteDto['decay'][] = ['evergreen', 'slow', 'fast', 'ephemeral']
 
-// One thin line above the body: badge · type · decay · happened_at · owner —
-// everything inline-editable.
 export function MetaBar({ note, onChange }: { note: NoteDto; onChange(next: NoteDto): void }) {
   const [editing, setEditing] = useState<string | null>(null)
 
@@ -20,7 +18,6 @@ export function MetaBar({ note, onChange }: { note: NoteDto; onChange(next: Note
 
   return (
     <div className="meta-bar" data-testid="meta-bar">
-      {/* freshness chip — same flat dot the list/palette use */}
       <button className="meta-chip meta-fresh" title={t('sheet.verifyTitle')} onClick={() => void api.verifyNote(note.id).then(onChange).catch(() => undefined)}>
         {(() => {
           const tone = freshTone(note.badge)
@@ -84,10 +81,6 @@ export function MetaBar({ note, onChange }: { note: NoteDto; onChange(next: Note
         </button>
       )}
 
-      {/* The librarian decides this from the capture text alone, so it gets it
-          wrong sometimes and cannot judge a note written before the field
-          existed at all. This is where you say otherwise — and the only way an
-          older note ever reaches Today. */}
       <button
         className={`meta-chip meta-loop${note.open_loop ? ' on' : ''}`}
         data-testid="meta-open-loop"

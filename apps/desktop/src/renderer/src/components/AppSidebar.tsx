@@ -22,7 +22,6 @@ interface Props {
   open: boolean; onToggle(): void; onOpenSettings(): void
 }
 
-// The team list, one way to add a bot, and Settings. Everything else about a bot is asked for in chat.
 export function AppSidebar({ developer, open, onToggle, onOpenSettings }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
   useEffect(() => { if (vaultReady) return watchAccountUsage() }, [vaultReady])
@@ -49,7 +48,6 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings }: Props)
     const current = cometThreads.getSnapshot().selectedId
     if (current && current === selectedBefore && !nextBots.some(bot => bot.id === current)) selectComet(null)
   }
-  // Conversations whose task still runs or waits for the person never drop out of sight.
   useEffect(() => {
     if (!vaultReady) return
     const load = () => void api.tasksList().then(tasks => setWaiting(new Set(tasks.filter(task => ['queued', 'running', 'waiting'].includes(task.state)).map(task => task.botId)))).catch(() => undefined)

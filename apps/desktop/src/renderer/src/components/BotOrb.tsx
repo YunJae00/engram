@@ -4,9 +4,6 @@ import { ORB_LOOP_MS, ORB_WAVE_LAYERS, ORB_WORK_LAYERS, orbPaths } from '../lib/
 
 type OrbMotion = 'static' | 'idle' | 'working'
 
-// S1 Glass: a dark glass ball with a silver rim, mist lit from below, and one S-shaped wave of light across the middle.
-// bot-orb.css paints the ball, the mist and the rim; the two svgs here hold the wave and its working overlay (see lib/orbWave.ts).
-// Under 64px nothing is painted per frame: css breathes the light layer. From 64px one shared ticker redraws the wave so the ripple travels.
 const STILL = { full: orbPaths('full', 0), small: orbPaths('small', 0) }
 const FRAME_MS = 1000 / 30
 
@@ -24,7 +21,6 @@ function draw(orb: Element, d: string[]): void {
 
 const awake = (): boolean => live.size > 0 && !reduced?.matches && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'
 
-// One requestAnimationFrame loop for every rippling orb on screen.
 function tick(now: number): void {
   frame = awake() ? requestAnimationFrame(tick) : 0
   const step = Math.floor(now / FRAME_MS)
@@ -34,9 +30,7 @@ function tick(now: number): void {
   for (const orb of live) draw(orb, d)
 }
 
-// The loop runs only while a rippling orb is on screen in a visible, focused window with motion allowed; otherwise the pending frame is cancelled and none is requested.
 function sync(): void {
-  // Reduced motion shows the still wave, not whichever frame the ripple stopped on.
   if (reduced?.matches) for (const orb of live) draw(orb, STILL.full)
   if (!awake()) {
     cancelAnimationFrame(frame)
@@ -44,7 +38,6 @@ function sync(): void {
   } else if (frame === 0) frame = requestAnimationFrame(tick)
 }
 
-// Exported for the ticker's unit test only.
 export function ripple(orb: Element): () => void {
   if (!watcher) {
     watcher = new IntersectionObserver(entries => {
@@ -65,9 +58,7 @@ export function ripple(orb: Element): () => void {
   return () => {
     watcher?.unobserve(orb)
     live.delete(orb)
-    // React has already committed the orb's new size: leave the still wave of the master it is now, not of the one that rippled.
     draw(orb, STILL[orb.getAttribute('data-master') === 'small' ? 'small' : 'full'])
-    // The last rippling orb is gone: nothing is left observing or listening.
     if (--mounted === 0) {
       watcher?.disconnect()
       focus?.disconnect()
@@ -79,7 +70,6 @@ export function ripple(orb: Element): () => void {
   }
 }
 
-// size is the drawn width in css pixels; without it the orb is the small static master.
 export function BotOrb({ orb, motion, size = SMALL_MAX_PX }: { orb: OrbId; motion: OrbMotion; size?: number }) {
   const master = size <= SMALL_MAX_PX ? 'small' : 'full'
   const rippling = motion !== 'static' && size >= RIPPLE_MIN_PX

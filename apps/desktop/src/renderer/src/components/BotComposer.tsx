@@ -23,7 +23,6 @@ export function BotComposer({ botId, initialDraft, busy, locked, onSend, onStop 
     const composer = rootRef.current
     const host = composer?.closest<HTMLElement>('.bots-main')
     if (!composer || !host) return
-    // The compact web sheet ends above the draft and any waiting routine controls.
     const measure = () => {
       const style = getComputedStyle(composer)
       const space = composer.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
@@ -46,8 +45,6 @@ export function BotComposer({ botId, initialDraft, busy, locked, onSend, onStop 
     setValue(initialDraft)
   }, [initialDraft, busy])
 
-  // Typing keeps the store's draft equal to the box, so any other difference
-  // is the draft being taken (queued, steered) or put back.
   useEffect(() => {
     const sync = () => {
       const draft = cometThreads.thread(botId).draft

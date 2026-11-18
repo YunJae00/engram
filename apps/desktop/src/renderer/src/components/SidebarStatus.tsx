@@ -58,7 +58,6 @@ export function SidebarStatus() {
   const working = errand.running || sweepStatus.running || filingOnly || retrying
   const paused = sweepStatus.kind === 'error' || sweepStatus.kind === 'done' && (!!sweepStatus.haltReason || sweepStatus.deferred > 0)
 
-  // Quiet at rest: the row is here only while something runs, the retry only when filing stopped short.
   if (!working && !paused) return null
   return (
     <div className="sidebar-status-block">

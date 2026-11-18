@@ -4,8 +4,6 @@ import { useThreadT } from '../lib/useThreadT.js'
 import { useCometState } from '../state-slices.js'
 import { DecisionCard } from './DecisionCard.js'
 
-// The last thing between a procedure and a post. It shows the actual words
-// that will go into the page, because "approve?" without them is not consent.
 export function SubmitGate({ channel }: { channel?: string }) {
   const { routineSubmit, answerRoutineSubmit } = useCometState()
   const t = useThreadT(channel ? cometOfChannel(channel) : null)

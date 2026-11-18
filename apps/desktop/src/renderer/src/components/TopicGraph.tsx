@@ -13,24 +13,16 @@ const RECALL_HALO_MS = 7 * 86_400_000
 export function BrainGraph({ notes, onOpen, focus, onFocusConsumed }: {
   notes: NoteDto[]
   onOpen: (id: string) => void
-  // Stars to spotlight on mount (the "View in the cosmos" hand-off): members
-  // light up + halo, the rest fade. Consumed once via onFocusConsumed.
   focus?: { ids: string[] } | null
   onFocusConsumed?: () => void
 }) {
   const picked = useMemo(() => pickStars(notes), [notes])
   const shape = useMemo(() => shapeDigest(picked), [picked])
 
-  // Positions re-solve ONLY when the shape moves. pickedRef dodges the stale
-  // closure: for one digest every picked array is positionally equivalent, so
-  // reading the latest is safe — and it keeps `picked` out of the memo key.
   const pickedRef = useRef(picked)
   pickedRef.current = picked
   const { pos, edges, neighbors, order } = useMemo(() => solvePositions(pickedRef.current), [shape])
 
-  // Meaning-level threads: fabric pairs whose both stars are on this sky and
-  // that no written link already covers. Visual only — the solver never sees
-  // them, so association cannot move the constellations around.
   const { fabric } = useApp()
   const fabricPairs = useMemo(() => {
     if (fabric.edges.length === 0) return []
@@ -49,8 +41,6 @@ export function BrainGraph({ notes, onOpen, focus, onFocusConsumed }: {
     return out
   }, [fabric, picked, edges])
 
-  // Dressing refreshes every publish — freshness dims, recall halos, ignition
-  // flashes — without touching the solved sky.
   const nodes: SkyNode[] = useMemo(() => {
     const now = Date.now()
     return picked.map((n, i) => ({
@@ -81,8 +71,6 @@ export function BrainGraph({ notes, onOpen, focus, onFocusConsumed }: {
     const maxX = Math.max(...members.map((n) => n.x)) + pad
     const minY = Math.min(...members.map((n) => n.y)) - pad
     const maxY = Math.max(...members.map((n) => n.y)) + pad
-    // Fit the cluster's box to the virtual aspect; never zoom past the wheel's
-    // own comfort range, never wider than the full sky.
     const w = Math.min(Math.max(maxX - minX, ((maxY - minY) * VW) / VH, VW / 4), VW)
     const h = (w / VW) * VH
     setView({ x: (minX + maxX) / 2 - w / 2, y: (minY + maxY) / 2 - h / 2, w, h })
@@ -90,7 +78,6 @@ export function BrainGraph({ notes, onOpen, focus, onFocusConsumed }: {
 
   const clearSpotlight = useCallback(() => setSpotlight(null), [])
 
-  // A single memory is still a sky (Engram: the first star must show).
   if (nodes.length < 1) return null
 
   return (

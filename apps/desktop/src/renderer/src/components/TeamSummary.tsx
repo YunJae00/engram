@@ -18,15 +18,11 @@ export function TeamSummary({ team, lang }: { team: TeamView | undefined; lang: 
   </section>
 }
 
-// c5 (GROKBOT rule 8): the finished summary (summaryIdle) stayed under the row after everyone was done. Like the strip in the thread, the sidebar's line is
-// there only while someone is working.
 export function SidebarTeamLine({ team, lang }: { team: TeamView | undefined; lang: TeamLang }) {
   if (!team || !teamWorking(team.members)) return null
   return <span className="sidebar-team-line" data-testid="sidebar-team-line"><span>{teamSummaryText(team.members, lang)}</span></span>
 }
 
-// Under a team bot's sidebar row: the same summary as a disclosure over its leads, name and status only.
-// Helpers and results stay in the chat's own tree.
 export function SidebarTeam({ team, lang }: { team: TeamView | undefined; lang: TeamLang }) {
   const [open, setOpen] = useState(false)
   const id = useId()

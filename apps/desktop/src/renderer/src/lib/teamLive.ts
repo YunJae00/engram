@@ -22,7 +22,6 @@ function apply(next: Map<string, TeamView>): void {
   for (const listener of listeners) listener()
 }
 
-// One read at a time; events during a read collapse into one trailing read, so the last data always wins.
 async function load(): Promise<void> {
   if (busy) { again = true; return }
   busy = true

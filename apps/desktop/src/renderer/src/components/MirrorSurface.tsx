@@ -5,18 +5,9 @@ import { FrameScreen } from './FrameScreen.js'
 import { HandGhost } from './HandGhost.js'
 import { t } from '../i18n.js'
 
-// The mirrored page as a surface a person can act on: every click, wheel and
-// key on the picture is played into the agent window as their own. One
-// component, used wherever the mirror is shown large enough to work in.
-//
-// Coordinates are measured against the CANVAS, not its container: the picture
-// keeps its own shape inside whatever box the layout gives it, and a click in
-// the letterbox must not land on the page as a click near its edge.
-
 const MODIFIER = { alt: 1, ctrl: 2, meta: 4, shift: 8 } as const
 const BUTTON: Record<number, 'left' | 'middle' | 'right'> = { 0: 'left', 1: 'middle', 2: 'right' }
 const MOVE_EVERY_MS = 16
-// Keys that mean something to a page beyond a character.
 const PRESSED_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 
 function modifiersOf(e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }): number {
@@ -28,10 +19,6 @@ export function MirrorSurface({ live, hasFrame, lane }: { live: boolean; hasFram
   const keys = useRef<HTMLTextAreaElement>(null)
   const lastMove = useRef(0)
   const send = (input: AgentInputDto) => void api.agentInput(input, lane).catch(() => {})
-  // The canvas box fills its stage and the picture sits inside it at its
-  // own shape (object-fit: contain), so the two differ by a band above and
-  // below or either side whenever the shapes do not match. A point is read
-  // against the picture, or it lands on the page a band's width off.
   const at = (e: { clientX: number; clientY: number }): { x: number; y: number } | null => {
     const canvas = box.current?.querySelector('canvas')
     const rect = canvas?.getBoundingClientRect()
@@ -57,8 +44,6 @@ export function MirrorSurface({ live, hasFrame, lane }: { live: boolean; hasFram
     send({ kind: 'mouse', type, ...p, button: type === 'moved' ? 'none' : (BUTTON[e.button] ?? 'left'), clicks: e.detail, modifiers: modifiersOf(e) })
   }
   const key = (e: React.KeyboardEvent<HTMLTextAreaElement>, type: 'down' | 'up') => {
-    // Text being composed (an input method building a character) is left to
-    // finish; it arrives whole below.
     if (e.nativeEvent.isComposing || e.key === 'Process' || e.key === 'Escape') return
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey
     const typed = type === 'down' && plain && e.key.length === 1 ? e.key : type === 'down' && e.key === 'Enter' ? '\r' : undefined
@@ -66,8 +51,6 @@ export function MirrorSurface({ live, hasFrame, lane }: { live: boolean; hasFram
     e.preventDefault()
     if (live) send({ kind: 'key', type, key: e.key, code: e.code, keyCode: e.keyCode, ...(typed ? { text: typed } : {}), modifiers: modifiersOf(e) })
   }
-  // The wheel must reach the page and nothing behind it, which takes a
-  // listener the browser is not allowed to treat as passive.
   useEffect(() => {
     const el = box.current
     if (!el) return
@@ -122,7 +105,6 @@ export function MirrorSurface({ live, hasFrame, lane }: { live: boolean; hasFram
           if (text && live) send({ kind: 'text', text })
         }}
         onChange={(e) => {
-          // Anything that slipped past the key handler is typed as text.
           if (!(e.nativeEvent as InputEvent).isComposing && e.target.value) {
             if (live) send({ kind: 'text', text: e.target.value })
             e.target.value = ''

@@ -1,6 +1,5 @@
 import { clipLabel } from './createBot.js'
 
-// The onboarding renderer is replaced by onboard:complete, so the first-bot choice crosses the reload here.
 export const ONBOARD_BOT_KEY = 'engram.onboardBot'
 
 export type OnboardBot = { name: string | null; label: string | null }

@@ -9,7 +9,6 @@ export function cometActivity(thread: CometThread | undefined, active = false, w
   return thread?.messages.at(-1)?.error ? 'error' : 'ready'
 }
 
-// Tokens, work lines and drafts do not change the activity snapshot.
 export function activitySnapshot(threads: Readonly<Record<string, CometThread>>): string {
   return JSON.stringify(Object.entries(threads).map(([id, thread]) => [id, cometActivity(thread)]))
 }

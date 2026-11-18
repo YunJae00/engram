@@ -3,8 +3,6 @@ import type { NoteDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 
-// Collapsible horizontal chain: ancestors → current → descendants.
-// Clicking a node shows that version as a diff.
 export function LineageStrip({ noteId, onDiff }: { noteId: string; onDiff(fromId: string): void }) {
   const [open, setOpen] = useState(false)
   const [chain, setChain] = useState<NoteDto[]>([])

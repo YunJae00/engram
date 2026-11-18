@@ -17,9 +17,7 @@ import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 const WIDTH_KEY = 'engram.webpane.width'
 const MIN_W = 380
 const MAX_SHARE = 0.72
-// How long the pane takes to leave when folded away.
 const FOLD_MS = 220
-// What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
 function BrowserAddress({ url, channel }: { url?: string; channel: string }) {
@@ -83,8 +81,6 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     document.addEventListener('visibilitychange', changed)
     return () => document.removeEventListener('visibilitychange', changed)
   }, [])
-  // Folding plays the pane out to the right edge before the tab takes its
-  // place, so the fold reads as the pane leaving, not vanishing.
   const { folded, wanted, phase, expanded, floating } = useWebPane(channel)
   const { compact, elementRef } = useCompactBrowser()
   const preview = floating || (compact && !expanded)
@@ -103,23 +99,16 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     void agentMirror.ask()
   }, [channel, active])
   const { on, url, frame, lane } = useSyncExternalStore(agentMirror.subscribe, agentMirror.getSnapshot)
-  // What the store holds is whoever was mirrored last; it belongs on this
-  // pane only when it is this comet's own. Another comet's page must never
-  // stand in for an empty one here.
   const mine = lane === channel
   const liveHere = on && mine
   const frameHere = frame && mine
   const [width, setWidth] = useState(() => Number(localStorage.getItem(WIDTH_KEY)) || 0)
-  // Visible pages remain responsive even after the assistant finishes.
-  // The compositor only streams changes; hidden panes have no encoder.
   const showing = liveHere && visible && active && !folded
   useEffect(() => {
     if (!showing) return
     agentMirror.showPixels(true)
     return () => agentMirror.showPixels(false)
   }, [showing])
-  // A pane that has just opened, or a page that has just moved, is asked for
-  // the picture as it is now rather than waiting for the page to paint.
   useEffect(() => {
     if (!showing || native) return
     void api.agentRefresh().catch(() => {})
@@ -143,16 +132,10 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
-  // Match the visible pane so text stays readable without scaling a desktop
-  // layout down to a narrow picture. Native surfaces already resize directly.
   const stage = useRef<HTMLDivElement>(null)
   const frozen = !on && frameHere
   const paneShown = (liveHere || frozen) && !folded
   useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active && !preview)
-  // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
-  // hand with nothing open, it stands with its address field - the way a
-  // browser opens on a blank tab - and folded it is simply gone until the
-  // next page work brings its preview card back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
   if (preview) return null
   if (folded && !present) return null
@@ -190,9 +173,6 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
         <div className="web-work-status" data-testid="web-work-status" role="status" aria-live="polite" aria-hidden={!busy || phase === 'idle'}>
           <div><Comet size={15} /><strong>{t(phase === 'aside' ? 'live.yours' : 'live.working')}</strong><span>{t(phase === 'aside' ? 'live.yoursHint' : 'live.takeOverHint')}</span></div>
         </div>
-        {/* The picture keeps the page's own shape: the stage is exactly as
-            tall as the frame is wide, so nothing is letterboxed inside a
-            field and the space left over is simply the pane. */}
         <div
           className="web-pane-stage"
           ref={stage}

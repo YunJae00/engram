@@ -1,8 +1,6 @@
 import { useId } from 'react'
 import { t, type StringKey } from '../i18n.js'
 
-// What Engram may learn from on this computer, each chosen on its own. The
-// same list and words at onboarding and in Settings.
 export type LearningKey = 'workMap' | 'workFiles' | 'workApps' | 'activity'
 export type LearningChoice = Record<LearningKey, boolean>
 

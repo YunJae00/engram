@@ -33,7 +33,6 @@ function focusShell(event: Event): void {
 }
 
 function scroll(event: Event): void {
-  // A sibling scroller cannot move a browser surface.
   if (event.target === document || [...surfaces.keys()].some(element => event.target instanceof Element && event.target.contains(element))) schedule()
 }
 
@@ -42,8 +41,6 @@ export const OVERLAY_SELECTOR = 'dialog[open], [role="alertdialog"], [aria-modal
 function measure(): void {
   const result: NativeSurfaceDto[] = []
   const overlays = [...document.querySelectorAll<HTMLElement>(OVERLAY_SELECTOR)]
-  // Occlusion by another app is not a layout change. Native child windows
-  // already follow their owner; unmounting them here flashes on task switching.
   for (const [element, lane] of surfaces) {
     if (element.closest('[hidden], [inert]') || getComputedStyle(element).visibility === 'hidden') continue
     const full = element.getBoundingClientRect()
@@ -64,12 +61,6 @@ function measure(): void {
       const box = overlay.getBoundingClientRect()
       return box.width > 0 && box.height > 0 && box.left < rect.right && box.right > rect.left && box.top < rect.bottom && box.bottom > rect.top
     })) continue
-    // Native child windows cannot sit below an HTML menu or modal. With no
-    // overlay open there is nothing that can occlude one, so the nine hit-tests
-    // (forced layout ×9 per surface, on every scroll frame) are pure cost.
-    // ponytail: a non-overlay element transiently over the surface (a tooltip)
-    // won't hide it while no menu is open; add a cheap single-point probe if
-    // that ever matters.
     const clear = overlays.length === 0 || [0.02, 0.5, 0.98].every((fx) => [0.02, 0.5, 0.98].every((fy) => {
       const top = document.elementFromPoint(rect.x + rect.width * fx, rect.y + rect.height * fy)
       return top === element || (top !== null && element.contains(top))
@@ -88,13 +79,10 @@ export function mountNativeSurface(element: HTMLElement, lane: string, onHidden?
   surfaces.set(element, lane)
   if (onHidden) visibility.set(element, onHidden)
   if (!timer) {
-    // Keep the native host's lease alive without polling layout at frame rate.
     timer = setInterval(measure, 1000)
     document.addEventListener('pointerdown', focusShell, true)
     document.addEventListener('focusin', focusShell, true)
     changes = new MutationObserver(records => {
-      // Status text and list reordering cannot move the adjacent browser.
-      // Portalled menus and dialogs remain observed at the document level.
       if (records.some(record => !(record.target instanceof Element) || !record.target.closest('.sidebar-scroll, .sidebar-footer'))) schedule()
     })
     changes.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'inert', 'role', 'open'] })

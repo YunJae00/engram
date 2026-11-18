@@ -34,7 +34,6 @@ export const webPane = {
   fold(lane: string): void { set(lane, { folded: true, expanded: false }) },
   expand(lane: string, expanded: boolean): void { set(lane, { folded: false, wanted: true, floating: false, expanded }) },
   attention(lane: string): void { set(lane, { attention: true, ...(state(lane).expanded ? { expanded: false, floating: true } : {}) }) },
-  // Tool names are the protocol, not the human-readable step summary.
   handleEvent(event: EngramEvent): boolean {
     if (!('channel' in event) || !event.channel) return false
     const lane = event.channel

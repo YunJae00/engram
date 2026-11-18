@@ -24,8 +24,6 @@ export const AppNotices = memo(function AppNotices({
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState(false)
   useEffect(() => setError(false), [update?.version, update?.state])
-  // A provider failing on its side is said where it failed, in the conversation;
-  // the background work waits it out on its own.
   const unhealthy = engines.filter((engine) => engine.healthy === false && engine.healthReason !== 'outage')
   const unhealthyIds = unhealthy.map((engine) => engine.id === 'codex' ? 'ChatGPT' : engine.id === 'claude' ? 'Claude' : engine.id).join(', ')
   const reason = unhealthy[0]?.healthReason
@@ -88,7 +86,6 @@ export function Toast({ message, onDone }: { message: string; onDone: () => void
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef<() => void>(() => undefined)
   const [leaving, setLeaving] = useState(false)
-  // A toast that appears under a still pointer pauses on the first pointer move: the click-through surface cannot report :hover.
   useEffect(() => {
     let remaining = TOAST_MS, started = performance.now(), hovered = false, done = false
     let timer: number | undefined = window.setTimeout(() => finish(), remaining), exit: number | undefined
@@ -111,7 +108,6 @@ export function Toast({ message, onDone }: { message: string; onDone: () => void
         timer = window.setTimeout(finish, remaining)
       }
     }
-    // The toast is click-through, so it never receives pointerenter itself.
     const move = (e: PointerEvent) => {
       const r = ref.current?.getBoundingClientRect()
       hover(!!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom)

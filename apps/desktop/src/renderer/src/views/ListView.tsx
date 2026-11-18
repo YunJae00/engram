@@ -5,7 +5,6 @@ import { EmptyState } from '../components/EmptyState.js'
 import { useApp } from '../state.js'
 import { freshTone } from '../lib/grouping.js'
 
-// After filtering, only the first N rows mount; a quiet button reveals the rest.
 const ROW_CAP = 400
 
 interface Section {
@@ -13,8 +12,6 @@ interface Section {
   notes: NoteDto[]
 }
 
-// The note's place on the axis: when it happened if the librarian dated it,
-// else when it last changed.
 function chronoMs(note: NoteDto): number {
   return Date.parse(note.happened_at ?? note.updated)
 }
@@ -35,15 +32,11 @@ export function ListView() {
   const [showAll, setShowAll] = useState(false)
   const rowEls = useRef<Map<string, HTMLDivElement>>(new Map())
 
-  // Living knowledge only — the same set every canvas tab shows.
   const pinned = useMemo(
     () => notes.filter((n) => n.status === 'current' || n.status === 'disputed'),
     [notes],
   )
 
-  // Team-vault lens: the distinct owners present. Solo vaults (no owner field
-  // anywhere) never see the filter — the chrome only exists when it can answer
-  // "who knows this?".
   const owners = useMemo(
     () => [...new Set(pinned.map((n) => n.owner).filter((o): o is string => !!o))].sort(),
     [pinned],
@@ -54,12 +47,9 @@ export function ListView() {
     let list = pinned
     if (owner) list = list.filter((n) => n.owner === owner)
     if (q) list = list.filter((n) => n.title.toLowerCase().includes(q))
-    // Newest first — the list reads top-down like history being written.
     return [...list].sort((a, b) => chronoMs(b) - chronoMs(a))
   }, [pinned, filter, owner])
 
-  // Month sections under the same sticky head + count chip the topic grouping
-  // used — the section key just became time.
   const sections = useMemo<Section[]>(() => {
     const byMonth = new Map<string, NoteDto[]>()
     for (const note of filtered) {
@@ -73,7 +63,6 @@ export function ListView() {
   const total = useMemo(() => sections.reduce((sum, s) => sum + s.notes.length, 0), [sections])
   const capped = !showAll && total > ROW_CAP
 
-  // Rows actually rendered, keeping section grouping but honouring the cap.
   const shownSections = useMemo<Section[]>(() => {
     if (!capped) return sections
     const out: Section[] = []
@@ -87,7 +76,6 @@ export function ListView() {
     return out
   }, [sections, capped])
 
-  // Flat id order of the visible rows — drives roving-tabindex arrow nav.
   const shownIds = useMemo(
     () => shownSections.flatMap((s) => s.notes.map((n) => n.id)),
     [shownSections],

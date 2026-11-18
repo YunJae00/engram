@@ -2,15 +2,11 @@ import { marked, type Tokens } from 'marked'
 import { t } from './i18n.js'
 import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
-// A model that indents its bullets turns the whole answer into a markdown code
-// block, which then refuses to wrap and runs off the side of the panel. Strip
-// the shared indent so prose stays prose.
 function dedent(text: string): string {
   const lines = text.split('\n')
   const indents = lines.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length)
   const shared = indents.length > 0 ? Math.min(...indents) : 0
   const flat = shared > 0 ? lines.map((l) => l.slice(shared)) : lines
-  // Even after dedenting, a stray four-space line would still read as code.
   let fenced = false
   return flat.map((line) => {
     if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; return line }
@@ -18,9 +14,6 @@ function dedent(text: string): string {
   }).join('\n')
 }
 
-// Small models like to wrap a whole markdown answer in a ```markdown fence.
-// Rendered literally that is a grey code block of the answer, so unwrap it —
-// mid-stream too, where the closing fence has not arrived yet.
 function unfence(text: string): string {
   const lines = text.split('\n')
   const open = lines.findIndex((l) => l.trim() !== '')
@@ -32,18 +25,12 @@ function unfence(text: string): string {
   return text
 }
 
-// Mid-stream, a capture marker tail may arrive before main strips it from the
-// final text — never show the plumbing.
-// marked's GFM del also takes a single tilde, which strikes through Korean
-// ranges like 11/17~11/20. Only ~~double~~ tildes mean strikethrough.
 class DoubleTildeTokenizer extends marked.Tokenizer {
   override del(src: string): Tokens.Del | undefined {
     const token = super.del(src)
     return token?.raw.startsWith('~~') ? token : undefined
   }
 
-  // CommonMark will not close `**(inbox)**` + a Hangul particle (e.g. U+ACFC): after punctuation, a closing run
-  // must be followed by space or punctuation, and Korean particles attach directly.
   override emStrong(src: string, maskedSrc: string, prevChar?: string): Tokens.Em | Tokens.Strong | undefined {
     return super.emStrong(src, maskedSrc.replace(PARTICLE_AFTER_CLOSER, '$1.'), prevChar)
   }
@@ -59,8 +46,6 @@ export function memorySources(text: string): { url: string; label: string }[] {
   return [...sources].map(([url, label]) => ({ url, label }))
 }
 
-// Replies the comet suggests come last, in a fenced block of their own; they are
-// shown as buttons, never as text - mid-stream too, before the fence closes.
 const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
 const REPLIES_AT_MOST = 3
 
@@ -88,7 +73,6 @@ export function suggestedReplies(text: string, lang?: 'ko' | 'en'): string[] {
   return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
 }
 
-// Only split message separators outside code and hidden suggestion blocks.
 export function answerBubbles(text: string): string[] {
   const parts: string[][] = [[]]
   let fence: string | undefined
@@ -103,18 +87,12 @@ export function answerBubbles(text: string): string[] {
   return bubbles.length ? bubbles : [answerText(text)]
 }
 
-// One answer is one bubble: its separator lines fall away and the parts stay paragraphs of it.
 export const answerWhole = (text: string): string => answerBubbles(text).join('\n\n')
 
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
 }
 
-// A table of found items reads as a stack of cards: the first column names the
-// item, the other columns become its labelled details. Two-column tables stay
-// tables - they are a list of values, not of items. Three rows or more are a
-// comparison and stay one table too (grokbar B6: the merged table of three
-// cities was drawn as three cards, so the answer had no table to read across).
 const CARD_COLUMNS_MIN = 3
 const CARD_ROWS_MAX = 2
 
@@ -132,9 +110,6 @@ function cardsHtml(token: Tokens.Table, inline: (tokens: Tokens.TableCell['token
   return `<div class="answer-cards">${cards.join('')}</div>`
 }
 
-// The files an answer made show as cards under its words. A line that is
-// only a file link becomes its card; a link inside a sentence stays a link
-// and gets a card too.
 const FILE_LINK = /\[[^\]]*\]\((engram-artifact:[^)\s]+)\)/g
 const FILE_LINE = /^\s*(?:[-*]\s+)?(\[[^\]]*\]\(engram-artifact:[^)\s]+\))\s*$/
 export interface AnswerFile { id: string; name: string }
@@ -146,17 +121,14 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
       const id = decodeURIComponent(match[1]!.slice('engram-artifact:'.length))
       links.add(match[0])
       if (!files.some(file => file.id === id)) files.push({ id, name: id.replace(/^[0-9a-f-]{36}-/i, '') })
-    } catch { /* A malformed link stays as written. */ }
+    } catch { }
   }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }
 
-// The ids of every file the chat's answers link, one per line. A card's "previous" link opens an earlier version only when it is one of these.
 export const linkedFiles = (messages: readonly { role: string; text: string }[]): string =>
   messages.flatMap(({ role, text }) => role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []).join('\n')
 
-// A file made in a turn gets one card, under the last answer that links it. For each message: the
-// ids (one per line) that a later answer to the same question cards, so this one does not.
 export function laterFiles(messages: readonly { role: string; text: string }[]): string[] {
   const out: string[] = [], later = new Set<string>()
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -169,20 +141,12 @@ export function laterFiles(messages: readonly { role: string; text: string }[]):
   return out
 }
 
-// The lines of an answer as said, without what a restatement may change: heading, quote, list and
-// emphasis marks, spacing, table rules and the label of a file link. Signs, digits, punctuation
-// and table columns stay, so a changed value is a changed line.
 const saidLines = (text: string): string[] => answerText(text).split('\n')
   .filter(line => !/^[\s|:-]*-[\s|:-]*$/.test(line))
   .map(line => line.replace(FILE_LINK, '$1').replace(/^\s*(?:>\s*)*(?:#{1,6}\s+)?(?:[-*+]\s+)?/, '')
     .replace(/(?<![\p{L}\p{N}])[*_`]+|[*_`]+(?![\p{L}\p{N}])/gu, '').replace(/\s*\|\s*/g, '|').replace(/\s+/g, ' ').trim().toLowerCase())
   .filter(Boolean)
 
-// A re-check often says the answer again as a second message. For each message: whether a later
-// answer to the same question says every line of it again and links every file it links, so this
-// one is not shown as a bubble of its own. One changed line (a corrected row, a sign, a number)
-// keeps both bubbles, and so does a check record that no later answer carries. The later answer
-// always stays.
 export function restatedAnswers(messages: readonly { role: string; text: string; evidence?: unknown }[]): boolean[] {
   const out: boolean[] = []
   let later: { said: Set<string>; files: Set<string>; evidence: boolean }[] = []

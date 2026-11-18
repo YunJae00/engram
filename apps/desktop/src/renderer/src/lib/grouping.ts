@@ -1,14 +1,6 @@
 import { BookOpen, CalendarDays, CircleHelp, FileDown, Gavel, Info, Lightbulb, Library, ListChecks, Network, Package, StickyNote, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { StringKey } from '../i18n.js'
 
-// Note-identity helpers shared across the shell (list rows, topic pages, the
-// palette, the capture echo). Pure functions — no React, no IPC — so every
-// caller stays thin and the logic is unit-testable on its own.
-
-// ── Note identity: one source for every note type's icon, label and tone ──
-// The list rows, memory rows, hover surfaces and the help legend all read
-// their glyph/tone from here so a type never disagrees with itself across
-// the UI.
 type Tone = 'accent' | 'teal' | 'gild' | 'clay' | 'none'
 
 interface TypeIdentity {
@@ -38,14 +30,9 @@ export function typeIdentity(type: string): TypeIdentity {
     case 'imported':
       return { icon: FileDown, labelKey: 'type.imported', tone: 'none' }
     case 'artifact':
-      // Chat answers promoted to notes (Record) — a distinct, teal "made thing".
       return { icon: Package, labelKey: 'type.artifact', tone: 'teal' }
     case 'hub':
-      // J9's topic syntheses — the librarian's "what this pile amounts to".
       return { icon: Network, labelKey: 'type.hub', tone: 'accent' }
-    // The AGENTS.md taxonomy (fact/decision/meeting/idea/reference) — these
-    // three used to fall through to the generic note identity, which left
-    // folders labelled with the raw English type key.
     case 'meeting':
       return { icon: Users, labelKey: 'type.meeting', tone: 'none' }
     case 'idea':
@@ -57,10 +44,6 @@ export function typeIdentity(type: string): TypeIdentity {
   }
 }
 
-// Freshness tone for the flat freshness dot; disputed/unknown badges show no
-// dot (the conflict flag carries that state instead). Single-sourced here so
-// the list rows, memory rows, palette, capture echo and cosmos stars all paint
-// the same dot.
 export function freshTone(badge: string): 'green' | 'amber' | 'red' | null {
   if (badge === '🟢') return 'green'
   if (badge === '🟡') return 'amber'
@@ -68,10 +51,6 @@ export function freshTone(badge: string): 'green' | 'amber' | 'red' | null {
   return null
 }
 
-// Strip pictographic emoji (plus their variation selectors and ZWJ joiners) from
-// a string so titles/excerpts read as clean paper. Newlines survive; only runs
-// of spaces collapse. NoteSheet keeps the raw text — only surfaces that quote a
-// note into a row or label call this.
 export function stripEmoji(text: string): string {
   return text
     .replace(/\p{Extended_Pictographic}/gu, '')

@@ -10,12 +10,10 @@ export function groupSidebarBots(bots: readonly BotDto[]): { hero: BotDto | null
 
 type BodyHits = { has(id: string): boolean }
 
-/** The body text to show under a row that search lists for words its title does not have; undefined when the title already shows the match. */
 export function searchExcerpt(bot: BotDto, search: string, excerpts: ReadonlyMap<string, string>): string | undefined {
   return search && !bot.name.toLocaleLowerCase().includes(search) ? excerpts.get(bot.id) : undefined
 }
 
-/** The excerpt cut around each place the search words appear, so the row can mark them; the pieces are plain text, never markup. */
 export function markParts(text: string, search: string): { text: string; hit: boolean }[] {
   const lower = text.toLocaleLowerCase()
   if (!search || lower.length !== text.length) return [{ text, hit: false }]
@@ -50,7 +48,6 @@ export function botMenuItems(bot: BotDto, place: { folder: string | null; pinned
   const primary = { label: t('sidebar.makePrimary'), run: { kind: 'update', patch: { primary: true } } } as const
   const remove = { label: t('sidebar.delete'), run: { kind: 'delete' } } as const
   const icon = { label: t('sidebar.changeIcon'), run: { kind: 'icon' } } as const
-  // Core clears hidden only on an own undefined; hidden: false is rejected.
   if (bot.hidden === true) return [{ label: t('sidebar.rename'), run: { kind: 'rename' } }, icon, { label: t('sidebar.show'), run: { kind: 'update', patch: { hidden: undefined } } }, primary, remove]
   const items: { label: string; run: BotMenuRun }[] = [
     { label: t('sidebar.rename'), run: { kind: 'rename' } },

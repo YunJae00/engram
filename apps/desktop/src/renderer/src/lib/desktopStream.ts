@@ -1,6 +1,5 @@
 import { api } from '../api.js'
 
-// A display grant is consumed before another preview requests its own source.
 let pending: Promise<unknown> = Promise.resolve()
 export function openDesktopStream(lane: string, signal?: AbortSignal): Promise<MediaStream> {
   const start = pending.then(() => startCapture(lane, signal))

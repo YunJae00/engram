@@ -19,7 +19,6 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<CharacterId | null>(null)
   const [preview, setPreview] = useState<BotDto | null>(null)
-  // Unpicked, the preview hashes the provisional id but nothing derived from it is saved.
   const shown = preview ? avatarCharacter(preview.id, preview.avatar) : picked ?? avatarCharacter(provisionalId)
 
   useLayoutEffect(() => {

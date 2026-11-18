@@ -11,10 +11,6 @@ import { Thinking } from './Thinking.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 
-// The cosmos's right edge: ask the librarian, or just tell it something to
-// keep. There is no separate "Remember" verb — the librarian files whatever
-// the answer marks for keeping, so "remember X" in the box is the capture.
-
 interface Message extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
@@ -91,7 +87,6 @@ export const CosmosChat = memo(function CosmosChat() {
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
   }, [])
 
-  // The starter chips and the help panel both aim here.
   useEffect(() => {
     const focus = (event: Event) => {
       const seed = (event as CustomEvent<{ seed?: string }>).detail?.seed
@@ -176,8 +171,6 @@ export const CosmosChat = memo(function CosmosChat() {
     )
   }
 
-  // The conversation floats over the map so opening it never relayouts the
-  // graph or moves the point the person was looking at.
   if (collapsed) {
     return (
       <div className="cosmos-chat-launcher" data-testid="cosmos-chat-folded">

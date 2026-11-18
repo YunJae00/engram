@@ -8,8 +8,6 @@ const timeOf = (at: unknown): number | null => {
   return Number.isFinite(t) ? t : null
 }
 
-// One flag per message: a time divider goes above it when it came at least
-// DIVIDER_GAP_MS after the last message with a valid time.
 export function dividerBefore(messages: readonly { at?: string }[]): boolean[] {
   const out: boolean[] = []
   let last: number | null = null

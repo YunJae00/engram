@@ -1,9 +1,6 @@
 import type { StringKey, Translate } from '../i18n.js'
 import { GROUP_KO, GROUP_KO_OTHER, WORK_KO, WORK_KO_OTHER } from './threadLangKo.js'
 
-// The loop narrates a step as "tool: argument". The tool's own name is the
-// evidence; this is the sentence a person reads for it. A line that is not
-// shaped that way (a probe's observation dump) is shown as it came.
 const STEP_LABEL: Record<string, StringKey> = {
   find_procedure: 'bots.stepFindProcedure',
   search_memory: 'bots.stepSearchMemory',
@@ -29,8 +26,6 @@ const STEP_LABEL: Record<string, StringKey> = {
   resume: 'bots.stepResume',
 }
 
-// The runtime's own tools and the file tools name a path or a pattern; the
-// person reads what is being done with it.
 const WORK: Record<string, string | ((arg: string) => string)> = {
   ppt_build: 'Creating a presentation in PowerPoint', ppt_read: 'Checking the presentation', ppt_edit: 'Updating the open presentation',
   word_write: 'Creating a document in Word', word_read: 'Checking the document', word_edit: 'Updating the open document',
@@ -48,7 +43,6 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check', collect_results: 'Checking collected details',
   artifact_read: arg => `Reading ${fileName(arg)}`,
 }
-// Lines the host writes about the turn rather than a tool call.
 const SPOKEN = /^(note|verification|switch|aside|resume): /
 const fileName = (arg: string): string => {
   if (arg.trim() === 'saved file') return 'a saved file'
@@ -65,20 +59,16 @@ export function stepLabel(t: Translate, line: string): string {
   if (key) {
     const arg = match[2]!.trim()
     const text = t(key, { arg })
-    // a step with no string argument (press_point x,y) leaves "()" behind
     return arg ? text : text.replace(/\s*\(\s*\)/g, '')
   }
   if (SPOKEN.test(line)) return match[2]!.trim() || line
-  // An unnamed step in a Korean conversation is never shown by its internal name.
   return (t as { lang?: string }).lang === 'ko' && /^[A-Za-z_]+$/.test(match[1]!) ? WORK_KO_OTHER : line
 }
 
-// Words the comet wrote between actions, kept in the work as what it said.
 const SAID = 'said: '
 export function isSaidLine(line: string): boolean {
   return line.startsWith(SAID)
 }
-// Words the person sent while the work was going, kept in the work where they were said.
 const YOU = 'you: '
 export function isYouLine(line: string): boolean {
   return line.startsWith(YOU)
@@ -119,8 +109,6 @@ function englishWorkLabel(line: string): string {
   return tool.includes(' ') || !/^[a-z_]+$/.test(tool) ? line : tool.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase())
 }
 
-// The wait is one fixed word. Naming each step as it comes ("searching… opening a page… checking…") is a step stream;
-// what the person hears about is a finished milestone, said in the chat.
 export function pendingStatus(t: Translate): string {
   return t('bots.thinking')
 }

@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 
-// The comet's hand on the mirrored page. Main says where a hand is about to
-// land, as fractions of the page; this draws a pointer there, lets it
-// travel (the CSS does the moving), rings it on a press, and lets it fade
-// once it has been still for a while. Nothing here touches React on every
-// frame: a pointer event is rare, one per press or field.
-
 const LINGER_MS = 2_500
 
 export function HandGhost() {

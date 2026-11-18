@@ -10,10 +10,6 @@ import { renderMarkdown } from '../lib/markdown.js'
 import { DecisionCard } from './DecisionCard.js'
 import { awaitingEmployees } from '../../../shared/task-waits.js'
 
-// Presses the comet's task left for the person while it went on with the
-// rest: each is decided here, and once all are decided the task continues.
-// A question or a pause the thread does not already show is a card too.
-
 export function TaskApprovals({ botId, questionShown, failureShown }: { botId: string; questionShown?: string; failureShown?: boolean }) {
   const [task, setTask] = useState<DelegatedTaskDto | null>(null)
   const [pendingDecision, setPendingDecision] = useState(false)
@@ -32,15 +28,12 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
     if (task?.state === 'waiting' && !awaitingEmployees(task)) webPane.attention(`bot-${botId}`)
   }, [task, botId])
   if (!task || !['running', 'waiting', 'failed'].includes(task.state)) return null
-  // A failure the thread already says needs no second card.
   if (task.state === 'failed' && (failureShown || questionShown !== undefined)) return null
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
   if (task.state === 'running' && !pending.length) return null
-  // Employees are working in the background: nothing stopped and nothing is asked, so there is no card.
   if (awaitingEmployees(task)) return null
   if (!pending.length || task.question) {
-    // A one-line question is the card's title; a longer one is read below it.
     const log = task.log.at(-1)?.line
     const said = displayTaskAnswer(answerText(task.question ?? (log === 'Stopped at the task token budget.' ? threadWords(t.lang).budgetStop : log) ?? 'Task paused.').trim(), t.lang)
     const short = !said.includes('\n') && said.length <= 140
@@ -75,7 +68,6 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
           title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? commandGate(a.words, t.lang).title : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
-          // An engram: address has no site to name; its host is only a route word like "app".
           sub={a.url.startsWith('engram:') ? undefined : a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>

@@ -17,7 +17,6 @@ export function DeveloperHistory({ repo, provider, onClose, onImported }: { repo
   const [allFolders, setAllFolders] = useState(false)
   const [reload, setReload] = useState(0)
   const profiles = useAccountProfiles(), [chosenProfile, setChosenProfile] = useState<string | null>(null)
-  // Sessions live under the account that ran them; by default every account is listed.
   const profile = chosenProfile ?? ALL_ACCOUNTS
   const accounts = ['system', ...(profiles?.profiles.filter(row => row.provider === engine).map(row => row.id) ?? [])]
   const accountName = (id: string) => id === 'system' ? 'System account' : profiles?.profiles.find(row => row.id === id)?.name ?? 'Account'

@@ -4,8 +4,6 @@ import { useThreadT } from '../lib/useThreadT.js'
 import { useCometState } from '../state-slices.js'
 import { DecisionCard } from './DecisionCard.js'
 
-// A saved routine at work: which one and where it is, and - when a page
-// wants a person - what to do there and the two ways on.
 export function RoutineProgress({ channel }: { channel?: string }) {
   const { routine, routineWall, answerRoutineWall } = useCometState()
   const t = useThreadT(channel ? cometOfChannel(channel) : null)

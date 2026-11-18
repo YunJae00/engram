@@ -21,7 +21,6 @@ export function observeChatCap(stage: Element, onCap: (cap: number) => void): ()
   let last = -1
   const measure = (): void => {
     const cap = Math.round(chat.getBoundingClientRect().height / 2)
-    // A hidden chat measures 0; keeping the last cap stops the drag fitter from locking the stage at 0px.
     if (cap > 0 && cap !== last) { last = cap; onCap(cap) }
   }
   measure()
@@ -51,7 +50,6 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const [, repaint] = useReducer((count: number) => count + 1, 0)
   const size = recallPaint(lane, frame.id)?.size
   const shown = useRef(size)
-  // Compared with what this card rendered, not with the memory: another card of the same lane may have recorded the size first.
   const record = useCallback((width: number, height: number, image?: string) => {
     rememberPaint(lane, frame.id, width, height, image)
     if (recallPaint(lane, frame.id)?.size !== shown.current) repaint()
@@ -68,12 +66,10 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const kind = `${frame.id}\n${front}`
   const [held, setHeld] = useState(() => ({ kind, id: frame.id, own: recallPaint(lane, frame.id)?.image, previous: undefined as string | undefined }))
   if (held.kind !== kind) setHeld({ kind, id: frame.id, own: recallPaint(lane, frame.id)?.image, previous: held.id === frame.id ? undefined : recallPaint(lane, held.id)?.image })
-  // Another app's picture never outlives a front that fails to paint.
   useEffect(() => {
     const timer = setTimeout(() => setHeld(one => one.previous ? { ...one, previous: undefined } : one), HOLD_MS)
     return () => clearTimeout(timer)
   }, [held.kind])
-  // Set on the element, not through state: the drag fitter measures in the same ResizeObserver pass, before React would re-render.
   useEffect(() => {
     const node = card.current
     return node ? observeChatCap(node, cap => node.style.setProperty('--pc-stage-cap', `${cap}px`)) : undefined

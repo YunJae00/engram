@@ -17,7 +17,6 @@ export function dismissSidebar(close: () => void): void {
   ;(composer ?? document.querySelector<HTMLElement>('[data-testid="app-sidebar-open"]'))?.focus()
 }
 
-// A field outside the sidebar owns its own Esc (rename, address draft), even when its handler does not prevent default.
 function ownedByField(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(FIELDS) && !target.closest('.app-sidebar') && !target.matches(COMPOSERS)
 }

@@ -4,8 +4,6 @@ import { DiffView } from '../editor/DiffView.js'
 import { NoteEditor } from '../editor/NoteEditor.js'
 import { useApp } from '../state.js'
 
-// Note sheet: click a post-it → the note slides up as an overlay.
-// Lineage clicks swap the body for a version diff, Back returns to editing.
 export function NoteSheet() {
   const { sheetNoteId, closeNote, t } = useApp()
   const [diffFrom, setDiffFrom] = useState<string | null>(null)

@@ -5,7 +5,6 @@ import { api } from '../api.js'
 import { uiLanguage } from '../i18n.js'
 import { threadWords } from '../lib/threadLang.js'
 
-// The card speaks the conversation's language in a thread and the app's in the composer; file names stay as they are.
 export function ChatAttachment({ id, onRemove, disabled = false, lang = uiLanguage() }: { id: string; onRemove?(): void; disabled?: boolean; lang?: 'ko' | 'en' }) {
   const words = threadWords(lang).attachment
   const [preview, setPreview] = useState<ChatAttachmentPreviewDto | null>(null)
@@ -28,7 +27,6 @@ export function ChatAttachment({ id, onRemove, disabled = false, lang = uiLangua
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [id])
   const text = preview?.text
-  // Clear feedback so subsequent copies can be acknowledged again.
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), 1800)

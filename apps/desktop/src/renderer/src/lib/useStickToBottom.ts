@@ -39,7 +39,6 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, messages: M
         frame = requestAnimationFrame(tick)
       }
       const scroll = () => {
-        // Layout and our animation must not be mistaken for a person scrolling away.
         if (Math.abs(list.scrollTop - applied) < 1) return
         const atFoot = bottom() - list.scrollTop <= AT_FOOT
         if (list.scrollTop < applied && !atFoot) stop()

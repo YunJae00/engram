@@ -16,9 +16,6 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const saveTimer = useRef<number | undefined>(undefined)
-  // The debounced save used to be CANCELLED on unmount, so the last keystrokes
-  // before closing the sheet were dropped. Keep the newest text and the note it
-  // belongs to, and flush on the way out.
   const unsaved = useRef<{ id: string; text: string } | null>(null)
   const previewTimer = useRef<number | undefined>(undefined)
   const [note, setNote] = useState<NoteDto | null>(null)
@@ -47,20 +44,12 @@ export function NoteEditor({ noteId, onDiff }: { noteId: string; onDiff(fromId: 
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
             const text = update.state.doc.toString()
-            // The save was debounced but the PREVIEW was not: every keystroke
-            // re-parsed the whole document with marked and re-rendered the
-            // preview subtree through dangerouslySetInnerHTML. On a long note
-            // that is the typing lag. The preview is a glance, not a
-            // character-accurate mirror — a beat behind is invisible.
             window.clearTimeout(previewTimer.current)
             previewTimer.current = window.setTimeout(() => setPreviewHtml(marked.parse(text, { async: false })), 120)
             unsaved.current = { id: noteId, text }
             setSaving(true)
             window.clearTimeout(saveTimer.current)
             saveTimer.current = window.setTimeout(() => {
-              // The badge must not read "Saved" on a rejected write. Keep
-              // the text as unsaved so the unmount flush retries it, and
-              // show the failure.
               void api.saveNoteBody(noteId, text).then(
                 () => {
                   if (unsaved.current?.text === text) unsaved.current = null

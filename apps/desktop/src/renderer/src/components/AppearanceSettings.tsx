@@ -3,7 +3,6 @@ import { t, type StringKey } from '../i18n.js'
 
 const THEMES = [['system', 'settingsUi.themeSystem'], ['light', 'settingsUi.themeLight'], ['dark', 'settingsUi.themeDark']] as const satisfies readonly (readonly [string, StringKey])[]
 
-// Three small windows to pick from; the one in use carries a soft ring.
 export function AppearanceSettings({ value, onChange, disabled = false }: { value: AppSettingsDto['theme']; onChange: (theme: NonNullable<AppSettingsDto['theme']>) => void; disabled?: boolean }) {
   return <fieldset className="appearance-settings" disabled={disabled}>
     <legend className="settings-hidden">{t('settingsUi.appearance')}</legend>

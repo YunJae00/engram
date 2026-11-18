@@ -3,21 +3,15 @@ import type { NoteDto } from '../../../shared/types.js'
 export const VW = 1200
 export const VH = 800
 
-// Held at 150 deliberately. Lifting it is a S4 question, gated on the solver
-// becoming incremental — a synchronous 300-node solve costs ~90ms.
 const NODE_CAP = 150
 
 interface SolvedSky {
   pos: { x: number; y: number }[]
   edges: [number, number][]
-  /** Node index → its neighbours. The solver needs it; so does the hover halo. */
   neighbors: number[][]
-  /** Node indices, most-connected first — the label budget's spending order. */
   order: number[]
 }
 
-// The adjacency the spring forces need is the same adjacency "what is this
-// connected to" needs, so it is built once and rides the shape memo out.
 function buildAdjacency(count: number, edges: readonly (readonly [number, number])[]): number[][] {
   const neighbors: number[][] = Array.from({ length: count }, () => [])
   for (const [s, t] of edges) {
@@ -27,14 +21,10 @@ function buildAdjacency(count: number, edges: readonly (readonly [number, number
   return neighbors
 }
 
-// Degree descending, index ascending on a tie — deterministic, like everything
-// else keyed on the shape digest.
 function byDegree(neighbors: readonly number[][]): number[] {
   return neighbors.map((_, i) => i).sort((a, b) => neighbors[b]!.length - neighbors[a]!.length || a - b)
 }
 
-// Test/measurement probe. `frames` proves the renderer is genuinely idle when
-// nothing moves; `solves` proves a frontmatter-only publish never re-solves.
 interface SkyProbe {
   frames: number
   solves: number
@@ -52,16 +42,10 @@ function hashOf(id: string): number {
   return h
 }
 
-// Hubs first so they survive the cap alongside their members. Deterministic:
-// the notes array arrives id-sorted from the store, so the same vault always
-// picks the same stars in the same order.
 export function pickStars(notes: NoteDto[]): NoteDto[] {
   return [...notes].sort((a, b) => Number(b.type === 'hub') - Number(a.type === 'hub')).slice(0, NODE_CAP)
 }
 
-// Everything the solver reads, and nothing it does not. Two publishes with
-// equal digests are guaranteed the same solution, which is what lets the
-// positions memo key on this string alone.
 export function shapeDigest(picked: NoteDto[]): string {
   const ids = picked.map((n) => (n.type === 'hub' ? `${n.id}*` : n.id)).join('|')
   const rels = picked.map((n) => n.derived_from.join(',')).join(';')
@@ -79,7 +63,6 @@ export function solvePositions(picked: NoteDto[]): SolvedSky {
     }
   }
 
-  // Reuse adjacency lists instead of scanning all edges for each spring-force iteration.
   const neighbors = buildAdjacency(picked.length, edges)
 
   const pos = picked.map((n) => {
@@ -88,7 +71,6 @@ export function solvePositions(picked: NoteDto[]): SolvedSky {
     return { x: VW / 2 + Math.cos(angle) * r, y: VH / 2 + Math.sin(angle) * r }
   })
 
-  // Relax: pairwise repulsion + edge springs + a gentle centering pull.
   const rest = Math.max(70, VH / 8)
   for (let iter = 0; iter < 260; iter++) {
     for (let i = 0; i < pos.length; i++) {

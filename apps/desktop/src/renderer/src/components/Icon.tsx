@@ -1,8 +1,3 @@
-// The comet: a five-point star leaning into flight, its tips rounded by a
-// thick round-joined stroke in the same colour, and three fading dots trailing
-// down-left. Nothing on it is sharp. Same numbers as the app icon
-// (scripts/gen-icon.mjs) and the tray glyph (tray.ts), in a 24 grid. Below
-// 20px the third dot is sub-pixel, so only two trail.
 const STAR = { cx: 13.9, cy: 10.1, R: 5.25, r: 3.2, sw: 2.25, tilt: 12 }
 const STAR_PATH = `M${Array.from({ length: 10 }, (_, k) => {
   const a = -Math.PI / 2 + (k * Math.PI) / 5

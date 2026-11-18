@@ -9,8 +9,6 @@ import { DialogHeader } from '../components/DialogHeader.js'
 export function DiagnosticsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
   const [info, setInfo] = useState<DiagnosticsDto | null>(null)
-  // id → the last OBSERVED readiness, so the ready toast fires on a genuine
-  // false→true transition rather than on any poll that happens to be good.
   const readyRef = useRef<Map<string, boolean>>(new Map())
   const firstPollRef = useRef(true)
 
@@ -18,14 +16,9 @@ export function DiagnosticsView({ onClose }: { onClose(): void }) {
     let cancelled = false
     const poll = async () => {
       try {
-        await api.enginesRefresh() // updates ctx + top bar via broadcast
+        await api.enginesRefresh()
         const next = await api.diagnostics()
         if (cancelled) return
-        // Celebrate a real TRANSITION, not an edge that can bounce. The old
-        // version deleted the id on any not-ready poll, so one flaky
-        // `claude --version` made the next good poll re-fire "claude is ready"
-        // — two or three times for a single login. Now the toast needs a
-        // definite not-ready to have been OBSERVED first.
         for (const engine of next.engines) {
           const ready = engine.installed && engine.loggedIn && engine.healthy !== false
           const was = readyRef.current.get(engine.id)
@@ -35,7 +28,6 @@ export function DiagnosticsView({ onClose }: { onClose(): void }) {
         firstPollRef.current = false
         setInfo(next)
       } catch {
-        /* keep last state; retry next tick */
       }
     }
     void poll()
@@ -70,10 +62,6 @@ export function DiagnosticsView({ onClose }: { onClose(): void }) {
             )}
             <ul className="engine-lights">
               {info.engines.map((engine) => {
-                // Health is part of "ready". Without it this screen painted a
-                // green dot and "claude is ready." to a user the banner had
-                // just sent here because nothing worked — two screens
-                // disagreeing and zero affordances between them.
                 const ready = engine.installed && engine.loggedIn && engine.healthy !== false
                 return (
                   <li key={engine.id} className={ready ? 'engine-ready' : ''}>

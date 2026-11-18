@@ -50,7 +50,6 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
   </>
 })
 
-// Sits under the row, not in it: the row is one button and the disclosure is its own.
 export function SidebarBotTeam({ bot }: { bot: BotDto }) {
   const messages = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id).messages)
   return <SidebarTeam team={useTeam(bot.id)} lang={lineLang(messages, bot.lastMessage)} />

@@ -10,11 +10,9 @@ interface Props {
   onChange(change: SidebarChange['change']): Promise<void>
   onOpen(id: string): void
   onError(message: string): void
-  /** Rows the person hid before: still listed, in a closed group last. */
   hidden: Item[]
 }
 
-// The bot list: rows to open, groups to fold. Renaming, removing and grouping are asked for in chat.
 export function SidebarCollection({ items, layout, onChange, onOpen, onError, hidden }: Props) {
   const [showHidden, setShowHidden] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -30,7 +28,6 @@ export function SidebarCollection({ items, layout, onChange, onOpen, onError, hi
   const fold = (id: string, collapsed: boolean) => void onChange({ action: 'fold-folder', id, collapsed }).catch(error => onError(String((error as Error).message ?? error)))
   const byId = new Map(items.map(item => [item.id, item]))
   const placed = new Set(layout.items.map(one => one.id))
-  // A bot the layout has not caught up with yet still shows as a loose row.
   const layoutItems = [...layout.items, ...items.filter(item => !placed.has(item.id)).map(item => ({ id: item.id, folder: null }))]
   const byRecency = (list: Item[]) => [...list].sort((a, b) => (b.recency ?? 0) - (a.recency ?? 0))
   const itemRows = (folder: string | null) => byRecency(layoutItems.filter(one => one.folder === folder).flatMap(one => { const item = byId.get(one.id); return item ? [item] : [] }))

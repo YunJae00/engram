@@ -26,11 +26,9 @@ export function Onboarding() {
   const [connecting, setConnecting] = useState<'claude' | 'codex' | null>(null)
   const [installing, setInstalling] = useState(false)
   const [logins, setLogins] = useState<EngineLoginDto[]>([])
-  // Nothing new is read unless chosen here; the activity log keeps its current state.
   const [sources, setSources] = useState<LearningChoice>({ workMap: false, workFiles: false, workApps: false, activity: true })
   const usage = useAccountUsage()
   const revision = useRef(0)
-  // Only the first check shows spinners; later ones refresh behind what is shown.
   const checked = useRef(false)
   const signing = useRef(false)
   const completing = useRef(false)
@@ -40,11 +38,9 @@ export function Onboarding() {
   const activityAtMount = useRef(true)
   const avatarTheme = useAvatarTheme()
   const ready = brains.filter(connectionConfirmed)
-  // A signed-in account at its usage limit is connected but cannot answer now.
   const limited = (id: 'claude' | 'codex') => usage.some(account => account.provider === id && account.profile === (profiles?.selected[id] ?? 'system') && (account.usage?.windows ?? []).some(window => (window.used ?? 0) >= 100 && (window.resetsAt === undefined || window.resetsAt > Date.now())))
   const claudeReady = ready.some(brain => brain.id === 'claude')
 
-  // `fresh` re-detects past main-process status caches, for a CLI login finished outside the app.
   const loadBrains = async (fresh = false): Promise<EngineStatusDto[] | null> => {
     const at = ++revision.current
     if (!checked.current) setLoading(true)
@@ -144,7 +140,6 @@ export function Onboarding() {
       </div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>{t('onboard.checkAgain')}</button>}</div>}
-    {/* One persistent bar: step changes rewrite these nodes instead of remounting them under the cursor. */}
     <div className="onboard-actions">
       {step > 1 && <button className="secondary" disabled={step === 2 ? !!connecting || installing : finishing} onClick={event => { if (event.detail > 1) return; if (step === 2 && event.detail === 0) primary.current?.focus(); setError(''); setStep(step - 1) }}>{t('onboard.back')}</button>}
       {step === 3 && <button className="onboard-skip" data-testid="onboard-prefs-skip" disabled={finishing} onClick={() => { setSources({ workMap: false, workFiles: false, workApps: false, activity: activityAtMount.current }); setError(''); setStep(4) }}>{t('onboard.skip')}</button>}

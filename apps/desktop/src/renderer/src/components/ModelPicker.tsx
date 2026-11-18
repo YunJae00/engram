@@ -25,7 +25,7 @@ function cachedModels(engine: Provider, profile: string): ModelChoiceDto[] {
     try {
       const saved = JSON.parse(localStorage.getItem(`engram.models.${key}`) ?? 'null')
       if (saved && Date.now() - saved.at < 86_400_000 && Array.isArray(saved.rows)) rows = saved.rows.filter((row: ModelChoiceDto) => row && typeof row.value === 'string' && typeof row.label === 'string' && typeof row.detail === 'string' && (!row.efforts || Array.isArray(row.efforts) && row.efforts.every(level => typeof level === 'string'))).slice(0, 200)
-    } catch { /* A missing catalog is loaded from the runtime. */ }
+    } catch { }
     catalogs.set(key, { rows, checked: 0 })
   }
   return catalogs.get(key)!.rows
@@ -38,7 +38,7 @@ function readModels(engine: Provider, profile: string, force = false): Promise<M
   catalog.pending = api.modelsList(engine, profile).then(rows => {
     if (catalogs.get(key) !== catalog) return rows
     catalog.rows = rows; catalog.checked = Date.now()
-    try { localStorage.setItem(`engram.models.${key}`, JSON.stringify({ rows, at: catalog.checked })) } catch { /* Memory caching still works without storage. */ }
+    try { localStorage.setItem(`engram.models.${key}`, JSON.stringify({ rows, at: catalog.checked })) } catch { }
     return rows
   }).finally(() => { catalog.pending = undefined })
   return catalog.pending
@@ -264,7 +264,6 @@ function SessionModelPicker({ variant = 'composer', scope, controlled, showAccou
   </div>
 }
 
-// Chat has one engine and no knobs; only a developer task session picks its model.
 export function ModelPicker(props: Parameters<typeof SessionModelPicker>[0]) {
   return props.controlled ? <SessionModelPicker {...props} /> : null
 }

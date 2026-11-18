@@ -5,9 +5,6 @@ import { api } from '../api.js'
 import { useThreadT } from '../lib/useThreadT.js'
 import { DecisionCard } from './DecisionCard.js'
 
-// A way of working Engram noticed, raised in its own conversation: keep it as
-// a how-to or set it aside. Anything said in the conversation first is folded
-// in when it is kept.
 export function HabitAsk({ botId }: { botId: string }) {
   const t = useThreadT(botId)
   const [draft, setDraft] = useState<HabitDraftDto | null>(null)

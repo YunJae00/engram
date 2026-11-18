@@ -9,9 +9,6 @@ import { TeamSummary } from './TeamSummary.js'
 import { useTeam } from '../lib/teamLive.js'
 import { useThreadT } from '../lib/useThreadT.js'
 
-// What the comet needs from the person right now - a press to allow, a post
-// to look over, a sign-in, an answer - said in the conversation itself, as
-// its next message, wherever the conversation is shown.
 export function ThreadAsks({ botId, questionShown, failureShown }: { botId: string; questionShown?: string; failureShown?: boolean }) {
   const channel = cometChannel(botId)
   const team = useTeam(botId)

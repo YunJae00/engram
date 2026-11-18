@@ -2,8 +2,6 @@ import { useMemo } from 'react'
 import { BrainGraph } from '../components/TopicGraph.js'
 import { useApp } from '../state.js'
 
-// Starter chips double as the empty sky's "what do I even capture?" answer,
-// floated over the dark.
 const STARTER_EXAMPLES = [
   { label: 'starter.ex1', seed: 'starter.ex1Seed' },
   { label: 'starter.ex2', seed: 'starter.ex2Seed' },
@@ -14,8 +12,6 @@ export function SkyView({
   focus,
   onFocusConsumed,
 }: {
-  // Star ids to spotlight on arrival ("View in the cosmos" hand-off) —
-  // consumed once so revisiting the tab doesn't relight an old topic.
   focus?: { ids: string[] } | null
   onFocusConsumed?: () => void
 }) {
@@ -25,9 +21,6 @@ export function SkyView({
     [notes],
   )
 
-  // No container measuring: the graph solves in its own virtual space and the
-  // viewBox scales it, so a resize is pure SVG scaling — no observer, no
-  // re-layout, no state churn.
   return (
     <div className="sky-view" data-testid="sky-view">
       {live.length > 0 && (

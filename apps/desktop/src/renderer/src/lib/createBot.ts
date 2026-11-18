@@ -1,7 +1,6 @@
 import type { BotDto, EngramApi } from '../../../shared/types.js'
 import type { CharacterId } from './botAvatar.js'
 
-// character null means the person did not pick: the main process assigns from the real id.
 export type BotDraft = { name: string; label: string; templateId: string; task: string; character: CharacterId | null }
 export type CreateApi = Pick<EngramApi, 'botCreate' | 'botCreateFromTemplate' | 'botUpdate'>
 
@@ -36,7 +35,6 @@ export async function createFromDraft(api: CreateApi, draft: BotDraft, existing?
   const patch: Parameters<CreateApi['botUpdate']>[1] = {}
   const label = clipLabel(draft.label.trim())
   if (label) patch.label = label
-  // The template route has no pick parameter, so an explicit pick is saved right after it.
   if (draft.templateId && character) patch.avatar = { character }
   if (Object.keys(patch).length === 0) return bot
   try {

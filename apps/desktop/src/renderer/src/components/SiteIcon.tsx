@@ -24,9 +24,8 @@ export const SiteIcon = memo(function SiteIcon({ origin, shortcut = false }: { o
 
 export function answerSites(text: string): { origin: string; url: string; label: string }[] {
   const seen = new Set<string>()
-  // A site the answer already links by name ("[site name](address)") is not shown a second time as a chip (grokbar c3 L1-L4: the source was on screen twice).
   for (const match of text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g)) {
-    try { if (match[1]!.trim() !== match[2]) seen.add(new URL(match[2]!).origin) } catch { /* not an address */ }
+    try { if (match[1]!.trim() !== match[2]) seen.add(new URL(match[2]!).origin) } catch { }
   }
   const sites: { origin: string; url: string; label: string }[] = []
   for (const match of text.matchAll(/https?:\/\/[^\s<>"`\])]+/g)) {
@@ -36,7 +35,7 @@ export function answerSites(text: string): { origin: string; url: string; label:
       seen.add(url.origin)
       sites.push({ origin: url.origin, url: url.href, label: url.hostname.replace(/^www\./, '') })
       if (sites.length === 5) break
-    } catch { /* Incomplete streaming links wait for more text. */ }
+    } catch { }
   }
   return sites
 }

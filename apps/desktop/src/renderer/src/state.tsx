@@ -26,7 +26,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [vaultReady, setVaultReady] = useState(false)
   const [vaultError, setVaultError] = useState<{ message: string; root: string } | null>(null)
 
-  // Explicit appearance wins; only the system choice follows OS changes.
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     let preference: NonNullable<AppSettingsDto['theme']> = 'system'
@@ -40,15 +39,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     media.addEventListener('change', onChange)
     return () => { alive = false; off(); media.removeEventListener('change', onChange) }
   }, [])
-  // Notes live in a ref Map keyed by id and mutated by notes:delta events; the
-  // public `notes` array is a derived, id-sorted snapshot republished on every
-  // change (same order as core's NoteStore.getAll — by id).
   const notesRef = useRef<Map<string, NoteDto>>(new Map())
   const [notes, setNotes] = useState<NoteDto[]>([])
-  // Publishing the notes array re-renders everything under the provider, so
-  // it happens only when the notes actually changed: a background ping that
-  // read the same list back must not cost the whole window a render while
-  // the person is typing or scrolling.
   const notesSignature = useRef('')
   const publishNotes = useCallback(() => {
     const sorted = [...notesRef.current.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
@@ -88,14 +80,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pressAsks, setPressAsks] = useState<AppState['pressAsks']>([])
   const [toast, setToast] = useState<AppState['toast']>(null)
   const toastId = useRef(0)
-  // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
-  // After a run finishes (pending→0) the 43/43·100% bar lingers as a completion
-  // state, then resets so it can't bleed into a later, unrelated sweep.
   const absorbResetRef = useRef<number | null>(null)
 
-  // Full notes resync: authoritative fetch that rebuilds the map from scratch
-  // (used on mount and as a window-focus fallback in case a delta was missed).
   const refreshNotes = useCallback(async () => {
     const list = await api.listNotes()
     const map = new Map<string, NoteDto>()
@@ -104,12 +91,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     publishNotes()
   }, [publishNotes])
 
-  // vault:changed refreshes cards + inbox + absorb counts — notes arrive via
-  // deltas; absorb also updates live from import:progress in the event loop.
-  // Open loops ride along here rather than on notes:delta: the librarian is
-  // what sets open_loop/due_at, and every librarian write ends in a
-  // vault:changed, so this catches them on the already-coalesced path instead
-  // of re-scanning the store on every delta of a long sweep.
   const refreshCardsInbox = useCallback(async () => {
     const [nextCards, nextInbox, nextAbsorb, nextPending] = await Promise.all([
       api.listCards(),
@@ -121,9 +102,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setInbox(nextInbox)
     setAbsorb(nextAbsorb)
     setPendingWork(nextPending)
-    // Boot/resync snapshot of the in-flight pipeline: the onboarding first
-    // capture starts filing before this window exists, so the live events
-    // alone would leave the state stuck at false.
     setFiling(nextPending.filing)
   }, [])
 
@@ -131,9 +109,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await Promise.all([refreshNotes(), refreshCardsInbox()])
   }, [refreshNotes, refreshCardsInbox])
 
-  // vault:changed can fire several times in a burst (per-engine boot ping, each
-  // absorb batch, migrations). Each call is three IPC round-trips, so coalesce a
-  // burst into one trailing refresh instead of hammering the main process.
   const cardsInboxTimer = useRef<number | null>(null)
   const refreshCardsInboxSoon = useCallback(() => {
     if (cardsInboxTimer.current !== null) window.clearTimeout(cardsInboxTimer.current)
@@ -143,7 +118,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 150)
   }, [refreshCardsInbox])
 
-  // Tidy-badge-only refresh (one IPC), debounced — the note-delta path.
   const pendingTimer = useRef<number | null>(null)
   const refreshPendingSoon = useCallback(() => {
     if (pendingTimer.current !== null) window.clearTimeout(pendingTimer.current)
@@ -153,17 +127,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 300)
   }, [])
 
-  // Refetch notes when the window regains focus — a cheap resync that heals any
-  // delta dropped while the app was backgrounded. Also re-detect engines here
-  // (throttled): a CLI logged in/out out-of-band while the app was in the
-  // background gets picked up the moment the user comes back, so the "AI
-  // disconnected and I can't get it back" state self-heals without a restart.
   const lastEngineCheck = useRef(0)
   const lastNoteCheck = useRef(0)
   useEffect(() => {
     const onFocus = () => {
-      // Moving from a native page back to the composer also focuses the
-      // renderer. Notes already arrive as deltas; bound the recovery scan.
       if (Date.now() - lastNoteCheck.current > 15_000) {
         lastNoteCheck.current = Date.now()
         void refreshNotes().catch(() => undefined)
@@ -187,8 +154,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
   const hideToast = useCallback(() => setToast(null), [])
 
-  // Keep the freshest t/showToast for the long-lived event handler below so the
-  // absorbed toast follows the active language without re-subscribing.
   const latest = useRef({ t, showToast })
   latest.current = { t, showToast }
 
@@ -259,7 +224,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [routineSubmit],
   )
 
-  // Manual replays create their own chat; progress and refusals arrive there.
   const startRoutine = useCallback(
     async (id: string, _name: string, force?: boolean, slots?: Record<string, string>) => {
       const result = await api.routineRun(id, force, slots).catch<Awaited<ReturnType<typeof api.routineRun>>>(error => ({ ok: false, error: String(error) }))
@@ -269,8 +233,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [showToast],
   )
 
-  // Kick off a delegated errand. main runs it detached and reports back over
-  // errand:phase — so this only surfaces the refusal (no engine, already busy).
   const startErrand = useCallback(
     async (goal: string, botId?: string) => {
       if (!goal.trim()) return

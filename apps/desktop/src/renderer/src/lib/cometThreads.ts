@@ -32,7 +32,6 @@ export interface CometThread {
   keptWork: string[]
   offer: CometOffer | null
   draft: string
-  // The draft was put back by a failed send and not edited since.
   restored?: boolean
   attachments: ChatAttachmentDto[]
   adopted: boolean
@@ -40,8 +39,6 @@ export interface CometThread {
   stopCount?: number
   startedAt: number | null
   doneSeen: number
-  // Paging: key offset of prepended messages, raw disk turns represented, the last read's identities,
-  // every represented raw turn oldest first, and newer turns a page already saw before the next read.
   older: number; cursor: number; pageDone: boolean; pageLoading: boolean
   window: string[]; coverage: string[]; unseenAppend: number
 }
@@ -65,7 +62,6 @@ const identity = (turn: { role: string; at?: string; text: string }): string => 
 
 const toMessage = (turn: ChatTurnDto): CometMessage => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}), ...(turn.error ? { error: true, ...(turn.errorKind ? { errorKind: turn.errorKind } : {}), ...(turn.provider ? { provider: turn.provider } : {}) } : {}) })
 
-// Where `next` starts inside `coverage` so their overlap runs to the end of `coverage`, or -1.
 function alignAt(coverage: string[], next: string[]): number {
   for (let start = 0; start < coverage.length; start++) {
     let same = coverage[start] === next[0]
@@ -91,7 +87,6 @@ function streamingAt(list: CometMessage[]): number {
   return -1
 }
 
-// A new answer starts under the oldest message still waiting for one, not under later ones.
 function seated(list: CometMessage[]): CometMessage[] {
   let at = list.length
   while (at > 0 && list[at - 1]!.role === 'user') at--
@@ -99,8 +94,6 @@ function seated(list: CometMessage[]): CometMessage[] {
   return [...list.slice(0, at), { role: 'assistant', text: '', streaming: true }, ...list.slice(at)]
 }
 
-// Words the running turn took in mid-work, and the host's one-line reply to them, sit right under the first line that was on screen when
-// they were said. The answer comes under them: a new bubble is seated after them, and a bubble whose line is replaced by the answer moves there.
 const asidesEnd = (list: CometMessage[], at: number): number => { let to = at + 1; while (list[to]?.aside) to++; return to }
 function underAsides(list: CometMessage[], at: number): CometMessage[] {
   const to = asidesEnd(list, at)
@@ -199,7 +192,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       let shown = askOrder(turns)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
       else {
-        // The running turn's question and what was said during it are already on disk: the live tail shows them once.
         let cut = shown.length
         for (let at = tail.length - 1; at >= 0 && cut > 0; at--) {
           if (tail[at]!.role !== 'user') continue
@@ -212,7 +204,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       let firstShown: string | undefined
       const said = shownTexts(shown)
       for (let at = 0; at < shown.length; at++) if (said[at] !== null) { fromDisk.push({ ...toMessage(shown[at]!), text: said[at]! }); firstShown ??= identity(shown[at]!) }
-      // Raw overlap proves continuity; the first shown new turn marks where the kept messages end.
       const start = current.older > 0 && window.length ? alignAt(current.coverage, window) : -1
       const keep = start >= 0 && firstShown !== undefined ? current.messages.findIndex((message, at) => at >= current.older && identity(message) === firstShown) : -1
       const arrived = window.length - (current.coverage.length - start)
@@ -225,7 +216,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       }
       patch(id, { messages: [...(keep >= 0 ? current.messages.slice(0, keep) : []), ...fromDisk, ...tail], loaded: true, window, ...paging })
     },
-    // Reads the page of disk turns just older than what the thread holds and puts it in front, once per call.
     async loadEarlier(id: string, read: PageRead, beforeCommit?: () => void): Promise<number> {
       const start = thread(id)
       if (!snapshot.threads[id] || !start.loaded || start.pageDone || start.pageLoading) return 0
@@ -237,15 +227,12 @@ export function createCometThreads(initialSelected: string | null = null) {
       const current = thread(id)
       if (!snapshot.threads[id] || pageTokens.get(id) !== token || current.cursor !== before) return 0
       pageTokens.delete(id)
-      // Turns appended on disk after the cursor was read shift the page newer; its tail then overlaps coverage.
       const overlap = page.length ? current.coverage.indexOf(identity(page[page.length - 1]!)) + 1 : 0
       let fits = overlap <= page.length
       for (let at = 0; at < overlap && fits; at++) fits = identity(page[page.length - overlap + at]!) === current.coverage[at]
       if (!fits) { patch(id, { pageLoading: false }); return 0 }
       const had = new Set(current.messages.map(identity))
       const fresh = page.slice(0, page.length - overlap), seen = fresh.map(identity)
-      // Same order as a first load. Words said mid-turn whose interrupted answer is on the newer side of
-      // the page boundary are put after that answer, among the messages already held.
       const late: ChatTurnDto[] = []
       const ordered = askOrder(fresh, late)
       const said = shownTexts([...ordered, ...current.messages])
@@ -264,7 +251,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       }
       rest.push(...waiting)
       if (added.length + moved) beforeCommit?.()
-      // shortcut: `older` also counts the moved ones, so a reload of the very same window starts over from the newest page instead of keeping these; track the boundary separately if that shows.
       patch(id, { messages: [...added, ...rest], older: current.older + added.length + moved, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })
       return added.length + moved
     },
@@ -275,7 +261,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (const listener of draftListeners) listener()
     },
     setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
-      // Changed files make it a new draft, so a put-back one may be put back again.
       const changed = thread(id).attachments.map(one => one.id).join('\n') !== attachments.map(one => one.id).join('\n')
       patch(id, { attachments, ...(changed && thread(id).restored ? { restored: false } : {}) })
       if (changed) for (const listener of draftListeners) listener()
@@ -335,18 +320,14 @@ export function createCometThreads(initialSelected: string | null = null) {
       patch(id, { messages: messages.slice(0, -2) })
       return { text: asked.text, attachments: asked.attachments ?? [] }
     },
-    // absorbed: the running turn is being handed these words (chat:say); without it they are for a later turn and wait below the answer.
     noteUser(id: string, text: string, attachments: string[] = [], absorbed = false): void {
       const current = thread(id), at = current.busy && absorbed ? streamingAt(current.messages) : -1
       const said: CometMessage = { role: 'user', text, ...(attachments.length ? { attachments } : {}) }
-      // Words said before the answer shows are taken in by the running turn: they stay where they were said, above the answer still to come
-      // (grokbar c3 T1). Once the answer is on screen they wait below it.
       const above = at >= 0 && !current.messages[at]!.text.trim()
       const messages: CometMessage[] = above ? [...current.messages.slice(0, at), said, ...current.messages.slice(at)] : [...current.messages, said]
       if (current.busy && streamingAt(messages) < 0) messages.push({ role: 'assistant', text: '', streaming: true })
       patch(id, { messages })
     },
-    // The running turn did not take the words after all (its answer was already out): they wait below it for a turn of their own.
     sinkUser(id: string, text: string): void {
       const messages = [...thread(id).messages], streaming = streamingAt(messages)
       let from = -1
@@ -355,7 +336,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       messages.push(messages.splice(from, 1)[0]!)
       patch(id, { messages })
     },
-    // The running turn took these words in and the host answered them in one line: the line sits right under them, both above the answer.
     noteReply(id: string, text: string, reply: string): void {
       const current = thread(id), messages = [...current.messages]
       let from = -1
@@ -363,8 +343,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (!current.busy || from < 0 || !reply.trim()) return
       const [said] = messages.splice(from, 1)
       const streaming = streamingAt(messages)
-      // c4 T2: a first line already on screen (the lookup's "checking the price now") was shown before these words, so it keeps its place above them; the
-      // answer still to come is seated under them when that line is frozen or replaced (underAsides).
       const lineShown = streaming >= 0 && !messages[streaming]!.checking && /^.{1,80}$/.test(messages[streaming]!.text.trim())
       const to = streaming >= 0 && streaming < from && !lineShown ? streaming : from
       messages.splice(to, 0, { ...said!, aside: true }, { role: 'assistant', text: reply, progress: true, aside: true })
@@ -381,10 +359,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       settle(
         id,
         cut
-          // stack-18 (T3: the stopped line drawn above the person's own stop): the stop is the newest thing in the thread, so its line goes under whatever was said
-          // since the answer began (the person's own stop among it), not right under the cut answer.
           ? [...current.messages.slice(0, at), { ...current.messages[at]!, streaming: false, checking: undefined, progress: true, work: current.workLines }, ...current.messages.slice(at + 1), { role: 'assistant' as const, text: marker!, work: [] }]
-          // A stop said before any answer text is answered where it was said, at the foot.
           : at >= 0 && !current.messages[at]!.text ? [...current.messages.slice(0, at), ...current.messages.slice(at + 1), { ...current.messages[at]!, streaming: false, text: fallback }]
           : current.messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
         { busy: false, taskWorking: false, awaitingModel: false, startedAt: null, stopped: true, stopCount: (current.stopCount ?? 0) + 1, queued: [] },
@@ -430,8 +405,6 @@ export function createCometThreads(initialSelected: string | null = null) {
             if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: underAsides(next, at) }, true) }
             return id
           }
-          // grokbar D4, H3: "I'll read the file first." was frozen as a bubble in a Korean thread. Words written mid-work that do not read
-          // Korean there are dropped, not kept (rule 12); the saved turns leave them out the same way (main conversation-progress.ts).
           if (next[at]!.text.trim() && threadLang(next) === 'ko' && !readsKorean(next[at]!.text)) next[at] = { ...next[at]!, text: '' }
           else if (next[at]!.text.trim()) {
             next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }

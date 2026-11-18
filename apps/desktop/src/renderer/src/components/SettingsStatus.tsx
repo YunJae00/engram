@@ -13,8 +13,6 @@ interface SettingsStatusProps {
   onUpdate: (update: UpdateCheckDto) => void
 }
 
-// The version, and whether a newer one is on its way.
-// A download in progress is a thin bar that fills smoothly under its row.
 export function SettingsStatus({ checkingUpdate, update, version, onCheckingUpdate, onUpdate }: SettingsStatusProps) {
   const [installing, setInstalling] = useState(false)
   const checkForUpdate = () => {
