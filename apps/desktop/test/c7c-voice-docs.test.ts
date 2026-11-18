@@ -145,7 +145,7 @@ describe('a fact about the person is a state, not an instruction (M3, c11b)', ()
 
 describe('a pick comes with its reason, recommendations with what they went by (H1)', () => {
   it('says so in the short-ask note and keeps the rules Q2-Q4 and H2 ride on', () => {
-    for (const said of ['A pick ("하나만 골라줘") is the thing itself and half a clause of why', '"칼국수 어때요? 쌀쌀하니까요."', 'for a menu a dish, never a kind of restaurant', 'each with half a clause of why it fits what they told you', 'numbered when there are three or more', 'still no question back', 'what they said about a trip shapes the trip, never a lunch pick',
+    for (const said of ['A pick ("하나만 골라줘") is the thing itself and half a clause of why', '"칼국수 어때요? 쌀쌀하니까요."', 'for a menu a dish, never a kind of restaurant', 'each with half a clause of why it fits what they told you', 'numbered when there are three or more', 'still no question back', 'fitting what they told you earlier about the thing asked',
       'Asked for one thing, give exactly one; asked for three, give three', 'a line or a name is given as just that', 'so the reply is never the foreign line alone', '"평년 기준으로 31,536,000초예요."', 'names it in the conversation\'s own words and, for picks, says what you went by ("제주 가시면 아버님 무릎 생각해서 덜 걷는 걸로 골랐어요."', 'you never ask which one they mean']) expect(SHORT_QUESTION_NOTE, said).toContain(said)
     expect(SHORT_QUESTION_NOTE).not.toContain('a pick is given as just that')
   })

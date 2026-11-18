@@ -89,5 +89,5 @@ export function describeDeckFindings(findings: DeckFinding[]): string {
   if (findings.length === 0) return ''
   const lines = findings.slice(0, 12).map((one) => `slide ${one.slide} · ${one.kind}: ${one.text}`)
   const more = findings.length > 12 ? ` (+${findings.length - 12} more)` : ''
-  return `The deck does not read clean yet${more}:\n${lines.join('\n')}\nFix these and build it again.`
+  return `The deck does not read clean yet, so nothing was built${more}:\n${lines.join('\n')}\nChange only these and call ppt_build again with everything else the same.`
 }

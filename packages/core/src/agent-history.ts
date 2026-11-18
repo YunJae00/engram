@@ -56,12 +56,17 @@ function recentTurns(history: NonNullable<AgentLoopOptions['history']>): string[
   return lines
 }
 
+// c15c (cause D, H1: a lunch pick tied to a trip's bad knee): memory and earlier turns rode along with no word on when they belong, so the
+// model used every fact it had. One rule, by meaning, for any fact and any ask: wherever remembered facts or earlier turns enter a prompt.
+export const RELEVANCE_RULE = 'A fact you remember or that was said earlier goes into an answer only when the current ask is about that thing (a follow-up that points back at it is about it, and uses all of it) or when the answer would be wrong or unsafe without it; otherwise it is neither used nor mentioned.'
+
 export function conversation(history: AgentLoopOptions['history']): string[] {
   const turns = recentTurns(history ?? [])
   if (turns.length === 0) return []
   return [
     ...earlierRequests(history ?? [], turns.length),
     '',
+    RELEVANCE_RULE,
     'The conversation so far (context for what is being asked; the person\'s earlier requirements still hold when this continues the same work):',
     turns.join('\n'),
   ]

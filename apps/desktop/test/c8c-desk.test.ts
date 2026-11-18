@@ -166,7 +166,9 @@ describe('recommendations name the trip and are things of that place (H1)', () =
     expect(SHORT_QUESTION_NOTE).not.toContain('아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.')
     expect(SHORT_QUESTION_NOTE).not.toContain('제주 가시면 이런 게 좋아요.')
     expect(SHORT_QUESTION_NOTE.match(/제주 가시면/g)).toHaveLength(1)
-    for (const held of ['still no question back', 'you never ask which one they mean', 'what they said about a trip shapes the trip, never a lunch pick', 'asked for three, give three', 'in Korean words only ("드라이브", never "drive-through 느낌")']) expect(SHORT_QUESTION_NOTE, held).toContain(held)
+    // c15c: when a told fact belongs is the general rule in every prompt's conversation and memory lines (core RELEVANCE_RULE), not a trip/lunch line.
+    expect(SHORT_QUESTION_NOTE).not.toContain('never a lunch pick')
+    for (const held of ['still no question back', 'you never ask which one they mean', 'fitting what they told you earlier about the thing asked', 'asked for three, give three', 'in Korean words only ("드라이브", never "drive-through 느낌")']) expect(SHORT_QUESTION_NOTE, held).toContain(held)
   })
 })
 

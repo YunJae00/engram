@@ -127,10 +127,14 @@ it('says a built deck is done and lists its slides; refuses the garbled stored s
   expect(refusal).toContain('변류\u0308은 (slide 4)')
   expect(refusal).toContain('ppt_build again')
   expect(await readdir(task)).toEqual([])
+  // c15c: the refusal says nothing was built, so it is no write left unread (core office-verification NOTHING_BUILT).
+  expect(refusal).toMatch(/^Nothing was built/)
   const fixed = stored.map(slide => JSON.parse(JSON.stringify(slide).replaceAll('대믱', '대비').replaceAll('변류\u0308은', '분류')) as typeof slide)
   const receipt = JSON.parse(await build.run({ slides: fixed, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }))
   expect(receipt.verification).toContain('do not read it back or build it again')
   expect(receipt.verification).toContain('1. 3분기 실적 보고 / 2. 3분기 요약 / 3. 주요 지표')
+  // c15c (D3): what the host verified is said, so the model does not read the deck back.
+  expect(receipt.verification).toContain('Verified in the file: 5 slides')
   expect(receipt.titles).toHaveLength(5)
   expect(receipt.mistyped).toBeUndefined()
   expect(await readdir(task)).toEqual(['3분기 실적 보고.pptx'])

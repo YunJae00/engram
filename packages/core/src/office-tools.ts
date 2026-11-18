@@ -3,6 +3,7 @@ import { auditDeck, describeDeckFindings, type DeckSlide } from './deck-audit.js
 import { validateWorkbookFormula } from './file-workbook.js'
 import { officeEditTools } from './office-edit-tools.js'
 import { HOUSE_THEME, resolveTheme, THEME_NEEDED } from './office-theme.js'
+import { NOTHING_BUILT } from './office-verification.js'
 
 // Office through its own doors. Excel, Word, PowerPoint and Outlook each
 // expose what their menus do as commands; these tools speak to that, so the
@@ -43,6 +44,30 @@ function bounded(value: unknown, fallback: number, max: number): number {
 function only(args: Record<string, unknown>, keys: string[], tool: string): void {
   for (const key of Object.keys(args)) if (!keys.includes(key)) throw new Error(`${tool} does not take "${key}".`)
 }
+// c15c (cause D, D3: the first ppt_build of every deck run was refused in 3-6 ms, and each rebuild cost the model 20-25 s of writing): an
+// input that can be read only one way is taken as meant, never refused: an empty optional text is absent, one bullet given as text is a list
+// of one, numbers stand as their text, a grid given without {rows} or with short rows is padded square, and a chart number given as text is
+// that number. c15c r2: a blank written in brackets ("[금액 입력]") is an unfilled slot, not a near miss: it stays as written so the deck audit
+// refuses it and names it, and the model fills it in.
+const asText = (value: unknown): unknown => typeof value === 'number' ? String(value) : value
+const present = (value: unknown): boolean => value !== undefined && value !== null && !(typeof value === 'string' && !value.trim())
+export function nearMissSlide(given: unknown): unknown {
+  if (!plain(given)) return given
+  const slide: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(given)) if (present(value)) slide[key] = value
+  for (const key of ['title', 'subtitle', 'notes']) if (key in slide) slide[key] = asText(slide[key])
+  const bullets = typeof slide['bullets'] === 'string' ? [slide['bullets']] : slide['bullets']
+  if (Array.isArray(bullets)) { const kept = bullets.filter(present).map(asText); if (kept.length) slide['bullets'] = kept; else delete slide['bullets'] }
+  const table = Array.isArray(slide['table']) ? { rows: slide['table'] } : slide['table']
+  if (plain(table) && Array.isArray(table['rows']) && table['rows'].every(row => Array.isArray(row))) {
+    const rows = (table['rows'] as unknown[][]).filter(row => row.length), width = Math.max(0, ...rows.map(row => row.length))
+    slide['table'] = { ...table, rows: rows.map(row => [...row, ...Array<string>(width - row.length).fill('')].map(cell => cell === null || cell === undefined ? '' : cell)) }
+  } else if (table !== undefined) slide['table'] = table
+  const chart = slide['chart']
+  if (plain(chart) && Array.isArray(chart['series'])) slide['chart'] = { ...chart, series: chart['series'].map(one => plain(one) && Array.isArray(one['values']) ? { ...one, values: one['values'].map(v => typeof v === 'string' && v.trim() && Number.isFinite(Number(v.replace(/,/g, ''))) ? Number(v.replace(/,/g, '')) : v) } : one) }
+  return slide
+}
+
 function text(value: unknown): string {
   if (typeof value === 'string') return value
   return JSON.stringify(value)
@@ -286,22 +311,36 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         },
       },
       run: async (args, context) => {
+        // c15c: a refusal here is before any file exists, and says so (office-verification.ts NOTHING_BUILT): it is not a write left unread.
+        let sent = false
+        try { return await buildDeck(args, context, () => { sent = true }) } catch (error) {
+          if (sent || context.signal?.aborted || !(error instanceof Error) || error.message.startsWith(NOTHING_BUILT)) throw error
+          throw new Error(`${NOTHING_BUILT}: ${error.message}`)
+        }
+      },
+    },
+    ...officeEditTools(courier),
+  ]
+
+  // Reads and checks the input, then hands it to the courier (sending: from then on a failure may come after a file was written).
+  async function buildDeck(args: unknown, context: AgentToolContext, sending: () => void): Promise<string> {
         if (!plain(args)) throw new Error('ppt_build takes an object.')
         only(args, ['slides', 'saveAs', 'theme'], 'ppt_build')
         const { theme, house } = themeOrHouse(args['theme'])
         const slides = args['slides']
         if (!Array.isArray(slides) || slides.length === 0 || slides.length > SLIDES_CAP) throw new Error(`slides must hold 1 to ${SLIDES_CAP} entries.`)
-        const clean: (DeckSlide & { notes?: string; table?: unknown; chart?: unknown })[] = slides.map((slide) => {
-          if (!plain(slide) || typeof slide['title'] !== 'string') throw new Error('Each slide needs a title.')
+        const clean: (DeckSlide & { notes?: string; table?: unknown; chart?: unknown })[] = slides.map((given, at) => {
+          const slide = nearMissSlide(given), where = `slide ${at + 1}`
+          if (!plain(slide) || typeof slide['title'] !== 'string') throw new Error(`${where} needs a title: give it "title" as text.`)
           const bullets = slide['bullets']
-          if (bullets !== undefined && (!Array.isArray(bullets) || !bullets.every((one) => typeof one === 'string' && one.length <= 2_000))) throw new Error('bullets are short strings.')
+          if (bullets !== undefined && (!Array.isArray(bullets) || !bullets.every((one) => typeof one === 'string' && one.length <= 2_000))) throw new Error(`${where}: "bullets" must be a list of texts, each under 140 characters.`)
           const out: DeckSlide & { notes?: string; table?: unknown; chart?: unknown } = { title: slide['title'] }
           if (bullets) out.bullets = bullets
           const subtitle = optionalText(slide['subtitle'], 300, 'subtitle'); if (subtitle) out.subtitle = subtitle
           const notes = optionalText(slide['notes'], 4_000, 'notes'); if (notes) out.notes = notes
           const table = slide['table']
           if (table !== undefined) {
-            if (!plain(table) || !Array.isArray(table['rows']) || table['rows'].length === 0 || !table['rows'].every((row) => Array.isArray(row) && row.length > 0 && row.every((c) => ['string', 'number'].includes(typeof c)))) throw new Error('A table needs rows: a non-empty grid of strings or numbers.')
+            if (!plain(table) || !Array.isArray(table['rows']) || table['rows'].length === 0 || !table['rows'].every((row) => Array.isArray(row) && row.length > 0 && row.every((c) => ['string', 'number'].includes(typeof c)))) throw new Error(`${where}: "table" must be {rows: [[...], ...]}, a non-empty grid of texts or numbers.`)
             out.table = { rows: table['rows'] }
           }
           const chart = slide['chart']
@@ -309,7 +348,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
             if (!plain(chart) || !Array.isArray(chart['categories']) || !Array.isArray(chart['series']) || chart['series'].length === 0
               || !chart['categories'].every((c) => typeof c === 'string')
               || !chart['series'].every((sr) => plain(sr) && typeof sr['name'] === 'string' && Array.isArray(sr['values']) && sr['values'].every((v) => typeof v === 'number' && Number.isFinite(v)) && sr['values'].length === (chart['categories'] as unknown[]).length))
-              throw new Error('A chart needs categories and series, each series with a name and one number per category.')
+              throw new Error(`${where}: "chart" needs categories and series, each series with a name and one number per category.`)
             out.chart = { type: typeof chart['type'] === 'string' ? chart['type'] : 'column', categories: chart['categories'], series: chart['series'] }
           }
           return out
@@ -319,11 +358,9 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         // the words are the model's to change before PowerPoint is touched.
         if (findings.length > 0) return describeDeckFindings(findings)
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs')
+        sending()
         return withLook(await call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context), house)
-      },
-    },
-    ...officeEditTools(courier),
-  ]
+  }
 }
 
 export function officeStepSummary(name: string, args: Record<string, unknown>): string | null {

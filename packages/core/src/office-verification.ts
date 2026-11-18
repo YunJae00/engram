@@ -9,6 +9,9 @@ const READS = new Set(['excel_read', 'ppt_read', 'word_read'])
 export const OFFICE_CLOSED = 'Nothing was changed: the application is not open and is not started for this.'
 // How a refused build's result starts (deck-audit.ts describeDeckFindings): returned, not thrown, and nothing is saved.
 const BUILD_REFUSED = 'The deck does not read clean yet'
+// c15c: how a builder's refusal before any file exists starts, thrown (ppt_build's input checks, the host's garbled-words check in office-agent.ts).
+export const NOTHING_BUILT = 'Nothing was built'
+const REFUSED_BEFORE_WRITE = /^(?:that did not work:\s*)?Nothing was built\b/
 export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout: inspect those only when the request is about them, and never mention a check nobody asked for. A new file from word_write, ppt_build or file_create_workbook is saved and compared by the host itself and its receipt is that readback: answer with its link at once, and read it again only when the person asked for the content to be checked.'
 
 function receipt(step: AgentLoopStep): Record<string, unknown> | undefined {
@@ -83,7 +86,7 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
       if (step.observation.includes(OFFICE_CLOSED)) continue
       // grokbar D3: a deck the host refused to build ("does not read clean yet") wrote nothing, yet counted as an unread write; the good build
       // after it never cleared that, and a finished deck was re-read for 309 s.
-      if (step.observation.startsWith(BUILD_REFUSED)) continue
+      if (step.observation.startsWith(BUILD_REFUSED) || REFUSED_BEFORE_WRITE.test(step.observation)) continue
       if (!key) { const file = named(step, result)[0]; unknown.push({ tool: step.tool, ...(file ? { file } : {}) }); continue }
       const needed = pending.get(key) ?? new Set<string>()
       if (step.tool === 'excel_write') {

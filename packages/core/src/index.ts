@@ -58,7 +58,7 @@ export { prepareInitialFiling, type InitialFilingOptions, type InitialFilingRepo
 export { runCli, type CliIO } from './cli/main.js'
 export { safeInboxName, startMcpServer, callMemoryTool, MEMORY_MCP_TOOLS, type McpOptions } from './mcp.js'
 export { officeWriteUnverified, OFFICE_CLOSED } from './office-verification.js'
-export { withoutReplies } from './agent-history.js'
+export { RELEVANCE_RULE, withoutReplies } from './agent-history.js'
 export { officeArithmeticFault } from './office-arithmetic.js'
 export * from './capture.js'
 export * from './errand.js'
