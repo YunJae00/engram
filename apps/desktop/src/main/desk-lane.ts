@@ -104,18 +104,34 @@ export const deskLane = (message: string, plain: boolean): boolean => plain && !
 // turn takes the route of the ask it corrects. A corrected fact ("아 지민호 말고 민호야") is a remember turn of its own.
 const CORRECTION = /^(아[,\s]+|아니[,\s]+|음[,\s]+)*(그거|그건|그게|이거|저거|방금\s*(거|것)|아까\s*(거|것)|그냥)?\s*\S{0,12}\s*(말고|대신)(\s|$)|^(아[,\s]+|아니[,\s]+)*그냥\s.{0,24}(으로|로)\s*(바꿔|해)/
 export const isCorrection = (message: string): boolean => { const text = message.trim(); return [...text].length <= 60 && !text.includes('\n') && !KEEP.test(text) && CORRECTION.test(text) }
-export const routeAsk = (message: string, earlier: readonly { role: string; text: string }[]): string =>
-  isCorrection(message) ? [...earlier].reverse().find(turn => turn.role === 'user')?.text ?? message : message
+// c17b r2: the route is the last ask that is not itself a correction, so a second correction ("아 그거 말고 결정사항으로" after "…말고 전체로")
+// still takes the original task's route; the corrections after it are its changes, oldest first.
+const userAsks = (earlier: readonly { role: string; text: string }[]): string[] => earlier.filter(turn => turn.role === 'user').map(turn => turn.text)
+const correctionChain = (message: string, earlier: readonly { role: string; text: string }[]): { route: string; changes: string[] } | undefined => {
+  if (!isCorrection(message)) return undefined
+  const asks = userAsks(earlier)
+  for (let at = asks.length - 1; at >= 0; at--) if (!isCorrection(asks[at]!)) return { route: asks[at]!, changes: [...asks.slice(at + 1), message].map(text => text.trim()) }
+  return undefined
+}
+export const routeAsk = (message: string, earlier: readonly { role: string; text: string }[]): string => correctionChain(message, earlier)?.route ?? message
 // c17b (cause C, H2: "아 그거 말고 11월 걸로" was checked against "12월 매출 합계 알려줘" and rewritten back to December): the route of a
 // correction is the earlier ask's, but what the person wants is that ask as they have now changed it. routeAsk gives the route; askNow gives
 // the meaning, which every check, rewrite, filter and offer reads. The detector (isCorrection) is the same one, so nothing new is matched.
 const CHANGED = ' The person then changed it: '
 export const askNow = (message: string, earlier: readonly { role: string; text: string }[]): string => {
-  const route = routeAsk(message, earlier)
-  return route === message ? message : `${[...route.trim()].slice(0, ASK_MAX).join('')}${CHANGED}${JSON.stringify(message.trim())}. Where the two differ, the later words hold.`
+  const chain = correctionChain(message, earlier)
+  return !chain ? message : `${[...chain.route.trim()].slice(0, ASK_MAX).join('')}${CHANGED}${chain.changes.map(text => JSON.stringify(text)).join(', then ')}. Where ${chain.changes.length > 1 ? 'they' : 'the two'} differ, the later words hold.`
 }
 // The words that decide a route, in a meaning askNow wrote: the earlier ask alone.
 const routeOf = (meaning: string): string => meaning.split(CHANGED)[0]!
+// c17b r2 (cause: "할 일만 뽑아줘" then "아 그거 말고 전체로" lost its 미결 part): a host filter that cuts content because the person narrowed
+// reads only narrowing they still stand by. After a correction the earlier ask's words may be withdrawn and the host cannot tell which, so
+// only the corrections' own words narrow; the model, told the later words hold, does the rest. A filter that holds back because the person
+// widened (tidyCounts, withoutSameDecisions) still reads every word, so both kinds fail toward keeping content.
+const heldWords = (meaning: string): string => {
+  const at = meaning.indexOf(CHANGED)
+  return at < 0 ? meaning : [...meaning.slice(at + CHANGED.length).matchAll(/"(?:[^"\\]|\\.)*"/g)].map(found => JSON.parse(found[0]) as string).join('\n')
+}
 
 // grokbar H1: "다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어" asked for nothing and became a 47-step
 // web research task. A message that only tells something gets one warm line from the quick voice (first-line.ts toldPrompt) and no work.
@@ -270,7 +286,7 @@ const NAMES_PART = /결정|일시|날짜|장소|참석|논의|전체|전부|자�
 const META = /^\s*(?:[-*•·]\s+)?(?:\*\*)?\s*(일시|일자|날짜|장소|참석자?|date|when|where|attendees)\s*(?:\*\*)?\s*[:：]/i
 const TALKED = HEAD('논의\\s*(내용|사항)?|discussion')
 export function shareReady(ask: string, answer: string): string {
-  if (!OPEN_FORM.test(ask) || NAMES_PART.test(ask)) return answer
+  if (!OPEN_FORM.test(heldWords(ask)) || NAMES_PART.test(ask)) return answer
   const replies = answer.search(/\n*```replies/)
   let lines = (replies < 0 ? answer : answer.slice(0, replies)).split('\n')
   if (!blockOf(lines, TASKS)?.items.length) return answer
@@ -301,7 +317,7 @@ export function shareReady(ask: string, answer: string): string {
 const ONLY_TODO = /할\s*일만|액션\s*아이템만|\b(?:only|just) the (?:to-?dos?|action items?)\b/i
 const OPEN_ITEMS = HEAD('미결(\\s*(사항|이슈|항목))?|미정(\\s*사항)?|open (items?|questions?)')
 export function onlyAsked(ask: string, answer: string): string {
-  if (!ONLY_TODO.test(ask)) return answer
+  if (!ONLY_TODO.test(heldWords(ask))) return answer
   const replies = answer.search(/\n*```replies/), lines = (replies < 0 ? answer : answer.slice(0, replies)).split('\n')
   const open = blockOf(lines, OPEN_ITEMS)
   if (!open) return answer

@@ -62,8 +62,32 @@ describe('a correction is checked against the ask as the person changed it', () 
     const meant = askNow('그냥 부산 걸로 바꿔', before)
     expect(meant).toContain('"그냥 부산 걸로 바꿔"')
     const answer = '할 일\n- 이도윤: 매장 점검 — 12월 3일\n- 정수아: 발주 정리 — 12월 5일\n\n미결\n- 휴무일 조정'
-    expect(onlyAsked(meant, answer)).toBe('- 이도윤: 매장 점검 — 12월 3일\n- 정수아: 발주 정리 — 12월 5일')
+    // r2: the host cannot tell which earlier words a correction withdrew, so its cut runs only on the correction's own words; the model keeps the rest.
+    expect(onlyAsked(meant, answer)).toBe(answer)
     expect(withOffer(meant, '- 이도윤: 매장 점검 — 12월 3일', [], true)).toMatch(/원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
+  })
+  // c17b r2 (Codex r1): wordings not in the harness: a branch's open questions, a reading list.
+  it('a correction that widens the ask keeps what the earlier narrowing word would have cut', () => {
+    const before = [{ role: 'user', text: 'docs/branch-week.md에서 할 일만 추려줘' }, { role: 'assistant', text: '- 재고 점검' }]
+    const answer = '할 일\n- 재고 점검\n\n미결\n- 휴무일 조정'
+    for (const widen of ['아니 그거 말고 다 보여줘', '음 그거 말고 미결까지 같이']) expect(onlyAsked(askNow(widen, before), answer)).toBe(answer)
+    // A correction that narrows in its own words still cuts.
+    expect(onlyAsked(askNow('아 그거 말고 할 일만 다시', [{ role: 'user', text: 'docs/branch-week.md 요약해줘' }]), answer)).toBe('- 재고 점검')
+    // Not a correction: unchanged behavior.
+    expect(onlyAsked('docs/branch-week.md에서 할 일만 추려줘', answer)).toBe('- 재고 점검')
+  })
+  it('successive corrections keep the original task as the route and every change in the meaning, oldest first', () => {
+    const turns = [
+      { role: 'user', text: 'reading/list.md에서 이번 달 읽을 책만 골라줘' }, { role: 'assistant', text: '- 책 A' },
+      { role: 'user', text: '아 그거 말고 전부로' }, { role: 'assistant', text: '- 책 A\n- 책 B' },
+      { role: 'user', text: '아니 그거 말고 저자별로' }, { role: 'assistant', text: '…' },
+    ]
+    const third = '음 그거 말고 출판연도순으로'
+    expect(routeAsk(third, turns)).toBe('reading/list.md에서 이번 달 읽을 책만 골라줘')
+    const meant = askNow(third, turns)
+    expect(meant).toContain('changed it: "아 그거 말고 전부로", then "아니 그거 말고 저자별로", then "음 그거 말고 출판연도순으로". Where they differ, the later words hold.')
+    // An ask after the chain that is not a correction starts a new route.
+    expect(routeAsk('아 그거 말고 장르별로', [...turns, { role: 'user', text: 'notes/plan.md 요약해줘' }])).toBe('notes/plan.md 요약해줘')
   })
   it('every check, rewrite, filter and offer in the turn reads the meaning; the route alone decides the lane', () => {
     for (const use of ['withoutSameDecisions(meant,', 'shareReady(meant,', 'onlyAsked(meant,', 'tidyCounts(meant,', 'withOffer(meant,', 'ask: meant, draft: result.answer', 'namedText(meant,']) expect(ipc).toContain(use)
