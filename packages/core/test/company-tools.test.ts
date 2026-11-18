@@ -397,8 +397,9 @@ test('a handoff with no new brief joins the job the agent is on, or takes their 
   expect(o.task.team!.members[0]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
   // c12a B1: one item is that line on its own (as checkedReport allows the writer).
   expect(handed).toMatch(/^서연 결과$/m)
-  // c13a: whose find it was made from is in the attribution, not a lead sentence.
-  expect(handed).toMatch(/^\(서연, 지민이 찾은 행사\) /m)
+  // c17c (cause S, C6): whose piece it is and whose find it was made from is a sentence, never a "(서연, …)" tag. c17c r2 (rule 5): after the item.
+  expect(handed).toMatch(/^서연 결과\n서연이 지민이 찾은 행사로 만든 거예요\. \[/m)
+  expect(handed).not.toMatch(/^\(서연/m)
   expect(o.task.team!.members[0]!.lookup).toBeUndefined()
   expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '지민', '11월 20일 서울 AI 서밋 https://example.com/summit', '행사'))
   expect(handedFrom(o.task.team!.members[0]!.brief)).toEqual({ brief: '홍보 문구 3개', from: '지민', job: '행사', result: '11월 20일 서울 AI 서밋 https://example.com/summit' })
@@ -674,7 +675,8 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   const none = vi.fn(async () => good)
   const plain = await writtenReport({ ask: 'x', members: [c3d[1]!], write: none })
   expectParts(plain, [['서연', c3[1]!.sources![0]!]])
-  expect(plain).toMatch(/이번엔 끝까지 못 봤어요 \(서연\)\. 보던 곳은 \[Bing 검색\]\([^)]+\)$/)
+  // c17c: alone, whose part it is is the subject of the sentence, never a "(서연)" tag.
+  expect(plain).toMatch(/^서연은 이번엔 끝까지 못 봤어요\. 보던 곳은 \[Bing 검색\]\([^)]+\)$/)
   expect(none).not.toHaveBeenCalled()
   expect(checkedReport(good, c3d)).toBeDefined()
   // c7: a table only when things are compared; the host's own rendering has none.
@@ -735,12 +737,15 @@ test('a hand-off carries the pages the first teammate read when the memo names n
   const own = mergedReport(members)
   expect(own).toContain('맑은 토요일, 가볍게 나들이 가요.')
   expect(own).toContain('지민이 찾은')
-  const uncited = JSON.stringify({ message: '서연이 지민이 찾은 서울 날씨로 나들이 문구를 써 봤어요.\n\n1. 맑은 토요일, 가볍게 나들이 가요.', kept: [] })
-  // The page that was read is in the writer's data and in the host's own answer; an answer that leaves it out is refused.
+  // c17c r2 (rule 5): the item first, then whose find it came from.
+  const uncited = JSON.stringify({ message: '1. 맑은 토요일, 가볍게 나들이 가요.\n\n서연이 지민이 찾은 서울 날씨로 써 봤어요.', kept: [] })
+  // The page that was read is in the writer's data and in the host's own answer. c17c (cause S, C6): an answer that says whose find it was
+  // but leaves the page out is accepted, and the host closes that sentence with the page, so it is never lost.
   expect(reportPrompt('날씨 보고 문구 써줘', members)).toContain(page)
   expectParts(own, [['서연'], ['지민', page]])
-  expect(checkedReport(uncited, members)).toBeUndefined()
-  expect(await writtenReport({ ask: '날씨 보고 문구 써줘', members, write: async () => uncited })).toBe(own)
+  const accepted = checkedReport(uncited, members)
+  expect(accepted?.trimEnd().split('\n').at(-1)).toBe(`서연이 지민이 찾은 서울 날씨로 써 봤어요. [weather.example](${page})`)
+  expect(await writtenReport({ ask: '날씨 보고 문구 써줘', members, write: async () => uncited })).toBe(accepted)
 })
 
 // c3b review r3 (Codex): a memo that named only a search-results address counted as cited, so the page the teammate read was dropped
@@ -753,13 +758,16 @@ test('a hand-off whose memo names only a search-results address still carries th
   expect(carried).not.toContain('search.naver.com')
   const members = [kim, reported(part('m2', '서연', carried, { background: true, lookup: undefined, writer: true }), { items: ['맑은 서울로 떠나요.'] })]
   expect(mergedReport(members)).not.toContain('search.naver.com')
-  const text = '서연이 지민이 찾은 서울 날씨로 이렇게 써 봤어요.\n\n1. 맑은 서울로 떠나요.'
+  const text = '1. 맑은 서울로 떠나요.\n\n서연이 지민이 찾은 서울 날씨로 써 봤어요.'
   // Nothing read but the search: the search address still stands in, as before.
   expect(mergedReport([reported(part('m1', '지민', '서울 날씨 조사', { background: true, sources: [search] }), { facts: [{ text: '서울은 맑아요.' }] })])).toContain('search.naver.com')
-  // The page that was read is in the writer's data and the host's answer; an answer citing only the search is refused.
+  // The page that was read is in the writer's data and the host's answer. c17c: an answer citing only the search keeps no search address
+  // (it is not the find's page) and gets the page that was read after it.
   expect(reportPrompt('문구 써줘', members)).toContain(page)
   expectParts(mergedReport(members), [['서연'], ['지민', page]])
-  expect(checkedReport(JSON.stringify({ message: `${text}\n\n지민이 찾아보니 서울은 맑아요. [네이버 검색](${search})`, kept: [] }), members)).toBeUndefined()
+  const searched = checkedReport(JSON.stringify({ message: `${text}\n\n지민이 찾아보니 서울은 맑아요. [네이버 검색](${search})`, kept: [] }), members)
+  expect(searched).not.toContain('search.naver.com')
+  expect(searched).toContain(`](${page})`)
 })
 
 test('a name as people write it names the teammate: 지민이, 지민이는, 지민이랑, 지민한테, 지민 씨', async () => {
@@ -1001,7 +1009,7 @@ test('c4 C3/H5: a teammate whose time ran out with results in hand has their par
   const unsettled: TeamMember = { ...first, data: undefined }
   const empty = { ...unsettled, state: 'failed' as const, result: 'Failed: it ran out of time before it reported anything.' }
   expectParts(mergedReport([empty]), [['지민']])
-  expect(mergedReport([empty])).toMatch(/못 찾았어요 \(지민\)\.$/)
+  expect(mergedReport([empty])).toBe('지민은 이번엔 못 찾았어요.')
   // "멈춰": stopped, and nothing of what was read is kept (rule 4).
   const stopped = part('m3', '도윤', '리니어 조사', { state: 'working' })
   settleMember(stopped, { answer: '', error: 'it was stopped.', read }, 'now', true)
@@ -1023,18 +1031,22 @@ test('c4 C6: N short things asked for come back as a numbered list of N, from th
   expect(own.split('\n').filter(line => /^\d\. /.test(line))).toEqual(numbered)
   expect(own).toContain('서연')
   expect(own).toContain('지민이 찾은')
-  // c9 fix 2: nothing closes the list but whose it is (c13a: the attribution line, with the find's page).
-  expect(own.split('\n').slice(-4, -1)).toEqual(numbered)
-  expect(own.split('\n').at(-1)).toMatch(/^\(서연, 지민이 찾은 서울 IT 행사 일정\) \[/)
+  // c17c r2 (rule 5): the items lead; whose they are and whose find they came from follows, closed by the find's page. Never a tag.
+  expect(own.split('\n').slice(0, 3)).toEqual(numbered)
+  expect(own.split('\n').at(3)).toBe('서연이 지민이 찾은 서울 IT 행사 일정으로 만든 거예요. [example.com](https://example.com/sw)')
   // The writer is handed the items as they are, and three bare paragraphs back from it are refused (the host's list stands in).
   expect(reportPrompt('문구 뽑아줘', [kim, park])).toContain(JSON.stringify(lines))
   const said = (text: string): string => JSON.stringify({ message: text, kept: [] })
   expect(checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요.', ...lines].join('\n\n')), [kim, park])).toBeUndefined()
-  // A numbered answer passes when it links the find it was made from; without that link it is refused.
+  // c17c: a numbered answer that says whose find it was made from passes, linked or not: the host adds the find's page; one that names
+  // nobody it was made from is refused.
+  // c17c r2 (rule 5): the list first; a sentence about the work in front of it is refused.
+  expect(checkedReport(said([numbered.join('\n'), '서연이 지민이 찾은 행사로 뽑았어요.'].join('\n\n')), [kim, park])?.trimEnd().split('\n').at(-1)).toBe('서연이 지민이 찾은 행사로 뽑았어요. [example.com](https://example.com/sw)')
+  expect(checkedReport(said([numbered.join('\n'), '서연이 행사 문구를 뽑았어요.'].join('\n\n')), [kim, park])).toBeUndefined()
   expect(checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요.', numbered.join('\n')].join('\n\n')), [kim, park])).toBeUndefined()
-  const passed = checkedReport(said(['서연이 지민이 찾은 행사로 뽑았어요. [example.com](https://example.com/sw)', numbered.join('\n')].join('\n\n')), [kim, park])
+  const passed = checkedReport(said([numbered.join('\n'), '서연이 지민이 찾은 행사로 뽑았어요. [example.com](https://example.com/sw)'].join('\n\n')), [kim, park])
   expect(passed?.split('\n').filter(line => /^\d\. /.test(line))).toEqual(numbered)
-  // c9 fix 2: the opener links the find the list was made from.
+  // c9 fix 2: the attribution links the find the list was made from.
   expect(own.split('\n\n')[0]).toMatch(/\[[^\]]+\]\(https:\/\/example\.com\/sw\)/)
 })
 
@@ -1407,7 +1419,7 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   // c7 C10: short sentences, one plain statement each, the way a person recaps a week.
   const good = '월요일에 지우가 노션 신기능을 살펴봤는데 새 발표는 없었어요. 서연은 슬랙에서 세일즈포스 에이전트 스워밍 기능을 찾았어요. 지우 조사로 홍보 문구 3개도 썼고요.'
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return good } })).toBe(good)
-  expect(asked[0]).toContain('two or three short sentences')
+  expect(asked[0]).toContain('two to four short sentences')
   // One small ask: the jobs of this week only, each with who and the day in words, no address. c9 fix 5: the span is not said again in a job.
   // c14b: and the meaning check of what it wrote, against the same record.
   expect(asked).toHaveLength(2)
@@ -1703,7 +1715,9 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   const host = mergedReport(c5)
   // c12a B1: no job title as the head. c13a (cause H): the answer leads; whose it is follows.
   // c15b: the latest is a row of its own under the one line that says nothing is new, never inside a host frame.
-  expect(host).toMatch(/^이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n.* \(지민\) \[/)
+  // c17c: alone, whose part it is opens the sentence ("지민이 찾아보니 …"), never a "(지민)" tag.
+  expect(host).toMatch(/^지민이 찾아보니 이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n.*\. \[/)
+  expect(host).not.toContain('(지민)')
   expect(host).not.toContain('일정 정리(')
   expect(host).toContain('2025년 12월 11일')
   expectParts(host, [['지민', acc]])
@@ -1731,8 +1745,8 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   const seoyeon = reported(part('m2', '서연', handed, { lookup: undefined, writer: true }), { items })
   const c6host = mergedReport([seoyeon]), lines = c6host.split('\n')
   // c12a B1: one plain sentence from data (who, whose find, how many), never the job title "홍보 문구 3개 뽑기(서연, …):".
-  // c13a (cause H): the items, then whose they are, from whose find, with its page; no host lead.
-  expect(lines.at(-1)).toMatch(new RegExp(`^\\(서연, 지민이 찾은 서울 IT 행사 일정\\) \\[[^\\]]+\\]\\(${escaped(acc)}\\)$`))
+  // c17c (cause S, C6): never a "(서연, …)" tag. c17c r2 (rule 5): the items lead; whose they are and whose find follows, closed by its page.
+  expect(lines.at(-1)).toMatch(new RegExp(`^서연이 지민이 찾은 서울 IT 행사 일정으로 만든 거예요\\. \\[[^\\]]+\\]\\(${escaped(acc)}\\)$`))
   expect(lines.slice(0, -1)).toEqual(items.map((item, i) => `${i + 1}. ${item}`))
   expectParts(c6host, [['서연', acc], ['지민']])
   expect(c6host).not.toMatch(/지민이 찾아보니|찾은 내용:/)
@@ -1760,8 +1774,9 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   expect(asked[0]).toContain('"A랑 B 쪽은 새 소식이 없었어요."')
   const jobs = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; nothing: boolean }[]
   expect(jobs.map(job => [job.who, job.did, job.nothing])).toEqual([['서연', '슬랙 신기능 조사', false], ['지우', '노션 신기능 조사', false], ['도윤', '리니어 신기능 조사', false], ['지우', '다음 달 서울 IT 행사 일정 정리', false], ['서연', '홍보 문구 3개 뽑기', false], ['지우', '이번 주말 서울 날씨 찾기', false], ['서연', '주말 나들이 추천 문구 한 줄 쓰기', false]])
-  // The same summary with the Linear job said as found passes.
-  const right = '이번 주엔 서연이 슬랙 신기능을 조사해서 Salesforce 에이전트 스워밍 기능을 확인했어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았고, 지우는 노션이랑 다음 달 서울 IT 행사를 살펴봤어요. 서연이 그 조사로 홍보 문구 3개를 썼어요.'
+  // The same summary with the Linear job said as found passes. c17c (cause S): updated (it left out the weekend weather and outing-copy
+  // jobs, which the subject check now refuses): every job's subject is named.
+  const right = '이번 주엔 서연이 슬랙 신기능을 조사해서 Salesforce 에이전트 스워밍 기능을 확인했어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았고, 지우는 노션이랑 다음 달 서울 IT 행사, 주말 날씨를 살펴봤어요. 서연이 그 조사로 홍보 문구 3개와 주말 나들이 추천 문구를 썼어요.'
   expect(await sum(right)).toBe(right)
   // A job that did find nothing may sit in such a clause, alone; a found one beside it may not.
   const d = await company()
@@ -1809,6 +1824,7 @@ test('c6 item 6 (C4, C7, C8, H5): a result\'s lead follows the job\'s own verb, 
   // line is the first item itself, whose it is, and its link, whatever the job's wording or part name.
   // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   for (const [brief, more] of [['서울 IT 행사 조사', {}], ['다음 달 서울 IT 행사 일정 정리', {}], ['다음 달 서울 IT 행사 일정 정리', { topic: 'IT 행사' }]] as const) expect(first(brief, two, more)).toBe('- 지민이 찾아보니 소프트웨이브가 열려요 (12월 2일). [a.example](https://a.example/sw)')
+  // c17c r2 (rule 5, review #1): a writer's items are the answer, so the first line is the first item; whose they are follows.
   expect(first('홍보 문구 3개 써줘', { items: ['가', '나', '다'] }, { lookup: false, writer: true })).toBe('1. 가')
   // One finding: the teammate's own sentence on the first line, with its link.
   const one = { facts: [{ text: '원달러 환율은 지금 1달러에 1,385원이에요.', url: 'https://finance.example/usd' }] }
@@ -1840,7 +1856,7 @@ test('c6 item 7: a late part that never came is one plain line, not silence and 
   // It died with the app (team-hire-tools failOnRestart).
   Object.assign(doyun, { state: 'failed', result: 'Failed: the app restarted while this member was working.' })
   // c12a B1 / c13a: alone in its own report, said plainly once, whose it is in "(name)"; no host lead.
-  expect(employeesReport(job)).toBe('이번엔 못 찾았어요 (도윤).')
+  expect(employeesReport(job)).toBe('도윤은 이번엔 못 찾았어요.')
   lateShown(job)
   expect(job.team).toMatchObject({ lateTold: true, lateDone: true })
 })
@@ -1859,15 +1875,17 @@ test('c6b r3: copy made from last year\'s event says the year in its first line 
   // The first line links the find it was made from (its year is on that page and in the brief); the items are exactly the writer's, and
   // nothing the host adds sells them as next month's; nothing closes the bubble.
   const lines = host.split('\n')
-  // c13a (cause H): the items, then whose they are and the find's page; no host lead.
-  expect(lines.at(-1)).toBe(`(서연, 지민이 찾은 서울 IT 행사 일정) [example.com](${acc})`)
+  // c17c r2 (rule 5): the items lead; whose they are and whose find follows, closed by the find's page.
+  expect(lines.at(-1)).toBe(`서연이 지민이 찾은 서울 IT 행사 일정으로 만든 거예요. [example.com](${acc})`)
   expect(lines.slice(0, -1)).toEqual(items.map((item, i) => `${i + 1}. ${item}`))
   expect(host).not.toMatch(/다음 달|12월에 열려요/)
   // The writer's text: an item changed (made into next month's) or the find's link dropped is refused; the host's list stands in.
   const said = (message: string): string => JSON.stringify({ message, kept: [] })
-  const good = `서연이 지민이 찾은 작년 ACC 소식으로 세 개 뽑아 봤어요. [ACC](${acc})\n\n${items.map((item, i) => `${i + 1}. ${item}`).join('\n')}`
+  const good = `${items.map((item, i) => `${i + 1}. ${item}`).join('\n')}\n\n서연이 지민이 찾은 작년 ACC 소식으로 뽑아 봤어요. [ACC](${acc})`
   expectParts(checkedReport(said(good), [kim, seoyeon]), [['서연', acc], ['지민']])
-  for (const bad of [good.replace('3. 올해 ACC 소식도 곧 전할게요.', '3. 다음 달 서울에서 만나요.'), good.replace(` [ACC](${acc})`, '')])
+  // c17c: the find's link dropped is no longer refused: the host closes the attribution sentence with it.
+  expect(checkedReport(said(good.replace(` [ACC](${acc})`, '')), [kim, seoyeon])?.trimEnd().split('\n').at(-1)).toBe(`서연이 지민이 찾은 작년 ACC 소식으로 뽑아 봤어요. [example.com](${acc})`)
+  for (const bad of [good.replace('3. 올해 ACC 소식도 곧 전할게요.', '3. 다음 달 서울에서 만나요.')])
     expect(await writtenReport({ ask: '행사 정리해서 서연한테 넘겨 문구 뽑아줘', members: [kim, seoyeon], now: NOV17, timeoutMs: 1000, write: async () => said(bad) }), bad.slice(-40)).toBe(host)
   // A hand-over from inside the time asked reads as before: its fact and its page.
   const inside = reported(part('m0', '지민', '다음 달 서울 IT 행사 일정 정리'), { facts: [{ text: 'ACC 2026이 서울에서 열려요.', url: acc, date: '12월 10일' }] })
@@ -1885,7 +1903,7 @@ test('stack-6: a year that is only in the event\'s name dates its day: last year
   // The reviewer's input, as data: shown as nothing for next month, with last year's day said with its year.
   const m = reported(part('m1', '지민', '다음 달 서울 IT 행사 일정 정리'), { facts: [], nothing_in_period: { latest: { text: 'ACC 2025가 서울에서 열렸어요.', url: 'https://example.com/acc', date: '2025년 12월 11일' } } })
   const shown = mergedReport([m])
-  expect(shown).toMatch(/^이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\nACC 2025가 서울에서 열렸어요 \(2025년 12월 11일\)\. \(지민\) \[[^\]]+\]\(https:\/\/example\.com\/acc\)$/)
+  expect(shown).toMatch(/^지민이 찾아보니 이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\nACC 2025가 서울에서 열렸어요 \(2025년 12월 11일\)\. \[[^\]]+\]\(https:\/\/example\.com\/acc\)$/)
   // This year's event, named with its year, is next month's as before; a price is no year.
   const ok = reported(part('m1', '지민', '다음 달 서울 IT 행사 일정 정리'), { facts: [{ text: 'ACC 2026은 서울에서 열려요. 입장료는 2025원이에요.', url: 'https://example.com/acc', date: '12월 11일' }] })
   expect(mergedReport([ok])).not.toContain('새로 나온 게 없어요')
@@ -2064,8 +2082,8 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   const c6 = mergedReport([kim, park]), rows = c6.split('\n')
   expect(c6.split('\n\n')).toHaveLength(1)
   // c12a B1: one plain sentence from data, never the to-do label "홍보 문구 3개 뽑기(서연, …):" (C6 judge: "작업 상태 보고처럼").
-  // c13a (cause H): the items, then whose they are and the find's page; no host lead.
-  expect(rows.at(-1)).toMatch(/^\(서연, 지민이 찾은 서울 IT 행사 일정\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\//)
+  // c17c r2 (rule 5): the items lead; whose they are and whose find follows, closed by the find's page.
+  expect(rows.at(-1)).toMatch(/^서연이 지민이 찾은 서울 IT 행사 일정으로 만든 거예요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\//)
   expect(c6).not.toContain('뽑기')
   expect(rows.slice(0, -1).map(line => line.slice(0, 3))).toEqual(['1. ', '2. ', '3. '])
   expect(c6).not.toMatch(/찾은 내용\s*:|다음 달 서울 IT 행사 일정 정리로/)
@@ -2078,7 +2096,8 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   const seoyeon = reported(part('m2', '서연', handoffBrief(s6.h5[0]!.then!.brief, '지민', jimin.result!, jimin.brief), { lookup: undefined, writer: true }), { items: [s6.h5[1]!.result!] })
   const h5 = mergedReport([jimin, seoyeon])
   expect(h5.split('\n\n')).toHaveLength(1)
-  expect(h5.split('\n')[1]).toMatch(/^\(서연, 지민이 찾은 서울 날씨\) \[[^\]]+\]\(https:\/\/www\.weather\.go\.kr\/[^)\s]+\)$/u)
+  // c17c r2 (rule 5): the line leads; whose it is follows, closed by the weather's page. Never a "(서연, …)" tag.
+  expect(h5.split('\n')[1]).toMatch(/^서연이 지민이 찾은 서울 날씨로 만든 거예요\. \[[^\]]+\]\(https:\/\/www\.weather\.go\.kr\/[^)\s]+\)$/u)
   expect(h5.split('\n')[0]).toBe(s6.h5[1]!.result!)
   expect(h5).not.toMatch(/쓰기|찾기\(/)
   expect(h5).not.toMatch(/찾은 내용\s*:/)
@@ -2114,7 +2133,8 @@ test('stack-7, c9 fix 2: a hand-off says once, on its opener, whose find it was 
     // c9: the closing sentence is gone; the page it carried is on the opener, whose find it was is said once, and nobody is said to have looked.
     const shown = mergedReport([kim, park]), lines = shown.split('\n')
     // c12a: one item is that line on its own (as the writer may write it). c13a (cause H): then whose it is, from whose find, and its page.
-    expect(lines).toEqual(['가볍게 나가 봐요.', `(서연, 지민이 찾은 서울) [${lines[1]!.match(/\[([^\]]+)\]/)![1]}](${url})`])
+    // c17c r2 (rule 5): the item, then whose it is in a sentence closed by the find's page, never a "(서연, …)" tag.
+    expect(lines).toEqual(['가볍게 나가 봐요.', `서연이 지민이 찾은 서울로 만든 거예요. [${lines[1]!.match(/\[([^\]]+)\]/)![1]}](${url})`])
     expect(shown.match(/지민/g)).toHaveLength(1)
     expect(shown).not.toMatch(/찾아보니|확인해 보니|찾은 걸 따랐어요/u)
   }

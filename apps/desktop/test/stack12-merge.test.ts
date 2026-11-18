@@ -145,7 +145,8 @@ describe('stack-12: a find is of the time asked, and a count is of single items'
     // Shown as a part that found nothing this week, with the latest and its link (rule 7), never as this week's find.
     const m = member('m1', '하람', brief, '은행 앱', { state: 'done', data: inAskedPeriod({ facts: [old, older] }, brief, NOW)! })
     const text = mergedReport([m])
-    expect(text).toMatch(/이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n다크 모드가 생겼어요 \(11월 2일\)\. \(하람\) \[[^\]]+\]\(https:\/\/bank\.example\/1\)/)
+    // c17c: alone, whose part it is opens the sentence, never a "(하람)" tag.
+    expect(text).toMatch(/^하람이 찾아보니 이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n다크 모드가 생겼어요 \(11월 2일\)\. \[[^\]]+\]\(https:\/\/bank\.example\/1\)/)
   })
   it('a listing page is shown labeled but never counted among the items', () => {
     const facts = [

@@ -153,7 +153,8 @@ it('a part that never answers stops at its ceiling and is then said once as not 
   // Not before the ceiling: the deadline plus 90 s.
   expect(w.reported[1]! - started).toBeGreaterThanOrEqual(MS + LATE - 5)
   const last = employeesReport(await w.task())!
-  expect(last).toMatch(/^이번엔 끝까지 못 봤어요 \(이든\)\. 보던 곳은 \[[^\]]+\]\(https:\/\/search\.example\/\?q=/)
+  // c17c: alone, whose part it is is the subject, never a "(이든)" tag.
+  expect(last).toMatch(/^이든은 이번엔 끝까지 못 봤어요\. 보던 곳은 \[[^\]]+\]\(https:\/\/search\.example\/\?q=/)
   expect((await w.task()).team!.members[1]).toMatchObject({ unfinished: true })
 })
 
