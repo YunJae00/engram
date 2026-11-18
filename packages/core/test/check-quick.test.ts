@@ -10,7 +10,7 @@ it('uses the same cached compiler and lint checks, then explicit unit tests and 
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   await import(new URL('../../../scripts/check-quick.mjs', import.meta.url).href)
   const commands = run.mock.calls as unknown as [string, string[]][]
-  expect(commands.map(([, args]) => args[0])).toEqual(['node_modules/typescript/bin/tsc', 'node_modules/typescript/bin/tsc', 'node_modules/eslint/bin/eslint.js', 'node_modules/vitest/vitest.mjs', 'scripts/todo-scan.mjs', 'scripts/css-orphan-scan.mjs'])
+  expect(commands.map(([, args]) => args[0])).toEqual(['node_modules/typescript/bin/tsc', 'node_modules/typescript/bin/tsc', 'node_modules/eslint/bin/eslint.js', 'node_modules/vitest/vitest.mjs', 'scripts/todo-scan.mjs', 'scripts/comment-scan.mjs', 'scripts/css-orphan-scan.mjs'])
   expect(commands[3]![1]).toContain('apps/desktop/test/codex-native.test.ts')
 })
 

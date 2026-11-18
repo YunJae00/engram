@@ -159,7 +159,8 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     const own = cited(units[at]!.text), elsewhere = new Set(units.flatMap((u, i) => i === at ? [] : cited(u.text)))
     if (cited(text).some(url => !own.includes(url) && (!known.includes(url) || elsewhere.has(url)))) return undefined
   }
-  if ([...inserts.values()].flat().some(line => cited(line).some(url => !read(url)))) return undefined
+  const added = [...inserts.values()].flat().flatMap(cited), inDraft = (url: string): number => cited(draft).filter(one => one === url).length
+  if (added.some(url => !read(url) || inDraft(url) + added.filter(one => one === url).length > Math.max(inDraft(url), known.split(url).length - 1))) return undefined
   const lines = draft.split('\n'), shown: string[] = [...(inserts.get(-1) ?? [])]
   lines.forEach((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
