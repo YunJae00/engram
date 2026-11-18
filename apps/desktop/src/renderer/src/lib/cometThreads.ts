@@ -381,7 +381,9 @@ export function createCometThreads(initialSelected: string | null = null) {
       settle(
         id,
         cut
-          ? [...current.messages.slice(0, at), { ...current.messages[at]!, streaming: false, checking: undefined, progress: true, work: current.workLines }, { role: 'assistant' as const, text: marker!, work: [] }, ...current.messages.slice(at + 1)]
+          // stack-18 (T3: the stopped line drawn above the person's own stop): the stop is the newest thing in the thread, so its line goes under whatever was said
+          // since the answer began (the person's own stop among it), not right under the cut answer.
+          ? [...current.messages.slice(0, at), { ...current.messages[at]!, streaming: false, checking: undefined, progress: true, work: current.workLines }, ...current.messages.slice(at + 1), { role: 'assistant' as const, text: marker!, work: [] }]
           // A stop said before any answer text is answered where it was said, at the foot.
           : at >= 0 && !current.messages[at]!.text ? [...current.messages.slice(0, at), ...current.messages.slice(at + 1), { ...current.messages[at]!, streaming: false, text: fallback }]
           : current.messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),

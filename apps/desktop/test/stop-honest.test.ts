@@ -28,6 +28,13 @@ describe('stopping an answer', () => {
     expect(messages.some(m => m.streaming)).toBe(false)
   })
 
+  it('stack-18 (T3): a stop said under an answer already shown is answered under the person\'s words, not above them', () => {
+    const store = streaming('부산 대구 광주 미세먼지 각각 알아봐', '셋 나눠서 볼게요.')
+    store.noteUser(BOT, '그만해')
+    expect(store.stop(BOT, 'x', '멈췄어요.')).toBe('멈췄어요.')
+    expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['부산 대구 광주 미세먼지 각각 알아봐', '셋 나눠서 볼게요.', '그만해', '멈췄어요.'])
+  })
+
   it('shows the stopped text in an empty bubble', () => {
     const store = streaming('Tidy', '')
     expect(store.stop(BOT, 'Stopped.', 'Stopped.')).toBe('Stopped.')

@@ -33,7 +33,7 @@ export function checkPrompt(input: CheckInput, draft: string): string {
     'You check a message before a person reads it in a chat with their team. Read the data it was written from, what the person asked, and the message. Judge meaning only, not style or wording.',
     'Name every problem of these kinds:',
     '- "contradicts": a sentence that contradicts the data or says more than it holds: a count, a state, a date or a price that differs, or "all", "only", "none", "both" that the data does not bear out (parts that brought nothing back count: "all done" over one of them is a problem), or a sentence that says who did something and leaves out someone the data says did it too. It also covers a count or a fact about the same things that differs from an earlier message the person already read, when the data holds one, unless the message says why it differs.',
-    'Lines the data says are shown after the message are part of what the person reads: what they say need not be in the message.',
+    'Lines the data says are shown after the message are part of what the person reads: what they say need not be in the message. Nor need the job of a teammate a part hands its find on to ("handsOnTo"): they say it in a message of their own after this one.',
     '- "unsaid": a state the data marks that the message leaves out or says otherwise: someone the data marks as having left the team when the message does not say, once, that they are no longer on it (naming their past work is not saying it), a part not finished, a part still under way, a part with nothing found or missing.',
     '- "asks": a question or a choice put to the person about something the team can do itself (look again, redo a part, pick a form), or a sentence about how the work was done (search words, tools, retries, typos in a query). One short closing offer of a further step after the work is done ("원하시면 표로도 만들어 드릴게요.") is not an "asks" problem; a question or a choice before the work, or a menu of options, is.',
     ...(input.rewrite ? ['- "dropped": the message rewrites an earlier reply, and a constraint of the earlier ask that the earlier reply kept (register such as polite or formal, audience, format, language, length unit) no longer holds in it, or a fact the earlier ask itself put in (who, what, for what, when) is no longer in it: a shorter or simpler form removes words, never one of those facts. A fact the person has since changed takes its new value: the new value is no problem.'] : []),
@@ -194,7 +194,7 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     if (texts.length) shown.push(own.some(({ i }) => replace.has(i)) ? lead + texts.join(' ') : line)
     for (const { i } of own) shown.push(...(inserts.get(i) ?? []))
   })
-  const text = shown.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  const text = noEmptyFences(shown.join('\n')).replace(/\n{3,}/g, '\n\n').trim()
   return text && text !== draft.trim() ? text : undefined
 }
 /** One scoped repair of `draft` for `problems` by the quick model within `ms`: the spliced text, or undefined (late, unreadable, out of scope). */
@@ -207,13 +207,17 @@ export async function scopedRepair(quick: QuickText, input: CheckInput, draft: s
 export function withoutSentences(text: string, problems: readonly Problem[]): string {
   const units = messageUnits(text), gone = new Set(problems.flatMap(p => quotedUnits(units, p.quote)))
   if (!gone.size) return text
-  return text.split('\n').flatMap((line, at) => {
+  const out = text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.length) return [line]
     const left = own.filter(({ i }) => !gone.has(i))
     return !left.length ? [] : left.length === own.length ? [line] : [/^\s*/.exec(line)![0] + left.map(({ u }) => u.text).join(' ')]
   }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return noEmptyFences(out)
 }
+// stack-18 (c18b D1: the answer ended in an empty "코드 / 코드 복사" box): a fence is two units of its own, so a repair or a removal that
+// takes what was inside leaves the fences standing, drawn as an empty code block. A block with nothing in it goes.
+const noEmptyFences = (text: string): string => text.replace(/^[ \t]*```[^\n`]*\n(?:[ \t]*\n)*[ \t]*```[ \t]*$\n?/gm, '').replace(/\n{3,}/g, '\n\n').trim()
 
 // c18b r3 (review: "register" was soft, so when its repair did not land the 한다체 line stood in a 해요체 answer): one register is the
 // standing tone rule, not polish, so the host guarantees it when the repair did not. The host conjugates nothing (it matches no endings):
