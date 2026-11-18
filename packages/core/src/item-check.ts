@@ -41,14 +41,20 @@ export async function judgedItems(ask: string, items: readonly { text: string; l
   ].join('\n')
   let timer: ReturnType<typeof setTimeout> | undefined
   const began = Date.now()
+  // stack-15: why no verdict came (late or stopped, the call failed, or an answer that holds no readable JSON), for the next run's log.
+  let why = 'unreadable'
   const said = (verdict: ItemJudgment | undefined): ItemJudgment | undefined => {
     const words = verdict?.search ? look?.tried.includes(verdict.search) ? 'tried' : 'new' : 'none', took = Date.now() - began
-    judgeLog(verdict ? `round=${round} sure=${verdict.keep.length} unsure=${verdict.unsure.length} secondhand=${verdict.secondhand.length} asked=${verdict.asked ?? '-'} words=${words} ms=${took} left=${ms - took}` : `round=${round} verdict=none ms=${took} left=${ms - took}`)
+    judgeLog(verdict ? `round=${round} sure=${verdict.keep.length} unsure=${verdict.unsure.length} secondhand=${verdict.secondhand.length} asked=${verdict.asked === null ? 'null' : verdict.asked ?? '-'} words=${words} ms=${took} left=${ms - took}` : `round=${round} verdict=none why=${why} ms=${took} left=${ms - took}`)
     return verdict
   }
   try {
-    const raw = await Promise.race([write(prompt, ms), new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })])
-    const o = JSON.parse((raw ?? '').replace(/^```\w*\n?|\n?```\s*$/g, '').trim()) as Record<string, unknown> | null
+    const raw = await Promise.race([write(prompt, ms).catch(() => { why = 'error'; return undefined }), new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })])
+    if (raw === undefined && why !== 'error') why = 'late'
+    // stack-15 (c15a run R3, H6: "verdict=none" from answers that came back in 5.6-6.1 s, so the unjudged rows, a statistic and one demo day
+    // twice among them, were listed as funding news): the verdict is the JSON object in the answer, read the way the meaning check reads its
+    // own (written-check readProblems): words or a fence around it no longer throw the whole judgment away.
+    const text = raw ?? '', o = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as Record<string, unknown> | null
     const keep = o?.['keep'], unsure = o?.['unsure'], same = o?.['same'] ?? [], lists = o?.['lists'] ?? [], names = o?.['names'], listing = o?.['listing'], outside = o?.['outside'], search = o?.['search'], asked = o?.['asked']
     // c13b r2: a verdict that names an item that is not there ("keep": [9] of 2) judged something else: it is no verdict, so no real row is
     // dropped on it. The other fields only lose numbers that name nothing.

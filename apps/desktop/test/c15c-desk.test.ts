@@ -63,10 +63,10 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(out).not.toBe(DRAFT)
     expect(out).toBe('장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요')
   })
-  it('a rewrite that came too late leaves the draft without the lines its check named (r2)', async () => {
+  it('a rewrite that came too late leaves the draft without the list its check found wrong (r2; stack-15: the whole list)', async () => {
     const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 하루 종일 가요","why":"5시간"}]}', undefined]
     const draft = '좋은 점\n- 귀가 안 아파요\n- 배터리가 하루 종일 가요\n\n아쉬운 점\n- 없어요'
-    expect(await checkedDesk({ ask: '이어폰 리뷰 좋은 점 아쉬운 점으로', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })).toBe('좋은 점\n- 귀가 안 아파요\n\n아쉬운 점\n- 없어요')
+    expect(await checkedDesk({ ask: '이어폰 리뷰 좋은 점 아쉬운 점으로', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })).toBe('아쉬운 점\n- 없어요')
   })
 })
 
@@ -127,15 +127,18 @@ describe('the fallback never keeps the wrong copy and never answers empty (r3)',
   const RETRO = '합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기'
   it('a false item repeated in two parts: the copy under the part the quote names goes, the other stays', () => {
     // The check says the decision is false (the source left the day open); the same line under 할 일 is a task and stays.
+    // stack-15: a wrong row takes its whole list with it (the rows beside it are no longer trusted), under the part the quote names only.
     expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '합의한 것: 배포는 금요일에 하기로 했어요', why: '요일은 안 정했음' }]))
-      .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기')
+      .toBe('각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기')
     // Named the other way round, the other copy goes: position decides nothing.
     expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '각자 할 일 - 배포는 금요일에 하기로 했어요', why: '' }]))
       .toBe('합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
   })
   it('a quote that names no part removes every copy: the host cannot tell which one is wrong', () => {
-    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '배포는 금요일에 하기로 했어요', why: '' }]))
+    expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '배포는 금요일에 하기로 했어요', why: '' }]))
       .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
+    // stack-15: a wrong row named in no part takes every list it stands in.
+    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '배포는 금요일에 하기로 했어요', why: '' }])).toBe('')
   })
   it('every line quoted and the rewrite failed: never empty, the earlier text read or one plain line', async () => {
     const draft = '좋은 점\n- 배터리가 오래 가요\n\n아쉬운 점\n- 무거워요'
@@ -149,10 +152,33 @@ describe('the fallback never keeps the wrong copy and never answers empty (r3)',
     expect(out).not.toContain('무거워요')
   })
   it('the rewrite fully quoted but the draft only partly: the draft without its quoted lines', async () => {
-    const draft = '좋은 점\n- 귀가 안 아파요\n- 배터리가 오래 가요\n\n아쉬운 점\n- 없어요'
+    const draft = '좋은 점\n- 귀가 안 아파요\n\n- 배터리가 오래 가요\n\n아쉬운 점\n- 없어요'
     const rewrite = '좋은 점\n- 하루 종일 가요'
     const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 오래 가요","why":""}]}', rewrite, '{"problems":[{"kind":"contradicts","quote":"하루 종일 가요","why":""}]}']
     expect(await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() }))
       .toBe('좋은 점\n- 귀가 안 아파요\n\n아쉬운 점\n- 없어요')
+  })
+})
+
+// stack-15 (c15c run H2, a regression: the check found one region row and one product row wrong, the fallback cut only those two rows, and the
+// lists under them read as complete with sums that no longer added up; the product rows it did not quote were wrong too). Wording not the
+// harness's: 지점별 방문자 수.
+describe('a list with a wrong row goes whole (H2 class, rule 7)', () => {
+  const DRAFT = '10월 방문자는 모두 9,200명이에요.\n\n지점별 방문자:\n\n강남점: 4,100명\n홍대점: 3,000명\n잠실점: 2,100명\n\n요일별 방문자:\n\n토요일: 4,100명\n일요일: 3,000명'
+  it('label: value rows are a list; the wrong one takes its list and its heading, the answer line stays', () => {
+    expect(withoutQuoted(DRAFT, [{ kind: 'contradicts', quote: '홍대점: 3,000명', why: '원문은 2,800명' }, { kind: 'contradicts', quote: '토요일: 4,100명', why: '지점 숫자를 옮김' }]))
+      .toBe('10월 방문자는 모두 9,200명이에요.')
+  })
+  it('through checkedDesk: a late rewrite leaves only what was not found wrong, never a partial list', async () => {
+    const said = ['{"problems":[{"kind":"contradicts","quote":"홍대점: 3,000명","why":"2,800명"}]}', undefined]
+    const out = await checkedDesk({ ask: '방문자 csv에서 10월 방문자 수 알려줘', draft: DRAFT, source: '지점,요일,방문자', quick: async () => said.shift(), since: Date.now() })
+    expect(out).toBe('10월 방문자는 모두 9,200명이에요.\n\n요일별 방문자:\n\n토요일: 4,100명\n일요일: 3,000명')
+    expect(out).not.toContain('강남점')
+  })
+  it('every list found wrong: one plain line that asks nothing of the person (c15c r3 #2)', async () => {
+    const said = ['{"problems":[{"kind":"contradicts","quote":"좋은 점 - 가벼워요","why":""},{"kind":"contradicts","quote":"무거워요","why":""}]}', undefined]
+    const out = await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft: '좋은 점\n- 가벼워요\n\n아쉬운 점\n- 무거워요', source: SOURCE, quick: async () => said.shift(), since: Date.now() })
+    expect(out).toMatch(/[가-힣]/)
+    expect(out).not.toMatch(/말씀해|다시|\?/)
   })
 })

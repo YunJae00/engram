@@ -595,7 +595,8 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   if (text !== undefined) return text
   if (!found.length) return input.draft
   return found.map(one => withoutQuoted(one.text, one.problems)).find(Boolean)
-    ?? (readsKorean(input.ask) ? '정리해 봤는데 원문이랑 안 맞는 부분이 있어서 그대로 드리진 않을게요. 한 번 더 말씀해 주시면 다시 정리할게요.' : 'What I put together did not match the source, so I am not passing it on as is. Ask once more and I will redo it.')
+    // stack-15 (c15c r3 #2): the line says what is true and asks nothing of the person (no "ask again": deciding is the team's, GROKBOT 6).
+    ?? (readsKorean(input.ask) ? '원문이랑 맞춰 보니 제가 정리한 내용이 원문과 안 맞아서, 틀린 채로 드리진 않을게요.' : 'Checked against the source, what I put together did not match it, so I am not passing it on wrong.')
 }
 const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
 const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\-–—]/g, '').replace(/\s+/g, '')
@@ -603,22 +604,36 @@ const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\
  * words stand in more than one part, the quote's own part name (its heading) picks the line; a quote that names no part removes every copy,
  * since the host cannot tell the wrong copy from the right one (c15c r3: position is no evidence). A heading whose every line went goes too. */
 /** The nearest line above `at` that is not a list item: the part it sits under ('' when none). */
-const heading = (lines: readonly string[], at: number): string => { for (let j = at - 1; j >= 0; j--) if (lines[j]!.trim() && !ITEM.test(lines[j]!)) return lines[j]!; return '' }
+// stack-15: a row of a list by shape: a list marker, or a label and its value on one line ("부산: 1,188,000원", "한서연 — 11월 20일").
+const row = (line: string): boolean => ITEM.test(line) || /\S\s*[:：—–]\s*\S/.test(line)
+const heading = (lines: readonly string[], at: number): string => { for (let j = at - 1; j >= 0; j--) if (lines[j]!.trim() && !row(lines[j]!)) return lines[j]!; return '' }
+/** The run of rows around line `at` (consecutive non-blank rows), or the line alone when it is no row. */
+const runOf = (lines: readonly string[], at: number): number[] => {
+  if (!row(lines[at]!)) return [at]
+  let a = at, b = at
+  while (a > 0 && lines[a - 1]!.trim() && row(lines[a - 1]!)) a--
+  while (b < lines.length - 1 && lines[b + 1]!.trim() && row(lines[b + 1]!)) b++
+  return Array.from({ length: b - a + 1 }, (_, k) => a + k)
+}
+// stack-15 (c15c run H2: the check found the 서울 row and a product row wrong, the fallback cut those two rows, and the lists under 지역별 and
+// 제품별 then read as complete with sums that no longer added up): a list that held a wrong row is no longer a list the person can trust (its
+// other rows, sums and counts lean on it), so for "contradicts" and "unsaid" the whole list goes, never one row of it (GROKBOT 7: a missing
+// part is never shown as complete). "overlap" names one copy of a line that is right elsewhere: only that copy goes, as before.
 export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
   const lines = text.split('\n'), gone = new Set<number>()
-  for (const { quote } of problems) {
+  for (const { quote, kind } of problems) {
     const q = bare(quote)
     if (!q) continue
     const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
     const whole = at.filter(({ b }) => b.includes(q)), cands = whole.length ? whole : at
     const named = cands.filter(({ i, b }) => { const ctx = bare(heading(lines, i)) + b; return ctx.length > b.length && (ctx.includes(q) || q.includes(ctx)) })
-    for (const { i } of named.length ? named : cands) gone.add(i)
+    for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) gone.add(j)
   }
   // A heading (a line that is not a list item) loses its place when every line under it, up to the next heading, went.
   lines.forEach((line, i) => {
-    if (!line.trim() || ITEM.test(line) || gone.has(i)) return
+    if (!line.trim() || row(line) || gone.has(i)) return
     const under: number[] = []
-    for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || ITEM.test(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
+    for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || row(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
     if (under.length && under.every(j => gone.has(j))) gone.add(i)
   })
   return lines.filter((_, i) => !gone.has(i)).join('\n').replace(/\n{3,}/g, '\n\n').trim()

@@ -3106,8 +3106,6 @@ export function registerIpc(ctx: VaultContext): void {
         if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)
         // c6c F1: a tidy job answers with the count per folder on one line, not twenty file names (desk-lane.ts tidyCounts).
         if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
-        // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
-        if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
         // c15c (cause D): a desk answer with structure is read against its ask and the source it was built from, one rewrite at most (desk-lane.ts checkedDesk).
         // A host-made answer (a kept fact, a sorted folder, a retitled slide, a reshape) is not a draft; nor is a sort or a keep, which have no source.
         if (desk && kind !== 'tidy' && kind !== 'keep' && !handed && !fixed && !keptPlain && !retitled && !sorted && !reshaped && !result.asked && !result.stopped) result.answer = await checkedDesk({
@@ -3115,6 +3113,10 @@ export function registerIpc(ctx: VaultContext): void {
           source: given?.text ?? result.steps.filter(step => /^file_read/.test(step.tool)).map(step => step.observation).join('\n'),
           log: (outcome, kinds) => flog('chat-phase', JSON.stringify({ channel, phase: 'desk-check', outcome, kinds, ms: Date.now() - nativeSince })),
         })
+        // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
+        // stack-15 (c15c run H4: the check read the host's own offer as a question to the person and its rewrite dropped it): the host's offer is
+        // not the model's draft, so it is added after the check, to whatever text the check let through.
+        if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
         // stack-11: in a Korean thread, a line the quick model judges a working note goes (first-line.ts dropWorkingNotes), and a reply with no
         // Korean word in it gets the few words that hand it over (withTheirWords). Neither changes the words that stay.
         if (!result.asked && !laneShaped && threadKorean(request.message, request.history ?? [])) {
@@ -3200,6 +3202,8 @@ export function registerIpc(ctx: VaultContext): void {
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
             places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
+            // stack-15: a "기억해" turn that no keep_in_mind call kept is never dropped by busy turns (comet-memory yielding).
+            asked: kind === 'keep' && !result.steps.some(step => step.tool === 'keep_in_mind'),
           }))).catch(error => flog('comet-memory', error))
         }
       } catch (err) {
