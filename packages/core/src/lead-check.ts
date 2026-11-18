@@ -4,8 +4,8 @@
 // reads the lead's answer before delivery, with the helper results and the person's ask as data, and allows one rewrite in the time left.
 import type { AgentTool } from './agent-loop.js'
 import type { TeamMember } from './delegated-tasks.js'
-import { writtenReport } from './company-tools.js'
-import { isSearchPage, mergeReady, siteOf, TAKEN_OFF } from './team-hire-tools.js'
+import { CUT_SHORT, writtenReport } from './company-tools.js'
+import { isSearchPage, mergeReady, NO_LIVE_SOURCE, siteOf, TAKEN_OFF } from './team-hire-tools.js'
 import { checkedWrite, type QuickText } from './written-check.js'
 
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
@@ -24,6 +24,7 @@ export const keepsForm = (draft: string, again: string): boolean => {
     return at >= 0 && after.splice(at, 1).length === 1 // one rewrite row answers one draft row
   })
 }
+const korean0 = (m: TeamMember): boolean => /[가-힣]/.test(m.brief)
 const brought = (m: TeamMember): boolean => !!m.result?.trim() && m.state !== 'failed' && !m.empty
 
 /** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's), less any it took
@@ -91,7 +92,10 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
   return helpers.map(m => {
     const topic = (m.topic || m.role).replace(/[|()[\]]/g, ' ').trim()
     if (!brought(m)) return { ...m, topic }
-    const result = m.result!.trim(), korean = /[가-힣]/.test(result)
+    // stack-16 (T1/R2 in c16a's run: the cut-short note "(시간 한도에서 멈춤…)", "(no live source)" and raw search rows in the person's
+    // table): the result is the lead's record (the helper's words, then what it read, then the host's note). Only the helper's own words
+    // are read here; a value whose page did not open is labeled as unconfirmed in the person's words.
+    const result = (m.said ?? m.result!.replace(CUT_SHORT, '')).split(NO_LIVE_SOURCE).join(korean0(m) ? '(미확인)' : '(unconfirmed)').trim(), korean = /[가-힣]/.test(result)
     const plain = (text: string): string => text.replace(/\s+/g, ' ').replace(/^[\s,.;:·—–)）-]+/u, '').trim()
     const facts: { text: string; url: string; label?: string }[] = []
     let from = 0

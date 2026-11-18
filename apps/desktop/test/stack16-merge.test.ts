@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createTask, helperAnswer, kindChecked, listTasks, mergedReport, mergingHire, reportPrompt, setReportLog, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createTask, itemsPrompt, helperAnswer, helperParts, settleMember, withLiveSources, kindChecked, listTasks, mergedReport, mergingHire, reportPrompt, setReportLog, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -173,3 +173,42 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect(calls).toHaveLength(2)
   })
 })
+
+// stack-16 fix (c16a regression in its own run, T1/R2: the host table showed "(시간 한도에서 멈춤: 여기까지 찾은 내용)", "(no live source)"
+// and raw search rows): a helper's record is for the lead; the person reads only the helper's own words. Wording in no harness row.
+describe('stack-16: the person reads only a helper\'s own words', () => {
+  it('a helper stopped at its limit mid-sentence, with rows it read and a page that did not open: its row has its whole sentences only', async () => {
+    const m: TeamMember = { id: 'h1', parentId: null, depth: 1, role: '여수 조사', topic: '여수', brief: '여수 밤바다 유람선 요금', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
+    const answer = '여수 밤바다 유람선은 성인 2만 원이에요. [여수관광](https://yeosu.example/cruise) 주말엔 저녁 7시와 9시에 출항하고, 예약은 전화로'
+    const read = '여수 유람선 후기 모음: 블로그 글, 2026.10.02 https://blog.example/yeosu\n여수 가볼 만한 곳 TOP 10: 여행 앱 https://app.example/yeosu'
+    settleMember(m, { answer, timedOut: true, read, sources: ['https://yeosu.example/cruise', 'https://blog.example/yeosu'] }, new Date().toISOString(), true)
+    // The lead's record keeps everything (what it read, the cut-short note), as before.
+    expect(m.result).toContain('한도에서 멈춤')
+    // The page it cited no longer opens: no other page holds the figure, so the value is marked unconfirmed in the person's words.
+    await withLiveSources([m], async url => !url.includes('yeosu.example'))
+    const [part] = helperParts([{ ...m, state: 'released', review: { ok: true, note: 'auto' } }])
+    const text = JSON.stringify(part!.data ?? {})
+    expect(text).toContain('성인 2만 원')
+    expect(text).toContain('(미확인)')
+    for (const host of ['한도에서 멈춤', 'no live source', '후기 모음', 'TOP 10', '예약은 전화로']) expect(text).not.toContain(host)
+    const table = mergedReport([part!], new Map(), [], true)
+    for (const host of ['한도에서 멈춤', 'no live source', '후기 모음', '예약은 전화로']) expect(table).not.toContain(host)
+  })
+
+  it('a helper that wrote nothing of its own before its limit keeps its row, said plainly, with no raw rows', () => {
+    const m: TeamMember = { id: 'h2', parentId: null, depth: 1, role: '통영 조사', topic: '통영', brief: '통영 케이블카 요금', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
+    settleMember(m, { answer: '', timedOut: true, read: '통영 케이블카 요금 안내: 공식, 2026.11.01 https://tongyeong.example/fare', sources: ['https://tongyeong.example/fare'] }, new Date().toISOString(), true)
+    const table = mergedReport(helperParts([{ ...m, state: 'released', review: { ok: true, note: 'auto' } }]), new Map(), [], true)
+    expect(tableRows(table)).toHaveLength(1)
+    expect(table).toContain('| 통영 |')
+    expect(table).not.toContain('요금 안내')
+    expect(table).not.toContain('한도')
+  })
+})
+
+describe('stack-16: a listing page taken apart keeps the person\'s language', () => {
+  it('the items round restates the report\'s language rule (an English conference page, a Korean thread)', () => {
+    expect(itemsPrompt(['https://conf.example/schedule'])).toContain('in the person\'s language whatever language the page is in')
+  })
+})
+

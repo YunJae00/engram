@@ -970,7 +970,7 @@ const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
 const hostOf = (url: string): string => { try { return new URL(url).host.replace(/^www\./, '') } catch { return '' } }
 const trimmed = (url: string): string => url.replace(/[.,;:!?]+$/, '')
 // settleMember's closing note for a result cut short is the host's own wording for the lead ("시간 한도에서 멈춤"); the person never reads it.
-const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]*)\)$/
+export const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]*)\)$/
 const HANGUL = /[가-힣]/
 // Four English words in a row nobody asked for (GROKBOT rule 12, U1).
 const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
@@ -1128,7 +1128,9 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
 }
 /** c12a B3: the pages a teammate is asked to take apart in one more round, and their items put in place of those pages. */
 export const listingPages = (data: MemberData | undefined): string[] => [...new Set((data?.facts ?? []).filter(f => f.listing).map(f => f.url))]
-export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for).\n${urls.join('\n')}`
+// stack-16 (C5 in c16b's run: "ACC 2026 conference takes place on December 10…" in the person's thread): the round that takes a listing page
+// apart read an English page and answered in its language; REPORT_RULE's language line was not restated here, and the host's rendering shows facts as given.
+export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for), each fact a short plain sentence in the person's language whatever language the page is in.\n${urls.join('\n')}`
 // round 3: the host cannot check that a round gave every item of a page (a claim like "whole" is only the teammate's word), so a listing
 // page is never taken out. After a round that gave items it stays as where the full list is (`rest`), after them: nothing is dropped
 // unseen, and nothing done is labeled as not done (GROKBOT rule 7).

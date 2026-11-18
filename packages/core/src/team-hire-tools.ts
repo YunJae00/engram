@@ -483,8 +483,7 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
   const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), words = (line: string): string => line.replace(ADDRESS, ' ')
   let changed = false
   for (const m of members) {
-    const lines = (m.result ?? '').split('\n')
-    const fixed = lines.map(line => {
+    const fix = (text: string): string => { const lines = text.split('\n'); return lines.map(line => {
       const gone = addressesIn(line).filter(url => dead.has(url))
       if (!gone.length) return line
       // A number of the asked thing's own name ("아이폰 18") is no figure of a fact.
@@ -501,9 +500,11 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
       const same = (other: string): boolean => { const has = said(other); return claim.every(w => has.some(stem(w))) && said(head(other)).every(t => subject.some(w => stem(w)(t) || stem(t)(w))) }
       const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) && same(other) ? live(other) : undefined).find(Boolean) : undefined
       return gone.reduce((text, url) => text.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}\\)`, 'g'), to ? `[${sourceName(to, /[가-힣]/.test(m.brief))}](${to})` : NO_LIVE_SOURCE).split(url).join(to ?? NO_LIVE_SOURCE), line)
-    }).join('\n')
+    }).join('\n') }
+    // stack-16: a lookup's own words (what the person may read of it) take the same live page as its result.
+    const fixed = fix(m.result ?? ''), said = m.said === undefined ? undefined : fix(m.said)
     const sources = m.sources?.filter(url => !dead.has(url))
-    if (fixed !== m.result || sources?.length !== m.sources?.length) { changed = true; m.result = fixed; if (sources?.length) m.sources = sources; else delete m.sources }
+    if (fixed !== m.result || said !== m.said || sources?.length !== m.sources?.length) { changed = true; m.result = fixed; if (said !== undefined) m.said = said; if (sources?.length) m.sources = sources; else delete m.sources }
   }
   return changed
 }
@@ -612,6 +613,12 @@ export function dataText(data: MemberData): string {
   if (data.nothing) return ['이번엔 새로 나온 게 없어요.', ...(data.nothing.latest ? [`가장 최근: ${fact(data.nothing.latest)}`] : [])].join('\n')
   return data.facts.map(fact).join('\n')
 }
+// stack-16 (T1/R2 in c16a's run: "…출고가가 약 199만 원(2026.10.30 기준, 네이버 쇼핑 — 이고, 자 (시간 한도에서 멈춤…)" in the person's table): an
+// answer stopped at its limit ends mid-sentence; what follows its last whole sentence (or last citation) is no fact.
+const wholeSentences = (text: string): string => {
+  const ends = [...text.matchAll(/(?:[.!?。]|\]\([^)\s]+\)|https?:\/\/[^\s)\]>"'|]+)(?=\s|$)/g)].at(-1)
+  return ends ? text.slice(0, ends.index + ends[0].length).trim() : ''
+}
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)
   // A member that was stopped, failed or asked keeps nothing of what it read (GROKBOT rule 4); one whose time or calls ran out does.
@@ -653,6 +660,7 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   if (rest) member.read = true
   if (empty) member.empty = true
   member.result = cut(keptItems(member.brief, [answer, rest].filter(Boolean).join('\n')), MEMBER_RESULT_CHARS - tail.length) + tail
+  if (member.lookup) member.said = cut(keptItems(member.brief, tail ? wholeSentences(answer) : answer), MEMBER_RESULT_CHARS)
   if (sources.length) member.sources = sources
   // c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made, and the host gave the report up to the main
   // model. A file is something made in the workspace: an address is never one.
