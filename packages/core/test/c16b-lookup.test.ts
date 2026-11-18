@@ -166,6 +166,18 @@ describe('c16b r2: a later search whose page states the value in its own words, 
   })
 })
 
+// c16b r3 (Codex r2 #1): a counted list whose judge marks the results page's own words as holding one of the asked things must not get
+// that unchecked prose appended as if it were an item; the list stays the checked rows, short and said so.
+describe('c16b r3: page words never join a counted list', () => {
+  it('page words judged to hold an item: only the checked row is listed, the shortfall is data, the page prose is not passed on', async () => {
+    const s = search([page('q', [row(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
+    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"holds":[1,2],"asked":2,"search":""}'], [], 30_000)
+    expect(urls(out)).toEqual(['https://books.example/3'])
+    expect(out).toContain('1 of the 2 asked for were found')
+    expect(out).not.toContain('대전 북토크 둘')
+  })
+})
+
 describe('c16b (c): c15a r3 #1, identical fact text', () => {
   it('the official page replaces the blog (reviewer\'s 별빛 도서관 repro)', async () => {
     const old = { text: '별빛 도서관은 3월 2일 개관해요', url: 'https://blog.example/old', site: '블로그' }

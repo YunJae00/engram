@@ -241,9 +241,10 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
           : `These rows were checked against the ask: none of them states what was asked itself; they are only about it. ${carried.length ? 'When a results page\'s own words below state it, answer from those and cite that page; otherwise, before answering, open' : 'Before answering, open'} ${st.open ?? 'the first-hand page (its own site, an official page, a quote or forecast page)'} (read_pages) and answer from what it says; never answer that the results do not say it.`]
         : count ? [`These rows were checked against the ask: each is one single item of what was asked, a different event, with a page that opens. ${st.held.length >= count ? `They hold the ${count} asked for: list ${count} of them.` : st.held.length ? `${st.held.length} of the ${count} asked for were found. Lead with the items; you may end with one short plain line that the rest did not turn up.` : `None of the ${count} asked for turned up in these results.`}`] : []
       const shown = single() ? firstHand(firstHand(st.held, second), row => !st.holds.has(row.url)) : firstHand(st.held, second)
-      // For a judged list the page's own words go too: they hold the titles of the rows that were left out.
+      // For a judged list the page's own words go too: they hold the titles of the rows that were left out. c16b r3: a page's words that
+      // "hold" the value matter only to a single-value ask; a counted list never gets page prose, held or not (it is no checked item).
       const before = lines.slice(0, head < 0 ? 1 : head).filter(line => !(said.length && /^They asked for \d+: /.test(line)))
-      const after = single() ? carried.flatMap(page => ['', `The results page's own words${page.url ? ` at ${page.url}` : ''}:`, ...page.lines]) : count && !st.page ? [''] : page1.lines
+      const after = single() ? carried.flatMap(page => ['', `The results page's own words${page.url ? ` at ${page.url}` : ''}:`, ...page.lines]) : count ? [''] : page1.lines
       return [...before, ...said, ...shown.map(row => row.line), ...after].join('\n')
     },
   }
