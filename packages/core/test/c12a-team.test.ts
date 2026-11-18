@@ -35,7 +35,6 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   const kept = ['f1', 'f2']
   const good = '이번 달엔 카카오톡이랑 텔레그램에 새 기능이 나왔어요.\n\n카카오톡은 민준이 봤는데 채팅방 폴더 정리 기능이 생겼어요. [카카오](https://www.kakaocorp.com/page/detail/11234)\n\n텔레그램은 하율이 봤는데 그룹 통화 인원이 늘었어요. [텔레그램](https://telegram.org/blog/group-calls-2026)'
   const invented = good.replace('\n\n텔레그램은', '\n\n라인은 지아가 봤는데 새 소식이 없어요.\n\n텔레그램은')
-  // c19a: a sentence about a part that brought nothing is cut from the draft (its own line follows), never a refusal to the host template.
   const cut = reportCheck(JSON.stringify({ message: invented, kept }), parts)
   expect('text' in cut && cut.text).not.toContain('지아')
   const lines: string[] = []

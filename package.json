@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run css-scan",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run comment-scan && pnpm run css-scan",
     "check:quick": "node scripts/check-quick.mjs",
     "verify": "node scripts/check-quick.mjs && pnpm --filter desktop build && node scripts/e2e-affected.mjs",
     "eval:quick": "cd apps/desktop && node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/eval-quick.mts",
@@ -45,6 +45,7 @@
     "lint": "eslint . --cache --cache-strategy content --cache-location tmp/eslint.cache",
     "test": "vitest run --project unit && vitest run --project timing --no-file-parallelism",
     "todo-scan": "node scripts/todo-scan.mjs",
+    "comment-scan": "node scripts/comment-scan.mjs",
     "css-scan": "node scripts/css-orphan-scan.mjs"
   },
   "devDependencies": {

@@ -2416,8 +2416,6 @@ export function registerIpc(ctx: VaultContext): void {
           laneShaped = true
           const korean = threadKorean(request.message, request.history ?? []), asks = [askedNow(), ...steered]
           let answer = raw
-          // c19a (cause H): the reader's answer goes out in its own words; no model rewrites it after it ended (LANE_NOTE carries the rules
-          // heldAnswer and weekendAnswer enforced). Only exact tidying follows (laneTidy, namesSubject, the link checks).
           answer = laneTidy(answer)
           if (solo && lookup.ask() !== request.message) answer = namesSubject(answer, lookup.ask())
           const helpers = !solo && writer && raw.trim() !== helpersWrote?.trim() ? turnHelpers((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members, nativeSince) : []

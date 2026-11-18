@@ -79,13 +79,10 @@ test('a list job: a search-page-only item never reaches the writer; a fact the d
   expect(prompt).not.toMatch(/공연|콘서트|IT 행사/)
   const message = '다음 달 판교 개발자 밋업은 두 개예요. 하율이 찾아 줬어요.\n\n- 12월 4일 판교 쿠버네티스 밋업 [페스타](https://festa.io/events/5521)\n- 12월 15일 판교 AI 엔지니어 밋업 [Meetup](https://www.meetup.com/pangyo-ai/events/77)'
   const shown = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f3'] }), timeoutMs: 500, now: NOW })
-  // c19a r2 (USER-NOTES class 2): the writer (the quick model) no longer drops a fact the teammate brought by meaning; whatever "kept"
-  // says, a fact the draft leaves without its link goes back as its own line. The search-page-only item still never reaches anyone.
   expect(shown).not.toMatch(/프런트엔드/)
   expect(shown.startsWith(message.split('\n')[0]!)).toBe(true)
   expect(shown).toContain('- 판교 스탠드업 코미디 쇼가 있어요 (12월 6일). [티켓](https://ticket.example.com/show/88)')
   expect(links(shown)).toHaveLength(3)
-  // c19a: a fact the writer says it kept but left unlinked is not dropped: the draft is not taken as is (checkedReport), and the host adds that fact as its own line.
   expect(checkedReport(JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), [meetups])).toBeUndefined()
   const back = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), timeoutMs: 500, now: NOW })
   expect(back.startsWith(message.split('\n')[0]!)).toBe(true)
@@ -183,8 +180,6 @@ test('r2: the kind asked is judged once where the data comes in (c19a r2: it dro
   const text = mergedReport([m])
   expect(text).toContain('내추럴 와인')
   expect(text).toContain('부르고뉴')
-  // c19a r2 (Codex r1 #1, cause H): the kind check names, flags and groups; its verdict drops no fact the teammate brought and never turns
-  // a hand-back into "nothing" (keep: [] leaves every fact).
   expect(text).toContain('정비')
   const two = facts.slice(1, 2).concat(facts[1]!)
   expect(await kindChecked({ facts: two }, brief, async () => '{"keep":[]}')).toEqual({ facts: two })

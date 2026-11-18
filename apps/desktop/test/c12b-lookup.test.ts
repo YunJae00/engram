@@ -17,7 +17,6 @@ const rows = [
 describe('c13b: the item verdict judges the rows, before the model writes', () => {
   it('a second report of one funding round and a hackathon never reach the model; the count is said as data', async () => {
     const { out, rows: kept, prompts } = await checked(page(rows), FINTECH, '{"keep":[1,2,4],"same":[[1,2]],"listing":[],"outside":[]}')
-    // c19a (cause H): no judge removes a row: 4 rows for 4 asked reach the reader whole, with the search's own count rule; no quick call.
     expect(prompts).toHaveLength(0)
     expect(kept).toEqual(['https://hk.example/a1', 'https://et.example/a2', 'https://ms.example/a3', 'https://bl.example/a4'])
     expect(out).toContain('They asked for 4: list')
@@ -43,7 +42,6 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const garbage = await checked(two, ask, 'fit: 1, 2')
     for (const one of [late, garbage]) {
       expect(one.rows).toEqual(['https://bexco.example/1', 'https://art.example/2'])
-      // c19a: short of the count with no new words: the count is said plainly, never "unchecked" rows.
       expect(one.out).toContain('2 of these rows are from the period asked, for the 3 asked')
       expect(one.out).not.toMatch(/could not be checked|They hold the|asked for were found|None of the/)
       expect(one.prompts).toHaveLength(2)
@@ -58,7 +56,6 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const ask = '이번 주 전기차 신차 소식 3개만'
     const five = page(['- A사 소형 전기 SUV 공개 — https://a.example/1 — x — 11월 16일', '- 전기차 보조금 개편안 발표 — https://b.example/2 — x — 11월 15일', '- B사 전기 세단 사전계약 — https://c.example/3 — x — 11월 17일', '- 충전기 보급 통계 — https://d.example/4 — x — 11월 14일', '- C사 전기 픽업 출시 — https://e.example/5 — x — 11월 16일'])
     const three = await checked(five, ask, '{"keep":[1,3,5],"same":[],"listing":[],"outside":[]}')
-    // c19a: every row reaches the reader (which three fit is its reading); a verdict never narrows them.
     const all = ['https://a.example/1', 'https://b.example/2', 'https://c.example/3', 'https://d.example/4', 'https://e.example/5']
     expect(three.rows).toEqual(all)
     expect(three.out).toContain('They asked for 4: list')
@@ -90,7 +87,6 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const first = await tool.run({ query: 'q' }, { task: ask })
     ask = '청주 공방 체험 2개\n아니 체험 말고 축제 2개로'
     const after = await tool.run({ query: 'q' }, { task: ask })
-    // c19a: no verdict on rows at all (2 rows for 2 asked): both asks get every row, and the reader reads them against what is asked now.
     expect(asked).toHaveLength(0)
     expect(first).toContain('https://a.example/1')
     expect(after).toContain('https://b.example/2')

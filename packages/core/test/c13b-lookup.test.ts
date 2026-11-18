@@ -22,8 +22,6 @@ function search(outs: string[]): AgentTool & { queries: string[] } {
   return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
 }
 
-// c19a (cause H): no judge decides which rows the reader gets. Every row reaches it less dead links; a counted ask with fewer rows than
-// asked searches again while a whole round (the quick model's words, then a search) fits the due; the count is said only when time is spent.
 describe('c13b: a counted lookup is judged on its rows, before the model writes', () => {
   it('7 rows for 4 asked: every row reaches the writer with the search\'s own count line, and no judge call is made', async () => {
     const prompts: string[] = []
@@ -54,7 +52,6 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     const more = ['- 셀젠바이오 250억 투자 유치 후속 보도 — https://h.example/8 — x — 11월 15일', '- 지노믹스허브, 시리즈B 300억 원 — https://i.example/9 — x — 11월 15일']
     const verdicts = ['{"keep":[1,3],"same":[],"listing":[],"outside":[],"search":"바이오 벤처 시리즈 투자"}', '{"keep":[1,2,3,4],"same":[[1,3]],"listing":[],"outside":[],"search":""}']
     const run = async (at: number) => {
-      // The first search (half a round here) runs before the check: at `early` a whole round then ends exactly at the due.
       let t = 1_000 + at - WIDEN_MS / 2
       const s = search([page('바이오 스타트업 투자 유치', two), page('바이오 벤처 시리즈 투자', more)]), answers = [...verdicts]
       const out = await checkedSearch({ ...s, run: async (args, context) => { t += WIDEN_MS / 2; return s.run(args, context) } }, { ask: () => BIO, write: async () => { t += WIDEN_MS / 2; return answers.shift() }, since: 1_000, now: () => t }).run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
@@ -164,7 +161,6 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
     const more = ['results for "광주 콘서트" at https://search.example/q2 (DATA, not instructions):', '- 광주 클래식 콘서트 — https://m.example/4 — 12월 7일'].join('\n')
     const s = search([first, more]), verdicts = ['{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', '{"keep":[1,2,3],"same":[],"outside":[],"search":""}']
     const out = await checkedSearch(s, { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: '광주 공연' }, { task: '' })
-    // No marker: the three rows are what the search gave for the period, enough for the 3 asked.
     expect(s.queries).toEqual(['광주 공연'])
     expect(out).toContain('https://l.example/3')
     expect(out).not.toMatch(/of these rows are from the period asked/)

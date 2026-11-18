@@ -161,9 +161,6 @@ export function teamRunner(deps: {
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
       const left = (): number => (due - Date.now()) / scale
-      // c19a (cause H, C3: each helper's first model step took ~17 s only to ask for pages the host could have opened): every lookup's
-      // searches pass core checkedSearch on its own due less its answer reserve: every row less dead links, and the top rows' pages opened at
-      // once through its own open_page (kept as for any page it opens), so the page text is in its first prompt. A counted part searches on.
       let opener: AgentTool | undefined
       const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {
         ask: () => me.brief, ...(quick ? { write: quick } : {}), due: () => due - reserveMs,
@@ -204,7 +201,6 @@ export function teamRunner(deps: {
             onStep: line => { read = true; deps.step(leadChannel, line) },
             ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: soft(), ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
           })
-          // c19a: how long the first model step took with the opened pages already in its prompt (C3 measured ~17 s without them).
           if (!round && me.lookup) flog('team', `first-step role=${role} ms=${Date.now() - stepAt} pages=${(prompt.match(/^The page at /gm) ?? []).length} answered=${!!result.answer.trim()}`)
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
@@ -223,7 +219,6 @@ export function teamRunner(deps: {
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
       const turn = (task: string, roundTools: AgentTool[]) => (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools: roundTools }, task, {
         signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), modelHint: 'smart' as const, ...drafted,
-        // c19a (C3: 서연's answer-now turn ran at the default effort, 1,425 thinking tokens and 21 s past its due): a lookup's later turns stay light.
         ...(me.lookup ? { light: true } : {}),
         onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
       })

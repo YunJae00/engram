@@ -12,8 +12,6 @@ function search(outs: string[]): AgentTool & { queries: string[] } {
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 const ASK = '요즘 국내 바이오 기업 인수 소식 4곳만'
 
-// c19a (cause H): the reader gets every row (less dead links); a counted ask searches again only while fewer rows than asked were seen,
-// and the quick model only offers the next words. No row is dropped for being unsure, and no "N of M found" line while rows suffice.
 describe('c15a: a counted lookup shows only sure items and asks for other words while time is left', () => {
   it('2 sure + 2 unsure rows for 4 asked: no further search and no judge call; all 4 rows go to the reader', async () => {
     const s = search([

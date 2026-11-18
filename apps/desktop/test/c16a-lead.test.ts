@@ -93,7 +93,6 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     expect(prompts).toHaveLength(3)
     for (const prompt of prompts) expect(prompt).toContain(`the same for every part: ${measure}`)
     expect(quick[0]).toContain(`"measure":"${measure}"`)
-    // c19a: the writer prompt no longer forces a table (a table only for three or more parts on the same points); the basis rule stays.
     expect(quick[0]).toContain('a value on another basis (another model or tier, unit or day) is labeled with what it is')
   })
 
@@ -139,8 +138,6 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
     const calls: string[] = [], m = handed()
     const out = writtenReport({ ask: '하람이는 이번 주말 강릉 날씨 찾아봐', members: [m], write: slowRepair(calls), due: T0 + 17_000 })
     await vi.advanceTimersByTimeAsync(12_000)
-    // c19a: one teammate's own hand-back needs no "who" sentence (unnamed asks only where 2+ parts merge), so no repair runs and the
-    // draft is shown as the writer wrote it; the host adds no attribution.
     expect(await out).toBe('토요일 강릉은 맑고 낮 12도예요. [weather.example.kr](https://weather.example.kr/gangneung)')
     expect(calls).toHaveLength(2)
   })

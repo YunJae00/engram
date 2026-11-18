@@ -36,8 +36,6 @@ describe('stack-18: kept facts reach the sentence fallback (c18a keep → c18b h
     expect(prompts).toHaveLength(1)
     expect(out).toMatch(/^춘천은 내일 낮 최고 9도예요\. \[[^\]]+\]\(https:\/\/weather\.example\/chuncheon\)$/m)
     expect(out).toMatch(/^원주는 내일 낮 최고 11도예요\. \[[^\]]+\]\(https:\/\/weather\.example\/wonju\)$/m)
-    // c19a (cause H): a helper's facts are its own cited sentences; no judge proof decides which stand, so its 첫눈 sentence stays with
-    // its own link (a link it was never shown would lose its link; this fixture records no shown pages).
     expect(out).toContain('첫눈')
     expect(out).toContain('news.example/chuncheon-snow')
     expect(out).not.toMatch(/^\|/m)
@@ -66,7 +64,6 @@ describe('stack-18: "못 찾았어요" agrees (c18a missing × c18b writer and f
       return JSON.stringify({ message: data.map(p => `${p.facts.map(f => `${f.text} ${f.link}`).join(' ')}`).join('\n'), kept: data.flatMap(p => p.facts.map(f => f.id)) })
     })
     const out = (await helperAnswer({ ask: ASK, members: members(), since: 0, write, due: Date.now() + 20_000 }))!
-    // c19a (cause H): no blind "stated" read and no judged-missing point: "못 찾았어요" is never the host's for a part that handed back facts.
     expect(prompts.filter(p => p.includes(STATED))).toHaveLength(0)
     expect(count(out, '운영시간은 못 찾았어요')).toBe(0)
     expect(out).toContain('원주 시립미술관은 어른 관람료 2천 원이에요.')

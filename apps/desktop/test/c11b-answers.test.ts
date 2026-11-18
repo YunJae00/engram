@@ -81,7 +81,6 @@ describe('c13b: a counted list\'s rows are judged before the model writes, by th
   it('keeps the rows the verdict keeps, whatever their headline, and says there are as many as asked', async () => {
     const picked = [item(2, '수출 비중 역대 최고'), item(4, '정부 지원 계획'), item(6, '수출 전망'), item(8, '규제 영향')].join('\n')
     const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 4개 찾아줘', '{"keep":[2,4,6,8],"same":[],"listing":[],"outside":[]}')
-    // c19a (cause H): 8 rows for 4 asked: no judge round and no row removed; which 4 fit is the reader's reading.
     expect(picked.split('\n')).toHaveLength(4)
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
     expect(judged.prompts).toHaveLength(0)
@@ -89,7 +88,6 @@ describe('c13b: a counted list\'s rows are judged before the model writes, by th
   })
   it('says a short count to the model as data before it writes, and never writes a lead itself', async () => {
     const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 3개 찾아줘', '{"keep":[1,3],"same":[],"listing":[],"outside":[]}')
-    // c19a: enough rows for the count, so no count line and no judge; the host still writes no lead of its own.
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
     expect(judged.prompts).toHaveLength(0)
     expect(judged.out).not.toContain('of these rows are from the period asked')
@@ -97,14 +95,11 @@ describe('c13b: a counted list\'s rows are judged before the model writes, by th
   })
   it('shows one row of a same-event group, and no row whose page does not open', async () => {
     const verdict = '{"keep":[1,2,3],"same":[[1,3]],"listing":[],"outside":[]}'
-    // c19a: same-event grouping is the reader's (no verdict removes a1/a3); a dead link is still removed exactly.
     expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict)).rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
     expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict, { dead: ['https://news.example/a2'] })).rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!).filter(url => url !== 'https://news.example/a2'))
   })
   it('an ask with no count loses no row to the judge, and a count said mid-work is the one that holds', async () => {
     const plain = await checked(held[0]!, '반도체 수출 뉴스 알려줘', '{"keep":[1],"same":[],"asked":null}')
-    // c19a: no judge before the reader; the count is read from the ask's lines, the last one holding (askedCount), and only a short
-    // count is said; a "2곳" ask has no count the host reads, so its one row goes as it came.
     expect(plain.prompts).toHaveLength(0)
     expect(plain.out).toBe(held[0])
     const later = await checked(held[0]!, '반도체 수출 뉴스 2개\n아 3개로', '{"keep":[1,3,5],"same":[],"listing":[],"outside":[],"asked":3}')
@@ -136,8 +131,6 @@ it('c13b (c11b r2, r3): a row the verdict dates outside the asked period never r
   const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
   for (const ask of ['요즘 국내 핀테크 투자 뉴스 2개만', '최근 배터리 업계 소식 2건', '이번 달 조선업 기사 2개']) {
     const judged = await checked(rows.replace(':\n', ' (DATA, not instructions):\n'), ask, '{"keep":[1,2,3],"same":[],"listing":[],"outside":[1,3]}')
-    // c19a: an "outside" verdict removes nothing; the period is the search's own exact marking ("The first N are from the last …"),
-    // which these rows do not carry, so all three reach the reader with their dates.
     expect(judged.rows, ask).toEqual(['https://news.example/old', 'https://news.example/new', 'https://news.example/title'])
     expect(judged.prompts).toHaveLength(0)
   }

@@ -59,7 +59,6 @@ describe('item 2: a repair never copies a source line under a second part', () =
 describe('item 3: a shorter reshape keeps the meaning check, and its repair must keep the shorter form', () => {
   const ASK = '택배 늦어서 미안하다는 문자 한 줄 써줘'
   const LAST = '고객님, 택배 배송이 늦어져서 정말 죄송합니다. 최대한 빨리 받아보실 수 있도록 하겠습니다.'
-  // Round 2 (r1 #1): the shorter draft is checked like every other form; a repair that only brings the longer reply back is refused.
   it('a clean shorter draft goes out after one check (2 calls); a rewrite to the original is never shown', async () => {
     const short = '택배가 늦어져 죄송합니다. 곧 받아보시게 할게요.'
     const calls: string[] = []
@@ -145,7 +144,6 @@ describe('item 4: a build the host audit passed closes the turn', () => {
   })
 
   it('an English, long or technical reply gets the host line from the build instead', async () => {
-    // Round 2 (r1 #4): two unasked English words in a Korean reply are English too; a Latin word the build itself holds (a title) is not.
     for (const reply of ['I made the product deck with three slides for you.', '세 장 만들었어요. 표지도 넣었어요. 일정도 넣었어요.', 'ppt_build로 만들었어요.', '자료를 만들었어요. Great work.', '발표 자료 완성! Enjoy']) {
       const { result } = await run(deckTools(), { slides: SLIDES, reply })
       expect(result.answer.split('\n')[0], String(reply)).toBe('신제품 소개, 3장으로 만들었어요.')
@@ -158,7 +156,6 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     expect(result.answer.split('\n')[0]).toBe('Galaxy Buds 소개 자료 2장 만들었어요.')
   })
 
-  // Round 3 (r2 #1): a passed build closes by default; only an explicit `more` (another file still to come) keeps the turn open.
   it('a build marked more does not end the turn: the next file is made, and the last build closes with every file', async () => {
     const files = [{ artifact: 'p1', markdownLink: '[동아리 소개.pptx](engram-artifact:p1)' }, { artifact: 'w1', markdownLink: '[동아리 소개.docx](engram-artifact:w1)' }]
     const fake = (name: string, made: Record<string, unknown>): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify(made) })
@@ -187,7 +184,6 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     }
   })
 
-  // Round 3 (r2 #2): the host line and the reply only carry build text that is Korean itself; an English title the model chose stays out.
   it('an English title from the build never reaches a Korean line', async () => {
     const slides = [{ title: 'Quarterly Kickoff' }, { title: '팀 소개', bullets: ['새 멤버'] }]
     const { result } = await run(deckTools(), { slides, reply: 'Quarterly Kickoff 자료 2장 만들었어요.' })
@@ -218,7 +214,6 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     const sheet = await run([fake('file_create_workbook', '[가계부.xlsx](engram-artifact:s1)')], { name: '가계부.xlsx', sheets: [{ sheet: '11월', rows: [['a']] }, { sheet: '12월', rows: [['b']] }], reply: '가계부 엑셀 만들었어요.' }, 'file_create_workbook')
     expect(sheet.result.answer).toBe('가계부 엑셀 만들었어요.\n\n[가계부.xlsx](engram-artifact:s1)')
     expect(builtLine('file_create_workbook', { name: '가계부.xlsx', sheets: [{}, {}] }, true)).toBe('가계부 파일을 시트 2개로 만들었어요.')
-    // Edits keep their path: they are never wrapped.
     const edit: AgentTool = { name: 'file_edit_package', description: 'edit', argsSchema: {}, run: async () => '{}' }
     expect(closingBuilds([edit], true)[0]).toBe(edit)
   })

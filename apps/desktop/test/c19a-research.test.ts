@@ -9,7 +9,6 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import * as fastLane from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// c19a (cause H). Wordings and topics are in no harness row.
 const { askedDays, LANE_NOTE, laneToday, swapRounds } = fastLane
 const WED = new Date(2026, 10, 18, 9, 0)
 
@@ -43,7 +42,6 @@ afterEach(() => { setReportLog(() => undefined) })
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const CHECK = 'Judge meaning only'
 const PAGE = (city: string): string => `https://air.example/${encodeURIComponent(city)}`
-// Realistic latencies (brief: search 1.5 s, page 1.3 s, a warm sonnet helper 6 s, the writer 4 s; the meaning check 2 s).
 const MS = { search: 1500, page: 1300, model: 6000, write: 4000, check: 2000 }
 
 async function split(tag: string, cities: string[], steer?: number) {

@@ -105,7 +105,6 @@ test('a draft that opens on a sentence about the work, before the items, is show
   const narrated = JSON.stringify({ message: `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n${LINES.join('\n')}`, kept: [] })
   const repair = JSON.stringify({ replace: { 1: '' }, insert_after: { 3: ['하은이 찾은 연말 할인으로 준이 쓴 거예요.'] } })
   const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, repair]).write })
-  // c19a: the order is the writer prompt's rule, never a check: the draft stands where the writer put its lead, nothing is moved.
   expect(out.split('\n')).toEqual([`준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`, '', ...LINES])
   expect(logged).toEqual([expect.stringMatching(/^writer=accepted /)])
   logged.length = 0

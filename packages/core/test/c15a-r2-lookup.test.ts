@@ -11,7 +11,6 @@ function search(outs: string[]): AgentTool & { queries: string[] } {
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 
 describe('c15a r2', () => {
-  // c19a (cause H): no judge removes a row the reader gets; which of two same-event rows to cite is the reader's call.
   it('a same-event group: both rows reach the reader, the judge removes neither', async () => {
     const ask = '별빛제과 신제품 출시일 하나만'
     const rows = [row(1, '별빛제과 신제품 1월 출시래요 (블로그)', 'blog.example'), row(2, '별빛제과, 신제품 1월 10일 출시 발표', 'maker.example')]

@@ -23,7 +23,6 @@ describe('R1 (stack16: 서울 cell was the headline "서울 11월 18일 오늘 �
     const s = search([page('q', [headline, weather])])
     const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing(async () => JSON.stringify({ keep: [1, 2], asked: 1, search: '', points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' }, 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })) }).run({ query: 'q' }, { task: ask })
     console.log(`R1 replay (both rows):\n${out}`)
-    // c19a (cause H): an uncounted ask passes no judge: both rows reach the reader, which answers from the one with the value.
     expect(urls(out)).toEqual(['https://news.example/joseilbo', 'https://weather.example/seoul'])
     expect(out).toContain('서울 현재 기온 6.1도')
   })
@@ -35,8 +34,6 @@ describe('R1 (stack16: 서울 cell was the headline "서울 11월 18일 오늘 �
     const s = search([page('q', [headline]), page('서울 현재 기온', [weather])])
     const noReader = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing((() => { const v = [quotedHeadline, JSON.stringify({ keep: [2], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })]; return async () => v.shift() })()) }).run({ query: 'q' }, { task: ask })
     console.log(`R1 replay (headline alone): opened ${opened.join(', ')}\n${withReader}\n--- no reader, searches: ${s.queries.join(' | ')}\n${noReader}`)
-    // c19a: the top row's page is opened at once (no judge first) and its text is in what the reader gets; with no reader nothing is
-    // searched on the judge's words for an uncounted ask: the reader searches itself if the rows lack the value.
     expect(opened).toEqual(['https://news.example/joseilbo'])
     expect(withReader).toContain('낮 최고 9도, 맑음')
     expect(s.queries).toEqual(['q'])
@@ -65,7 +62,6 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
     let t = 0
     const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 4000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     console.log(`R3 replay: searches ${s.queries.join(' | ')}\n${out}`)
-    // c19a (cause H): 7 in-period rows seen for 5 asked: no judge round, no row held back; the reader picks the 5 by what each is.
     expect(s.queries).toEqual(['q'])
     expect(urls(out)).toEqual(rows.map((_, i) => `https://news.example/${i + 1}`))
     expect(out).not.toContain('of these rows are from the period asked')
@@ -83,8 +79,6 @@ describe('R2 (stack16: prices only, 출시일 never looked for)', () => {
     const [part] = helperParts([{ id: 'h', parentId: null, depth: 1, role: '갤럭시 조사', topic: '갤럭시 S27', brief: ask, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: new Date().toISOString(), result: 'x', said: '', ...(found ? { proof: found.proof, missing: found.missing } : {}) } as TeamMember])
     const table = mergedReport([part!], new Map(), [], true)
     console.log(`R2 replay: searches ${s.queries.join(' | ')}\n${out}\n--- the row:\n${table}`)
-    // c19a (cause H): no judge reports proof or judged-missing points (the proved channel is gone) and none searches for an uncounted
-    // ask; a part is "not found" only when its own hand-back has no fact (here its words are empty), never a point a judge missed.
     expect(s.queries).toEqual(['q'])
     expect(found).toBeUndefined()
     expect(out).toContain('125만 4천 원')

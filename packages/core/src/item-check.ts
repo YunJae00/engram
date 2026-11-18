@@ -46,7 +46,6 @@ export async function judgedItems(ask: string, items: readonly JudgedItem[], wri
     return said({ keep, unsure: only(unsure).filter(n => !keep.includes(n)), same: same.filter(group => group.length > 1), lists: only(lists), names: names && typeof names === 'object' ? names as Record<string, string> : {}, listing: only(listing), outside: only(outside), secondhand: only(o?.['secondhand']), ...count, ...(typeof search === 'string' && search.trim() ? { search: search.trim().slice(0, 80) } : {}) })
   } catch { return said(undefined) } finally { clearTimeout(timer) }
 }
-/** First-hand rows before second-hand ones (judged by meaning), each group in its own order. */
 export const firstHand = <T>(rows: readonly T[], secondhand: (row: T) => boolean): T[] => [...rows.filter(row => !secondhand(row)), ...rows.filter(secondhand)]
 
 export const WIDEN_MS = 6_000
@@ -69,13 +68,8 @@ interface CheckedSearchOptions {
   read?: (url: string, signal?: AbortSignal) => Promise<string>
 }
 const PAGE_CHARS = 1500, OPEN_AT_ONCE = 2, PAGE_MS = 5000
-// How many rows the search tool itself marked as inside the asked period (search_web's "The first N are from the last …" line).
 const inPeriod = (out: string, rows: number): number => { const first = /^The first (\d+) are from the last /m.exec(out); return first ? Number(first[1]) : /^None is from the last /m.test(out) ? 0 : rows }
 const COUNTED_LINE = /^They asked for \d+: /
-// c19a (cause H): the reader (a helper, or the lone lookup) gets every row the search returned, less what the host can rule out exactly
-// (a dead link; rows outside the asked period stay marked as the search marked them), and the text of the top rows' pages, opened at once
-// right after the search, so it answers in its first step. No judge decides what it reads. A counted ask with fewer in-period rows than
-// asked searches again while a round fits the due; the quick model only offers the next words, and never removes a row.
 export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentTool {
   const now = by.now ?? Date.now, due = (): number => by.due?.() ?? (by.since ?? now()) + TEAM_ANSWER_MS - LOOKUP_RESERVE_MS
   const judgeMs = (): number => by.judgeMs ?? judgeTime(due(), now())
@@ -96,14 +90,12 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
         const text = await Promise.race([by.read!(url, signal).catch(() => ''), stopped.then(() => ''), late]).finally(() => clearTimeout(timer))
         return /^open_page needs|^that did not work|^\S+ needs the person /.test(text) ? '' : text.split('\n').map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n').slice(0, PAGE_CHARS)
       }
-      // Pages are opened for the first search of what is asked now (again after the person changes it), not for the reader's own later ones.
       const toOpen = by.read && openedFor !== ask ? rankLinks(first.filter(row => !isSearchPage(row.url)).map(row => ({ text: row.title ?? row.text, url: row.url })), ask, OPEN_AT_ONCE).map(one => one.url) : []
       openedFor = ask
       const openedAt = now(), [texts] = await Promise.all([Promise.all(toOpen.map(readPage)), check(first)])
       const pages = toOpen.flatMap((url, i) => texts[i] && !dead.has(url) ? [{ url, text: texts[i]! }] : [])
       judgeLog(`search rows=${first.length} in_period=${split} dead=${dead.size} pages=${pages.length}/${toOpen.length} search_ms=${openedAt - searchedAt} open_ms=${now() - openedAt}`)
       const count = ask.split('\n').map(line => askedCount(line)).filter(Boolean).at(-1), live = (rows: readonly Row[]): Row[] => rows.filter(row => !dead.has(row.url))
-      // A counted round is the quick model's words and a search: until one is measured, it is the first search plus a judge's time.
       let roundMs = now() - searchedAt + (by.write ? by.judgeMs ?? ITEM_CHECK_MS : 0)
       while (count && live(recent).length < count && !signal?.aborted && now() + roundMs <= due()) {
         const began = now(), write = by.write
@@ -112,7 +104,6 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
         if (!words || signal?.aborted) break
         tried.push(words)
         const found = await tool.run({ ...args, query: words }, context).catch(() => '')
-        // The search marks its own first N rows as in the period: split by that position first, then leave out the rows already seen.
         const rows = /^results for "/.test(found) ? rowsOf(found) : [], cut = inPeriod(found, rows.length), fresh = rows.filter(row => !seen.has(row.url))
         for (const row of fresh) seen.add(row.url)
         await check(fresh)

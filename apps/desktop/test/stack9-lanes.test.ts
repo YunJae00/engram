@@ -69,8 +69,6 @@ it('stack-9 (c9a Codex r3, c13b): the statistic is left out before writing by th
   expect(answer).toContain('더 찾으면')
   expect(now.getDate()).toBe(17)
   const judged = await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[6],"outside":[]}')
-  // c19a (cause H): no verdict removes a row; 6 rows for 5 asked reach the reader whole (which are news of a funding round is its
-  // reading, LANE_NOTE: "a statistic … is not one"), with no quick call and no host line.
   expect(judged.rows).toEqual([...names.map((_, i) => `https://news.example/${i}`), 'https://news.example/bg'])
   expect(judged.prompts).toHaveLength(0)
   expect(judged.out).not.toContain('of these rows are from the period asked')

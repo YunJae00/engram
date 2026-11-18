@@ -78,7 +78,6 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(LANE_TEAM_CALLS).toBeGreaterThanOrEqual(6)
   expect(laneToday('', new Date(2026, 10, 16, 21))).toContain('Today is 2026-11-16 (Monday)')
   expect(laneToday('', new Date(2026, 10, 16, 21))).toContain('11월 16일 월요일')
-  // c19a: no "day by day" task for the reader (L3's date narration); the asked days come resolved, as labels never to be explained.
   expect(laneToday('', new Date(2026, 10, 16, 21))).not.toContain('day by day')
   expect(laneToday('', new Date(2026, 10, 16, 21))).toContain('never say how a date was worked out')
   expect(laneToday('이번 주말 부산 비 와?', new Date(2026, 10, 16, 21))).toContain('이번 주말 = 11월 21일 토요일, 11월 22일 일요일')
@@ -255,8 +254,6 @@ it('c7 L2: a slow first round whose search is refused still ends with an answer 
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatch(/^Call no more tools\. Answer now from what you already have/)
     expect(ran).toEqual(['엔비디아 주가'])
-    // c19a (cause H): no model rewrites the reader's answer after it ended; the rule is the reader's, in LANE_NOTE, and the results it
-    // writes from are the host-run ones already in its prompt.
     expect(result.answer).toContain('가져오지 못했어요')
     expect(first.opening).toContain('155.26 USD 전일대비')
     expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them, never a line that it could not get them.')
@@ -266,7 +263,6 @@ it('c7 L2: a slow first round whose search is refused still ends with an answer 
 
 it('c7 L2: an answer that is not a failure report is left alone; with nothing held the answer is one plain sentence that links the search page', async () => {
   const fine = '11월 16일 종가 기준 155.26달러예요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
-  // c19a (cause H): heldAnswer is gone: every answer, a failure line included, goes out in the reader's words; only exact tidying runs.
   const linked = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
@@ -282,8 +278,6 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   const search = keepRead(searchTool(async args => String(args['query']).includes('애플') ? RESULTS.replace(/엔비디아/g, '애플').replace(/155\.26/g, '352.78').replace('NVDA', 'AAPL') : RESULTS), read)
   await firstSearch('엔비디아 오늘 주가 알려줘', search)
   expect(read.join('\n')).toContain('엔비디아')
-  // c19a: heldFor/heldAnswer are gone. A swap is a new ask (swapRounds runs it afresh: its first search opens its own pages), and the
-  // answer names what it is now about (namesSubject); nothing is written over it from the old rows.
   const now = swappedAsk('엔비디아 오늘 주가 알려줘', '그냥 애플로 바꿔')
   expect(now).toBe('애플 오늘 주가 알려줘')
   await search.run({ query: '애플 주가' }, { task: '', steps: [], read: '' } as never)
@@ -303,8 +297,6 @@ it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held resu
   const read: string[] = []
   const search = keepRead(searchTool(async () => RESULTS), read)
   await firstSearch('엔비디아 오늘 주가 알려줘', search)
-  // c19a: heldFor/heldAnswer are gone. A complaint, thanks or an addition is no change of ask: the work goes on with the same results
-  // (swappedAsk gives nothing); a swap is a new ask, searched afresh, never written from the old rows.
   expect(read.join('\n')).toContain('155.26')
   for (const text of ['아 왜 이렇게 느려', '고마워 수고했어', '답 좀 줘', '아 원화로도 추가해']) expect(swappedAsk('엔비디아 오늘 주가 알려줘', text), text).toBeUndefined()
   for (const swap of ['테슬라 걸로', '삼성전자 걸로 해줘', '아니 애플 거로', '테슬라 것으로 바꿔줘요']) expect(swappedAsk('엔비디아 오늘 주가 알려줘', swap), swap).toMatch(/테슬라|삼성전자|애플/)

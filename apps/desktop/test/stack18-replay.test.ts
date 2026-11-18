@@ -91,7 +91,6 @@ describe('L1 (stack17: "오늘 서울 날씨 어때?" took 4 judge rounds, point
     const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0,
       write: agreeing(async p => { judged.push(p); return JSON.stringify({ keep: [1, 2], asked: 1, points: ['날씨: 기온이나 하늘 상태'], holds: { 1: { 날씨: '서울 7.2°, 구름많음' } }, search: '서울 현재 기온' }) }) }).run({ query: 'q' }, { task: ask })
     console.log(`L1 replay: judge calls ${judged.length}, searches ${s.queries.join(' | ')}\n${out}`)
-    // c19a (cause H): an uncounted ask passes no judge at all; the rows reach the reader as the search gave them.
     expect(judged).toHaveLength(0)
     expect(s.queries).toEqual(['q'])
     expect(urls(out)[0]).toBe('https://weather.example/seoul')
@@ -126,8 +125,6 @@ describe('R3 (stack17: round 2 holds=4 asked=5 words=none left=9824 → "5개 �
     })
     const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => t, write, read: async url => { opened.push(url); return url.endsWith('/5') ? listing : '펨테크 스타트업 기업설명회 안내.' } }).run({ query: 'q' }, { task: ask })
     console.log(`R3 replay: opened ${opened.join(', ')}, searches ${s.queries.join(' | ')}\n${out}`)
-    // c19a (cause H): 6 in-period rows seen for 5 asked: no judge round, no short count; every row and the top 2 pages (opened at once
-    // after the search) reach the reader, which picks the 5 by what each is.
     expect(judged).toHaveLength(0)
     expect(opened).toContain('https://venture.example/5')
     expect(opened).toHaveLength(2)

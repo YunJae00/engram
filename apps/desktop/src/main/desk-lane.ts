@@ -437,7 +437,6 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   if (!input.quick || !input.draft.trim() || !(input.fromSource || structured(input.draft))) return input.draft
   const out = await repairedWrite({
     data: { source: input.source.slice(0, SOURCE_CHARS) }, ask: input.ask, parts: true, draft: input.draft, check: input.quick, cut: withoutQuoted,
-    // A repair never loses a property its draft had: each source line under one part (a missing part is moved by withPart, never copied).
     accept: text => !onceEach(input.draft, input.source) || onceEach(text, input.source) ? text : undefined,
     due: input.since + DESK_CHECK_DUE_MS, ...(input.signal ? { signal: input.signal } : {}), ...(input.now ? { now: input.now } : {}),
     log: (outcome, problems) => input.log?.(outcome, problems.map(problem => problem.kind)),
@@ -459,7 +458,6 @@ export function withPart(text: string, problem: Pick<WrittenProblem, 'quote' | '
   const at = all.slice(0, end), tail = all.slice(end).join('\n').trim(), gone = new Set(at.flatMap((line, i) => !fenced.has(i) && same(line) ? [i] : []))
   return [withoutLines(at, gone), `${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`, tail].filter(Boolean).join('\n\n')
 }
-/** No source line stands on two rows of the answer, however reworded: each row counts for the source line it is closest to. */
 export function onceEach(text: string, source: string): boolean {
   const from = source.split('\n').map(line => bare(line).replace(/[.,]/g, '')).filter(line => line.length >= 4).map(line => pairs(line))
   if (!from.length) return true
@@ -514,11 +512,8 @@ const MORE_NOTE = 'true only when this ask still needs another file after this o
 const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
 const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply' && key !== 'more'))
 const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
-/** The build's own text that may stand in a Korean line: a string that is Korean itself, so its Latin words are names inside it, not English. */
 const ownKorean = (value: unknown): string[] => typeof value === 'string' ? (/[가-힣]/.test(value) ? [value] : []) : value && typeof value === 'object' ? Object.values(value).flatMap(ownKorean) : []
-/** The plain line the host says for a build, from the build itself: its title and its slide or sheet count. */
 export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean): string {
-  // A title the model wrote in English ("Club Introduction") is not said in a Korean thread: the line goes without it.
   const said = (title: string): string => !korean || (ownKorean(title).length && plainWords(title) === title) ? title : ''
   const list = (key: string): Record<string, unknown>[] => Array.isArray(args[key]) ? (args[key] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object') : []
   if (tool === 'ppt_build') {
@@ -532,15 +527,11 @@ export function builtLine(tool: string, args: Record<string, unknown>, korean: b
   const sheets = list('sheets').length || 1, title = said(textOf(args['name']).replace(/\.xlsx$/i, ''))
   return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
 }
-/** The model's own reply when it reads right in this thread (its language, at most two sentences, no technical words); else none. */
 export function buildReply(reply: unknown, korean: boolean, known = ''): string | undefined {
   const text = textOf(reply).replace(/\s+/g, ' ')
   if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
-  // In a Korean thread a Latin word is only the build's own (a title, a name, a file name): any other is English the person did not ask for.
   return korean && (text.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).some(word => !known.toLowerCase().includes(word.toLowerCase())) ? undefined : text
 }
-/** The desk lane's build tools: a build that passed the host's audit (a receipt with its file) is final and ends the turn on one short line,
- * so the model never reads its own file back. An audit refusal or an error goes back to the model as before. */
 export function closingBuilds(tools: readonly AgentTool[], korean: boolean): AgentTool[] {
   return tools.map(tool => {
     if (!BUILDS.has(tool.name)) return tool
@@ -551,7 +542,6 @@ export function closingBuilds(tools: readonly AgentTool[], korean: boolean): Age
       run: (args, context) => tool.run(withoutReply(args), context),
     }
     return closingTool(given, async (out, args) => {
-      // A passed build closes by default, so a fast finish never hangs on an optional argument; only an explicit `more` keeps the turn open.
       if (!receiptOf(out) || args['more'] === true) return undefined
       const built = withoutReply(args)
       return { said: out, answer: buildReply(args['reply'], korean, ownKorean(built).join(' ')) ?? builtLine(tool.name, built, korean) }

@@ -177,7 +177,6 @@ describe('stack-14: the item judge reads the one deadline', () => {
     const done = tool.run({ query: '대전 빵집 개업' }, { task: '' })
     await vi.runAllTimersAsync()
     const out = await done
-    // c19a (cause H): the judgment only gives the next words; no row is removed (the 박람회 rows reach the reader, which reads them).
     expect(out).toContain('박람회')
     expect(queries.length).toBeGreaterThanOrEqual(2)
     expect(out.split('\n').filter(line => line.startsWith('- ') && line.includes('빵집'))).toHaveLength(2)

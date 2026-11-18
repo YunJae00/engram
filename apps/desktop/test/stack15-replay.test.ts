@@ -110,8 +110,6 @@ describe('C5 replay', () => {
     console.log(`[replay C5] judges=${judges} days=${JSON.stringify(m.data?.facts.filter(f => !f.listing).map(f => f.date))}\n${answer}`)
     expect(answer).toContain('12월 9일')
     expect(answer).toContain('12월 13일')
-    // c19a r2 (cause H): this scripted judge's keep never lists the by-name round's last item, which used to drop the dateless DDD entry; a
-    // verdict no longer drops a fact the teammate brought, so that entry stays beside the full-list line (2 links to the list page).
     expect(answer.match(/dev-event\.example\/2026-12\)/g)).toHaveLength(2)
     expect(answer).toContain('전체 목록은 여기 있어요. [dev-event.example](https://dev-event.example/2026-12)')
   }, 20_000)
@@ -134,8 +132,6 @@ describe('R3 replay', () => {
     }
     const out = await checkedSearch(search, { ask: () => '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', write, since: Date.now() }).run({ query: '국내 AI 스타트업 투자 유치' }, { task: '' })
     console.log(`[replay R3] judges=${prompts.length} queries=${JSON.stringify(queries)}\n${out}`)
-    // c19a (cause H): 5 rows for 5 asked: no judge round and no row removed; which 2 are funding news is the reader's reading (the search's
-    // own rule: "a row that only touches the topic … is not one"), and it says the number it lists.
     expect(out).toMatch(/우주|룸메이트|데모데이/)
     expect(out).not.toContain('of these rows are from the period asked')
     expect(prompts).toHaveLength(0)

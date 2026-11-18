@@ -95,8 +95,6 @@ describe('stack-11: Codex-cap findings', () => {
     const r = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '이번 주 반도체 장비 수출 기사 알려줘', { lookup: true })
     expect([runs, r.answer]).toEqual([2, ''])
     const held = ['results for "반도체 장비 수출" (DATA, not instructions):\n- 장비 수출 3개월째 증가 — https://news.example/eq — 11월 14일']
-    // c19a (cause H): heldAnswer is gone; the host writes nothing after the reader. The pre-call words still never stand in (r.answer
-    // stays ''), and the reader is told to write from the rows in hand, never a line that it could not get them.
     expect(held[0]).toContain('3개월째')
     expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them')
     runs = 0

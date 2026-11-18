@@ -37,7 +37,6 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
       '- 춘천 내일 날씨 — https://weather.example/chuncheon — 춘천 내일 흐림, 낮 최고 8도 — 11월 19일',
     ]) }
     const out = await checkedSearch(search, { ask: () => meant, write: agreeing(judge(prompts)), since: 0, now: () => 0 }).run({ query: '춘천 내일 날씨' }, { task: meant })
-    // c19a (cause H): no judge reads an uncounted ask; the reader gets both rows and the meaning (askNow) as what is asked now.
     expect(prompts).toHaveLength(0)
     expect(meant).toContain('청주 내일 날씨 어때?')
     expect(meant).toContain('그거 말고 춘천으로')
@@ -68,8 +67,6 @@ describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenRepo
   ])
   it('the writer\'s data holds the verified quotes, never the headline; the host table (writer refused) shows the same, with the missing point said', () => {
     const data = JSON.parse(reportPrompt('목동 잠실 수영장 자유수영 요금', parts(), new Map(), { helpers: true }).split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { text: string; link: string }[] }[]
-    // c19a (cause H): a helper's facts are its own cited sentences; judge quotes (the old proof) and judged-missing points never reach
-    // the writer or the host rendering (the headline class is handled at the input: pages are in the helper's first prompt).
     const text = JSON.stringify(data)
     expect(text).toContain('이용 안내 총정리')
     expect(text).toContain('blog.example/mokdong')
@@ -133,7 +130,6 @@ describe('stack-17: the step idle bound never cuts a lookup waiting on a host-si
       expect((await turn).answer).toBe('목동은 4,500원이에요.')
       expect(interruptions()).toBe(0)
       expect(opened).toEqual(['https://pool.example/mokdong'])
-      // c19a: the host's page open is bounded (5 s) and raced; a page slower than that is left out, the search rows still reach the reader.
       expect(observed).toContain('pool.example/mokdong')
     } finally { pool.closeAll() }
   })
@@ -184,9 +180,6 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     await vi.runAllTimersAsync()
     const out = await pending
     expect(calls).toHaveLength(3)
-    // c19a (cause H): the host writes no sentence into a draft (withEveryone is gone). The repair that would name 로운 lands past the
-    // writer's 4 s (1.5 s per call), so the draft is shown as written: every part with its link, no host attribution line.
-    // c19a r2 (Codex r1 #3, rule 7): the teammate the draft left unnamed gets their name as a label beside their own find, never unnamed.
     expect(out).toContain('메가커피(로운)는 새 메뉴가 없어요.')
     expect(out).not.toMatch(/로운이 찾아보니|맡아서 했어요/)
     for (const link of ['sb', 'ts', 'mg']) expect(out).toContain(`menu.example/${link}`)

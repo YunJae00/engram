@@ -17,4 +17,5 @@ run('node_modules/eslint/bin/eslint.js', ['.', '--cache', '--cache-strategy', 'c
 const tests = process.argv.slice(2)
 run('node_modules/vitest/vitest.mjs', ['run', '--project', 'unit', ...(tests.length ? tests : ['--changed', process.env.ENGRAM_CHECK_BASE || 'origin/main', '--passWithNoTests'])])
 run('scripts/todo-scan.mjs')
+run('scripts/comment-scan.mjs')
 run('scripts/css-orphan-scan.mjs')

@@ -52,17 +52,14 @@ test('H5: a writer that ended with nothing did not "find" nothing: its line says
 
 test('c18b D1 cause: a repair or a removal never empties a fenced block (c19b: a fenced block is not prose, so it is never touched)', () => {
   const draft = ['분기 워크숍 정리예요.', '', '정한 것', '- 장소는 강릉으로 해요.', '', '```', '원하시면 표로도 만들어 드릴까요?', '```'].join('\n')
-  // c19b: the fenced line is no unit, so a repair cannot name it and a removal cannot reach it; the block comes back byte-equal.
   expect(messageUnits(draft).some(u => u.text.startsWith('원하시면'))).toBe(false)
   expect(messageUnits(draft)).toHaveLength(3)
   expect(spliced(draft, JSON.stringify({ replace: { '4': '' } }), new Set([3]))).toBeUndefined()
   expect(withoutSentences(draft, [{ kind: 'asks', quote: '원하시면 표로도 만들어 드릴까요?', why: '' }])).toBe(draft)
-  // A block that still holds something stays.
   const code = '이렇게 쓰면 돼요.\n```\nSELECT 1\n```\n표로도 드릴까요?'
   expect(withoutSentences(code, [{ kind: 'asks', quote: '표로도 드릴까요?', why: '' }])).toBe('이렇게 쓰면 돼요.\n```\nSELECT 1\n```')
 })
 
-// c19a: what the lookup's judge called missing (the third argument) is no longer recorded or read; the helper was shown its own page.
 const looker = (id: string, said: string, _missing: string[], url: string): TeamMember => ({ id, parentId: null, depth: 1, role: `${id} 조사`, topic: id, brief: `${id} 알려줘`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: `s-${id}`, hiredAt: new Date().toISOString(), result: said, said, shown: [url], sources: [url] })
 const tableOf = (out: string | undefined): string => (out ?? '').split('\n').filter(line => line.startsWith('|') || /\[[^\]]*\]\(/.test(line)).join('\n')
 

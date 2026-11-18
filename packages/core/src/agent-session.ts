@@ -361,7 +361,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
-  // A turn closed on a build still hands in the file it made (its receipt is the step).
   if (closed !== undefined) return { answer: withoutSecrets(outputLinks(steps, closed, deps.workdir), task), steps, fellBack: false, tokensUsed }
   if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"), deps.workdir), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
   if (asked) {

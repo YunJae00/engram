@@ -64,8 +64,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
     for (const at of TOWNS.slice(0, 3)) {
       const m = members.find(one => one.topic === at)!
       expect(m.sources).toContain(FEE(at))
-      // c19a (cause H): the host opens the top pages right after the search (no judge first) and the page text is in the helper's prompt,
-      // so it reads the fee itself; no judge proof is kept on the member.
       expect('proof' in m).toBe(false)
     }
     expect(judges).toHaveLength(0)
@@ -75,8 +73,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
       expect(cell).toContain('1만 8천 원')
       expect(cell).not.toContain('못 찾았어요')
     }
-    // c19a: the page that did not open leaves the helper's own cited words ("쯤") on its row; the host labels nothing and no part reads
-    // "못 찾았어요" while it handed back a fact.
     expect(parts.find(one => one.topic === '안동')!.data!.facts.map(f => f.text).join(' ')).toContain('왕복 1만 8천 원쯤')
     expect('missing' in members.find(one => one.topic === '안동')!).toBe(false)
     for (const at of TOWNS) expect(text).toContain(at)

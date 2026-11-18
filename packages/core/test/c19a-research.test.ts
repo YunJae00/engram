@@ -6,7 +6,6 @@ import { checkedSearch, LOOKUP_RESERVE_MS } from '../src/item-check.js'
 import { TEAM_ANSWER_MS } from '../src/team-hire-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
 
-// c19a (cause H): the reader's cited words stand; the host fixes only what it can check exactly. Wordings and topics are in no harness row.
 const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
 const JUDGE = /Read the words alone|In "holds", for each item|Judge each item by what it is/
 const logged: string[] = []
@@ -20,7 +19,6 @@ const DUST: Record<string, [string, string]> = {
   통영: ['통영 오늘 미세먼지는 보통(37㎍/㎥)이에요.', 'https://air.example/tongyeong'],
 }
 const dusty = (city: string): TeamMember => helper(city, `${DUST[city]![0]} [에어코리아](${DUST[city]![1]})`, DUST[city]![1])
-// A quick model that would reject every quote it were asked to judge, and a writer that writes the draft given.
 function quickWith(draft: (data: { part: string; facts?: { text: string; link: string }[] }[]) => string, prompts: string[], repair = '') {
   return async (prompt: string): Promise<string> => {
     prompts.push(prompt)
@@ -41,7 +39,6 @@ test('1. four helpers each citing a page they were shown: four values, four link
   expect(out).not.toContain('못 찾았어요')
   expect(out!.split('\n\n').length).toBeLessThanOrEqual(2)
   expect(prompts.filter(p => JUDGE.test(p))).toHaveLength(0)
-  // With no writer at all, the host's rendering says the same four facts in the helpers' own words.
   const host = await helperAnswer({ ask: '강릉 속초 여수 통영 오늘 미세먼지 각각 알아봐줘', members: ['강릉', '속초', '여수', '통영'].map(dusty), since: 0, write: undefined, due: Date.now() + 20_000 })
   for (const city of ['강릉', '속초', '여수', '통영']) expect(host).toContain(`](${DUST[city]![1]})`)
   expect(host).not.toContain('못 찾았어요')
@@ -77,7 +74,6 @@ test('4. a link the helper was never shown loses its link; the sentence stays', 
   const said = `전주 시외버스 첫차는 6시 10분이에요. [전주터미널](${seen}) 막차는 22시 30분이에요. [버스정보](https://made-up.example/last-bus)`
   const [one] = helperParts([helper('전주 버스', said, seen)])
   const facts = one!.data!.facts
-  // r3 #3: the unseen-link sentence is its own fact with no link, not joined under the first sentence's page.
   expect(facts.map(f => f.url)).toEqual([seen, ''])
   expect(facts[0]!.text).toBe('전주 시외버스 첫차는 6시 10분이에요.')
   expect(facts[1]!.text).toBe('막차는 22시 30분이에요.')
@@ -100,7 +96,6 @@ test('5. a counted ask searches again while it has fewer in-period rows than ask
   expect(queries).toEqual(['국내 핀테크 인수합병', '핀테크 인수합병 발표'])
   expect(out.split('\n').filter(line => line.startsWith('- ')).length).toBe(6)
   expect(out).not.toMatch(/of these rows are from the period asked/)
-  // Time spent: the count found is said plainly, as part of the answer.
   t = 0
   queries.length = 0
   const late: AgentTool = { ...search, run: async args => { queries.push(String(args['query'])); t = TEAM_ANSWER_MS; return rows(3, 1, 3) } }
@@ -144,7 +139,6 @@ test('rule 7: the still line carries no source label, in the draft data and in t
   expect(line).not.toMatch(/\]\(|네이버/)
 })
 
-// c19a round 2: Codex r1 findings, each reproduced on wordings in no harness row.
 test('r2 #1: the team kind check drops nothing a teammate brought, even when its verdict keeps none or only some', async () => {
   const facts = [
     { text: '청주 성안길 플리마켓이 토요일에 열려요.', url: 'https://market.example/cheongju-1', site: '청주장터' },
@@ -155,7 +149,6 @@ test('r2 #1: the team kind check drops nothing a teammate brought, even when its
     expect(out!.facts.map(f => f.url), verdict).toEqual(facts.map(f => f.url))
     expect(out!.nothing, verdict).toBeUndefined()
   }
-  // A repeat of a fact already in hand is still not added twice: that is the one thing the check removes.
   const again = await kindChecked({ facts: [facts[0]!] }, '이번 주말 청주 플리마켓', async () => '{"keep":[1,2],"same":[[1,2]]}', 1000, [facts[0]!])
   expect(again!.facts).toEqual([])
 })
@@ -189,7 +182,6 @@ test('r2 #3: in a merged message, a teammate the draft and its late repair leave
   expect(out).toContain('홍천(나래)은 1인분 1만 3천 원이에요. [맛집](https://food.example/hongcheon)')
   expect(out).toContain('춘천은 가온이 봤는데')
   expect(out).not.toMatch(/찾아보니|맡아서/)
-  // A table row gets the name in its first cell; a line that does not carry the part's word gets it right before the link.
   const grid = '| 지역 | 값 | 출처 |\n|---|---|---|\n| 춘천 | 1만 4천 원 (가온) | [맛집](https://food.example/chuncheon) |\n| 홍천 | 1만 3천 원 | [맛집](https://food.example/hongcheon) |'
   const tabled = await writtenReport({ ask: '닭갈비 값', members, write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : prompt.includes(REPAIR) ? new Promise(() => {}) : JSON.stringify({ message: grid }), timeoutMs: 300 })
   expect(tabled).toContain('| 홍천(나래) | 1만 3천 원 |')
@@ -205,11 +197,9 @@ test('r2 #4: a later search\'s "first N in the period" is read by position befor
     queries.push(String(args['query'])); t += 1_000
     return queries.length === 1
       ? page('a', ['- 제주 감귤 수확 체험 개장 — https://farm.example/1 — 체험 — 11월 17일'], 1)
-      // Its in-period row repeats the first search's; the next one is older and must stay older.
       : page('b', ['- 제주 감귤 수확 체험 개장 — https://farm.example/1 — 체험 — 11월 17일', '- 작년 감귤 축제 후기 — https://farm.example/old — 후기 — 2025년 11월'], 1)
   } }
   const out = await checkedSearch(search, { ask: () => '이번 주 제주 감귤 체험 소식 3개', since: 0, now: () => t, due: () => 25_000 }).run({ query: '제주 감귤 체험' }, { task: '' })
-  // Still 1 recent row for 3 asked after every round: the old row never counts toward the 3.
   expect(queries.length).toBeGreaterThan(1)
   const listed = out.split('\n').filter(line => line.startsWith('- '))
   expect(listed.indexOf(listed.find(line => line.includes('farm.example/old'))!)).toBe(listed.length - 1)
@@ -227,16 +217,13 @@ test('r2 #5: a helper whose only citation is a page it was never shown keeps its
   expect(host).not.toContain('못 찾았어요')
 })
 
-// c19a r3: Codex r2 findings. Wordings and topics are in no harness row (안동·영주 축제, 남해 펜션, 울릉도 배편).
 test('r3 #1: the kind check takes out only a fact with the very same words and day; two events the judge calls "same" both stay', async () => {
   const U = 'https://fest.example/gyeongbuk'
   const facts = [{ text: '안동 탈춤축제가 열려요.', url: `${U}/andong`, site: '축제', date: '10월 3일' }, { text: '영주 사과축제가 열려요.', url: `${U}/yeongju`, site: '축제', date: '10월 24일' }]
   const judge = (same: number[][]) => async (): Promise<string> => JSON.stringify({ keep: [1, 2], same })
   expect((await kindChecked({ facts }, '경북 가을 축제', judge([[1, 2]])))?.facts.map(f => f.text)).toEqual(facts.map(f => f.text))
-  // A fact already in hand with other words: the new one stays; the very same fact in hand: the new one is a repeat and goes.
   expect((await kindChecked({ facts: [facts[1]!] }, '경북 가을 축제', judge([[1, 2]]), undefined, [facts[0]!]))?.facts.map(f => f.text)).toEqual([facts[1]!.text])
   expect((await kindChecked({ facts: [{ ...facts[0]!, text: ' 안동 탈춤축제가  열려요.' }, facts[1]!] }, '경북 가을 축제', judge([[1, 2]]), undefined, [facts[0]!]))?.facts.map(f => f.text)).toEqual([facts[1]!.text])
-  // The same words and day on two pages are one fact: one stays. Another day is another fact: both stay.
   expect((await kindChecked({ facts: [facts[0]!, { ...facts[0]!, url: `${U}/andong-2` }] }, '경북 가을 축제', judge([[1, 2]])))?.facts).toHaveLength(1)
   expect((await kindChecked({ facts: [facts[0]!, { ...facts[0]!, date: '10월 4일' }] }, '경북 가을 축제', judge([[1, 2]])))?.facts).toHaveLength(2)
 })
@@ -252,7 +239,6 @@ test('r3 #2: two facts on one page need the link twice; the fact whose words the
   const out = await writtenReport({ ask: '남해 펜션 알아봐줘', members: [m], write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : JSON.stringify({ message: one }), timeoutMs: 15_000 })
   expect(out.startsWith(one)).toBe(true)
   expect(out).toContain(`상주 은모래펜션은 1박 15만 원이에요. [숙소](${P})`)
-  // Both facts' own words in one sentence with the one link: nothing is missing, nothing added. Each with its link: nothing either.
   const both = reportCheck(JSON.stringify({ message: `물건리 바다펜션은 1박 12만 원이에요, 상주 은모래펜션은 1박 15만 원이에요. [숙소](${P})` }), [m])
   expect('text' in both ? both.unlinked : ['x']).toEqual([])
   const each = reportCheck(JSON.stringify({ message: `물건리는 12만 원이에요. [숙소](${P})\n상주는 15만 원이에요. [숙소](${P})` }), [m])

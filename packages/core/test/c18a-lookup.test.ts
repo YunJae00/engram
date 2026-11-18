@@ -14,8 +14,6 @@ function search(outs: string[], tick?: () => void): AgentTool & { queries: strin
 }
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 const itemsOf = (prompt: string): { n: number; text: string; link?: string }[] => JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string; link?: string }[]
-// c19a (cause H): evidenced, stated and Proof are gone; no host test of a quote decides what the reader gets. The fixtures that fed them now
-// go through checkedSearch as rows: each reaches the reader whole, with no judge call for an ask that names no count.
 type Item = { title?: string; text: string }
 const asRows = (items: readonly Item[]): string[] => items.map((item, i) => { const [head, ...rest] = item.text.split(' — '); return `- ${head} — https://item.example/${i + 1}${rest.length ? ` — ${rest.join(' — ')}` : ''}` })
 const unjudged = async (ask: string, items: readonly Item[]): Promise<{ calls: number; out: string }> => {

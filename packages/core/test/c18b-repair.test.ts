@@ -80,7 +80,6 @@ const haneul = part('m2', '하늘', handoffBrief('이벤트 문구 2개', '민�
 const json = (message: string): string => JSON.stringify({ message, kept: [] })
 const OPENS_WITH_WORK = `하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.\n\n1. ${ITEMS[0]}\n2. ${ITEMS[1]}`
 
-// c19a: items-first is no longer a check (the order rule lives in the writer prompt): a draft that opens on its lead is not repaired.
 test('a writer draft that opens on its lead before the items is shown as written, with no repair, and never reaches the host fallback', async () => {
   setReportLog(line => logged.push(line))
   const units = messageUnits(OPENS_WITH_WORK)
@@ -214,7 +213,6 @@ test('r2: English the data holds (a product name) is not foreign; a missing part
 })
 
 const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { data: { facts: [{ text, url, site: '도서관' }] } })
-// c19a: who found what is asked only where two or more parts merge; one teammate's own hand-back gets no host attribution sentence.
 test('r2: a one-teammate draft that names nobody is shown as written, with no host attribution', async () => {
   const yuna = library('y', '유나', '주말에는 오후 5시까지 열어요.', 'https://lib.example/weekend')
   const draft = `주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)`
@@ -223,8 +221,6 @@ test('r2: a one-teammate draft that names nobody is shown as written, with no ho
   expect(out).toBe('주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)')
 })
 
-// c19a: withEveryone is gone; the host writes no name into a draft. An unnamed teammate where two or more parts merge is a soft "unnamed"
-// finding for the one scoped repair, quoting the sentence their link closes; the draft text itself is never changed by the check.
 const checked = (message: string, members: TeamMember[]) => { const out = reportCheck(JSON.stringify({ message }), members); if (!('text' in out)) throw new Error(out.refused); return out }
 const unnamedOf = (out: ReturnType<typeof checked>): string[] => out.soft.filter(one => one.refused === 'unnamed').map(one => one.quote ?? '')
 test('r2: an unnamed teammate in a merged message is a soft finding quoting their own sentence; the named, the told and a one-part message are left alone', () => {
@@ -248,7 +244,6 @@ const garden = (id: string, role: string, text: string): TeamMember => part(id, 
 test('r3: two teammates citing one page are each an unnamed finding, in any order, and the draft is not rewritten', () => {
   const draft = '정기 휴관일은 매주 화요일이에요. [수목원](https://garden.example/hours)\n야간 개장은 금요일 저녁 9시까지예요. [수목원](https://garden.example/hours)'
   const a = garden('a', '다온', '정기 휴관일은 매주 화요일이에요.'), b = garden('b', '시우', '야간 개장은 금요일 저녁 9시까지예요.')
-  // c19a: both are soft "unnamed" findings for the writer's repair, in any order; the host inserts no "찾아보니" into the draft.
   for (const order of [[a, b], [b, a]]) {
     const out = checked(draft, order)
     expect(out.text).toBe(draft)
@@ -269,11 +264,9 @@ test('r3: an unrepaired register line is a quotation when the notes hold it, gon
   expect(own.text).not.toContain('낮춘다')
   expect(own.text).toContain('비품 구매는 팀장이 승인해요.')
   const alone = '출장비 한도는 30만 원으로 낮춘다.'
-  // c19b (c18b r3 #1): the only sentence is said as a noun phrase of its own words, never kept in the plain form.
   expect((await repairedWrite({ data: {}, ask: '요약해줘', draft: alone, check: late().quick, due: Date.now() + 15_000 })).text).toBe('출장비 한도는 30만 원으로 낮춤')
 })
 
-// c19a: itemsFirst is gone; the check moves nothing and asks for no order (the order rule is the writer prompt's).
 test('r3: items after a sentence about who made them stay where the writer put them; a draft already items-first is untouched too', () => {
   const slogan = part('s2', '루아', '축제 슬로건 2개', { lookup: undefined, writer: true, data: { facts: [], items: ['가을밤, 강가에서 만나요', '불빛 따라 걷는 축제'] } })
   const draft = '루아가 축제 슬로건을 두 개 뽑았어요.\n\n1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n마음에 드는 걸로 쓰시면 돼요.'

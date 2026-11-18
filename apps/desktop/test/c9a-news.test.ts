@@ -19,7 +19,6 @@ test('c9a R3 (c13b): of the run\'s four rows for five asked, the verdict keeps t
     "젠슨 황 퇴진 소식에 글로벌 AI 스타트업 투자 환경 '비상' — 11월 16일 [조선일보](https://www.chosun.com/economy/2026/11/16/x)"].join('\n')
   expect(answer).toContain('벤처투자 12조6248억')
   const { out, rows, prompts } = await checked(r3Rows, ask, '{"keep":[1],"same":[],"listing":[],"outside":[],"search":""}')
-  // c19a (cause H): the verdict removes no row: every live row reaches the reader; the quick call only offers the next search words.
   expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001', 'https://news.mt.co.kr/mtview.php?no=2026111700002', 'https://biz.heraldcorp.com/article/10000003', 'https://www.chosun.com/economy/2026/11/16/x'])
   expect(prompts[0]).toContain('벤처투자 12조6248억')
   const data = out.split('\n').find(line => line.includes('of these rows are from the period asked'))!
@@ -34,7 +33,6 @@ test('c9a H6 (c13b): the same rows with three asked; the aggregate figure is a l
     '올해 1~3분기 국내 벤처투자액이 12조6248억 원으로 역대 최대를 기록했어요. [머니투데이](https://news.mt.co.kr/mtview.php?no=2026111700002)'].join('\n')
   expect(answer).toContain('https://news.mt.co.kr/mtview.php?no=2026111700002')
   const { out, rows } = await checked(r3Rows, ask, '{"keep":[1,2,3],"same":[],"listing":[2],"outside":[]}')
-  // c19a: 4 rows for 3 asked: no judge round, no row removed; which is a single funding event is the reader's reading.
   expect(rows).toHaveLength(4)
   expect(out).toContain('벤처투자 12조6248억')
   expect(out).not.toContain('of these rows are from the period asked')
@@ -53,7 +51,6 @@ test('c9a R3 (c13b): five rows for five asked that all fit reach the model whole
   expect(answer.split('\n').filter(line => line.startsWith('- '))).toHaveLength(5)
   const all = await checked(rows, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}')
   expect(all.rows).toHaveLength(5)
-  // c19a: 5 rows for 5 asked reach the reader whole whatever the verdict would say (no judge runs); only a dead link is removed.
   expect(all.out).not.toContain('of these rows are from the period asked')
   const four = await checked(rows, ask, '{"keep":[1,2,3,4],"same":[],"listing":[],"outside":[]}')
   expect(four.rows).toContain('https://e.example/5')
@@ -68,7 +65,6 @@ test('c9a r2 (c13b): search_web still hands every row over unmarked; with no rou
   const answer = ['투자 관련 소식이에요.', '', '- 벤처투자가 12조 원으로 늘었어요. [머니투데이](https://news.mt.co.kr/2)', '- 정부가 AI 스타트업 20곳을 키운대요. [헤럴드경제](https://biz.heraldcorp.com/3)'].join('\n')
   expect(answer).toContain('https://news.mt.co.kr/2')
   const none = await checked(rows, ask, '{"keep":[],"same":[],"listing":[],"outside":[],"search":""}')
-  // c19a: no verdict leaves rows out; 2 rows for 3 asked with nothing more found: the short-count line, as data.
   expect(none.rows).toEqual(['https://news.mt.co.kr/2', 'https://biz.heraldcorp.com/3'])
   expect(none.out).toContain('2 of these rows are from the period asked, for the 3 asked')
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
@@ -115,7 +111,6 @@ test('c9a R3 (c13b): which of a valuation, a support plan and a round fit is the
   expect(answer.split('\n')).toHaveLength(5)
   expect((await checked(page, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}')).rows).toHaveLength(5)
   const judged = await checked(page, ask, '{"keep":[3,4,5],"same":[],"listing":[],"outside":[]}')
-  // c19a: no host word list and no verdict on rows: all 5 reach the reader, which weighs valuation, plan and round itself.
   expect(judged.rows).toHaveLength(5)
   expect(judged.prompts).toHaveLength(0)
 })

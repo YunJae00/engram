@@ -12,8 +12,6 @@ function search(outs: string[], tick?: () => void): AgentTool & { queries: strin
 }
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 
-// c19a (cause H): every row reaches the reader; a counted ask searches again only while fewer rows than asked were seen, and the quick
-// model only offers the next words (with none, the ask's own words). No row is dropped as unsure.
 describe('c14a: a counted lookup looks further on the one deadline', () => {
   it('4 rows seen for 4 asked: no further search, every row (sure or not) goes to the reader', async () => {
     const s = search([

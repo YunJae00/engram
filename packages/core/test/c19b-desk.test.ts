@@ -16,7 +16,6 @@ const fences = (text: string): number => text.split('\n').filter(line => /^\s*``
 const REPLIES = ['```replies', '두부도 넣어줘', '양 좀 줄여줘', '```'].join('\n')
 const LIST = ['장보기 목록만 뽑았어요.', '', '- 대파 한 단', '- 계란 한 판', '- 우유 1L', '', REPLIES].join('\n')
 
-// H2 shape: the check quotes the whole ```replies block as an "asks" problem, and the repair blanks every unit it may touch.
 test('H2 reproduction: a repair of a quoted chip block never leaves an orphan fence', async () => {
   const blank = (draft: string): string => JSON.stringify({ replace: Object.fromEntries(messageUnits(draft).map((u, i) => [String(i + 1), u.text.includes('replies') || u.text.includes('줘') ? '' : u.text])) })
   const { quick } = model({ check: [problems({ kind: 'asks', quote: REPLIES, why: '선택지를 물어봄' })], repair: [blank(LIST)] })
@@ -27,14 +26,12 @@ test('H2 reproduction: a repair of a quoted chip block never leaves an orphan fe
 
 test('item 1: the opener, a chip line and the closer, each quoted in turn, come back byte-identical with no orphan fence', async () => {
   for (const quote of ['```replies', '두부도 넣어줘', '```']) {
-    // The repair tries every unit number the old cut would have given the block's lines.
     const everything = JSON.stringify({ replace: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), ''])) })
     for (const kind of ['asks', 'contradicts']) {
       const { quick, calls } = model({ check: [problems({ kind, quote, why: '' })], repair: [everything] })
       const out = await repairedWrite({ data: { source: '대파, 계란, 우유' }, ask: '장보기 목록만 뽑아줘', draft: LIST, check: quick, due: Date.now() + 20_000 })
       expect(out.text.endsWith(REPLIES)).toBe(true)
       expect(wellFormed(out.text)).toBe(true)
-      // The check reads the prose only.
       expect(calls[0]).not.toContain('두부도 넣어줘')
     }
   }
@@ -48,7 +45,6 @@ test('item 1: a real code block between prose lines survives a repair and a remo
   const fixed = spliced(draft, JSON.stringify({ replace: { '2': '' } }), new Set([1]))!
   expect(fixed).toBe(['엑셀에서 이렇게 쓰면 돼요.', '```', '=SUMIF(A:A, "택배", B:B)', '```', '합계 칸은 B열 아래에 두세요.'].join('\n'))
   expect(withoutSentences(draft, [{ kind: 'asks', quote: '원하시면 다른 함수도 알려 드릴까요?', why: '' }])).toBe(fixed)
-  // A repair that inserts a stray fence is refused: the draft's markdown was well formed.
   expect(spliced(draft, JSON.stringify({ replace: { '3': '합계 칸은 B열 아래예요.' }, insert_after: { '3': ['```'] } }), new Set([2]))).toBeUndefined()
 })
 
@@ -71,12 +67,9 @@ test('item 2 (register): a repair that writes a new plain-form sentence the draf
   const out = await repairedWrite({ data: { source: '회비 2만 원, 엠티 11월 말, 장소 미정' }, ask: '동아리 공지 요약해줘', draft, check: quick, due: Date.now() + 20_000 })
   expect(out.text).not.toContain('미정이다')
   expect(out.outcome).not.toBe('repaired')
-  // The contradicted sentence still goes, as before: only the repair was refused.
   expect(out.text).toBe('- 회비는 2만 원이에요.\n- 엠티는 11월 말에 가요.')
 })
 
-// Round 2 (r1 #2): a register-only repair gets no re-check, so the register invariant is the host's own: a repair that ends its
-// sentence the way the flagged one ended has not changed the register and is refused.
 test('a register-only repair that keeps the plain ending is refused without a re-check, and a real one is kept', async () => {
   for (const [draft, still, source] of [['회비는 만 원이다.', '회비는 이번에도 만 원이다.', '회비 1만원'], ['집합 시간은 아침 7시였다.', '집합 시간은 원래 아침 7시였다.', '집합 7시']] as const) {
     const { quick, calls } = model({ check: [problems({ kind: 'register', quote: draft, why: '한다체' })], repair: [JSON.stringify({ replace: { '1': still } })] })
@@ -89,7 +82,6 @@ test('a register-only repair that keeps the plain ending is refused without a re
   expect((await repairedWrite({ data: { source: '회비 1만원' }, ask: '동아리 공지 한 줄 써줘', draft: '회비는 만 원이다.', check: quick, due: Date.now() + 20_000 })).text).toBe('회비는 만 원이에요.')
 })
 
-// Round 2 (r1 #3): blank lines inside a fenced block are the block's own bytes; only prose blank runs are tidied.
 test('a repair, a removal and a register change leave a code block\'s blank lines as they were', async () => {
   const CODE = ['```python', 'import csv', '', '', '', 'print(total)', '```'].join('\n')
   const draft = ['합계를 내는 코드예요.', '', '', '', CODE, '', '돌리면 합계가 나와요. 결과는 바로 보인다.'].join('\n')

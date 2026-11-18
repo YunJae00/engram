@@ -15,8 +15,6 @@ const urls = (out: string): string[] => out.split('\n').filter(line => line.star
 const run = (s: AgentTool, ask: string, verdicts: (string | undefined)[], prompts: string[] = [], at = 0): Promise<string> =>
   checkedSearch(s, { ask: () => ask, write: agreeing(async p => { prompts.push(p); return verdicts.shift() }), since: 0, now: () => at }).run({ query: 'q' }, { task: ask })
 
-// c19a (cause H): the item judge no longer holds, proves or drops rows. The reader gets every row and the results page's own words; a
-// counted ask with fewer rows than asked searches again (the quick model offers only the words); a single-value ask makes no judge call.
 describe('c16b (a): a fit stays a fit', () => {
   const ASK = '요즘 국내 핀테크 인수합병 소식 6건만'
   it('5 rows for 6 asked: one more search on the quick model\'s words; every row of both searches reaches the reader, none dropped', async () => {

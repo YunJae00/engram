@@ -74,7 +74,6 @@ const ROW = /^\s*(?:[-*•·#>|]|\d+[.)]\s)/
 const words = (text: string): string => text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s*(?:[-*•·#>|]+|\d+[.)])\s*/, '').replace(/[\s*_`"'“”‘’|:：·—–-]/g, '')
 const LEADING_LINKS = /^(?:\[[^\]\n]*\]\([^)\s]*\)[\s·,]*)+/u
 const FENCE = /^[ \t]*(`{3,}|~{3,})/
-/** The fenced blocks of a text (```replies, code, any fence), by line: an unclosed fence runs to the end. */
 function fencedBlocks(text: string): { from: number; to: number; closed: boolean; empty: boolean }[] {
   const lines = text.split('\n'), out: { from: number; to: number; closed: boolean; empty: boolean }[] = []
   for (let at = 0; at < lines.length; at++) {
@@ -87,13 +86,9 @@ function fencedBlocks(text: string): { from: number; to: number; closed: boolean
   }
   return out
 }
-/** Lines that belong to a fenced block, fence lines included: machine blocks, never prose. */
 export const fencedLines = (text: string): Set<number> => new Set(fencedBlocks(text).flatMap(b => Array.from({ length: b.to - b.from + 1 }, (_, k) => b.from + k)))
-/** Every fence is closed and holds something. */
 export const wellFormed = (text: string): boolean => fencedBlocks(text).every(b => b.closed && !b.empty)
-/** The text without its fenced blocks: what a check reads. */
 export const proseOf = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((_, at) => !fenced.has(at)).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
-/** Blank-line runs outside fenced blocks shrink to one; a block's own lines (its blank lines too) stay byte-identical. */
 export const tidied = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((line, at, all) => line !== '' || at === 0 || all[at - 1] !== '' || fenced.has(at) || fenced.has(at - 1)).join('\n').trim() }
 export function messageUnits(text: string): { line: number; text: string }[] {
   const fenced = fencedLines(text)
@@ -135,7 +130,6 @@ const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 const HANGUL = /[\uac00-\ud7a3]/
 export const foreignRun = (draft: string, text: string, known: string): string | undefined => !HANGUL.test(draft) ? undefined
   : [...text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/`[^`]*`/g, ' ').matchAll(ENGLISH_RUN)].map(run => run[0].trim()).find(run => !known.toLowerCase().includes(run.toLowerCase()))
-/** The last Korean syllable of a sentence: where its register is said (정한다 / 정해요 / 정함). */
 const lastSyllable = (text: string): string => /([\uac00-\ud7a3])[^\uac00-\ud7a3]*$/u.exec(text.replace(/\[([^\]]*)\]\([^)]*\)/g, ''))?.[1] ?? ''
 export function spliced(draft: string, raw: string | undefined, allowed: ReadonlySet<number>, insert = true, known = '', register: ReadonlySet<number> = new Set()): string | undefined {
   let said: unknown
@@ -147,7 +141,6 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     const at = Number(key) - 1
     if (!Number.isInteger(at) || typeof value !== 'string' || !allowed.has(at) || at >= units.length) return undefined
     if (value.trim() !== units[at]!.text.trim()) replace.set(at, value.replace(/\s*\n+\s*/g, ' ').trim())
-    // A register repair that ends its sentence the way the flagged one ended has not changed the register: refused, whatever the re-check would say.
     if (register.has(at) && value.trim() && lastSyllable(value) && lastSyllable(value) === lastSyllable(units[at]!.text)) return undefined
   }
   const kept = new Set(units.filter((_, i) => !replace.has(i)).map(u => words(u.text)))
@@ -199,7 +192,6 @@ const SYLLABLE = /[\uac00-\ud7a3]/
 const final = (syllable: string): number => (syllable.charCodeAt(0) - 0xac00) % 28
 const withFinal = (syllable: string, jong: number): string => String.fromCharCode(syllable.charCodeAt(0) - final(syllable) + jong)
 const NIEUN = 4, MIEUM = 16
-/** A plain-form statement (…다) as its noun phrase (…ㅁ/음): 정한다 → 정함, 먹는다 → 먹음, 끝났다 → 끝났음. Anything else: undefined. */
 export function nounPhrase(sentence: string): string | undefined {
   const stem = sentence.endsWith('다') ? sentence.slice(0, -1) : '', last = stem.at(-1) ?? '', before = stem.at(-2) ?? ''
   if (!SYLLABLE.test(last)) return undefined
@@ -219,7 +211,6 @@ function inOneRegister(text: string, problems: readonly Problem[], data: unknown
     if (words(core).length >= 2 && held.includes(words(core))) framed.set(i, `${marker}"${core}"라고 적혀 있어요.${links ? ` ${links.trim()}` : ''}`)
     else cut.add(i)
   }
-  // The only sentence is never dropped: it is said as a noun phrase of its own words (the note form a heading or label takes).
   if (cut.size && cut.size === units.length) for (const i of [...cut]) {
     const unit = units[i]!.text, marker = /^\s*(?:[-*•·>]|\d+[.)])\s*/.exec(unit)?.[0] ?? '', links = /(?:\s*\[[^\]]*\]\([^)\s]*\))+\s*$/.exec(unit)?.[0] ?? ''
     const said = nounPhrase(unit.slice(marker.length, unit.length - links.length).trim().replace(/[.。!]+$/u, ''))
@@ -266,7 +257,6 @@ export async function repairedWrite(input: CheckInput & {
   let still: readonly WrittenProblem[] = problems
   if (repaired) {
     const again = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? await writtenProblems(input.check, input, text, time(), signal) : []
-    // A repair never loses a property its draft had: one that writes a sentence in another register the draft did not have is refused.
     const drafted = words(proseOf(input.draft))
     if (again?.some(p => p.kind === 'register' && words(p.quote).length >= 2 && !drafted.includes(words(p.quote)))) { text = input.draft; repaired = false }
     else still = again?.filter(p => !SOFT.has(p.kind)) ?? []

@@ -797,7 +797,6 @@ const atWork = (m: TeamMember): boolean => m.state === 'hired' || m.state === 'w
 export type PartOutcome = 'found' | 'nothing-in-period' | 'working' | 'unfinished'
 export const partOutcome = (m: TeamMember): PartOutcome => atWork(m) ? 'working' : m.data?.nothing ? 'nothing-in-period' : m.data?.facts.length || m.data?.items?.length || (!m.unfinished && !m.data && !!delivered(m) && !(m.botId && (m.lookup || m.writer))) ? 'found' : 'unfinished'
 const named = (words: string, url: string): string => `[${words.replace(/[[\]|]/g, ' ').trim()}](${url.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/ /g, '%20')})`
-// A fact with no url is a helper's sentence whose cited page it was never shown: its words stand, with no link (c19a r2).
 const linkOf = (fact: MemberFact): string => fact.url ? named(fact.site, fact.url) : ''
 const shownParts = (members: readonly TeamMember[]): TeamMember[] => members.filter(m => !(m.then && members.some(next => next !== m && handedFrom(next.brief)?.from === m.role && !!next.data)))
 const partName = (m: TeamMember, topics: ReadonlyMap<string, string>): string => (topics.get(m.id) || m.topic || '').replace(/[|()]/g, ' ').trim()
@@ -858,8 +857,6 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   if (!raw) return data
   const off = inHand.length, held0 = (n: number): boolean => raw.keep.includes(n) || raw.unsure.includes(n)
   const lead = (group: number[]): number => { const g = firstHand(group, n => raw.secondhand.includes(n)); return g.find(n => raw.keep.includes(n)) ?? g.find(held0) ?? g[0]! }
-  // c19a r3 (cause H): "same" is the judge's reading of meaning; only facts with the very same words and day are one fact (from two pages, the first-hand one stands), so each
-  // group splits by that exact key and a different event the judge grouped is never taken out.
   const every = [...inHand, ...data.facts], key = (n: number): string => { const f = every[n - 1]!; return JSON.stringify([f.text.replace(/\s+/g, ' ').trim(), f.date ?? '']) }
   const same = raw.same.flatMap(g => [...new Set(g.map(key))].map(k => g.filter(n => key(n) === k))).filter(g => g.length > 1)
   const instead = new Map<number, string[]>(), again = new Set<number>()
@@ -873,7 +870,6 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
   const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
-  // c19a r2 (cause H): the judge only groups, names and orders; a teammate's cited fact is never dropped by its verdict, only a repeat of one in hand.
   const several = (n: number): boolean => said.lists.includes(n) || said.listing.includes(n)
   const facts = firstHand(data.facts.flatMap((f, i) => !again.has(i + 1 + off) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}), ...(instead.has(i + 1) ? { instead: instead.get(i + 1)! } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n)).map(one => one.f)
   return { ...data, facts }
@@ -908,7 +904,6 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
   if (helpers && !m.data) return `${josa(part || m.role, '은', '는')} ${NOTHING}`
   const row = side && part && !from ? `${part}(${m.role}): ` : '', by = row || !side ? '' : ` (${m.role})`, alone = side ? '' : `${josa(m.role, '은', '는')} `
   const looked = lookedAt(m)
-  // c19a (C3: "… 아직 찾는 중이에요. 끝나면 이어서 올릴게요. 네이버 검색"): the still line carries no source.
   if (atWork(m)) return `${row}${alone}${STILL}${by}`
   const data = m.data, facts = data ? shownFacts(m) : []
   if (data?.items?.length) {
@@ -1103,7 +1098,6 @@ function writerData(members: readonly TeamMember[], topics: ReadonlyMap<string, 
     }
   })
 }
-// c19a (cause H): a part's facts are its helper's own cited sentences; a table only when three or more parts compare the same points.
 const HELPERS_WRITE = 'Write: one friendly lead sentence that already gives the gist and says only what follows (never who looked, how the work was split or how many took part), then each part under its "part" name, in plain sentences taken from its facts, each fact followed by its "link", copied exactly. When three or more parts are compared on the same points (a price and a date, a temperature and the sky), one markdown table instead: one row per part, its first cell the part\'s "part" exactly, one column per point named in the facts, every cell a short value with its figure, and last that fact\'s "link", copied exactly. Nothing after the parts or the table. Every concrete value in a part\'s fact stays with it, labeled as the fact labels it (출시가, 예상, 전작, or the model it belongs to), never dropped or turned into "미발표". When a part has "measure", the compared values are meant on that basis: a value on another basis (another model or tier, unit or day) is labeled with what it is. A part with "still" says exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요." under its "part" name, with no link.'
 export function reportPrompt(ask: string, members: readonly TeamMember[], topics: ReadonlyMap<string, string> = new Map(), context: ReportContext = {}): string {
   const gaps = shownParts(members).filter(missing), now = context.now ?? new Date(), data = writerData(members, topics, context.helpers)
@@ -1131,9 +1125,6 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   const out = reportCheck(raw, members, helpers)
   return 'text' in out && !out.soft.length && !out.adds.length && !out.unlinked.length ? out.text : undefined
 }
-// c19a r3 (USER-NOTES class 2): one page can carry several facts, so a link in the message stands for one fact, not for the page. A page's
-// link must be there as many times as it has facts; when it falls short (or a fact has no link), a fact whose own words are not in the
-// message is the one left out. Exact: link counts and the fact's own words, no reading of meaning.
 function uncited(text: string, facts: readonly MemberFact[]): MemberFact[] {
   const flat = (s: string): string => s.replace(/\s+/g, ' ').replace(/[.。!?]+$/u, '').trim(), words = flat(text.replace(/\[[^\]]*\]\([^)]*\)/g, ' '))
   const one = [...new Map(facts.map(f => [JSON.stringify([f.url, flat(f.text)]), f])).values()]
@@ -1141,13 +1132,6 @@ function uncited(text: string, facts: readonly MemberFact[]): MemberFact[] {
   return one.filter(f => f.url && !times(f.url) ? true : (!f.url || times(f.url) < one.filter(o => o.url === f.url).length) && !words.includes(flat(f.text)))
 }
 export type ReportRefusal = { refused: string; why: string; quote?: string; form?: true }
-// c19a (cause H: T1 "서울 날씨는 이번엔 못 찾았어요" and a dropped 대구 beside four found parts, R1 an empty cell, C6 the writer's lead moved to the
-// end): the check holds only what the host can tell exactly, and fixes it in the draft, never by throwing the draft away. A link to a page
-// no part brought loses its link (its words stay); a plain address goes; a "still" sentence when no part is at work, and a sentence about a
-// part that brought nothing (its own line follows the message), are cut. A part with none of its own links in the message, or at work and
-// not labelled, is in `adds`: the one scoped repair is asked to put it in, else the host adds that part's own lines after the message.
-// Only an unreadable message, English, jargon or items not copied refuse. Order, tables and who is named are the writer prompt's (rule 7:
-// who found what is asked only where two or more parts are merged).
 export function reportCheck(raw: string | undefined, members: readonly TeamMember[], helpers = false): { text: string; soft: ReportRefusal[]; adds: TeamMember[]; unlinked: MemberFact[] } | ReportRefusal {
   const all = shownParts(members), parts = all.filter(m => !missing(m)), gaps = all.filter(missing), ids = factIds(parts)
   const no = (refused: string, why: string, quote = ''): ReportRefusal => ({ refused, why, ...(quote ? { quote } : {}) })
@@ -1162,7 +1146,6 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   let text = (typeof out['message'] === 'string' ? out['message'] : '').trim()
     .replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (_, words: string, url: string) => { const fact = facts.get(trimmed(url)) ?? facts.get(url); return fact ? linkOf(fact) : words })
     .replace(/(?:[ \t]*[—–:-])?[ \t]*(?<!\]\()https?:\/\/[^\s)\]>"'|]+/g, '').replace(/[ \t]{2,}/g, ' ')
-  // A line that is only a name and a colon (a label left over a list) says nothing; the part is named in its own sentences.
   text = text.split('\n').filter(line => !parts.some(m => new RegExp(`^\\s*(?:[-*]\\s*)?\\**${escapedRe(m.role)}\\**\\s*[:：]\\s*$`, 'u').test(line))).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   const cut = (said: (unit: string) => boolean): void => { const gone = messageUnits(text).filter(u => said(u.text.replace(/\[[^\]]*\]\([^)]*\)/g, ' '))); if (gone.length) text = withoutSentences(text, gone.map(u => ({ kind: 'contradicts', quote: u.text, why: '' }))) }
   if (!parts.some(atWork)) cut(unit => unit.includes('아직 찾는 중'))
@@ -1178,9 +1161,6 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   const own = (m: TeamMember): MemberFact[] => [...shownFacts(m).filter(f => f.url), ...(m.data?.nothing ? [m.data.nothing.latest ?? lookedAt(m)].flatMap(f => f ? [f] : []) : [])]
   const absent = (m: TeamMember): boolean => atWork(m) ? !units.some(u => u.includes('아직 찾는 중') && (parts.filter(atWork).length === 1 || u.includes(who(m)))) : m.data?.items?.length ? false : own(m).length ? !own(m).some(f => linked(f.url)) : !words.includes(who(m))
   const adds = parts.filter(absent)
-  // c19a r2 (USER-NOTES class 2): every fact a present part brought reaches the person. One the message leaves without its link, whatever
-  // "kept" says, goes back as its own line; a part counts as present by one link, so its other facts are checked one by one. A full-list
-  // page its items were taken from ("rest") is where they came from, not a fact of its own.
   const bare = uncited(text, ids.filter(one => !one.fact.rest && !adds.includes(one.m) && !atWork(one.m)).map(one => one.fact))
   if (bare.length) soft.push(no('links', `every fact is in the message, each followed by its own "link" (when it has one), copied exactly: ${bare.map(f => datedText(f)).join(' / ')}`))
   for (const m of adds) soft.push(no(atWork(m) ? 'still' : 'part-dropped', atWork(m) ? `a part with "still" says exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요.": ${names([m])}` : `every part is in the message with its own facts and links: ${names([m])}'s is missing`))
@@ -1242,13 +1222,9 @@ export async function writtenReport(input: { ask: string; members: readonly Team
       log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.filter(p => p.kind !== 'shape').map(p => p.kind))].join('+') },
     })
     const shown = hard ? written.outcome === 'repaired' ? accept(written.text) : undefined : written.text.trim() ? written.text : undefined
-    // c19a (cause H): the draft (or its repair) is shown; what it still leaves out, the host adds after it as that part's own lines (its
-    // helper's sentences and links, or rule 7's still line). The host writes nothing into the draft; its own rendering is for no draft.
     const again = shown === undefined ? undefined : reportCheck(JSON.stringify({ message: shown }), members, helpers), final = again && 'text' in again ? again : 'text' in out && shown !== undefined ? out : undefined
     if (!final) { log(hard ? `fallback:${hard.refused}` : `refused:meaning:${kinds}`); return fallback }
     const unlinked = final.unlinked.filter(f => !final.adds.some(m => shownFacts(m).includes(f)))
-    // c19a r2 (rule 7): in a message merging two or more teammates' parts, who found what is exact data. A teammate the draft (and its one
-    // repair) left unnamed gets their name as a label beside their own find, and so does a fact the host adds back; no sentence is composed.
     const merged = !helpers && all.filter(m => !missing(m)).length > 1, ownerOf = (f: MemberFact): TeamMember | undefined => all.find(m => shownFacts(m).includes(f))
     const tag = (f: MemberFact): string => { const m = merged ? ownerOf(f) : undefined; return m ? ` (${m.role})` : '' }
     const text = [withNames(final.text, merged ? all.filter(m => !missing(m) && !final.adds.includes(m)) : [], topics), ...(unlinked.length ? [unlinked.map(f => `- ${datedText(f)}${tag(f)} ${linkOf(f)}`.trimEnd()).join('\n')] : []), ...final.adds.map(m => helpers ? helperBody([m], topics) : partLines(m, topics, members, all.length > 1, false))].join('\n\n')
@@ -1257,8 +1233,6 @@ export async function writtenReport(input: { ask: string; members: readonly Team
     return [[...hired, text].join(' '), ...after].join('\n\n')
   } catch { log('refused:error'); return fallback } finally { clearTimeout(timer) }
 }
-// Labels each listed teammate the message does not name, beside the first line that carries one of their links: the part's own word in that
-// line becomes "슬랙(서연)", a table row's first cell gets "(서연)", else "(서연)" goes right before the link.
 function withNames(text: string, parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
   const lines = text.split('\n'), words = (): string => lines.join('\n').replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
   for (const m of parts) {

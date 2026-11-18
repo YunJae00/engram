@@ -82,10 +82,6 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
       const url = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
       if (url && tail) facts.push({ text: tail, url })
     }
-    // c19a (cause H): a helper's facts are its own cited sentences; no judge decides which stand or which points are "not found". The host
-    // checks only what it can tell exactly: a link to a page this helper was never shown (no search row, no page it read) loses its link and
-    // the sentence stays as its own fact with no link (c19a r3: never joined to a neighbour, whose page does not say it).
-    // Whether a part was found is its hand-back. With no record of what it was shown (no row, no page), there is nothing exact to check.
     const key = (url: string): string => url.replace(/\/$/, ''), shown = new Set([...m.shown ?? [], ...(m.sources ?? [])].map(key))
     if (m.shown && shown.size) for (const f of facts) if (!shown.has(key(f.url))) { f.url = ''; delete f.label }
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }

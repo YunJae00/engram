@@ -14,8 +14,6 @@ function search(outs: string[]): AgentTool & { queries: string[] } {
 }
 const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
 
-// c19a (cause H): evidenced / stated / Proof are gone. The reader gets every row and the opened top pages; a helper's own cited sentences
-// stand, and only a link to a page it was never shown loses its link. Nothing is relabelled or said "not found" by a judge.
 describe('c17a: evidence is the item\'s own words, by shape', () => {
   const item = { title: '광주 내일 미세먼지 전망 정리', text: '광주 내일 미세먼지 전망 정리 — 광주 지역 미세먼지 관련 소식을 모았습니다 — 11월 18일' }
   it('no host test decides whether a headline states the value: the row goes to the reader and its page is opened for it', async () => {
@@ -134,7 +132,6 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
 describe('c17a r2 (c19a): a helper\'s words stand; only a link to a page it was never shown loses its link', () => {
   const at = new Date().toISOString()
   const helper = (said: string, shown?: string[]): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '수원 조사', topic: '수원', brief: '수원 이번 주말 꽃가루 농도 어때?', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, ...(shown ? { shown } : {}) })
-  // c19a r2 (Codex r1 #5): the words stay with no link, never re-cited to an unrelated page the helper was shown.
   it('cited prose on a page it was never shown keeps its words with no link; the part is found, never "못 찾았어요"', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루가 낮음이에요. [블로그](https://blog.example/7)', ['https://search.example/?q=pollen'])])
     expect(m!.data!.facts).toEqual([{ text: '수원은 주말 꽃가루가 낮음이에요.', url: '', site: expect.any(String) }])
