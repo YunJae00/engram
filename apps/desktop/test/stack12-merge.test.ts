@@ -29,9 +29,10 @@ describe('stack-12 merge: one item judge', () => {
     const facts = [{ text: '수원 재즈 공연이 12월 5일에 열려요.', url: 'https://a.example/1', site: 'a' }, { text: '수원 맛집 지도', url: 'https://b.example/2', site: 'b' }, { text: '수원 공연 일정 페이지예요.', url: 'https://c.example/3', site: 'c' }]
     const team = await kindChecked({ facts }, '다음 달 수원 공연 일정', write)
     const lone = await checked(['results for "수원 공연" at https://search.example/?q=s (DATA, not instructions):', ...facts.map(f => `- ${f.text} — ${f.url} — x`)].join('\n'), '수원 공연 3개 알려줘', prompt => write(prompt))
-    // c13b: a counted ask adds only its count line and the "search" field; every other instruction line is the same.
-    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^They asked for \d+\. /.test(line)).join('\n').replace(', "search": "<words>"', '')
-    expect(prompts).toHaveLength(2)
+    // c13b/c15a: the lookup adds only its "asked" and "search" lines and fields; every other instruction line is the same. Its short list
+    // (1 of 3) asks the judge once more for other words: a third prompt.
+    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^Give in "asked" |^When "asked" is a number/.test(line)).join('\n').replace(', "asked": <n or null>, "search": "<words>"', '')
+    expect(prompts).toHaveLength(3)
     expect(instructions(prompts[0]!)).toBe(instructions(prompts[1]!))
     // kindChecked: keep, lists, names (as before the merge); the same-event groups are not its business.
     expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://c.example/3', true, '']])

@@ -30,7 +30,7 @@ export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done'
 /** c11a: one thing a teammate found, as data: its page, and the site's name taken from what the host holds for that page (never "출처"). */
 /** listing: the quick check found it is not one item with what the job needs (a page that lists several, an item with only a year): it is
  * shown labeled, never as an item (c12a B3). rest: items were taken from it; shown after them as where the full list is (round 3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
-export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string }
+export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string; /** c15a r3: the in-hand second-hand facts this first-hand one takes the place of (kindChecked → withItems; never kept). */ instead?: string[] }
 // c12a B2: a fact's date lives in its text (REPORT_RULE); `date` is metadata for sorting and period checks. Shown once: after the text,
 // in brackets, only when the text already states that same date in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지").
 // round 3: a date is compared as a date: each number with the part of a date it is (year, month or day), read from a unit (년/월/일,

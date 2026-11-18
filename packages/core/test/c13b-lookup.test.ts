@@ -35,10 +35,10 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     expect(rows).toEqual(['https://a.example/1', 'https://e.example/5', 'https://f.example/6', 'https://g.example/7'])
     expect(out).not.toMatch(/육성 계획|역대 최대|마무리/)
     expect(out).toContain('They hold the 4 asked for: list 4 of them.')
-    // One judge call, the "search" field asked for because a count was asked.
+    // One judge call; c15a: the count is the judge's own reading ("asked"), the search words asked for with it.
     expect(prompts).toHaveLength(1)
     expect(prompts[0]).toContain('"listing"')
-    expect(prompts[0]).toContain('They asked for 4.')
+    expect(prompts[0]).toContain('"asked": <n or null>, "search": "<words>"')
     // What the host tells the writer is data in English to the model, never a Korean line meant for the person.
     expect(out.split('\n').find(line => line.startsWith('These rows were checked'))).not.toMatch(/[가-힣]/)
   })
@@ -77,14 +77,17 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     expect(late.out).not.toContain('https://i.example/9')
   })
 
-  it('L1-L4-shaped single lookups make no judge call at all; a row whose page does not open is still never shown', async () => {
+  // c15a: whether an ask wants a set number is the judge's reading, so every lone lookup's search gets one judge call. An ask with no set
+  // number ("asked": null) loses no row to the judge: its rows are only put first-hand first; a dead page is still never shown.
+  it('L1-L4-shaped single lookups: one judge call, no row left out by it, first-hand first; a row whose page does not open is still never shown', async () => {
     for (const ask of ['내일 대전 날씨 어때?', '지금 엔화 환율 얼마야?', '삼성전자 오늘 주가 알려줘', '맥북 에어 15인치 가격 알려줘']) {
       let calls = 0
-      const one = page('x', ['- 결과 하나 — https://a.example/1 — x — 11월 14일', '- 결과 둘 — https://dead.example/2 — x — 11월 14일'])
-      const out = await checkedSearch(search([one]), { ask: () => ask, write: async () => { calls++; return '{"keep":[1]}' }, alive: async url => !url.includes('dead.example'), since: 0, now: () => 0 }).run({ query: 'x' }, { task: ask })
-      expect(calls, ask).toBe(0)
+      const one = page('x', ['- 결과 하나 — https://a.example/1 — x — 11월 14일', '- 결과 둘 — https://dead.example/2 — x — 11월 14일', '- 결과 셋 — https://c.example/3 — x — 11월 14일'])
+      const out = await checkedSearch(search([one]), { ask: () => ask, write: async () => { calls++; return '{"keep":[1],"asked":null,"secondhand":[1]}' }, alive: async url => !url.includes('dead.example'), since: 0, now: () => 0 }).run({ query: 'x' }, { task: ask })
+      expect(calls, ask).toBe(1)
       expect(out, ask).not.toContain('https://dead.example/2')
-      expect(out, ask).toContain('https://a.example/1')
+      expect(out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]), ask).toEqual(['https://c.example/3', 'https://a.example/1'])
+      expect(out, ask).not.toContain('These rows were checked')
     }
   })
 })
@@ -212,7 +215,7 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
 describe('stack-13: the item judge checks every part the ask names', () => {
   it('the one prompt asks for the thing on every part the ask names, and keeps only items that say too little to tell', async () => {
     let prompt = ''
-    await judgedItems('부산 해산물 식당 개업 소식 4개', [{ text: '부산 기장에 해산물 식당 새로 문 열어' }, { text: '부산 해산물 축제 개막' }], async p => { prompt = p; return '{"keep":[1]}' }, 1000, 4)
+    await judgedItems('부산 해산물 식당 개업 소식 4개', [{ text: '부산 기장에 해산물 식당 새로 문 열어' }, { text: '부산 해산물 축제 개막' }], async p => { prompt = p; return '{"keep":[1]}' }, 1000, { tried: [] })
     expect(prompt).toContain('against everything the ask names about the thing it wants')
     expect(prompt).toContain('keep an item only when it is that thing on every one of them')
     expect(prompt).toContain('leave out an item that clearly lacks one')

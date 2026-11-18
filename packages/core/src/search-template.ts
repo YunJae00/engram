@@ -273,6 +273,8 @@ export const withoutRepeats = (rows: SearchResult[], query: string): SearchResul
 // reading went): the model picks from every dated, deduped row, and the host checks only the shape of its list (fast-lane listGap).
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+// shortcut: a word list, kept only as a fast hint (the search page's news shaping, and a judge answer with no "asked"); whether an ask is a
+// counted list is the item judge's reading by meaning (item-check judgedItems "asked"). Upgrade the news shaping to read the judge too.
 export function askedCount(ask: string): number | undefined {
   const said = /(\d{1,2}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:개|건|가지|꼭지)|\btop (\d{1,2})\b|\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten) (?:\w+ ){0,2}(?:news|articles?|stories|items|headlines)\b/i.exec(ask)
   const word = (said?.[1] ?? said?.[2] ?? said?.[3])?.toLowerCase()

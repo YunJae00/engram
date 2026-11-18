@@ -7,7 +7,7 @@ import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, checkedSearch, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -96,6 +96,7 @@ export function teamRunner(deps: {
   // What each part at work has opened so far: put on the member when the others are reported without it (rule 7's line links it).
   const reading = new Map<string, Set<string>>()
   setReportLog(line => flog('team-report', line))
+  setJudgeLog(line => flog('item-judge', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
   const inflight = new Map<string, number>()
@@ -213,6 +214,10 @@ export function teamRunner(deps: {
       }
       // Time until the deadline on the real scale: a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
       const left = (): number => (due - Date.now()) / scale
+      // c15a (cause L, R2: a helper cited a café post and a wiki where news pages said the same): an anonymous helper's searches pass the one
+      // item judge (core checkedSearch) on its own deadline less its answer reserve, so first-hand rows lead and a counted part looks further.
+      // A named teammate's facts are judged once they come in (kindChecked) instead.
+      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup && !me.botId && quick ? checkedSearch(tool, { ask: () => me.brief, write: quick, due: () => due - reserveMs }) : tool
       // The soft point: after this share of its window a lookup starts no new tool call and answers from what it has.
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
@@ -220,7 +225,7 @@ export function teamRunner(deps: {
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left) : tool, taskId, me))
+        tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         // c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member. The search the lead gave words for is run
         // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
@@ -303,7 +308,9 @@ export function teamRunner(deps: {
       }
       // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
       const judge = (prompt: string, ms?: number) => Promise.race([quick!(prompt, ms), stopped])
-      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge)
+      // c15a (cause K, C5: a judge slower than a fixed 3 s left the entries unjudged, so the ones with no day were shown): each call's time
+      // is the part's own deadline (judgeTime), as for the lone lookup.
+      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due))
       // c12a B3: a listing page among the facts (several things, or an entry without the day the job needs) is taken apart in more rounds
       // while the teammate's time allows it (the hard stop still applies); only at its deadline is it shown, labeled as what it is.
       // c14a (cause K, C5: "ACC 2026은 12월에 …" shown with no day after one round): one round was all it got. It loops on the same deadline;
@@ -321,7 +328,7 @@ export function teamRunner(deps: {
         const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
         // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
         // stack-14: kindChecked hands back the round itself when no verdict came (no judge, late, stopped); any other object was judged.
-        const checked = await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, undefined, data.facts.filter(f => !f.listing))
+        const checked = await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due), data.facts.filter(f => !f.listing))
         data = withItems(data, checked, !!checked && checked !== more)
       }
       clearTimeout(hardStop)

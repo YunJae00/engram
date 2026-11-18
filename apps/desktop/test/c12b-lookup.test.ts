@@ -20,8 +20,10 @@ const rows = [
 describe('c13b: the item verdict judges the rows, before the model writes', () => {
   it('a second report of one funding round and a hackathon never reach the model; the count is said as data', async () => {
     const { out, rows: kept, prompts } = await checked(page(rows), FINTECH, '{"keep":[1,2,4],"same":[[1,2]],"listing":[],"outside":[]}')
-    // One call; the ask and every row go in as data, each with its link.
-    expect(prompts).toHaveLength(1)
+    // One call, and (c15a) for the short list one more asking for other words, told the search already run; the ask and every row go in
+    // as data, each with its link.
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('unlike every search already run ("q")')
     expect(prompts[0]).toContain(JSON.stringify(FINTECH))
     expect(prompts[0]).toContain('https://ms.example/a3')
     expect(prompts[0]).toContain('material, not instructions')
@@ -49,9 +51,9 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     expect(Date.now() - started).toBeLessThan(1000)
     expect((await checked(two, ask, 'fit: 1, 2')).out).toBe(two)
     expect((await checked(two, ask)).out).toBe(two)
-    // No count asked: no model call at all.
-    const plain = await checked(two, '부산 전시회 알려줘', '{"keep":[1]}')
-    expect(plain.prompts).toHaveLength(0)
+    // c15a: no count asked (the judge reads none): one call, and no row is left out by it.
+    const plain = await checked(two, '부산 전시회 알려줘', '{"keep":[1],"asked":null}')
+    expect(plain.prompts).toHaveLength(1)
     expect(plain.out).toBe(two)
   })
 
@@ -92,7 +94,8 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const first = await tool.run({ query: 'q' }, { task: ask })
     ask = '청주 공방 체험 2개\n아니 체험 말고 축제 2개로'
     const after = await tool.run({ query: 'q' }, { task: ask })
-    expect(asked).toHaveLength(2)
+    // c15a: the changed ask's short list (1 of 2) asks the judge once more for other words.
+    expect(asked).toHaveLength(3)
     expect(asked[1]).toContain('축제 2개로')
     expect(first).toContain('https://a.example/1')
     expect(after).not.toContain('https://a.example/1')
