@@ -1,0 +1,175 @@
+import { mkdir, mkdtemp } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createTask, helperAnswer, kindChecked, listTasks, mergedReport, mergingHire, reportPrompt, setReportLog, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
+vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
+vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
+import { checkedDesk } from '../src/main/desk-lane.js'
+import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+
+// stack-16 merge checks: c16b (held rows, holds) + c16a (one writer for helpers, writer time from the due) + c16c (missing kind) meet on
+// the anonymous hire_members path. Wordings are in no harness row: 강릉/속초/양양 서핑 파도, 대구 미세먼지, 판교 카페 영업시간.
+type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
+const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-s16-${tag}-`)), '.engram') } as unknown as VaultPaths }
+const CHECK = 'Judge meaning only', JUDGE = 'List in "holds"'
+const none = JSON.stringify({ problems: [] })
+const PAGE: Record<string, string> = { 강릉: 'https://surf.example/gangneung', 속초: 'https://surf.example/sokcho', 양양: 'https://surf.example/yangyang', 고성: 'https://surf.example/goseong' }
+const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line)).slice(1)
+const results = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
+afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
+const tick = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+
+/** The quick model: the item judge (c16b), the meaning check (c16c's lines in it) and the writer (c16a), each with its own delay. */
+function quickModel(log: { kind: string; at: number; prompt: string }[], opts: { judgeMs?: number; writeMs?: number; checkMs?: number; prose?: number; missing?: number } = {}) {
+  let prose = opts.prose ?? 0, missing = opts.missing ?? 0
+  return async (prompt: string): Promise<string> => {
+    if (prompt.includes(JUDGE)) {
+      log.push({ kind: 'judge', at: Date.now(), prompt }); await tick(opts.judgeMs ?? 0)
+      // Round 1: the first row is about the town, the second states the wave height; round 2 (held row as context) adds the new row.
+      const held = /Items 1 to (\d+) were already judged/.exec(prompt)
+      return held ? JSON.stringify({ keep: [Number(held[1]) + 1], holds: [Number(held[1]) + 1], asked: 1, search: '' }) : JSON.stringify({ keep: [1, 2], holds: [], asked: 1, search: '파도 높이 예보', open: 2 })
+    }
+    if (prompt.includes(CHECK)) {
+      log.push({ kind: 'check', at: Date.now(), prompt }); await tick(opts.checkMs ?? 0)
+      return missing-- > 0 ? JSON.stringify({ problems: [{ kind: 'missing', quote: '고성', why: '고성 행이 없어요' }] }) : none
+    }
+    log.push({ kind: 'write', at: Date.now(), prompt }); await tick(opts.writeMs ?? 0)
+    const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { id: string; text: string; link: string }[] }[]
+    const rows = data.filter(p => p.facts?.length).map(p => ({ part: p.part, fact: p.facts![0]! }))
+    const message = prose-- > 0 ? rows.map(r => `${r.part}는 ${r.fact.text}`).join(' ')
+      : ['세 곳 모두 이번 주말 파도가 서핑하기 괜찮아요.', '', '| 해변 | 파도 | 출처 |', '|---|---|---|', ...rows.map(r => `| ${r.part} | ${r.fact.text} | ${r.fact.link} |`)].join('\n')
+    return JSON.stringify({ message, kept: rows.map(r => r.fact.id) })
+  }
+}
+
+/** The lane as ipc wires it: hire_members wrapped by mergingHire; each helper's search_web passes the one item judge (team-runner). */
+async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel>[1] & { searchMs?: number; modelMs?: number; steer?: number; stopAt?: number; answerMs?: number } = {}) {
+  const paths = await vault(tag)
+  const created = await createTask(paths, ask, 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const models: string[] = [], quick: { kind: string; at: number; prompt: string }[] = [], searches: string[] = []
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => {
+    const q = String(args['query']); searches.push(q); await tick(opts.searchMs ?? 0)
+    const town = Object.keys(PAGE).find(name => q.includes(name)) ?? '강릉'
+    return q.includes('예보') ? results(q, [`- ${town} 파도 0.8~1.2m, 서핑 적기 — ${PAGE[town]}/forecast — 예보 — 11월 21일`]) : results(q, [`- ${town} 해변 서핑 숍 소개 — https://blog.example/${encodeURIComponent(town)} — 블로그 — 11월 2일`, `- ${town} 이번 주말 파도 1m 안팎 — ${PAGE[town]} — 예보 — 11월 20일`])
+  } }
+  const run: Run = async (deps, prompt, options = {}) => {
+    options.onStart?.(); models.push(prompt.slice(0, 20))
+    const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', town = Object.keys(PAGE).find(name => part.includes(name)) ?? '강릉'
+    const tool = deps.tools?.find(t => t.name === 'search_web')
+    // Two rounds of the helper's own search, each through the item judge, then the model's answer.
+    if (tool) { await tool.run({ query: `${town} 서핑 파도` }, { task: prompt, ...(options.signal ? { signal: options.signal } : {}) }) }
+    await tick(opts.modelMs ?? 0)
+    if (options.signal?.aborted) throw new Error('aborted')
+    return { answer: `${town}은 이번 주말 파도가 1m 안팎이에요. [${town} 파도 예보](${PAGE[town]})`, steps: [], fellBack: false }
+  }
+  const write = quickModel(quick, opts)
+  const engine = { id: 'claude', quick: async (prompt: string) => write(prompt) } as unknown as TurnKit['engine']
+  let heard: (() => void) | undefined
+  const said = opts.steer === undefined ? undefined : new Promise<void>(resolve => { heard = resolve })
+  if (opts.steer !== undefined) setTimeout(() => heard!(), opts.steer)
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, ...(opts.answerMs ? { answerMs: opts.answerMs } : {}), ...(said ? { steered: () => said } : {}) })
+  const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => ask, nativeFor: async () => undefined, toolsFor: async one => [...team.tools(one, kit), search], alive: async () => true }
+  const since = Date.now(), stop = new AbortController()
+  if (opts.stopAt !== undefined) setTimeout(() => stop.abort(), opts.stopAt)
+  const hire: AgentTool = mergingHire(team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!, async signal => helperAnswer({ ask, members: (await listTasks(paths)).find(t => t.state === 'running')?.team?.members, since, write: (prompt: string) => write(prompt), due: since + (opts.answerMs ?? 28_000), signal: signal ?? stop.signal }))
+  return { paths, hire, models, quick, searches, since, stop }
+}
+const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`, topic: town, brief: `${town} 이번 주말 서핑 파도 높이`, lookup: true }))
+
+describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
+  it('a fact the judge says holds the value leads the writer data and the host fallback; a nothing part with no short name uses latestName', async () => {
+    const facts = [{ text: '대구는 미세먼지 이야기가 많아요.', url: 'https://blog.example/daegu', site: '블로그' }, { text: '대구 오늘 미세먼지는 보통(42㎍/㎥)이에요.', url: 'https://air.example/daegu', site: '에어코리아' }]
+    const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', async () => JSON.stringify({ keep: [1, 2], holds: [2], asked: 1 }))
+    expect(judged!.facts.map(f => f.url)).toEqual(['https://air.example/daegu', 'https://blog.example/daegu'])
+    const at = new Date().toISOString()
+    const m = (id: string, role: string, data: TeamMember['data']): TeamMember => ({ id, parentId: null, depth: 1, role, topic: role, brief: `${role} 조사`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: id, hiredAt: at, result: 'x', data })
+    const parts = [m('m1', '대구', judged), m('m2', '판교', { facts: [], nothing: { latest: { text: '판교 카페 거리 새 매장 오픈 소식, 영업시간은 10시부터 22시까지, 주말 포함', url: 'https://cafe.example/pangyo', site: '카페' } } })]
+    const prompt = reportPrompt('대구 미세먼지랑 판교 카페 소식', parts, new Map(), { helpers: true })
+    const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { facts?: { link: string }[]; nothing?: { latest: { text: string } } }[]
+    expect(data[0]!.facts![0]!.link).toContain('air.example')
+    // c16b added no `latest` short name: c16a's latestName (the first clause) is what the writer reads.
+    expect(data[1]!.nothing!.latest.text).toContain('판교 카페 거리 새 매장 오픈 소식')
+    expect(data[1]!.nothing!.latest.text).not.toContain('영업시간')
+    const fallback = mergedReport(parts, new Map(), [], true)
+    expect(fallback.indexOf('air.example')).toBeLessThan(fallback.indexOf('blog.example') === -1 ? Infinity : fallback.indexOf('blog.example'))
+  })
+})
+
+describe('stack-16: missing on the team path (c16c inside c16a)', () => {
+  it('the helpers\' one check carries the missing line; a draft refused for missing twice falls back to the host table with every part a row', async () => {
+    const log: { kind: string; at: number; prompt: string }[] = []
+    const at = new Date().toISOString()
+    const helpers: TeamMember[] = ['강릉', '속초', '고성'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: `s${i}`, hiredAt: at, result: `${town}은 파도 1m예요. [예보](${PAGE[town]})`, sources: [PAGE[town]!] }))
+    const out = await helperAnswer({ ask: '강릉 속초 고성 파도 각각', members: helpers, since: Date.now() - 1000, write: quickModel(log, { missing: 2 }), due: Date.now() + 20_000 })
+    expect(log.map(l => l.kind)).toEqual(['write', 'check', 'write', 'check'])
+    expect(log[1]!.prompt).toContain('"missing": the person\'s ask names parts')
+    const rows = tableRows(out)
+    expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(['강릉', '속초', '고성'])
+    for (const town of ['강릉', '속초', '고성']) expect(out).toContain(PAGE[town])
+  })
+})
+
+describe('stack-16: one clock, steer, stop and call counts on the anonymous split', () => {
+  it('helper search rounds (held rows) + deadline writer + one repair answer a 3-part split before 35 s (real clock: the item judge\'s round sizes are real-time constants)', async () => {
+    // Measured stack15 sizes: a search ~2.5 s, a quick judgment ~2.5 s, a helper's answer ~6 s, a writer draft ~3 s.
+    const { hire, quick, models, searches, since } = await lane('clock', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { searchMs: 2500, judgeMs: 2500, modelMs: 6000, writeMs: 3000, checkMs: 2500, prose: 1 })
+    const text = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
+    expect(Date.now() - since).toBeLessThan(35_000)
+    expect(tableRows(text)).toHaveLength(3)
+    expect(hire.closesOn!(text)).toBe(true)
+    // Every helper's search went through the item judge; its verdict (no row holds the height) ran a second round with the held rows as context.
+    expect(searches.filter(q => q.includes('예보'))).toHaveLength(3)
+    expect(quick.filter(l => l.kind === 'judge' && l.prompt.includes('were already judged'))).toHaveLength(3)
+    // Call count on this C3-shape answer: 3 helper model calls, no lead write; quick: 6 judge + the writer, its repair (a draft refused
+    // for its shape goes straight to the one repair), then the meaning check of the repaired draft.
+    expect(models).toHaveLength(3)
+    expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'write', 'check'])
+  }, 45_000)
+
+  it('a part added mid-work lands as a row of the one table; one answer after the first, non-closing call', async () => {
+    const { hire } = await lane('steer', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { steer: 10, modelMs: 80 })
+    const first = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
+    expect(hire.closesOn!(first)).toBe(false)
+    const out = await hire.run({ members: members(['고성']) }, { task: '' })
+    expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['강릉', '속초', '양양', '고성'])
+    expect(hire.closesOn!(out)).toBe(true)
+  })
+
+  it.each([['a judge round', { judgeMs: 5000 }, 50], ['a writer repair', { writeMs: 5000, prose: 1 }, 5300]] as const)('"멈춰" during %s halts within 3 s and nothing is written after', async (_what, timing, stopAt) => {
+    const { hire, quick, stop } = await lane('stop', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { ...timing, stopAt })
+    const began = Date.now()
+    const out = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '', signal: stop.signal })
+    expect(Date.now() - began - stopAt).toBeLessThan(3000)
+    expect(hire.closesOn!(out)).toBe(false)
+    const calls = quick.length
+    await tick(300)
+    expect(quick.length).toBe(calls)
+  }, 15_000)
+
+  it('writtenReport stops at once on a stop during its check (desk/written check shares the abort)', async () => {
+    const ctl = new AbortController(), at = new Date().toISOString(), log: { kind: string; at: number; prompt: string }[] = []
+    const parts: TeamMember[] = ['강릉', '속초'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: `s${i}`, hiredAt: at, result: 'x', data: { facts: [{ text: `${town} 파도 1m예요.`, url: PAGE[town]!, site: '서핑 예보' }] } }))
+    setTimeout(() => ctl.abort(), 100)
+    const began = Date.now()
+    await writtenReport({ ask: '강릉 속초 파도', members: parts, helpers: true, write: quickModel(log, { checkMs: 10_000 }), due: Date.now() + 20_000, signal: ctl.signal })
+    expect(Date.now() - began).toBeLessThan(1000)
+  })
+
+  it('"멈춰" during a desk rewrite (a missing part being added) ends the check at once', async () => {
+    const stop = new AbortController(), calls: string[] = []
+    const quick = async (prompt: string): Promise<string | undefined> => {
+      calls.push(prompt)
+      if (calls.length === 1) return JSON.stringify({ problems: [{ kind: 'missing', quote: '대책', why: '대책이 없어요' }] })
+      setTimeout(() => stop.abort(), 50)
+      return new Promise<string | undefined>(() => undefined)
+    }
+    const began = Date.now()
+    await checkedDesk({ ask: '장애 회고 메모 원인이랑 대책으로 나눠줘', draft: '원인: 배포 스크립트의 환경 변수 누락', source: '# 회고\n- 원인: 환경 변수 누락\n- 대책: 배포 전 점검 목록', fromSource: true, quick, since: Date.now(), signal: stop.signal })
+    expect(Date.now() - began).toBeLessThan(3000)
+    expect(calls).toHaveLength(2)
+  })
+})
