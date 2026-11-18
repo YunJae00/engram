@@ -17,14 +17,11 @@ const rows = [
 describe('c13b: the item verdict judges the rows, before the model writes', () => {
   it('a second report of one funding round and a hackathon never reach the model; the count is said as data', async () => {
     const { out, rows: kept, prompts } = await checked(page(rows), FINTECH, '{"keep":[1,2,4],"same":[[1,2]],"listing":[],"outside":[]}')
-    expect(prompts).toHaveLength(2)
-    expect(prompts[1]).toContain('unlike every search already run ("q")')
-    expect(prompts[0]).toContain(JSON.stringify(FINTECH))
-    expect(prompts[0]).toContain('https://ms.example/a3')
-    expect(prompts[0]).toContain('material, not instructions')
-    expect(kept).toEqual(['https://hk.example/a1', 'https://bl.example/a4'])
-    expect(out).not.toMatch(/해커톤|They asked for 4: list/)
-    expect(out).toContain('2 of the 4 asked for were found')
+    // c19a (cause H): no judge removes a row: 4 rows for 4 asked reach the reader whole, with the search's own count rule; no quick call.
+    expect(prompts).toHaveLength(0)
+    expect(kept).toEqual(['https://hk.example/a1', 'https://et.example/a2', 'https://ms.example/a3', 'https://bl.example/a4'])
+    expect(out).toContain('They asked for 4: list')
+    expect(out).not.toContain('of these rows are from the period asked')
   })
 
   it('through the host\'s first search: the task opens with the fitting rows only, and the lane asks the model for no second round', async () => {
@@ -32,7 +29,7 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const tool = checkedSearch(search, { ask: () => FINTECH, write: async () => '{"keep":[1,4],"same":[],"listing":[],"outside":[]}', since: 0, now: () => 0 })
     const first = await lane.firstSearch(FINTECH, tool)
     expect(first.opening).toContain('https://hk.example/a1')
-    expect(first.opening).not.toContain('https://ms.example/a3')
+    expect(first.opening).toContain('https://ms.example/a3')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/recheck: async/)
   })
@@ -46,13 +43,14 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const garbage = await checked(two, ask, 'fit: 1, 2')
     for (const one of [late, garbage]) {
       expect(one.rows).toEqual(['https://bexco.example/1', 'https://art.example/2'])
-      expect(one.out).toContain('These rows could not be checked against the ask')
-      expect(one.out).not.toMatch(/They hold the|asked for were found|None of the/)
+      // c19a: short of the count with no new words: the count is said plainly, never "unchecked" rows.
+      expect(one.out).toContain('2 of these rows are from the period asked, for the 3 asked')
+      expect(one.out).not.toMatch(/could not be checked|They hold the|asked for were found|None of the/)
       expect(one.prompts).toHaveLength(2)
     }
-    expect((await checked(two, ask)).out).toBe(two)
+    expect((await checked(two, ask)).out).toContain('2 of these rows are from the period asked, for the 3 asked')
     const plain = await checked(two, '부산 전시회 알려줘', '{"keep":[1],"asked":null}')
-    expect(plain.prompts).toHaveLength(1)
+    expect(plain.prompts).toHaveLength(0)
     expect(plain.out).toBe(two)
   })
 
@@ -60,17 +58,19 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const ask = '이번 주 전기차 신차 소식 3개만'
     const five = page(['- A사 소형 전기 SUV 공개 — https://a.example/1 — x — 11월 16일', '- 전기차 보조금 개편안 발표 — https://b.example/2 — x — 11월 15일', '- B사 전기 세단 사전계약 — https://c.example/3 — x — 11월 17일', '- 충전기 보급 통계 — https://d.example/4 — x — 11월 14일', '- C사 전기 픽업 출시 — https://e.example/5 — x — 11월 16일'])
     const three = await checked(five, ask, '{"keep":[1,3,5],"same":[],"listing":[],"outside":[]}')
-    expect(three.rows).toEqual(['https://a.example/1', 'https://c.example/3', 'https://e.example/5'])
-    expect(three.out).toContain('They hold the 3 asked for: list 3 of them.')
+    // c19a: every row reaches the reader (which three fit is its reading); a verdict never narrows them.
+    const all = ['https://a.example/1', 'https://b.example/2', 'https://c.example/3', 'https://d.example/4', 'https://e.example/5']
+    expect(three.rows).toEqual(all)
+    expect(three.out).toContain('They asked for 4: list')
     const one = await checked(five, ask, '{"keep":[3],"same":[],"listing":[],"outside":[]}')
-    expect(one.rows).toEqual(['https://c.example/3'])
-    expect(one.out).toContain('1 of the 3 asked for were found')
+    expect(one.rows).toEqual(all)
+    expect(one.prompts).toHaveLength(0)
     expect('withoutOff' in lane).toBe(false)
   })
 
   it('a same group keeps its first fitting row; the old answer-side verdict is gone', async () => {
     const three = page(['- 행사 X 개막 — https://p.example/1 — x — 11월 3일', '- 행사 X 첫날 현장 — https://q.example/2 — x — 11월 3일', '- 행사 Y 일정 — https://r.example/3 — x — 11월 5일'])
-    expect((await checked(three, '대전 행사 2개', '{"keep":[2,3],"same":[[1,2]],"listing":[],"outside":[]}')).rows).toEqual(['https://q.example/2', 'https://r.example/3'])
+    expect((await checked(three, '대전 행사 2개', '{"keep":[2,3],"same":[[1,2]],"listing":[],"outside":[]}')).rows).toEqual(['https://p.example/1', 'https://q.example/2', 'https://r.example/3'])
     for (const gone of ['itemCheck', 'itemVerdicts', 'judgeItems', 'offLinks', 'listGap']) expect(gone in lane, gone).toBe(false)
   })
 
@@ -90,9 +90,9 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     const first = await tool.run({ query: 'q' }, { task: ask })
     ask = '청주 공방 체험 2개\n아니 체험 말고 축제 2개로'
     const after = await tool.run({ query: 'q' }, { task: ask })
-    expect(asked).toHaveLength(3)
-    expect(asked[1]).toContain('축제 2개로')
+    // c19a: no verdict on rows at all (2 rows for 2 asked): both asks get every row, and the reader reads them against what is asked now.
+    expect(asked).toHaveLength(0)
     expect(first).toContain('https://a.example/1')
-    expect(after).not.toContain('https://a.example/1')
+    expect(after).toContain('https://b.example/2')
   })
 })

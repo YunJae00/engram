@@ -63,7 +63,9 @@ it('a slow part (40 s) is labeled working at the deadline with the page it opene
   expect(at.team!.members.map(m => [m.role, m.state, m.late])).toEqual([['하람', 'done', undefined], ['소율', 'working', true]])
   const first = employeesReport(at)!
   expect(first).toContain('하람의 업데이트 소식이에요.')
-  expect(first).toMatch(/미로\(소율\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[[^\]]+\]\(https:\/\/search\.example\/\?q=/)
+  // c19a (C3: a source label on the still line): the still line carries no link, the page it opened is not shown with it.
+  expect(first).toMatch(/미로\(소율\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\.(?! \[)/)
+  expect(first).not.toMatch(/아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[/)
   expect(companyStatus((await loadBots(w.paths)).map(bot => ({ ...bot, label: '조사 담당' })), await listTasks(w.paths), Date.now())).toMatch(/소율은 [^.]*하고 있|소율은 [^.]*찾고 있|소율은 [^.]*조사/)
   await updateTask(w.paths, w.id, lateShown)
   await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest'
-import { handoffBrief, itemsFirst, koreanDates, mergedReport, setReportLog, valueOf, withEveryone, writtenReport } from '../src/company-tools.js'
+import { handoffBrief, koreanDates, mergedReport, reportCheck, setReportLog, valueOf, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { deckChecked, officeTools } from '../src/office-tools.js'
 import { runAgentLoop } from '../src/agent-loop.js'
@@ -80,27 +80,28 @@ const haneul = part('m2', '하늘', handoffBrief('이벤트 문구 2개', '민�
 const json = (message: string): string => JSON.stringify({ message, kept: [] })
 const OPENS_WITH_WORK = `하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.\n\n1. ${ITEMS[0]}\n2. ${ITEMS[1]}`
 
-test('a writer draft that breaks items-first is repaired once in place, and never reaches the host fallback', async () => {
+// c19a: items-first is no longer a check (the order rule lives in the writer prompt): a draft that opens on its lead is not repaired.
+test('a writer draft that opens on its lead before the items is shown as written, with no repair, and never reaches the host fallback', async () => {
   setReportLog(line => logged.push(line))
   const units = messageUnits(OPENS_WITH_WORK)
   const { quick, calls } = model({ write: [json(OPENS_WITH_WORK)], repair: [JSON.stringify({ replace: { '1': '' }, insert_after: { [String(units.length)]: ['하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.'] } })] })
   const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000 })
-  expect(out.split('\n')[0]).toBe(`1. ${ITEMS[0]}`)
-  expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.')
+  expect(out.split('\n')[0]).toMatch(/^하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요\./)
+  expect(out).not.toContain('하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.')
   expect(out).toContain(SOURCE)
-  expect(calls.filter(p => p.includes(REPAIR))).toHaveLength(1)
+  expect(calls.filter(p => p.includes(REPAIR))).toHaveLength(0)
   expect(logged.join('\n')).not.toMatch(/writer=fallback/)
 })
 
-test('an items-first draft whose repair fails is still shown items first (r3), not as the host template', async () => {
+test('a draft with its lead before the items is shown where the writer put it (c19a: no host move), not as the host template', async () => {
   setReportLog(line => logged.push(line))
   const { quick } = model({ write: [json(OPENS_WITH_WORK)], repair: [undefined] })
   const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000 })
-  expect(out.split('\n')[0]).toBe(`1. ${ITEMS[0]}`)
+  expect(out.split('\n')[0]).toMatch(/^하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요\./)
   expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.')
-  expect(out.indexOf('하늘이 민지가')).toBeGreaterThan(out.indexOf(ITEMS[1]!))
+  expect(out.indexOf('하늘이 민지가')).toBeLessThan(out.indexOf(ITEMS[0]!))
   expect(out).not.toBe(mergedReport([minji, haneul]))
-  expect(logged.join('\n')).toMatch(/writer=kept:items-first/)
+  expect(logged.join('\n')).toMatch(/writer=accepted/)
 })
 
 test('a draft with one contradicting sentence loses only that sentence', async () => {
@@ -213,35 +214,49 @@ test('r2: English the data holds (a product name) is not foreign; a missing part
 })
 
 const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { data: { facts: [{ text, url, site: '도서관' }] } })
-test('r2: a draft that names nobody, its repair failed, still says whose find it was, in the sentence the link closes', async () => {
+// c19a: who found what is asked only where two or more parts merge; one teammate's own hand-back gets no host attribution sentence.
+test('r2: a one-teammate draft that names nobody is shown as written, with no host attribution', async () => {
   const yuna = library('y', '유나', '주말에는 오후 5시까지 열어요.', 'https://lib.example/weekend')
   const draft = `주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)`
   const { quick } = model({ write: [JSON.stringify({ message: draft, kept: ['f1'] })], repair: [undefined] })
   const out = await writtenReport({ ask: '유나한테 도서관 주말 운영시간 알아보라고 해', members: [yuna], write: quick, timeoutMs: 15_000 })
-  expect(out).toBe('유나가 찾아보니 주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)')
+  expect(out).toBe('주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)')
 })
 
-test('r2: withEveryone names each unnamed teammate once, in their own sentence, and leaves the named and the told alone', () => {
+// c19a: withEveryone is gone; the host writes no name into a draft. An unnamed teammate where two or more parts merge is a soft "unnamed"
+// finding for the one scoped repair, quoting the sentence their link closes; the draft text itself is never changed by the check.
+const checked = (message: string, members: TeamMember[]) => { const out = reportCheck(JSON.stringify({ message }), members); if (!('text' in out)) throw new Error(out.refused); return out }
+const unnamedOf = (out: ReturnType<typeof checked>): string[] => out.soft.filter(one => one.refused === 'unnamed').map(one => one.quote ?? '')
+test('r2: an unnamed teammate in a merged message is a soft finding quoting their own sentence; the named, the told and a one-part message are left alone', () => {
   const yuna = library('y', '유나', '평일은 밤 9시까지예요.', 'https://lib.example/weekday'), taeo = library('t', '태오', '월요일은 쉬어요.', 'https://lib.example/closed')
   const text = '- 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)\n태오 말로는 월요일은 쉬어요. [도서관](https://lib.example/closed)'
-  expect(withEveryone(text, [yuna, taeo])).toBe('- 유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)\n태오 말로는 월요일은 쉬어요. [도서관](https://lib.example/closed)')
-  expect(withEveryone('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)', [yuna])).toBe('도서관 두 곳 다 봤어요. 유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)')
-  expect(withEveryone('평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 월요일은 쉬어요. [도서관](https://lib.example/closed)', [yuna, taeo])).toBe('유나가 찾아보니 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 태오가 찾아보니 월요일은 쉬어요. [도서관](https://lib.example/closed)')
-  expect(withEveryone('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |', [yuna])).toBe('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |\n유나가 맡아서 했어요.')
+  const two = checked(text, [yuna, taeo])
+  expect(two.text).toBe(text)
+  expect(unnamedOf(two)).toEqual([expect.stringContaining('평일은 밤 9시까지예요.')])
+  const one = checked('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)', [yuna])
+  expect(one.text).toBe('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)')
+  expect(one.soft).toEqual([])
+  const both = checked('평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 월요일은 쉬어요. [도서관](https://lib.example/closed)', [yuna, taeo])
+  expect(both.text).not.toMatch(/유나|태오|찾아보니/)
+  expect(unnamedOf(both)).toHaveLength(2)
+  const table = checked('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |', [yuna])
+  expect(table.text).toBe('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |')
+  expect(table.soft).toEqual([])
 })
 
 const garden = (id: string, role: string, text: string): TeamMember => part(id, role, '수목원 운영 조사', { data: { facts: [{ text, url: 'https://garden.example/hours', site: '수목원' }] } })
-test('r3: two teammates citing one page are each named before their own sentence, in any order', () => {
+test('r3: two teammates citing one page are each an unnamed finding, in any order, and the draft is not rewritten', () => {
   const draft = '정기 휴관일은 매주 화요일이에요. [수목원](https://garden.example/hours)\n야간 개장은 금요일 저녁 9시까지예요. [수목원](https://garden.example/hours)'
   const a = garden('a', '다온', '정기 휴관일은 매주 화요일이에요.'), b = garden('b', '시우', '야간 개장은 금요일 저녁 9시까지예요.')
+  // c19a: both are soft "unnamed" findings for the writer's repair, in any order; the host inserts no "찾아보니" into the draft.
   for (const order of [[a, b], [b, a]]) {
-    const out = withEveryone(draft, order).split('\n')
-    expect(out[0]).toMatch(/^다온이 찾아보니 정기 휴관일/)
-    expect(out[1]).toMatch(/^시우가 찾아보니 야간 개장/)
+    const out = checked(draft, order)
+    expect(out.text).toBe(draft)
+    expect(unnamedOf(out)).toHaveLength(2)
   }
-  const one = withEveryone(draft.replace('\n', ' '), [b, a])
-  expect(one).toMatch(/^다온이 찾아보니 정기 휴관일.*시우가 찾아보니 야간 개장/)
-  expect(one.match(/찾아보니/g)).toHaveLength(2)
+  const one = checked(draft.replace('\n', ' '), [b, a])
+  expect(one.text).not.toMatch(/찾아보니/)
+  expect(unnamedOf(one)).toHaveLength(2)
 })
 
 test('r3: an unrepaired register line is a quotation when the notes hold it, gone when they do not, kept when it is all there is', async () => {
@@ -257,12 +272,13 @@ test('r3: an unrepaired register line is a quotation when the notes hold it, gon
   expect((await repairedWrite({ data: {}, ask: '요약해줘', draft: alone, check: late().quick, due: Date.now() + 15_000 })).text).toBe(alone)
 })
 
-test('r3: items that come after a sentence about who made them are moved first; a draft already items-first is untouched', () => {
+// c19a: itemsFirst is gone; the check moves nothing and asks for no order (the order rule is the writer prompt's).
+test('r3: items after a sentence about who made them stay where the writer put them; a draft already items-first is untouched too', () => {
   const slogan = part('s2', '루아', '축제 슬로건 2개', { lookup: undefined, writer: true, data: { facts: [], items: ['가을밤, 강가에서 만나요', '불빛 따라 걷는 축제'] } })
   const draft = '루아가 축제 슬로건을 두 개 뽑았어요.\n\n1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n마음에 드는 걸로 쓰시면 돼요.'
-  expect(itemsFirst(draft, [slogan])).toBe('1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n루아가 축제 슬로건을 두 개 뽑았어요.\n\n마음에 드는 걸로 쓰시면 돼요.')
+  expect(checked(draft, [slogan])).toEqual({ text: draft, soft: [], adds: [], unlinked: [] })
   const ready = '1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n루아가 뽑았어요.'
-  expect(itemsFirst(ready, [slogan])).toBe(ready)
+  expect(checked(ready, [slogan])).toEqual({ text: ready, soft: [], adds: [], unlinked: [] })
 })
 
 test('r3 D3: a deck built clean is answered with no read-back asked by the host, and the build verdict is in what the model reads next', async () => {

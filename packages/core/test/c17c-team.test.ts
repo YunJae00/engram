@@ -99,17 +99,18 @@ test('a writer draft that opens on the items and then says whose find they came 
   expect(logged).toEqual([expect.stringMatching(/^writer=accepted /)])
 })
 
-test('a draft that opens on a sentence about the work, before the items, is refused as items-first and falls back to the items first', async () => {
+test('a draft that opens on a sentence about the work, before the items, is shown as the writer wrote it (c19a: items-first is no longer a check)', async () => {
   setReportLog(line => logged.push(line))
   const members = handOff()
   const narrated = JSON.stringify({ message: `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n${LINES.join('\n')}`, kept: [] })
   const repair = JSON.stringify({ replace: { 1: '' }, insert_after: { 3: ['하은이 찾은 연말 할인으로 준이 쓴 거예요.'] } })
   const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, repair]).write })
-  expect(out.split('\n')).toEqual([...LINES, `하은이 찾은 연말 할인으로 준이 쓴 거예요. [shop.example.kr](${SALE})`])
-  expect(logged).toEqual([expect.stringMatching(/^writer=repaired:items-first /)])
+  // c19a: the order is the writer prompt's rule, never a check: the draft stands where the writer put its lead, nothing is moved.
+  expect(out.split('\n')).toEqual([`준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`, '', ...LINES])
+  expect(logged).toEqual([expect.stringMatching(/^writer=accepted /)])
   logged.length = 0
-  expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')).toEqual([...LINES, '', `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`])
-  expect(logged).toEqual([expect.stringMatching(/^writer=kept:items-first /)])
+  expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')).toEqual([`준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`, '', ...LINES])
+  expect(logged).toEqual([expect.stringMatching(/^writer=accepted /)])
 })
 
 test('a draft that names nobody it was made from is refused; the host\'s fallback opens on the items and says whose they are after, never a "(name, …)" tag', async () => {

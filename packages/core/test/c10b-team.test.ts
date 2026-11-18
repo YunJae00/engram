@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { checkedReport, mergedReport, reportData, writtenReport } from '../src/company-tools.js'
+import { checkedReport, mergedReport, reportCheck, reportData, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { keptItems, settleMember } from '../src/team-hire-tools.js'
 
@@ -14,7 +14,7 @@ const withData = (m: TeamMember, report: object): TeamMember => ({ ...m, data: r
 const SEARCH = 'https://search.naver.com/search.naver?query=x'
 const partOf = (said: string, name: string): string => said.split('\n\n').find(part => part.split('\n')[0]!.includes(`(${name}`))!
 
-test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소프트웨이브 stays, and the lead says one (c11a: structure: the writer leaves it out, the host checks the links)', () => {
+test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소프트웨이브 stays, and the lead says one (c11a: structure: the writer leaves it out, the host checks the links; c19a r2: a fact the teammate brought that the draft leaves out goes back as its own line)', () => {
   const [answer, ...rows] = run.it.result.replace(/\n\(시간 한도에서 멈춤[^)]*\)$/, '').split('\n')
   const coex = answer!.match(/https:\/\/\S+/)![0]
   const sujb = rows.join('\n').match(/https:\/\/sujb\.kr\S+/)![0]
@@ -24,11 +24,13 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
   expect(jimin.data?.facts).toHaveLength(2)
   expect(jimin.result).toContain('소프트웨이브 2026')
   const message = (text: string, kept: string[]): string => JSON.stringify({ message: text, kept })
-  const shown = checkedReport(message(`다음 달 서울 IT 행사는 지민이 찾아보니 12월 2~4일 코엑스에서 열리는 소프트웨이브 2026이 제일 커요. [출처](${coex})`, ['f1']), [jimin])!
-  expect(shown).toBeDefined()
-  expect(shown).not.toMatch(/카즈미|공연|\[출처\]/)
-  expect(shown).toContain('소프트웨이브 2026')
-  expect(shown).toContain(`(${coex})`)
+  const draft = message(`다음 달 서울 IT 행사는 지민이 찾아보니 12월 2~4일 코엑스에서 열리는 소프트웨이브 2026이 제일 커요. [출처](${coex})`, ['f1'])
+  const checked = reportCheck(draft, [jimin]) as Exclude<ReturnType<typeof reportCheck>, { refused: string }>
+  expect(checkedReport(draft, [jimin])).toBeUndefined()
+  expect(checked.text).not.toMatch(/카즈미|공연|\[출처\]/)
+  expect(checked.text).toContain('소프트웨이브 2026')
+  expect(checked.text).toContain(`(${coex})`)
+  expect(checked.unlinked.map(f => f.url)).toEqual([sujb])
   expect(checkedReport(message(`지민: 12월 2~4일 코엑스에서 소프트웨이브 2026이 열려요. [코엑스](${coex})`, ['f1']), [jimin])).toBeUndefined()
   expect(checkedReport(message(`지민이 찾아보니 12월 2~4일 소프트웨이브 2026이 열려요. [코엑스](${coex}) 12월 24일엔 공연도 있어요. [공연](${sujb.replace(/\(/g, '%28').replace(/\)/g, '%29')})`, ['f1']), [jimin]) ?? '').not.toContain('](https://sujb.kr/')
   const listed = member({ brief: '다음 달 서울 IT 행사 일정 정리' })

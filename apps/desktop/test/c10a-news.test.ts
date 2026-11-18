@@ -45,8 +45,10 @@ test('c10a R3 (c13b): a counted ask loads the period page and the year page only
     expect(passes).toEqual([{ pass: 1, recent: 2, older: 0, kept: 2 }])
     const round = rows.findIndex(row => row.includes('https://www.asiae.co.kr/1')) + 1
     const judged = await checked(out, ask, `{"keep":[${round}],"same":[],"listing":[${3 - round}],"outside":[]}`, { now: 20_000 })
-    expect(judged.rows).toEqual(['https://www.asiae.co.kr/1'])
-    expect(judged.out).toContain('1 of the 5 asked for were found')
+    // c19a (cause H): the verdict removes no row (the statistic reaches the reader, which reads it is no funding event); with no round
+    // left (20 s in) the count is said as data and the search's own count line gives way to it.
+    expect(judged.rows.sort()).toEqual(['https://news.mt.co.kr/2', 'https://www.asiae.co.kr/1'])
+    expect(judged.out).toContain('2 of these rows are from the period asked, for the 5 asked')
     expect(judged.out).not.toContain('They asked for 5: list')
   } finally { vi.useRealTimers() }
 })
@@ -58,8 +60,8 @@ test('c10a R3 (c13b): with nothing more to find, the host writes no count lead: 
     expect(asked.length).toBeLessThanOrEqual(2)
     expect(out).toContain('https://news.mt.co.kr/2')
     const judged = await checked(out, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[],"search":"AI 스타트업 시리즈 투자"}', { now: 20_000 })
-    const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
-    expect(data).toContain('2 of the 5 asked for were found')
+    const data = judged.out.split('\n').find(line => line.includes('of these rows are from the period asked'))!
+    expect(data).toContain('2 of these rows are from the period asked, for the 5 asked')
     expect(data).not.toMatch(/확실한|[가-힣]/)
     expect(judged.queries).toEqual(['q'])
   } finally { vi.useRealTimers() }
@@ -77,8 +79,9 @@ test('c10a R3/H6 (c13b): the run\'s statistic row is judged a listing and never 
   expect(h6).toContain('https://news.mt.co.kr/2')
   for (const one of [ask, h6Ask]) {
     const judged = await checked(none, one, '{"keep":[1],"same":[],"listing":[1],"outside":[]}')
-    expect(judged.rows).toEqual([])
-    expect(judged.out).not.toContain('벤처투자')
+    // c19a: a listing verdict no longer removes the row; it reaches the reader, told plainly that it is short of the count.
+    expect(judged.rows).toEqual(['https://news.mt.co.kr/2'])
+    expect(judged.out).toContain('1 of these rows are from the period asked')
   }
 })
 
@@ -88,14 +91,15 @@ test('c10a R3 (c13b): a plan word in a headline is the quick model\'s to weigh, 
   const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', ...answer.split('\n').map(line => `- ${line.replace(/^\d\. /, '').replace(/ — (11월 \d+일) \[기사\]\((\S+)\)$/, ' — $2 — x — $1')}`)].join('\n')
   const judged = await checked(page, '요즘 AI 스타트업 투자 뉴스 4개', '{"keep":[1,2,3,4],"same":[],"listing":[],"outside":[]}')
   expect(judged.rows).toEqual(['https://example.com/n0', 'https://example.com/n1', 'https://example.com/n2', 'https://example.com/n3'])
-  expect(judged.out).toContain('They hold the 4 asked for')
+  expect(judged.out).not.toMatch(/They hold the|of these rows are from the period asked/)
 })
 
 test('c10a r2 (c13b): a round-up row and a row without its own day never reach the model; an item dated in its own words does', async () => {
   const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', '- [2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치 — https://example.kr/a/1 — x', '- 딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치 — https://example.kr/a/2 — x', '- 11월 둘째 주 스타트업 투자 동향 — https://example.kr/weekly — x — 11월 14일'].join('\n')
   const judged = await checked(page, 'AI 스타트업 투자 뉴스 4건 알려줘', '{"keep":[1,2,3],"same":[],"lists":[2,3],"listing":[3],"outside":[]}')
-  expect(judged.rows).toEqual(['https://example.kr/a/1'])
-  expect(judged.out).toContain('1 of the 4 asked for were found')
+  // c19a: lists/listing verdicts remove nothing: all 3 rows reach the reader, short of the 4 asked.
+  expect(judged.rows).toEqual(['https://example.kr/a/1', 'https://example.kr/a/2', 'https://example.kr/weekly'])
+  expect(judged.out).toContain('3 of these rows are from the period asked, for the 4 asked')
 })
 
 test('c10a r3 (c13b): an undated round still reaches the check, after the dated one; the verdict that it lacks a day keeps it from the model', async () => {
@@ -114,7 +118,8 @@ test('c10a r3 (c13b): an undated round still reaches the check, after the dated 
     const answer = '1. 지놈랩이 120억 원을 유치했어요. [예시뉴스](https://www.example-news.kr/a)\n2. 하모니셀이 80억 원을 유치했어요. [다른일보](https://www.other-daily.kr/b)'
     expect(answer).toContain('https://www.other-daily.kr/b')
     const judged = await checked(out, asked2, '{"keep":[1,2],"same":[],"lists":[2],"listing":[],"outside":[]}', { now: 20_000 })
-    expect(judged.rows).toEqual(['https://www.example-news.kr/a'])
-    expect(judged.out).toContain('1 of the 2 asked for were found')
+    // c19a: the undated round is no longer dropped by the verdict: both rows for two asked reach the reader, no short line.
+    expect(judged.rows).toEqual(['https://www.example-news.kr/a', 'https://www.other-daily.kr/b'])
+    expect(judged.out).not.toContain('of these rows are from the period asked')
   } finally { vi.useRealTimers() }
 })

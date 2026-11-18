@@ -33,7 +33,9 @@ test('the writer is given who, how many and each part\'s outcome as data, and le
   const prompt = reportPrompt('피그마, 미로 이번 주 업데이트 알려줘', [done, still], new Map(), { now: WED })
   const data = JSON.parse(prompt.split('Data: ')[1]!) as Record<string, unknown>[]
   expect(data[0]).toMatchObject({ name: '하람', outcome: 'found', found: 1, asked: 3 })
-  expect(data[1]).toMatchObject({ name: '이든', outcome: 'working', still: true, looked: expect.stringContaining('https://miro.com/changelog/') })
+  // c19a (C3): a part still at work carries no page: its line has no source label.
+  expect(data[1]).toMatchObject({ name: '이든', outcome: 'working', still: true })
+  expect(data[1]).not.toHaveProperty('looked')
   expect(prompt).toContain('lead with the answer itself')
 })
 
@@ -41,7 +43,10 @@ test('rule 7\'s "still looking" is the writer\'s only while a part is at work; a
   const found = member({ id: 'm1', role: '소율', brief: '이번 주 미로 업데이트 조사', data: { facts: [fact('미로 Agents가 보드를 요약해 줘요.', 'https://miro.com/changelog/agents')] } })
   const json = (message: string) => JSON.stringify({ message, kept: ['f1'] })
   const link = '[미로](https://miro.com/changelog/agents)'
-  expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toMatchObject({ refused: 'still' })
+  // c19a: a "still" sentence when no part is at work is cut from the draft, not a refusal.
+  const cut = reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])
+  expect(cut).toHaveProperty('text')
+  expect('text' in cut && cut.text).not.toContain('아직 찾는 중')
   expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toMatchObject({ refused: 'jargon' })
   expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}`), [found])).toHaveProperty('text')
   const prompt = reportPrompt('미로 이번 주 업데이트', [found])

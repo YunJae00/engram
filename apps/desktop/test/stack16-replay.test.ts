@@ -46,9 +46,10 @@ describe('stack-16 replays', () => {
     const out = await checkedSearch(search, { ask: () => ask, write: agreeing(async () => verdicts.shift()), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     const kept = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
     console.log(`R3 rows: ${kept.join(' ')}`)
-    expect(kept.slice(0, 4)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4'])
-    expect(kept).toContain('https://news.example/7')
-    expect(kept).not.toContain('https://news.example/5')
+    // c19a (cause H): 5 rows seen for 5 asked: no judge round, no row dropped or held back; the reader reads which are funding news.
+    expect(kept).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4', 'https://news.example/5'])
+    expect(kept).not.toContain('https://news.example/7')
+    expect(verdicts).toHaveLength(4)
   })
 
   it('L2: news rows about the company, none with the price → holds [] → another round runs, or the observation names the page to open', async () => {
@@ -61,15 +62,16 @@ describe('stack-16 replays', () => {
     const first = '{"keep":[1,2,3,4,5],"holds":{},"points":["오늘 주가"],"asked":1,"search":"엔비디아 주가 NVDA","open":4}'
     const more = await checkedSearch(make([news, quote]), { ask: () => ask, write: agreeing(async (p: string) => p.includes('Items 1 to') ? '{"keep":[6],"holds":{"6":{"오늘 주가":"181.36달러, 전일 대비 -1.2%"}},"asked":1,"search":""}' : first), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with time left: queries ${JSON.stringify(queries)}\n${more}`)
-    expect(queries).toEqual(['q', '엔비디아 주가 NVDA'])
-    expect(more.split('\n').find(line => line.startsWith('- '))).toContain('181.36달러')
+    // c19a: no judge decides holds for an uncounted ask; the reader gets every row (and, with a reader, the top pages) and searches itself.
+    expect(queries).toEqual(['q'])
+    expect(more.split('\n').find(line => line.startsWith('- '))).toContain('엔비디아 오늘 분기 실적 발표')
     const late = await checkedSearch(make([news]), { ask: () => ask, write: agreeing(async () => first), since: 0, now: () => 20_000 }).run({ query: 'q' }, { task: ask })
     console.log(`L2 with no round left:\n${late}`)
-    expect(late).toContain('open https://finance.example/4 (read_pages)')
-    expect(late).toContain('never answer that the results do not say it')
+    expect(late).toContain('https://finance.example/4')
+    expect(late).not.toMatch(/\(read_pages\)|never answer that the results do not say it/)
   })
 
-  it('H5: 지민\'s three same-fact weather rows → one row in the fallback, no (지민) tag, no publication day', async () => {
+  it('H5: 지민\'s three weather rows in other words → all three stay, first-hand first (c19a r3 #1), no (지민) tag, no other day beside the forecast that states its own', async () => {
     const facts = [
       { text: '기상청 중기예보에 따르면 11월 22일(일) 아침 기온은 영하 7~영하 4도, 낮 기온은 5~6도로 평년보다 낮겠어요.', url: 'https://www.weather.go.kr/w/weather/forecast/mid-term.do', site: '기상청' },
       { text: '이번 주말 서울 기온이 영하 4도까지 떨어지며 추위가 절정에 달할 것으로 전했어요.', url: 'https://news.sbs.co.kr/1', site: 'SBS', date: '11월 18일' },
@@ -79,11 +81,11 @@ describe('stack-16 replays', () => {
     const jimin: TeamMember = { id: 'j', parentId: null, depth: 1, role: '지민', botId: 'bot-j', topic: '이번 주말 서울 날씨', brief: '이번 주말 서울 날씨 찾아보기', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 'sj', hiredAt: at, result: 'x', data: data! }
     const out = mergedReport([jimin])
     console.log(`H5 fallback:\n${out}`)
-    expect(data!.facts).toHaveLength(1)
+    expect(data!.facts).toHaveLength(3)
     expect(out).not.toContain('(지민)')
-    expect(out).not.toMatch(/11월 1[18]일/)
+    expect(out).not.toMatch(/기상청 중기예보[^\n]*\(11월/)
     expect(out).toContain('weather.go.kr')
-    expect(out).not.toContain('sbs.co.kr')
+    expect(out.indexOf('weather.go.kr')).toBeLessThan(out.indexOf('sbs.co.kr'))
   })
 
   it('D1: the fixture and stack15\'s draft (no 할 일) → the check prompt carries the missing line', async () => {

@@ -1,9 +1,8 @@
 import type { AgentTool } from './agent-loop.js'
 import type { TeamMember } from './delegated-tasks.js'
-import { CUT_SHORT, notFoundLine, pointName, writtenReport } from './company-tools.js'
+import { CUT_SHORT, writtenReport } from './company-tools.js'
 import { isSearchPage, mergeReady, NO_LIVE_SOURCE, siteOf, TAKEN_OFF } from './team-hire-tools.js'
 import { checkedWrite, type QuickText } from './written-check.js'
-import { stated } from './item-check.js'
 
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
 const LINK = /\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g
@@ -63,7 +62,7 @@ export async function checkedLead(input: {
   return text ?? draft
 }
 
-export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap<string, ReadonlySet<string>> = new Map()): TeamMember[] {
+export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
   return helpers.map(m => {
     const topic = (m.topic || m.role).replace(/[|()[\]]/g, ' ').trim()
     if (!brought(m)) return { ...m, topic }
@@ -82,23 +81,13 @@ export function helperParts(helpers: readonly TeamMember[], stating: ReadonlyMap
       const url = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
       if (url && tail) facts.push({ text: tail, url })
     }
-    let still = m.missing
-    if (m.proof) {
-      const key = (url: string): string => url.replace(/\/$/, '')
-      const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(key))
-      facts.splice(0, facts.length, ...facts.filter(f => own.has(key(f.url))))
-      const asked = new Set([...m.proof.map(one => one.point), ...(m.missing ?? [])].filter(point => point !== 'kind'))
-      const missing = (m.missing ?? []).filter(point => !(facts.length && stating.get(m.id)?.has(point)))
-      const states = (f: { text: string }, one: { point: string; quote: string }): boolean => one.point === 'kind' || asked.size === 1 || f.text.includes(pointName(one.point)) || f.text.includes(one.quote)
-      for (const one of m.proof) {
-        if (!one.url || facts.some(f => key(f.url) === key(one.url) && states(f, one))) continue
-        const label = facts.find(f => key(f.url) === key(one.url))?.label
-        facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url, ...(label ? { label } : {}) })
-      }
-      still = m.missing && missing
-      if (missing.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${missing.map(notFoundLine).join(' ')}` }
-    }
-    return facts.length ? { ...m, topic, ...(still ? { missing: still } : {}), data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
+    // c19a (cause H): a helper's facts are its own cited sentences; no judge decides which stand or which points are "not found". The host
+    // checks only what it can tell exactly: a link to a page this helper was never shown (no search row, no page it read) loses its link and
+    // the sentence stays as its own fact with no link (c19a r3: never joined to a neighbour, whose page does not say it).
+    // Whether a part was found is its hand-back. With no record of what it was shown (no row, no page), there is nothing exact to check.
+    const key = (url: string): string => url.replace(/\/$/, ''), shown = new Set([...m.shown ?? [], ...(m.sources ?? [])].map(key))
+    if (m.shown && shown.size) for (const f of facts) if (!shown.has(key(f.url))) { f.url = ''; delete f.label }
+    return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })
 }
 
@@ -107,12 +96,7 @@ export async function helperAnswer(input: {
 }): Promise<string | undefined> {
   const helpers = turnHelpers(input.members, input.since)
   if (!helpers.length || !helpers.every(m => m.lookup && !m.files?.length && m.review?.ok === true && m.state !== 'failed')) return undefined
-  const claims = helpers.flatMap(m => m.proof && m.said?.trim() ? (m.missing ?? []).filter(point => point !== 'kind').map(point => ({ id: m.id, point, quote: m.said!.replace(/\]\([^)]*\)/g, ']').slice(0, 600) })) : [])
-  const stop = new Promise<undefined>(resolve => { if (input.signal?.aborted) resolve(undefined); else input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
-  const yes = claims.length ? await Promise.race([stated(claims, input.write), stop]) : undefined
-  const stating = new Map<string, Set<string>>()
-  for (const i of yes ?? []) stating.set(claims[i]!.id, new Set([...(stating.get(claims[i]!.id) ?? []), claims[i]!.point]))
-  return writtenReport({ ask: input.ask, members: helperParts(helpers, stating), helpers: true, due: input.due, ...(input.write ? { write: input.write } : {}), ...(input.signal ? { signal: input.signal } : {}) })
+  return writtenReport({ ask: input.ask, members: helperParts(helpers), helpers: true, due: input.due, ...(input.write ? { write: input.write } : {}), ...(input.signal ? { signal: input.signal } : {}) })
 }
 
 export function mergingHire(tool: AgentTool, answer: (signal: AbortSignal | undefined) => Promise<string | undefined>): AgentTool {

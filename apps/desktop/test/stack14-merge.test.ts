@@ -177,9 +177,11 @@ describe('stack-14: the item judge reads the one deadline', () => {
     const done = tool.run({ query: '대전 빵집 개업' }, { task: '' })
     await vi.runAllTimersAsync()
     const out = await done
-    expect(out).not.toContain('박람회')
+    // c19a (cause H): the judgment only gives the next words; no row is removed (the 박람회 rows reach the reader, which reads them).
+    expect(out).toContain('박람회')
     expect(queries.length).toBeGreaterThanOrEqual(2)
-    expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
+    expect(out.split('\n').filter(line => line.startsWith('- ') && line.includes('빵집'))).toHaveLength(2)
+    expect(out).not.toContain('of these rows are from the period asked')
     expect(Date.now() - since).toBeLessThanOrEqual(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS + WIDEN_MS)
   })
 })

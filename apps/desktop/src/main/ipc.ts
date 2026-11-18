@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { checkedDesk, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, askNow, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -2359,7 +2359,7 @@ export function registerIpc(ctx: VaultContext): void {
         const reshaped = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message) && !plainReply(request.message) && !onlyTells(request.message) && !quickQuestion(request.message)
           && await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? (prompt, ms = RESHAPE_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) : undefined, askedBefore(savedHistory.filter(one => !one.progress && !one.error)))
         if (reshaped) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'reshape' })) }
-        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
+        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         if (lane) void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`))
         const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
@@ -2386,7 +2386,7 @@ export function registerIpc(ctx: VaultContext): void {
         const read = new Set<string>()
         const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }
         const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
-        const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
+        const laneRead: string[] = [], solo = lane && !teamAsk(request.message)
         const linkVerdicts = new Map<string, boolean>()
         const alive = (url: string, limit: AbortSignal): Promise<boolean> => linkVerdicts.has(url) ? Promise.resolve(linkVerdicts.get(url)!) : linkAlive(url, limit).then(ok => { linkVerdicts.set(url, ok); return ok })
         let helpersWrote: string | undefined
@@ -2403,7 +2403,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (solo && !handed && !fixed) laneChanges.set(channel, said => {
           if (!lookup.change(said)) return
           const taken = takeFollowUps(channel)
-          steered.push(...taken); laneSaid.push(...taken.map(text => ({ text, at: laneRead.length })))
+          steered.push(...taken)
         })
         const searchFor = async (ask: string, within: AbortSignal): Promise<Awaited<ReturnType<typeof firstSearch>>> => {
           const found = await firstSearch(ask, laneSearch, within)
@@ -2416,8 +2416,8 @@ export function registerIpc(ctx: VaultContext): void {
           laneShaped = true
           const korean = threadKorean(request.message, request.history ?? []), asks = [askedNow(), ...steered]
           let answer = raw
-          if (solo) answer = await heldAnswer(answer, { ask: asks.join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
-          if (solo) answer = await weekendAnswer(answer, { ask: lookup.ask(), held: heldFor(laneRead, laneSaid), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          // c19a (cause H): the reader's answer goes out in its own words; no model rewrites it after it ended (LANE_NOTE carries the rules
+          // heldAnswer and weekendAnswer enforced). Only exact tidying follows (laneTidy, namesSubject, the link checks).
           answer = laneTidy(answer)
           if (solo && lookup.ask() !== request.message) answer = namesSubject(answer, lookup.ask())
           const helpers = !solo && writer && raw.trim() !== helpersWrote?.trim() ? turnHelpers((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members, nativeSince) : []
@@ -2455,7 +2455,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             ...(lane ? { deliver: shapeLane } : {}),
             ...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),
-            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
+            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
