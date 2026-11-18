@@ -233,3 +233,22 @@ test('round 2 (finding 2): a rewrite of the lead\'s answer that drops the compar
   expect(await run(fixed)).toBe(fixed)
   expect(keepsForm(draft, fixed)).toBe(true)
 })
+
+test('round 3: a rewrite of the lead\'s answer that keeps the row and link counts but turns one compared subject into another, or moves a source onto another subject, is refused', async () => {
+  const B = 'https://bk.example/gym', P = 'https://pg.example/gym', J = 'https://jj.example/gym'
+  const helper = (id: string, role: string, result: string, url: string): TeamMember => ({ id, parentId: null, depth: 1, role, brief: `${role} 헬스장 월 회비`, lookup: true, state: 'released', result: `${result} ${url}`, sources: [url], sessionKey: id, hiredAt: new Date().toISOString() })
+  const helpers = [helper('h1', '분당', '분당 월 6만 원', B), helper('h2', '판교', '판교 월 8만 원', P), helper('h3', '정자', '정자 월 5만 원', J)]
+  const draft = `| 동네 | 월 회비 | 출처 |\n|---|---|---|\n| 분당 | 7만 원 | [보기](${B}) |\n| 판교 | 8만 원 | [보기](${P}) |\n| **정자** | 5만 원 | [보기](${J}) |`
+  const wrong = JSON.stringify({ problems: [{ kind: 'contradicts', quote: '7만 원', why: '6만 원' }] })
+  const run = async (rewrite: string): Promise<string> => {
+    let n = 0
+    return checkedLead({ ask: '동네 헬스장 세 곳 월 회비 표로 비교해 줘', helpers, draft, quick: async () => ++n === 1 ? wrong : n === 2 ? rewrite : none, due: Date.now() + 8000 })
+  }
+  // 판교's row now says 분당 again, still carrying 판교's link: same rows, same links (the reviewer's 도쿄/오사카 case in other words).
+  expect(await run(draft.replace('7만 원', '6만 원').replace('| 판교 | 8만 원', '| 분당 | 6만 원'))).toBe(draft)
+  // Subjects kept, two sources swapped between rows.
+  expect(await run(draft.replace('7만 원', '6만 원').replace(`[보기](${B})`, '@@').replace(`[보기](${P})`, `[보기](${B})`).replace('@@', `[보기](${P})`))).toBe(draft)
+  // Only the value fixed (emphasis dropped, separator realigned): shown.
+  const fixed = draft.replace('7만 원', '6만 원').replace('**정자**', '정자').replace('|---|---|---|', '|:--|--:|---|')
+  expect(await run(fixed)).toBe(fixed)
+})

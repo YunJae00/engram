@@ -8,10 +8,19 @@ import { checkedWrite, type QuickText } from './written-check.js'
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
 const LINK = /\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g
 const links = (text: string): string[] => [...text.matchAll(LINK)].map(m => m[1] ?? m[0])
-const rows = (text: string): number => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line)).length
-/** A rewrite keeps the draft's form: every link it had and, when it had a table, at least as many table lines (round 2: a fix of one
- * price came back as one sentence without the comparison table and its links). The check reads meaning; this is the form it cannot see. */
-export const keepsForm = (draft: string, again: string): boolean => links(draft).every(url => links(again).includes(url)) && rows(again) >= rows(draft)
+const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line))
+const rowKey = (row: string): string => (row.split('|')[1] ?? '').replace(/[*_`]/g, '').trim()
+/** A rewrite keeps the draft's form: every link it had and, row by row, every table row it had (round 2: a fix of one price came back as
+ * one sentence without the comparison table and its links). A row is its subject (first cell) with the links on it, so a rewrite may change
+ * a row's values but not drop the row, give its subject to another row or move its source onto another subject (round 3: 오사카 turned
+ * into a second 도쿄 row that still carried 오사카's link, same row and link counts). The check reads meaning; this is the form it cannot see. */
+export const keepsForm = (draft: string, again: string): boolean => {
+  const before = tableRows(draft), after = tableRows(again)
+  return links(draft).every(url => links(again).includes(url)) && before.every(row => {
+    const at = after.findIndex(r => rowKey(r) === rowKey(row) && links(row).every(url => links(r).includes(url)))
+    return at >= 0 && after.splice(at, 1).length === 1 // one rewrite row answers one draft row
+  })
+}
 const brought = (m: TeamMember): boolean => !!m.result?.trim() && m.state !== 'failed' && !m.empty
 
 /** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's). */
