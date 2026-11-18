@@ -4,7 +4,6 @@ export function settle(page) {
   return page.evaluate(async () => { await Promise.all(document.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))) })
 }
 
-// The overlay deck in chat-local layout coordinates, read from offsets so entrance animations do not move the answer.
 export function deckAt(page) {
   return page.evaluate(() => {
     const deck = document.querySelector('.preview-deck')
@@ -20,7 +19,6 @@ export function deckAt(page) {
   })
 }
 
-// Thread, composer and bubble rectangles plus scroll state: moving or updating a placed deck must leave all of them where they were.
 export function flowGeometry(page) {
   return page.evaluate(() => {
     const rect = selector => {
@@ -99,7 +97,6 @@ export async function resizeWindow(app, page, expect, width, height) {
   await expect.poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight])).toEqual([width, height])
 }
 
-// Pins the thread floor below the chat top near the given height by constraining the chat and returns the floor reached; the slot rescales with the chat, so it is measured, not computed.
 export function constrainFloor(page, floor) {
   return page.evaluate((floor) => {
     const chat = document.querySelector('.bots-chat')
@@ -120,7 +117,6 @@ export function describeBlocks({ card, chat, thread }) {
   return `card ${box(card)} in chat ${box(chat)} with thread at y=${Math.round(thread.top)}`
 }
 
-// Real mouse drags on the overlay deck, with the last trusted pointer id recorded by armPointer for capture checks.
 export function armPointer(page) {
   return page.evaluate(() => document.addEventListener('pointerdown', event => { if (event.isTrusted) globalThis.livePointer = event.pointerId }, true))
 }

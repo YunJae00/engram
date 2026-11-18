@@ -1,4 +1,3 @@
-// Scrap pile: the command palette that opened the inbox overlay was removed, so its shortcut opens neither. Captures still wait as data; the quick-capture window is the `capture` scenario.
 export async function run(page, { expect }) {
   const input = page.locator('[data-testid="bots-view"] textarea')
   await expect(input).toHaveCount(1)

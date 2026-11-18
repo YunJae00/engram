@@ -1,12 +1,3 @@
-// Korean UI: sets uiLanguage 'ko' through settingsSet and reloads, then scans the sidebar, the primary bot's chat
-// (there is no info pane or title pill any more: the 'info' region checks that), the New bot dialog the + opens, and
-// Settings for visible text and aria-label/title/placeholder/alt
-// values that still hold English (3+ ASCII letters outside a short allowlist, the vault's own bot names, labels,
-// purposes and note titles, URLs and paths). It then sets uiLanguage 'en', reloads and requires an English sidebar.
-// UI_KOREAN_REGIONS (comma list of sidebar, chat, info, create, settings) limits the scanned regions. Many surfaces are
-// still hard-coded English, so this scenario returns ok:false until rd-i18n-sidebar, rd-i18n-bot-surfaces and
-// rd-i18n-settings land; that is the expected result on current code. It only observes and writes no files.
-
 const WAIT_MS = 5_000
 const MAX_LISTED = 50
 const ALL_REGIONS = ['sidebar', 'chat', 'info', 'create', 'settings']
@@ -40,7 +31,6 @@ async function until(probe, ms = WAIT_MS) {
   return reason
 }
 
-// Visible text nodes plus the aria-label, title, placeholder and alt of visible elements under root, minus exclude.
 function collect(page, root, exclude = null) {
   return page.evaluate(({ root, exclude }) => {
     const base = globalThis.document.querySelector(root)
@@ -138,7 +128,6 @@ export async function run(page) {
   await check('ko-applied', null, () => settingsLabel('설정'))
 
   await check('ko-sidebar', 'sidebar', async () => {
-    // The + opens the New bot dialog directly (scanned as 'create'); the sidebar has no + menu to scan.
     const reasons = [await scan('sidebar', SIDEBAR_SEL)]
     const menus = await page.locator('.sidebar-create-menu, [data-testid="bots-new"], [data-testid="sidebar-menu"]').count()
     if (menus) reasons.push(`${menus} sidebar menu element(s), expected none`)
@@ -160,7 +149,6 @@ export async function run(page) {
 
   await check('ko-info', 'info', async () => {
     if (!opened) return 'chat did not open'
-    // No title pill and no info pane in either language; Escape leaves the chat as it is.
     const reasons = []
     const pills = await page.locator('[data-testid="bots-title-pill"]').count()
     if (pills) reasons.push(`${pills} bots-title-pill element(s), expected none`)

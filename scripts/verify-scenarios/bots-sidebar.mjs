@@ -1,8 +1,3 @@
-// Bots sidebar: seeds six bots, two sections, an old pin, a label, a hidden bot and two transcripts through the running
-// app, then runs checks C1-C14 in order: hero, tree rows, row text, order (sections, then loose rows by latest activity;
-// the old pin is ignored), hidden group, old bot, arrow keys, then that F2, Shift+F10 and search open nothing, and that
-// Hide / Move / Make primary done through the app API (botUpdate, sidebarChange) show in the list. The sidebar has no
-// row menu, rename field or search any more: those changes are asked for in chat.
 import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -53,7 +48,6 @@ async function seed(page, paths) {
   return ids
 }
 
-// Page-side helpers: Playwright's isVisible rule (non-empty box, not visibility:hidden) and element identity.
 function installHelpers(page) {
   return page.evaluate(() => {
     const tree = () => globalThis.document.querySelector('.app-sidebar [role="tree"]')
@@ -95,7 +89,6 @@ export async function run(page, { paths }) {
     if (reason) { checks[id] = reason; failures.push(id) } else checks[id] = 'pass'
   }
 
-  // C1
   await check('hero', async () => {
     if (!await HERO.isVisible()) return 'no visible .sidebar-primary'
     if (!(await HERO.innerText()).includes('Engram')) return 'hero text lacks Engram'
@@ -106,7 +99,6 @@ export async function run(page, { paths }) {
     if (await TREE.locator(`[data-testid="bot-${ids.Engram}"]`).count()) return 'primary Engram is listed in the tree'
   })
 
-  // C2
   await check('tree-rows', async () => {
     if (await noTree()) return 'no role=tree'
     for (const name of VISIBLE) {
@@ -115,7 +107,6 @@ export async function run(page, { paths }) {
     }
   })
 
-  // C3
   await check('row-text', async () => {
     for (const name of VISIBLE) {
       const row = await inPage((id) => {
@@ -138,10 +129,8 @@ export async function run(page, { paths }) {
     }
   })
 
-  // C4
   await check('order', async () => {
     if (await noTree()) return 'no role=tree'
-    // Sections first, then loose rows by latest activity: Pin Bot was just made, Loose Bot spoke 10 minutes ago, Old Bot 3 days ago.
     const chain = [['Section A', HEADER('Section A')], ['Alpha row', ROW('Alpha Bot')], ['Section B', HEADER('Section B')], ['Beta row', ROW('Beta Bot')], ['Pin row', ROW('Pin Bot')], ['Loose row', ROW('Loose Bot')], ['Old row', ROW('Old Bot')], ['Hidden group', GROUP]]
     const tops = []
     for (const [label, locator] of chain) tops.push([label, await top(locator)])
@@ -150,7 +139,6 @@ export async function run(page, { paths }) {
     if (text !== 'Hidden bots (1)') return `group reads "${text}", expected "Hidden bots (1)"`
   })
 
-  // C5
   await check('hidden-group', async () => {
     if (await noTree()) return 'no role=tree'
     const hidden = ROW('Hidden Bot')
@@ -162,13 +150,11 @@ export async function run(page, { paths }) {
     return until(async () => await hidden.isVisible() ? 'Hidden Bot row still visible after closing the group' : '')
   })
 
-  // C6
   await check('old-bot', async () => {
     if (!await ROW('Old Bot').isVisible()) return 'Old Bot row not visible'
     if (await page.locator('[data-testid="sidebar-earlier"]').count()) return 'sidebar-earlier button still rendered'
   })
 
-  // C7
   await check('keys-arrows', async () => {
     if (await noTree()) return 'no role=tree'
     if (!await focusPin()) return 'Pin Bot row is not inside a treeitem'
@@ -184,7 +170,6 @@ export async function run(page, { paths }) {
     return until(async () => await activeIsPin() ? '' : 'ArrowUp did not return focus to Pin Bot')
   })
 
-  // C8
   await check('keys-f2', async () => {
     if (await noTree()) return 'no role=tree'
     if (!await focusPin()) return 'Pin Bot row is not inside a treeitem'
@@ -195,7 +180,6 @@ export async function run(page, { paths }) {
     if ((await bots()).find((b) => b.id === ids['Pin Bot'])?.name !== 'Pin Bot') return 'F2 changed the stored name of Pin Bot'
   })
 
-  // C9
   await check('keys-menu', async () => {
     if (await noTree()) return 'no role=tree'
     if (!await focusPin()) return 'Pin Bot row is not inside a treeitem'
@@ -206,7 +190,6 @@ export async function run(page, { paths }) {
     return await activeIsPin() ? '' : 'Shift+F10 moved focus away from Pin Bot'
   })
 
-  // C10
   await check('search', async () => {
     if (await SIDEBAR.getByTestId('sidebar-search-toggle').count()) return 'sidebar-search-toggle is rendered; the sidebar has no search'
     if (await SEARCH.count()) return 'a Search textbox is rendered in the sidebar'
@@ -214,7 +197,6 @@ export async function run(page, { paths }) {
     for (const name of VISIBLE) if (!await ROW(name).isVisible()) return `${name} row not visible`
   })
 
-  // C11
   await check('api-hide', async () => {
     if (await noTree()) return 'no role=tree'
     await inPage((id) => globalThis.engram.botUpdate(id, { hidden: true }), ids['Loose Bot'])
@@ -228,7 +210,6 @@ export async function run(page, { paths }) {
     if (await row.isVisible() && !(await top(row) > await top(GROUP))) return 'Loose Bot row still listed above the hidden group'
   })
 
-  // C12
   await check('api-move', async () => {
     if (await noTree()) return 'no role=tree'
     const moved = await inPage(async (id) => {
@@ -254,7 +235,6 @@ export async function run(page, { paths }) {
     })
   })
 
-  // C13
   await check('api-primary', async () => {
     if (await noTree()) return 'no role=tree'
     await inPage((id) => globalThis.engram.botUpdate(id, { primary: true }), ids['Pin Bot'])
@@ -267,7 +247,6 @@ export async function run(page, { paths }) {
     })
   })
 
-  // C14
   await check('status-dots', async () => {
     if (await noTree()) return 'no role=tree'
     const dots = await inPage(() => {

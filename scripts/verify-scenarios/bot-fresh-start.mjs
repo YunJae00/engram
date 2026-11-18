@@ -1,7 +1,3 @@
-// Bot fresh start: forces the English UI, creates one bot ('Fresh Bot') through the running app, writes two transcript
-// turns as a file, reloads, then runs checks F1-F2: the chat shows the seeded turns, and in light and dark the chat has
-// no start-over button (no bots-fresh, no 'New chat' button), no bots-fresh-confirm dialog and no title pill, while the
-// composer is still visible.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -53,7 +49,6 @@ export async function run(page, { paths }) {
     return !reason
   }
 
-  // F1
   opened = await check('open-chat', async () => {
     const row = await until(async () => await ROW.isVisible() ? '' : `${BOT} row not visible`, ROW_WAIT_MS)
     if (row) return row
@@ -67,7 +62,6 @@ export async function run(page, { paths }) {
     })
   })
 
-  // F2
   await check('no-start-over', async () => {
     for (const theme of ['light', 'dark']) {
       await page.evaluate(async (value) => {

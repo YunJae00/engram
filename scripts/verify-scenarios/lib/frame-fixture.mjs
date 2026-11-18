@@ -64,7 +64,6 @@ export function showWebFrame(app, { lane, url, frame, title = 'Live overlay' }) 
   ])
 }
 
-// Compact app frames keep the lifecycle fixtures light; a lane of them needs no web pane, mirror or desktop binding.
 export function appFrame(lane, id, frame, extra = {}) {
   return { id, lane, title: id, at: Date.now(), data: `data:image/png;base64,${frame.data}`, captureState: 'ready', ...extra }
 }

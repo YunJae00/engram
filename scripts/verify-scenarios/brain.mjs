@@ -1,4 +1,3 @@
-// Brain connection with ENGRAM_ENGINE=none: the connect banner opens AI settings and both provider rows.
 export async function run(page, { expect }) {
   const banner = page.getByTestId('connect-banner')
   await expect(banner).toBeVisible()

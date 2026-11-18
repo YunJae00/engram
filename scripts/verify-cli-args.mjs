@@ -1,6 +1,5 @@
 import { isAbsolute, resolve } from 'node:path'
 
-// --build rebuilds even when the desktop entry exists. Otherwise build only when it is missing.
 export function needsBuild(force, entryExists) {
   return Boolean(force) || !entryExists
 }

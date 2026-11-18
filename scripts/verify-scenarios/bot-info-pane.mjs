@@ -1,7 +1,3 @@
-// Bot info pane: the title pill and the pane it opened were removed. Seeds one bot ('Info Bot') through the running app,
-// then runs checks P1-P6 in order: open the chat, no title pill and no pane, no tab roles in the chat, the bot's name and
-// avatar show in the empty thread, the same in its sidebar row, and what the pane used to edit (instructions,
-// notification level) is changed through botUpdate and reads back through botsList and the row.
 const WAIT_MS = 5_000
 const ROW_WAIT_MS = 10_000
 const BOT = 'Info Bot'
@@ -46,7 +42,6 @@ export async function run(page) {
     return !reason
   }
 
-  // P1
   opened = await check('open-chat', async () => {
     const row = await until(async () => await ROW.isVisible() ? '' : `${BOT} row not visible`, ROW_WAIT_MS)
     if (row) return row
@@ -54,24 +49,20 @@ export async function run(page) {
     return until(async () => await INPUT.isVisible() ? '' : 'bots-input not visible')
   })
 
-  // P2
   await check('no-pill-no-pane', async () => {
     if (await PILL.count()) return `${await PILL.count()} bots-title-pill elements, expected 0`
     if (await PANE.count()) return `${await PANE.count()} bot-info-pane elements, expected 0`
     if (await page.locator('.bot-info-panel, [data-testid="bot-info-avatar"], [data-testid="bots-memory"], [data-testid="bot-routines"]').count()) return 'pane contents are still rendered'
-    // Escape used to close the pane; with none, the chat stays as it is.
     await INPUT.focus({ timeout: WAIT_MS })
     await page.keyboard.press('Escape')
     return await INPUT.isVisible() ? '' : 'bots-input not visible after Escape'
   })
 
-  // P3
   await check('no-tabs', async () => {
     const count = await VIEW.locator('[role="tablist"], [role="tab"], [role="tabpanel"]').count()
     return count ? `${count} tab-role elements in the chat, expected 0` : ''
   })
 
-  // P4
   await check('empty-thread', async () => until(async () => {
     if (!await EMPTY.isVisible()) return 'bot-empty not visible'
     if (!(await EMPTY.locator('h2').innerText({ timeout: WAIT_MS })).includes(BOT)) return `empty thread name lacks ${BOT}`
@@ -79,13 +70,11 @@ export async function run(page) {
     return await EMPTY.locator('button').count() ? 'the empty thread holds buttons (example chips), expected none' : ''
   }))
 
-  // P5
   await check('sidebar-row', async () => {
     if (!(await ROW.innerText({ timeout: WAIT_MS })).includes(BOT)) return `row text lacks ${BOT}`
     return await ROW.locator('.bot-avatar').first().isVisible() ? '' : 'row avatar not visible'
   })
 
-  // P6
   await check('edited-through-app', async () => {
     await page.evaluate((bot) => globalThis.engram.botUpdate(bot, { purpose: 'Changed in chat', notify: 'off' }), id)
     return until(async () => {

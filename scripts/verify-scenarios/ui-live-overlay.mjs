@@ -11,7 +11,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const other = await createBot(paths, { name: 'Other overlay lane', purpose: '' })
   const fresh = await createBot(paths, { name: 'Fresh app lane', purpose: '' })
   for (const role of ['user', 'assistant']) await appendBotTurn(paths, bot.id, { role, text: `Overlay geometry ${role}`, at: new Date().toISOString() })
-  // A window never shown paints once a second under Xvfb; shown inactive it runs at full rate without taking focus.
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]; win.setSize(1400, 900); win.showInactive() })
   const arm = async () => { await page.reload(); await armPointer(page); await openActivity(page, 'bots') }
   await arm()
@@ -25,11 +24,9 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const count = async n => { await expect(deck.locator('.preview-deck-card')).toHaveCount(n); await settle(page) }
   const visible = async () => { await expect(card).toBeVisible(); await settle(page) }
   let flow
-  // Bubbles may reflow sideways to clear the card; the thread box, the composer and every bubble's top and height must not move.
   const vertical = geometry => [geometry[0], geometry[1], ...geometry.slice(2).map(([, y, , height]) => [y, height])]
   const expectFlow = async label => expect(vertical(await flowGeometry(page)), label).toEqual(vertical(flow))
 
-  // Live rendering: a real PNG paints into the card without a web pane, docked at the top right over a full-height thread until dragged.
   await settle(page)
   flow = await flowGeometry(page)
   const bare = await page.evaluate(() => { const box = s => document.querySelector(s).getBoundingClientRect(); return { chat: box('.bots-chat').top, top: box('.bots-thread').top, height: box('.bots-thread').height } })
@@ -52,7 +49,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   expect([Math.abs(before.thread.top - bare.top) <= 4, before.thread.height >= bare.height - 4], 'the thread keeps its full height').toEqual([true, true])
   expect([before.card.top - before.chat.top <= 20, Math.abs(before.card.right - before.chat.right) <= 40], 'docked at the chat top right').toEqual([true, true])
 
-  // Untouched bounds: a four-card stack stays inside the chat and above the thread floor through resizes and a growing draft.
   await sendAppFrames(app, lane, ['second', 'third', 'fourth'], small)
   await count(4)
   for (const [width, height] of [[1000, 560], [1400, 600], [1400, 900]]) {
@@ -69,7 +65,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await count(1)
   await expectFlow('after the stack cleared')
 
-  // The CSS right anchor survives tab switches and window widths while nothing has been dragged.
   await openActivity(page, 'list')
   await expect(card).toBeHidden()
   await openActivity(page, 'bots')
@@ -82,8 +77,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   }
   await expectFlow('after width changes')
 
-  // A press on the card dismisses open popovers without starting a placement.
-  // The composer has no model picker any more; the workspace menu is the popover left to dismiss.
   await expect(page.locator('.bots-chat').getByTestId('model-picker')).toHaveCount(0)
   for (const [trigger, menu] of [[page.getByTestId('workspace-switcher'), 'workspace-menu']]) {
     await trigger.click()
@@ -95,7 +88,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
     expect((await deckAt(page)).left).toBe('')
   }
 
-  // The real drag lifts the card off the fixed slot; the thread never shifts, neither at the lift nor while the card moves.
   await hold()
   await slide(-before.card.width * 0.3, 0, 6)
   await settle(page)
@@ -117,7 +109,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await expectAt(origin, 'pointer moved without a press')
   await expectIdle()
 
-  // Every cancellation discards the provisional point and returns to the committed one.
   for (const cancellation of ['Escape', 'pointercancel', 'lostpointercapture', 'blur', 'tab']) {
     await hold()
     await slide(80, 30)
@@ -139,7 +130,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await expectFlow(`after ${cancellation}`)
   }
 
-  // A second pointer and a refused capture leave the placement alone; a press without movement commits nothing.
   await hold()
   await slide(40, 40)
   const held = await deckAt(page)
@@ -163,7 +153,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await page.mouse.up()
   await expectAt(committed, 'after a press without movement')
 
-  // Clamps: the card stops at the chat edges and never runs below the thread onto the composer.
   expect(spot(await dragTo(0, 0))).toEqual({ x: 0, y: 0 })
   await dragTo(2000, 1500)
   const clamped = await measureChat(page)
@@ -185,7 +174,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await expectPacked(page, expect, `after ${testId}`)
   }
 
-  // Incoming frames while held: the deck node, capture and segment survive a new front card and replaced image data.
   await hold()
   await slide(-80, -30)
   await deck.evaluate(node => { globalThis.liveDeck = node })
@@ -212,7 +200,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   expect(await deck.locator('[data-position="0"]').evaluate(node => { const s = getComputedStyle(node); return [s.animationName, s.transitionTimingFunction.split(', ').every(t => t === 'ease'), s.transitionDuration.split(', ').every(d => parseFloat(d) >= 0.15 && parseFloat(d) <= 0.2)] }), 'front card: no forward animation, 150-200ms ease').toEqual(['none', true, true])
   await expectFlow('after cycling cards')
 
-  // A chosen spot is clamped by a narrower window and comes back when the width returns.
   const chosen = await dragTo(2000, press.y)
   for (const width of [1100, 1600, 1400]) {
     await resizeWindow(app, page, expect, width, 900)
@@ -221,7 +208,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   }
   await expect.poll(async () => spot(await deckAt(page))).toEqual(spot(chosen))
 
-  // Stack growth pushes a parked card inward; mid-drag growth and resizes clamp, rebase the segment and keep capture.
   await dragTo(600, 0)
   await sendAppFrames(app, lane, ['second', 'third'], small)
   await count(3)
@@ -253,7 +239,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await expectFlow('after the stack cleared again')
   const savedLane = await deckAt(page)
 
-  // Lanes keep independent spots; a provisional drag dropped by a lane switch leaves both untouched.
   await open(other.id)
   await showWebFrame(app, { lane: `bot-${other.id}`, url: URL, frame })
   await visible()
@@ -279,7 +264,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await expectHeld()
   await page.mouse.up()
 
-  // Short window: the composer floor holds a parked card and a growing draft lifts it.
   await sendAppFrames(app, lane, ['second', 'third', 'fourth'], small)
   await count(4)
   await resizeWindow(app, page, expect, 1400, 600)
@@ -302,7 +286,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await resizeWindow(app, page, expect, 1400, 900)
   await pollPacked(page, expect, 'tall again')
 
-  // A fresh app-only lane: six frames, fit limits, suspension, cancellation before a first drag, empty frames and remounts.
   const freshLane = `bot-${fresh.id}`; await open(fresh.id)
   await sendAppFrames(app, freshLane, ['a', 'b', 'c', 'd', 'e', 'f'], small)
   await count(4)
@@ -373,7 +356,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await expect(card.locator('img')).toBeVisible()
   await expect(card.locator('.preview-card-state')).toHaveCount(0)
 
-  // Opening the browser beside the chat still works from the overlay card.
   await open(bot.id)
   for (let index = 0; index < 4 && await card.getAttribute('data-source') !== 'web'; index++) { await deck.focus(); await page.keyboard.press('ArrowRight') }
   await expect(card).toHaveAttribute('data-source', 'web')
@@ -381,7 +363,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await card.locator('.preview-card-actions button').first().click()
   await expect(page.getByTestId('live-address')).toBeVisible()
 
-  // Restart: lane positions are renderer memory, so a reload starts from the default anchor with a working drag.
   await arm()
   await open(fresh.id)
   await sendAppFrames(app, freshLane, ['a', 'b'], small)

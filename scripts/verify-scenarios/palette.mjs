@@ -1,4 +1,3 @@
-// The command palette was removed: Ctrl/Cmd+P, Ctrl/Cmd+Shift+P, Ctrl/Cmd+Shift+F and Ctrl/Cmd+L open nothing, and the chat composer stays usable.
 export async function run(page, { expect }) {
   const input = page.locator('[data-testid="bots-view"] textarea')
   await expect(input).toHaveCount(1)

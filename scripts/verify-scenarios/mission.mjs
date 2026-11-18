@@ -1,4 +1,3 @@
-// One chat view: the four-pane split (mission control) was removed. No split buttons, no tiles; the chat composer is what a fresh vault shows.
 export async function run(page, { expect }) {
   await expect(page.getByTestId('bots-view')).toHaveCount(1)
   for (const id of ['mission-layout-1', 'mission-layout-2', 'mission-layout-4', 'mission-control', 'mission-tile-0', 'mission-add-0', 'mission-add-menu', 'activity-mission']) await expect(page.getByTestId(id)).toHaveCount(0)

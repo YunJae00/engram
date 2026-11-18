@@ -1,4 +1,3 @@
-// Comets home on a vault with no conversation selected: the welcome composer, and no cosmos furniture.
 export async function run(page, { expect }) {
   await expect(page.getByTestId('bots-view')).toBeVisible()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()

@@ -1,4 +1,3 @@
-// Cosmos: the sky, the memory graph, and the docked ask panel. Mirrors the boot and collapse checks in shell.spec.ts.
 export async function run(page, { expect, openActivity }) {
   await openActivity(page, 'sky')
   await expect(page.getByTestId('sky-view')).toBeVisible()

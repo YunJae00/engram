@@ -78,7 +78,6 @@ export async function run(page, { app, paths, expect, openActivity }) {
         const heightLimit = measured.chatHeight / 2
         const aspectOk = Math.abs(measured.stage.width / measured.stage.height / (frame.width / frame.height) - 1) <= 0.03
         const heightOk = measured.stage.height <= heightLimit + 1
-        // The card is as large as it may be: either the height cap or the width limit binds.
         const fills = Math.abs(measured.stage.height - heightLimit) <= 1
           || measured.stage.width >= Math.min(320, measured.cardMax) - 1
         evidence.push({

@@ -1,4 +1,3 @@
-// Mirrors shell.spec.ts: clicking a seeded star in the sky opens its note sheet.
 export async function run(page, { expect, openActivity }) {
   await openActivity(page, 'sky')
   await expect(page.getByTestId('sky-view')).toBeVisible()

@@ -1,4 +1,3 @@
-// Quick capture is a second window (#quick), opened through the preload bridge, not a route of the main shell.
 export async function run(page, { app, expect }) {
   await page.evaluate(() => globalThis.engram.showQuickComet())
   await expect.poll(() => app.windows().some((window) => window.url().endsWith('#quick'))).toBe(true)

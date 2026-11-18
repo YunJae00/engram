@@ -1,4 +1,3 @@
-// Settings from the sidebar, then the About section. Mirrors shell.spec.ts "help lives in Settings".
 export async function run(page, { expect, openActivity }) {
   await openActivity(page, 'settings')
   await expect(page.getByTestId('settings-view')).toBeVisible()

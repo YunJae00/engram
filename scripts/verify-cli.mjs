@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// node scripts/verify-cli.mjs <scenario> [--build] [--root <dir>] | --list
-// --root picks the checkout whose build, node_modules and tmp/verify-cli are used; scenarios come from this repo.
-// Builds the desktop app when out/main/index.js is missing. --build rebuilds even when that file exists.
-// Launches the built desktop app on a fresh vault, runs one scenario, prints one JSON line.
 import { createWriteStream, existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -81,7 +77,6 @@ async function launch(name, log) {
   }
 }
 
-// A launch still pending at the budget is awaited so its Electron process can be killed.
 async function settledChild() {
   if (!pendingLaunch) return null
   let timer
@@ -126,7 +121,6 @@ try {
   await new Promise((done) => log.end(done))
   emit({ scenario: name, ok: Boolean(result.ok), ms: Date.now() - started, evidence: result.evidence, logPath })
 } catch (error) {
-  // Budget overrun leaves the scenario mid-flight; kill only the Electron process this run spawned.
   const child = launchedChild ?? (await settledChild())
   if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })))

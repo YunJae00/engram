@@ -1,4 +1,3 @@
-// Mirrors shell.spec.ts: the list view shows seeded notes, the filter narrows to one, the row opens.
 export async function run(page, { expect, openActivity }) {
   await openActivity(page, 'list')
   await expect(page.getByTestId('list-view')).toBeVisible()

@@ -1,9 +1,3 @@
-// v1 bot data (bots.json without version, two scheduled tasks) is backed up byte-for-byte and reset to one Engram bot, once.
-// Checks: one byte-identical .engram/backups/bots-v1-<stamp>/ folder, bot-memory/_person.json left in place,
-// exactly one notice in notices.json whose text names the backup path and the 2 stopped schedules, the sidebar
-// listing only "Engram", and a further relaunch adding no notice and no second backup folder.
-// Until rd-bots-reset-v2 lands, the reset does not exist and this scenario returns ok:false with evidence
-// naming the missing backups/bots-v1-* folder; that is the expected result on current code.
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -15,9 +9,7 @@ const STEP_MS = 15_000
 const IDS = ['b-v1-aaaa0001', 'b-v1-bbbb0002']
 
 function fixture() {
-  // Recent times: the sidebar hides conversations older than a day.
   const at = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString()
-  // A future one-day date: never due and never over, so the scheduler leaves bots.json untouched.
   const schedule = { days: [], hour: 9, minute: 0, on: '2099-01-01' }
   const bots = IDS.map((id, i) => ({
     id, name: `V1 comet ${i + 1}`, purpose: `Old purpose ${i + 1}`, createdAt: at(30 + i),
@@ -76,7 +68,6 @@ async function check(page, cache, seed, expect, failures, label) {
 
   let notices = []
   try { notices = JSON.parse((await readOr(join(cache, 'notices.json'), Buffer.from('[]'))).toString('utf8')) } catch (error) { failures.push(`${label}: notices.json unreadable (${error.message})`) }
-  // The absolute path and the vault-relative .engram/backups/<folder> path both contain this.
   const resetNotices = notices.filter((n) => backup && typeof n.text === 'string' && n.text.includes(`backups/${backups[0]}`))
   if (notices.length !== 1 || resetNotices.length !== 1) failures.push(`${label}: expected one notice naming the backup folder, found ${notices.length} notices (${resetNotices.length} naming it)`)
   const notice = resetNotices[0]
@@ -89,7 +80,6 @@ export async function run(page, { app, paths, expect, log }) {
   const { _electron } = (await import(pathToFileURL(req.resolve('@playwright/test')).href)).default
   const { closeTestApp } = await import(pathToFileURL(join(DESKTOP, 'e2e/navigation.ts')).href)
   const userData = await app.evaluate(({ app: electron }) => electron.getPath('userData'))
-  // verify-cli closes this app again after run; a closed Playwright app throws on close() and process().
   const closeOnce = app.close.bind(app)
   const child = app.process()
   let closing

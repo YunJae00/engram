@@ -1,12 +1,3 @@
-// The e2e specs a change can reach, from the paths it touched. A heuristic by
-// design: the release run still covers everything; this run answers "did I
-// break the area I was working in" in minutes instead of hours.
-//
-//   node scripts/e2e-affected.mjs            specs for the files changed since the base ref (plus the working tree)
-//   node scripts/e2e-affected.mjs --list     print the chosen specs without running them
-//   node scripts/e2e-affected.mjs a.ts b.ts  specs for the given paths
-//
-// The base ref is ENGRAM_CHECK_BASE, or origin/main when unset or empty.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('../', import.meta.url))
 const e2e = join(root, 'apps/desktop/e2e')
 const SMOKE = ['shell.spec.ts']
-// Path fragments → the specs that exercise that area. Order does not matter; a path may hit several rows.
 const AREAS = [
   [/habit|Habit|notices|Notices|schedule/, ['tasks.spec.ts', 'routines.spec.ts', 'layout.spec.ts']],
   [/session-menu|work-capabilities|office-tools/, ['chat.spec.ts', 'work-evidence.spec.ts', 'page-hands.spec.ts']],
@@ -61,11 +51,8 @@ for (const path of paths) {
     continue
   }
   if (/\.(md|txt|png|ico|svg)$/.test(normalized)) continue
-  // Unit tests are the unit run's to cover; the code they test picks the e2e specs.
-  // The verification scripts themselves change how tests run, not what the app does.
   if (/^scripts\/(e2e-|check-)[^/]+\.mjs$/.test(normalized)) continue
   if (/(^|\/)test\/.*\.test\.ts$/.test(normalized)) continue
-  // A spec that was deleted has nothing left to run.
   if (/^apps\/desktop\/e2e\//.test(normalized) && normalized.endsWith('.spec.ts')) { if (existsSync(join(e2e, normalized.split('/').pop()))) chosen.add(normalized.split('/').pop()); continue }
   let matched = false
   for (const [pattern, specs] of AREAS) if (pattern.test(normalized)) { matched = true; for (const spec of specs) chosen.add(spec) }

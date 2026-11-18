@@ -1,9 +1,3 @@
-// Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the name-only New bot dialog directly (name
-// and an 80px avatar preview, no first-task, label or More options); an empty or blank name creates nothing; Create adds
-// exactly one bot and opens its chat with the composer focused, its name in the empty thread (there is no title pill);
-// the stored character shows on its sidebar row and in the empty thread; Cmd/Ctrl+N opens the dialog; the avatar picker
-// has no Photo tab and no file input.
-
 const WAIT_MS = 5_000
 const PLUS_SEL = '.app-sidebar [data-testid="sidebar-create"]'
 const DIALOG_SEL = '[role="dialog"][data-testid="create-bot-dialog"]'
@@ -67,7 +61,6 @@ export async function run(page) {
   const B = (await listBots()).map((bot) => bot.id)
   let C = null
 
-  // N1
   const opened = await check('plus-opens', async () => {
     const open = await openFromPlus()
     if (open) return open
@@ -87,7 +80,6 @@ export async function run(page) {
     return ''
   })
 
-  // N2
   await check('empty-blocked', async () => {
     for (const value of ['', '   ']) {
       await NAME.fill(value, { timeout: WAIT_MS })
@@ -100,7 +92,6 @@ export async function run(page) {
     return ''
   }, opened)
 
-  // N3
   await check('create-opens-chat', async () => {
     await NAME.fill('Created Bot', { timeout: WAIT_MS })
     await SUBMIT.click({ timeout: WAIT_MS })
@@ -125,13 +116,11 @@ export async function run(page) {
     return until(async () => await focusedTestId() === 'bots-input' ? '' : 'focus is not on bots-input')
   }, opened)
 
-  // N4
   await check('stored-character', async () => {
     if (!C) return 'no created bot'
     const a = C.avatar
     if (a === null || typeof a !== 'object' || Array.isArray(a)) return `avatar ${JSON.stringify(a)} is not a plain object`
     if (JSON.stringify(Object.keys(a)) !== '["character"]' || !/^orb-/.test(a.character)) return `avatar ${JSON.stringify(a)}, expected one orb character`
-    // An unpicked Create takes the face of the bot's real id; the row and the empty thread show that stored face.
     const row = await characterOf(page.locator(`${ROW_SEL(C.id)} .bot-avatar`).first())
     if (row !== a.character) return `row character ${row}, stored ${a.character}`
     const empty = await characterOf(page.locator(`${EMPTY_SEL} .bot-avatar`).first())
@@ -146,7 +135,6 @@ export async function run(page) {
     return until(closed)
   }
 
-  // N5
   await check('shortcut-opens', async () => {
     const stuck = await ensureClosed()
     if (stuck) return stuck
@@ -162,7 +150,6 @@ export async function run(page) {
     return count === K ? '' : `${count} bots after the shortcut, expected ${K}`
   })
 
-  // N6
   await check('no-photo-upload', async () => {
     const stuck = await ensureClosed()
     if (stuck) return stuck
