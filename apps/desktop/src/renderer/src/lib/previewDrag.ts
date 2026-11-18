@@ -14,14 +14,14 @@ const CLEAR_VAR = '--live-clear-right'
 // Committed lane preferences for this renderer lifetime; a drag writes one only on release.
 const positions = new Map<string, Point>()
 
-export function clampPreview(point: Point, width: number, height: number, cardWidth: number, cardHeight: number, depth = 0): Point {
+function clampPreview(point: Point, width: number, height: number, cardWidth: number, cardHeight: number, depth = 0): Point {
   return {
     x: Math.min(Math.max(depth, point.x), Math.max(depth, width - cardWidth)),
     y: Math.min(Math.max(depth, point.y), Math.max(depth, height - cardHeight)),
   }
 }
 
-export function fitSpacing(width: number, floor: number, stack: number, spacing = SPACING): number {
+function fitSpacing(width: number, floor: number, stack: number, spacing = SPACING): number {
   if (stack <= 0) return 0
   return Math.max(0, Math.min(spacing, (width - MIN_CARD) / stack, (floor - MIN_CARD) / stack))
 }

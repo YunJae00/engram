@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export interface BrowserRoot { id: string; name: string; userData: string }
+interface BrowserRoot { id: string; name: string; userData: string }
 
 // Every Chromium-family browser keeps the same History and Bookmarks files in
 // each profile folder, so one reader covers whichever ones the person uses.

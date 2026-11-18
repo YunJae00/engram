@@ -259,7 +259,7 @@ function aggregate(spans: ActivitySpan[]): { app: string; ms: number; topTitles:
     }))
 }
 
-export async function readDaySpans(vault: VaultContext, at: number): Promise<ActivitySpan[]> {
+async function readDaySpans(vault: VaultContext, at: number): Promise<ActivitySpan[]> {
   const raw = await readFile(dayFile(vault, at), 'utf8').catch(error => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error

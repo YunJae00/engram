@@ -1,7 +1,7 @@
 import type { CometMessage } from './cometThreads.js'
 import { answerFiles } from '../markdown.js'
 
-export type BotFile = { kind: 'attachment' | 'answer'; id: string; name: string }
+type BotFile = { kind: 'attachment' | 'answer'; id: string; name: string }
 
 const ATTACHMENT_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-./i
 

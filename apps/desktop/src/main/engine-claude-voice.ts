@@ -11,7 +11,7 @@ import { spawnRuntime } from './process-client.js'
 const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
-export interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; /** How long it stays open unused (IDLE_MS). */ idleMs?: number }
+interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; /** How long it stays open unused (IDLE_MS). */ idleMs?: number }
 
 export class VoiceSession {
   private inbox: SdkUserMessage[] = []

@@ -78,7 +78,7 @@ export function readAuthStatus(out: string): EngineDetection {
 // opening a session and closing it again, which costs a cold start, so the
 // answer is kept for the life of the app and fetched once sign-in is known;
 // a picker shows the aliases until then.
-export interface ClaudeModelChoice {
+interface ClaudeModelChoice {
   value: string
   label: string
   detail: string
@@ -331,10 +331,6 @@ const sessions = new SessionPool()
 export function trimWarm(): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
 setInterval(() => { sessions.sweep(); trimWarm() }, 60_000).unref()
 workerPool.onTarget(() => trimWarm())
-
-export function claimClaudeWorkFolder(channel: string, fallback: string): string {
-  return sessions.claimWorkFolder(channel, fallback)
-}
 
 export function closeClaudeSession(key: string): void {
   sessions.closeMatching(key)

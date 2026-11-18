@@ -12,7 +12,7 @@ export const LEARNING_SOURCES: { key: LearningKey; nameKey: StringKey; detailKey
   { key: 'workApps', nameKey: 'settingsUi.srcApps', detailKey: 'settingsUi.srcAppsDetail' },
   { key: 'activity', nameKey: 'settingsUi.srcActivity', detailKey: 'settingsUi.srcActivityDetail' },
 ]
-export const LEARNING_NOTE: StringKey = 'settingsUi.learnNoteLong'
+const LEARNING_NOTE: StringKey = 'settingsUi.learnNoteLong'
 
 export function LearningSources({ value, disabled, onChange, testPrefix, compact = false }: { value: LearningChoice; disabled?: boolean; onChange(key: LearningKey, on: boolean): void; testPrefix: string; compact?: boolean }) {
   const note = useId()

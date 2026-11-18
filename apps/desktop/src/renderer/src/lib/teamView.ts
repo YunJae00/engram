@@ -8,7 +8,7 @@ import { KO_CARRY_ON } from './threadLangKo.js'
 export type TeamMemberView = Pick<TeamMember, 'id' | 'parentId' | 'role' | 'state' | 'result'>
 export interface TeamView { taskId: string; members: TeamMemberView[] }
 export interface TeamNode { member: TeamMemberView; children: TeamNode[] }
-export type TeamChip = 'working' | 'reviewing' | 'done' | 'failedChip' | 'released'
+type TeamChip = 'working' | 'reviewing' | 'done' | 'failedChip' | 'released'
 
 const CHIPS: Record<MemberState, TeamChip> = { hired: 'working', working: 'working', waiting: 'working', reviewing: 'reviewing', done: 'done', failed: 'failedChip', released: 'released' }
 const LIVE_TASK = ['queued', 'running', 'waiting']
@@ -44,7 +44,7 @@ export function activeTeams(tasks: unknown): Map<string, TeamView> {
   return teams
 }
 
-export function teamCounts(members: TeamMemberView[]): { total: number; active: number; failed: number } {
+function teamCounts(members: TeamMemberView[]): { total: number; active: number; failed: number } {
   return { total: members.length, active: members.filter(member => ACTIVE.includes(member.state)).length, failed: members.filter(member => member.state === 'failed').length }
 }
 

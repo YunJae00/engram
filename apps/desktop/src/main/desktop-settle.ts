@@ -6,7 +6,7 @@ export { CAP_MS, observationKey, POLL_MS, settle, STILL_CHANGING, type Settled }
 
 export const NO_EFFECT = 'The click showed no visible change, also after one retry. Say it did not work; do not click it again.'
 export const TARGET_MOVING = 'The target kept moving. Read the app again before clicking.'
-export const TARGET_LOST = 'The target moved and could not be found again. Read the app again.'
+const TARGET_LOST = 'The target moved and could not be found again. Read the app again.'
 export function quietKey(view: QuietObservationDto): string {
   return JSON.stringify([view.bounds ?? null, view.controls.map(control => [control.type, control.name, control.value ?? null, control.state ?? null]), view.texts.map(text => text.text)])
 }
@@ -71,7 +71,7 @@ export async function clickSettled(deps: ClickDeps): Promise<ClickResult> {
   }
 }
 
-export interface ScrollDeps {
+interface ScrollDeps {
   delta: number
   snapshot: string
   since?: DesktopObservationDto
@@ -79,7 +79,7 @@ export interface ScrollDeps {
   scroll: (snapshot: string, sign: 1 | -1) => Promise<unknown>
   signal?: AbortSignal
 }
-export interface ScrollResult { view?: DesktopObservationDto; steps: number; settled: boolean; reachedEnd: boolean; message?: string; error?: unknown }
+interface ScrollResult { view?: DesktopObservationDto; steps: number; settled: boolean; reachedEnd: boolean; message?: string; error?: unknown }
 
 // Each step is one visible page natively, then a settle; a request of N pages never becomes one jump.
 export async function scrollPages(deps: ScrollDeps): Promise<ScrollResult> {

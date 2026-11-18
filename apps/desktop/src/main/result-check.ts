@@ -65,7 +65,7 @@ const properties = {
 }
 
 /** The requirement name of the entries the host adds to a report for its own defects. */
-export const HOST_CHECK = 'Unresolved verification'
+const HOST_CHECK = 'Unresolved verification'
 
 // grokbar D4: the check tool was offered every turn, the model called it unasked, the check was not accepted and a delivered workbook ended
 // "작업이 멈췄어요". It is offered on an ordinary turn only when the person asked for the result to be checked ("확인까지 해줘", "double-check it").

@@ -85,7 +85,7 @@ const PREDICATE = /(?:[아어여해워와줘봐네요다지까니냐래려게고
 const REQUEST = /(?:줘|줘요|주세요|줄래|해|해요|봐|봐요)$/
 const CASE_PARTICLE = /[가-힣]{2,}(?:으로|로|을|를|은|는|도|랑|이랑|하고|까지|부터|에서|만)$/
 const askWords = (ask: string): string[] => ask.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 2)
-export function namesSomething(text: string, ask = ''): boolean {
+function namesSomething(text: string, ask = ''): boolean {
   const asked = askWords(ask), words = text.toLowerCase().split(/[^\p{L}\p{N}ㄱ-ㅎㅏ-ㅣ]+/u).filter(Boolean).map(word => word.replace(/(?:이야|이에요|예요|야|이다|이지|이죠)$/, '') || word)
   return words.some((word, at) => {
     if (asked.some(one => one.startsWith(word) || word.startsWith(one) && word.length - one.length <= 2) || GRAMMAR.test(word)) return false
@@ -99,7 +99,7 @@ export function asideShape(text: string, ask?: unknown): AsideShape {
   return REPLACES.test(text) && named || !!swapTarget(text) ? 'replace' : ADDS.test(text) ? 'add' : !named ? 'remark' : /[?？]\s*$/.test(text) ? 'question' : 'other'
 }
 // What the host-run search opens the task with: the same sentence a teammate gets (team-runner), and one line for words said mid-work.
-export const firstResults = (query: string, found: string): string => `Results of the search already run for you ("${query}"). When they hold what was asked, answer from them now; search once more in other words only when they do not. If the person changes what they ask for while you work, these results are for the old ask: search for the new one, and name what the answer is now about in its first sentence ("애플은 …").\n${found}`
+const firstResults = (query: string, found: string): string => `Results of the search already run for you ("${query}"). When they hold what was asked, answer from them now; search once more in other words only when they do not. If the person changes what they ask for while you work, these results are for the old ask: search for the new one, and name what the answer is now about in its first sentence ("애플은 …").\n${found}`
 /** Runs the solo lookup's first search through the turn's own search_web (so its sources, kept titles, news period and ranking apply). opening: what to put in the task, '' when the search did not run or met a wall (the task is then as before). calls: what is left of LANE_SOLO_CALLS. */
 export async function firstSearch(message: string, search: AgentTool | undefined, signal?: AbortSignal, now = new Date()): Promise<{ opening: string; calls: number; query?: string; found?: string }> {
   const words = search && laneQuery(message, now)

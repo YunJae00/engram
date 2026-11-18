@@ -7,7 +7,7 @@ import { openHabit } from './habits-ipc.js'
 
 // The bell: what Engram brought on its own, and what is set to run later.
 
-export async function scheduledTasks(paths: VaultPaths): Promise<ScheduledDto[]> {
+async function scheduledTasks(paths: VaultPaths): Promise<ScheduledDto[]> {
   return (await loadBots(paths)).flatMap(bot => (bot.tasks ?? [])
     .filter(task => task.schedule && !task.routineId)
     .map(task => ({ id: task.id, botId: bot.id, name: task.name, goal: task.goal, when: scheduleWords(task.schedule!), ...(task.lastRunAt ? { lastRunAt: task.lastRunAt } : {}) })))

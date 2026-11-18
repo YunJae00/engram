@@ -40,7 +40,7 @@ export function sidebarSearchEmpty(hero: BotDto | null, listed: readonly BotDto[
   return ![...(hero ? [hero] : []), ...listed, ...hidden].some(bot => matchesSidebarSearch(bot, search, bodyHits))
 }
 
-export type BotMenuRun =
+type BotMenuRun =
   | { kind: 'update'; patch: { hidden?: true; primary?: true } }
   | { kind: 'layout'; change: import('../../../shared/types.js').SidebarChange['change'] }
   | { kind: 'rename' } | { kind: 'icon' } | { kind: 'new-section' } | { kind: 'delete' }

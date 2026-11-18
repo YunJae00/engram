@@ -15,7 +15,7 @@ import type { EngramEvent } from '../../../shared/types.js'
 // What views render from changes only when the window, its address or its
 // shape does.
 
-export interface MirrorState {
+interface MirrorState {
   // A window is open and being mirrored.
   on: boolean
   // Whose page the picture and address belong to; a pane looking at another
@@ -134,4 +134,3 @@ export function createAgentMirror(deps: { watch(on: boolean): void; ask(): Promi
   }
 }
 
-export type AgentMirror = ReturnType<typeof createAgentMirror>

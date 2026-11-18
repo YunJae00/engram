@@ -1,5 +1,5 @@
 export interface OfficeText { key: string; text: string; [key: string]: unknown }
-export interface OfficeEditStep { key: string; before: string; after: string; mode: string; text: string; positions?: number[]; find?: string }
+interface OfficeEditStep { key: string; before: string; after: string; mode: string; text: string; positions?: number[]; find?: string }
 
 export function planOfficeEdits(state: OfficeText[], edits: Record<string, unknown>[], kind: 'word' | 'ppt'): OfficeEditStep[] {
   const texts = new Map(state.map(item => [item.key, item.text]))

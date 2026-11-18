@@ -2,7 +2,7 @@ import { DesktopHost } from './desktop-host.js'
 import { restoreHiddenApp } from './desktop-access.js'
 import { flog } from './flog.js'
 
-export interface LaunchOutcome { hiddenFallback?: string; windowVerified?: boolean; foregroundChanged?: boolean; foregroundRestored?: boolean; hiddenMs?: number }
+interface LaunchOutcome { hiddenFallback?: string; windowVerified?: boolean; foregroundChanged?: boolean; foregroundRestored?: boolean; hiddenMs?: number }
 export interface SignIn { shown: boolean }
 
 export async function showForSignIn(lane: string, pid: number | undefined, host: DesktopHost, error: unknown): Promise<SignIn | undefined> {

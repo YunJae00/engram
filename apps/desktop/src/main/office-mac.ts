@@ -20,8 +20,8 @@ const digest = async (file: string): Promise<string> => createHash('sha256').upd
 // person's screen, and leave it running after the app quit (grokbar D4: Excel started under ENGRAM_HIDDEN=1 and outlived the run).
 // Files on disk are read, made and changed by the file tools, which need no application. Outlook is not covered: a draft is opened for the person.
 const APPS = { excel: 'Microsoft Excel', word: 'Microsoft Word', ppt: 'Microsoft PowerPoint' } as const
-export const officeOpen = (name: string): Promise<boolean> => new Promise(resolve => execFile('/usr/bin/pgrep', ['-x', name], error => resolve(!error)))
-export async function assertOfficeOpen(op: string, open: (name: string) => Promise<boolean> = officeOpen): Promise<void> {
+const officeOpen = (name: string): Promise<boolean> => new Promise(resolve => execFile('/usr/bin/pgrep', ['-x', name], error => resolve(!error)))
+async function assertOfficeOpen(op: string, open: (name: string) => Promise<boolean> = officeOpen): Promise<void> {
   const name = APPS[op.split('.')[0] as keyof typeof APPS]
   if (name && !await open(name)) throw new Error(`${OFFICE_CLOSED} ${name} is closed. For a file on disk use file_read or file_read_package to read it, file_edit_package to change it and file_create_workbook for a new workbook; they need no application. Do not retry this tool and do not ask the person about it.`)
 }

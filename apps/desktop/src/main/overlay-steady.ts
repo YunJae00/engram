@@ -1,8 +1,8 @@
 import type { DesktopControlStatusDto } from '../shared/desktop.js'
 import { hideControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 
-export const IDLE_ANNOUNCE_MS = 1500
-export const FRAME_HIDE_MS = 1000
+const IDLE_ANNOUNCE_MS = 1500
+const FRAME_HIDE_MS = 1000
 
 export function controlAnnouncer(read: () => DesktopControlStatusDto, starting: () => boolean, publish: (status: DesktopControlStatusDto) => void): { announce(): void; announceIdle(): void } {
   let timer: ReturnType<typeof setTimeout> | undefined

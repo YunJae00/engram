@@ -24,14 +24,14 @@ const SESSION_FILES = [
   join('Default', 'AccountBookmarks'),
 ] as const
 
-export interface BrowserSource {
+interface BrowserSource {
   id: string
   name: string
   userData: string
   running: boolean
 }
 
-export function browserProfileRoots(): Omit<BrowserSource, 'running'>[] {
+function browserProfileRoots(): Omit<BrowserSource, 'running'>[] {
   const local = process.env['LOCALAPPDATA'] ?? ''
   if (process.platform === 'win32')
     return [
@@ -73,7 +73,7 @@ async function isLocked(file: string): Promise<boolean> {
   }
 }
 
-export interface ImportResult {
+interface ImportResult {
   ok: boolean
   copied?: number
   error?: string

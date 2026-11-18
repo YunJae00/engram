@@ -31,7 +31,7 @@ export type CodexRpcFactory = (
 export const appServer = (binary: string): CodexRpcFactory => (options, notify, request, ended) =>
   new DevRpc(binary, { cwd: options.cwd, env: options.env, config: options.config }, notify, request, ended)
 
-export interface CodexNativeSpec {
+interface CodexNativeSpec {
   rpc: CodexRpcFactory
   env: NodeJS.ProcessEnv
   config: string[]
@@ -288,7 +288,6 @@ export function claimCodexWorkFolder(channel: string, fallback: string): string 
 }
 export function codexSpareFolders(): string[] { sweep(); return [...spares.keys()] }
 export const codexSpareCount = (): number => [...spares.values()].filter(one => !one.owner && !one.session.stale && !one.session.busy).length
-export const codexSpareReady = (): boolean => codexSpareCount() > 0
 
 export async function warmCodexSession(spec: CodexNativeSpec, native: NativeTools): Promise<boolean> {
   sweep()

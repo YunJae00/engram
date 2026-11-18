@@ -1329,7 +1329,6 @@ export const en = {
 } as const
 
 export type StringKey = keyof typeof en
-export type UiLanguage = 'system' | 'ko' | 'en'
 
 // Only en* locales read English; every other system locale, Japanese included, reads Korean.
 export function resolveUiLanguage(preference: unknown, locale: string): 'ko' | 'en' {
@@ -1369,9 +1368,6 @@ const isMac = typeof window !== 'undefined' && window.engram?.platform === 'darw
 
 // Platform-correct modifier label for UI built from parts (e.g. HelpPanel).
 export const MOD_LABEL = isMac ? 'Cmd' : 'Ctrl'
-
-export const AUTO_START_KEY: StringKey = isMac ? 'settings.autoStartMac'
-  : typeof window !== 'undefined' && window.engram?.platform === 'win32' ? 'settings.autoStartWindows' : 'settings.autoStartLinux'
 
 export type Translate = (key: StringKey, vars?: Record<string, string | number>) => string
 

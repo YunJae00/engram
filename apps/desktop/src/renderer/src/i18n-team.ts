@@ -14,7 +14,7 @@ export const teamEn = {
   treeLabel: 'Team members',
 }
 
-export type TeamKey = keyof typeof teamEn
+type TeamKey = keyof typeof teamEn
 
 export const teamT = (lang: TeamLang, key: TeamKey, vars: Record<string, number> = {}): string =>
   (lang === 'ko' ? teamKo : teamEn)[key].replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))

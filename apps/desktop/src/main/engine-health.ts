@@ -79,20 +79,12 @@ export function markEngineOk(id: string, profile?: string): void {
   setHealth(id, { healthy: true }, profile)
 }
 
-// For hosts that learn about a failure OUTSIDE a call path — the local
-// inference worker dying on load, for one. Detection counts the model file
-// as installed and pings exempt 'local', so this is the only way a broken
-// worker surfaces before the first question fails.
-export function markEngineUnhealthy(id: string, reason: EngineHealthReason): void {
-  setHealth(id, { healthy: false, reason })
-}
-
 const QUOTA_RESUME_FLOOR_MS = 60_000
 const QUOTA_RESUME_DEFAULT_MS = 5 * 60_000
 let quotaResumeTimer: NodeJS.Timeout | null = null
 let quotaResumeAt = 0
 
-export function scheduleQuotaResume(ctx: VaultContext, delayMs: number): void {
+function scheduleQuotaResume(ctx: VaultContext, delayMs: number): void {
   const wait = Math.max(QUOTA_RESUME_FLOOR_MS, delayMs)
   const at = Date.now() + wait
   if (quotaResumeTimer !== null && at >= quotaResumeAt) return

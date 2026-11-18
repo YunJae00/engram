@@ -18,7 +18,7 @@ export type PreviewFrame = {
   onPaint?(): void
   reason?: 'screen_recording_denied' | 'capture_unsafe'; current?: boolean
 }
-export type PreviewTile = { url?: string; frames: FrameSource; onOpen(): void }
+type PreviewTile = { url?: string; frames: FrameSource; onOpen(): void }
 export function appPreviewFrame(frame: WorkPreviewDto): PreviewFrame {
   return { id: frame.id, source: 'app', title: frame.title, at: frame.at, image: frame.data,
     activity: frame.activity, phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }

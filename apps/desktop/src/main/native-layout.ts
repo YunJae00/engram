@@ -76,7 +76,7 @@ export function attachNativeLayout(win: BrowserWindow): void {
   win.once('closed', () => { hide(); if (window === win) window = null })
 }
 
-export function registerNativeLayout(): void {
+function registerNativeLayout(): void {
   if (registered) return
   registered = true
   ipcMain.handle('native:enabled', () => nativeBrowserEnabled())

@@ -44,7 +44,7 @@ function readModels(engine: Provider, profile: string, force = false): Promise<M
   return catalog.pending
 }
 
-export function useModelChoices(engine: Provider | null, pinnedProfile?: string) {
+function useModelChoices(engine: Provider | null, pinnedProfile?: string) {
   const profiles = useAccountProfiles(), profile = pinnedProfile ?? (engine ? profiles?.selected[engine] : undefined) ?? 'system'
   const [result, setResult] = useState<{ engine: typeof engine; profile: string; rows: ModelChoiceDto[]; loading: boolean; error: boolean }>({ engine, profile, rows: engine ? cachedModels(engine, profile) : [], loading: true, error: false })
   const [attempt, setAttempt] = useState(0)

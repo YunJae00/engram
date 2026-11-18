@@ -3,8 +3,8 @@ import type { DesktopBindingDto, DesktopControlStatusDto } from '../../../shared
 import { syncAppPreviewStreams } from './appPreviewStream.js'
 import { api } from '../api.js'
 
-export type DesktopSurface = 'browser' | 'computer'
-export function hasDesktopGrant(control: DesktopControlStatusDto | null): boolean {
+type DesktopSurface = 'browser' | 'computer'
+function hasDesktopGrant(control: DesktopControlStatusDto | null): boolean {
   return Boolean(control && ['ready', 'running', 'needs-person'].includes(control.state))
 }
 interface Snapshot {
@@ -76,10 +76,6 @@ export function selectDesktopSurface(lane: string, surface: DesktopSurface): voi
       if (surfaceRequests.get(lane) === request) publish({ error: desktopError(error) })
     })
   } else apply()
-}
-export function useDesktopSurface(lane: string): DesktopSurface {
-  const state = useDesktopSession()
-  return state.surfaces[lane] ?? (state.bindings.some((binding) => binding.lane === lane) ? 'computer' : 'browser')
 }
 export async function stopComputerControl(): Promise<void> {
   try { await api.desktopControlStop() }

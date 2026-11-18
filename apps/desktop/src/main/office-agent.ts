@@ -12,7 +12,7 @@ import { freeName } from './file-work.js'
 // application's own commands. The person keeps the mouse either way.
 // Where a composed document is handed in: the workspace's saved outputs and
 // the task folder, linked in the chat.
-export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>>; held?(): Promise<Set<string>> }
+interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>>; held?(): Promise<Set<string>> }
 
 // Hangul a person writes, KS X 1001's 2,350 syllables; empty where the runtime has no EUC-KR decoder (the check is then skipped).
 const COMMON_HANGUL = ((): Set<string> => {
@@ -36,9 +36,9 @@ export function mistypedWords(texts: readonly { where: string; text: string }[],
 // document's text once and names each garbled word with the word meant; the host puts those in and builds once. The syllable check above
 // stays the backstop for when the voice is late or absent. A reply is used only where it is safe: the word is in the text, both are
 // Korean, no digit changes, and the length stays close, so a proofread can fix a slip but never rewrite content.
-export type Proofread = (prompt: string) => Promise<string>
+type Proofread = (prompt: string) => Promise<string>
 export const PROOF_MS = 5000
-export const proofPrompt = (texts: readonly string[]): string => [
+const proofPrompt = (texts: readonly string[]): string => [
   'Below are lines of a Korean document, one per line. Some words may have been garbled while typing: a wrong or stray syllable, a stray mark, a word nobody writes or that does not fit its sentence.',
   'For each garbled word write one line: garbled => intended. Change nothing else: not the style, spacing, numbers, names, English or anything correct.',
   'If nothing is garbled, reply with exactly NONE.',

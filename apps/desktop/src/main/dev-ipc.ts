@@ -65,4 +65,3 @@ export function registerDevIpc(): void {
 
 export async function stopDevelopers(): Promise<void> { await service?.stopAll() }
 export function developersRunning(): boolean { return service?.active ?? false }
-export function developersBusy(): boolean { return service?.busy ?? false }

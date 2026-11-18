@@ -26,7 +26,7 @@ export interface Camera {
   cssH: number
 }
 
-export interface HitNode {
+interface HitNode {
   x: number
   y: number
   hub: boolean

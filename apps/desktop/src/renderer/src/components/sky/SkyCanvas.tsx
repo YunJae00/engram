@@ -8,7 +8,7 @@ const GHOST = 12
 const BUDGET_MS = 200
 const EMPH_MS = 200
 
-export interface SkyCanvasProps {
+interface SkyCanvasProps {
   nodes: readonly SkyNode[]
   edges: readonly (readonly [number, number])[]
   /** Meaning-level threads (fabric) — gossamer under the real strings. */

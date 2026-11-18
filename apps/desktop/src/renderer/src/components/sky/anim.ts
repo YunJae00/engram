@@ -1,5 +1,5 @@
 
-export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
   const cx = 3 * x1
   const bx = 3 * (x2 - x1) - cx
   const ax = 1 - cx - bx

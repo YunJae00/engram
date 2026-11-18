@@ -47,7 +47,7 @@ const LAUNCH_MIN_FREE = 1.2e9
 const BLOCKED_RESOURCES = new Set(['media'])
 
 // Initial page width, before its visible pane requests a viewport.
-export const VIEW_WIDTH = 1280
+const VIEW_WIDTH = 1280
 // Each lane keeps the viewport requested by its own conversation pane.
 const VIEW_HEIGHT_MIN = 240
 const VIEW_HEIGHT_MAX = 2200
@@ -97,7 +97,7 @@ function chromeCandidates(): string[] {
   ]
 }
 
-export interface InstalledBrowser {
+interface InstalledBrowser {
   id: string
   name: string
   path: string
@@ -301,15 +301,6 @@ function armPressureWatch(): void {
       void closeAgentBrowser({ force: true })
     }
   }, 15_000).unref()
-}
-
-// While something owns the window outright — a teach recording, where the
-// person is being watched working — an unforced close steps aside. Memory
-// pressure and app quit pass force and still take the browser away.
-let claimed = false
-
-export function claimAgentBrowser(on: boolean): void {
-  claimed = on
 }
 
 // A run parked at a login wall does nothing for minutes while the person
@@ -564,15 +555,6 @@ export async function agentContext(): Promise<Ctx> {
   return ensureContext()
 }
 
-export function agentPages(): Page[] {
-  return context?.pages().filter((one) => !one.isClosed()) ?? []
-}
-
-// The tab the person is looking at: the active lane's, or none.
-export function currentAgentPage(): Page | null {
-  return lanePage(activeLane)
-}
-
 export function agentBrowserRunning(): boolean { return context !== null || opening !== null || closing !== null }
 
 export function agentBrowserAvailable(): boolean {
@@ -606,7 +588,7 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
   // Somebody is standing at the window - a recording, or a person typing their
   // password into a login wall. An unforced close waits for them; memory
   // pressure and app quit pass force and take it anyway.
-  if ((claimed || idleHolds > 0) && !options.force) return
+  if (idleHolds > 0 && !options.force) return
   if (idleTimer) {
     clearTimeout(idleTimer)
     idleTimer = null

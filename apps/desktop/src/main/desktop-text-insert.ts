@@ -1,7 +1,7 @@
 import type { DesktopObservationDto } from '../shared/desktop.js'
 import type { DesktopHost } from './desktop-host.js'
 
-export const TEXT_CHUNK_UNITS = 20
+const TEXT_CHUNK_UNITS = 20
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 export function typeArgs(text: string): { text: string; chunks: string[] } {
@@ -19,7 +19,7 @@ export function typeArgs(text: string): { text: string; chunks: string[] } {
 }
 
 export interface TypeReceipt { strategy?: string; expected?: string }
-export interface TypedReport { strategy: 'selected-text' | 'keys' | 'unknown'; insert: 'one-piece' | 'chunked'; verified: boolean; landed?: string; hint?: string }
+interface TypedReport { strategy: 'selected-text' | 'keys' | 'unknown'; insert: 'one-piece' | 'chunked'; verified: boolean; landed?: string; hint?: string }
 
 // The native receipt says which strategy ran and what the whole field must now read; the observation is a second, independent read.
 export function typedReport(text: string, receipt: TypeReceipt | undefined, view: DesktopObservationDto): TypedReport {

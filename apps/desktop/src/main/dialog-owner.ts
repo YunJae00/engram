@@ -4,7 +4,7 @@ import { BrowserWindow } from 'electron'
 // the main thread and the whole app stops until it is answered (QA 0.8.142 B6
 // froze for ~10 minutes). Asking is always a sheet on Engram's visible window;
 // with none on screen the caller declines instead.
-export function visibleDialogOwner(): BrowserWindow | undefined {
+function visibleDialogOwner(): BrowserWindow | undefined {
   const focused = BrowserWindow.getFocusedWindow()
   if (focused && !focused.isDestroyed() && focused.isVisible()) return focused
   return BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.isVisible())

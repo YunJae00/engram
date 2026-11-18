@@ -10,7 +10,7 @@ import { activeAccountProfile } from './account-profiles.js'
 interface StoredConnection { baseUrl: string; model: string; key: string; encrypted: boolean; profile?: string }
 type Store = Partial<Record<BrainConnectionProvider, StoredConnection>>
 
-export const CODEX_KEY_ENV = 'ENGRAM_CODEX_KEY'
+const CODEX_KEY_ENV = 'ENGRAM_CODEX_KEY'
 const FILE = 'connections.json'
 let cache: Store | null = null
 let loading: Promise<Store> | null = null

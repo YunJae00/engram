@@ -6,7 +6,7 @@ import { flog } from './flog.js'
 import { dismissStudyOffers } from './study-offers.js'
 import { afterChecks, offeredIn, studying } from './turn-state.js'
 
-export interface StudyIpcDeps {
+interface StudyIpcDeps {
   paths: VaultPaths
   // A turn is running, or a task is still finishing, in this conversation.
   busy(channel: string): boolean

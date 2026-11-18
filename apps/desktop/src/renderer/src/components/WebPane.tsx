@@ -22,7 +22,7 @@ const FOLD_MS = 220
 // What the page gets of the window before anyone drags the divider.
 const DEFAULT_SHARE = 0.52
 
-export function BrowserAddress({ url, channel }: { url?: string; channel: string }) {
+function BrowserAddress({ url, channel }: { url?: string; channel: string }) {
   const { showToast } = useShellState()
   const [draft, setDraft] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
@@ -68,7 +68,7 @@ export function BrowserAddress({ url, channel }: { url?: string; channel: string
   )
 }
 
-export function BrowserStart() {
+function BrowserStart() {
   return <div className="web-pane-empty browser-start" aria-hidden />
 }
 

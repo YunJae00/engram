@@ -7,7 +7,7 @@ import { firefoxBookmarks, readFirefox } from './firefox-places.js'
 import { flog } from './flog.js'
 import { managedBookmarkSources } from './managed-bookmarks.js'
 
-export interface Bookmark { title: string; url: string; folder: string; folderPath?: string[]; sourceId?: string; sourceName?: string }
+interface Bookmark { title: string; url: string; folder: string; folderPath?: string[]; sourceId?: string; sourceName?: string }
 const MAX_BYTES = 5_000_000
 const MAX_ITEMS = 10_000
 

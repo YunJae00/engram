@@ -5,8 +5,8 @@ import { decideChoice } from './decision-provider.js'
 // Research only: page_do run on its own against a page, with every step
 // traced, for measuring how runs go wrong and what a gate on each step
 // changes. Present only when the app is started for that.
-export interface ResearchRun { url: string; goal: string; text?: string; maxSteps?: number; lane: string; gate?: GateMode; margin?: number; explore?: boolean; replay?: boolean }
-export interface ResearchResult { result: string; trace: PageDoStep[]; ms: number }
+interface ResearchRun { url: string; goal: string; text?: string; maxSteps?: number; lane: string; gate?: GateMode; margin?: number; explore?: boolean; replay?: boolean }
+interface ResearchResult { result: string; trace: PageDoStep[]; ms: number }
 
 export function exposeResearch(): void {
   if (process.env['ENGRAM_RESEARCH'] !== '1') return

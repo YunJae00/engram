@@ -1,7 +1,7 @@
 // The S1 Glass wave: one S-shaped line of light across a glass ball, as svg path data in a 100-unit box (ball radius 50).
 // Every layer is a ribbon around the same line: it is widest where the light is strongest and tapers to nothing at the glass,
 // so a blur alone gives the falloff and no gradient is needed.
-export type OrbMaster = 'full' | 'small'
+type OrbMaster = 'full' | 'small'
 
 export const ORB_LOOP_MS = 12000
 // In order: the dark upper half, the warm and cool haze, the warm and cool fringe, the white core; then the working overlay: wider haze and a thicker core.

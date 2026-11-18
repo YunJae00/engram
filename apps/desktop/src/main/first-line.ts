@@ -147,7 +147,7 @@ export const withoutHelpDesk = (text: string): string => text.split('\n').map(li
 // What is said when a small-talk reply was nothing but the help-desk sentence.
 // c5c r2: the main model's reply fell back to itself when the filter left nothing, so "뭘 도와드릴까요?" still showed; talkOnly gives the plain line instead.
 export const talkOnly = (message: string, answer: string, korean: boolean): string => withoutHelpDesk(answer) || (answer.trim() ? plainTalk(message, korean) : answer)
-export const plainTalk = (message: string, korean: boolean): string =>
+const plainTalk = (message: string, korean: boolean): string =>
   /고마|고맙|감사|수고|고생|잘 ?했|최고|대박|멋져|훌륭|\b(thanks|thank you|thx|ty)\b/i.test(message) ? korean ? '별말씀을요.' : 'Anytime.' : /\bbye\b/i.test(message) ? korean ? '네, 들어가세요!' : 'See you!' : korean ? '안녕하세요!' : 'Hi!'
 
 export function cleanLine(raw: string, max = LINE_MAX): string | undefined {

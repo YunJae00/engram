@@ -12,17 +12,15 @@ import { flog } from './flog.js'
 
 let owner: BrowserWindow | null = null
 let running: NativeBrowser | null = null
-let external = false
 const nativeContexts = new WeakSet<BrowserContext>()
 const targets = new WeakMap<Page, Promise<string>>()
 let inputSink: ((page: Page) => void) | undefined
 export function setNativeInputSink(sink: (page: Page) => void): void { inputSink = sink }
 
 export function nativeBrowserEnabled(): boolean {
-  return process.platform === 'win32' && !external && process.env['ENGRAM_BROWSER_EXTERNAL'] !== '1'
+  return process.platform === 'win32' && process.env['ENGRAM_BROWSER_EXTERNAL'] !== '1'
 }
 
-export function chooseNativeBrowser(enabled: boolean): void { external = !enabled }
 export function setNativeBrowserOwner(window: BrowserWindow): void { owner = window }
 export function isNativePage(page: Page): boolean { return nativeContexts.has(page.context()) }
 export function isNativeContext(context: BrowserContext): boolean { return nativeContexts.has(context) }
@@ -55,7 +53,7 @@ export async function nativeTarget(page: Page): Promise<string> {
   return held
 }
 
-export interface NativeBounds { target: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
+interface NativeBounds { target: string; x: number; y: number; width: number; height: number; clip?: { x: number; y: number; width: number; height: number } }
 
 export async function placeNativePages(views: NativeBounds[]): Promise<void> {
   if (running) await running.request('layout', { views })

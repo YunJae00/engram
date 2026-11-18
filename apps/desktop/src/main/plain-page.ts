@@ -5,12 +5,12 @@ import { classifyWall } from './page-wall.js'
 // (perf146: three members at once got "not enough free memory … wait" and slept, polled vm_stat and re-opened pages).
 // shortcut: no scripts run, so a page drawn by JavaScript reads thin; such a page waits its turn for a tab (tabOrPlain).
 
-export const NO_ROOM = /not enough free memory/i
+const NO_ROOM = /not enough free memory/i
 const PLAIN_MAX_BYTES = 2_000_000
 const PLAIN_TIMEOUT_MS = 10_000
 const TEXT_CAP = 60_000
 // Below this a plain read is taken for a script-drawn shell, not the page.
-export const PLAIN_TEXT_MIN = 200
+const PLAIN_TEXT_MIN = 200
 export const LINKS_MAX = 200
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }

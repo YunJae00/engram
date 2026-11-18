@@ -2,7 +2,7 @@ import type { DesktopObservationDto } from '../shared/desktop.js'
 import { STILL_CHANGING } from './desktop-guarded-sequence.js'
 import { TARGET_MOVING } from './desktop-settle.js'
 
-export interface DesktopOutcome { done: boolean; stillMoving: boolean; reason?: string; summary: string }
+interface DesktopOutcome { done: boolean; stillMoving: boolean; reason?: string; summary: string }
 type Result = Record<string, unknown>
 type Words = [ko: string, en: string]
 
@@ -43,7 +43,7 @@ function focusedField(view: unknown): { value?: string; composer: boolean } {
 }
 
 // The whole field must read exactly the requested text: a draft that was already there makes it differ.
-export function textCheck(tool: string, result: Result, text: string): Words | undefined {
+function textCheck(tool: string, result: Result, text: string): Words | undefined {
   const wanted = text.normalize('NFC')
   // app_set: the settled read-back (valueNow) wins over the receipt; null means the field was not found again.
   // A scan shows at most a prefix of a long field (600 characters on Windows): a matching prefix defers to the receipt.
@@ -63,10 +63,10 @@ export function textCheck(tool: string, result: Result, text: string): Words | u
   return undefined
 }
 
-export interface OutcomeState { korean: boolean; app?: string; openFailed?: Words; opened?: boolean; text?: string; textFailure?: Words }
+interface OutcomeState { korean: boolean; app?: string; openFailed?: Words; opened?: boolean; text?: string; textFailure?: Words }
 
 // The verdict of the turn so far after the latest step; undefined until the turn opened an app or inserted text.
-export function desktopOutcome(state: OutcomeState, last: Result, inserted: boolean): DesktopOutcome | undefined {
+function desktopOutcome(state: OutcomeState, last: Result, inserted: boolean): DesktopOutcome | undefined {
   const pick = ([ko, en]: Words) => state.korean ? ko : en
   if (state.opened === undefined && state.text === undefined) return undefined
   const failed = state.openFailed ? { reason: state.openFailed } : stepFailure(last) ?? (state.textFailure ? { reason: state.textFailure } : undefined)

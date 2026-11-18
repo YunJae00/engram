@@ -70,7 +70,7 @@ export const DESK_NOTE = [
 // grokbar cycle 3 (M1, M2, F1, D3): above the preload limit (engine-claude-session.ts PRELOADED_TOOLS_MAX = 16) tool shapes are deferred and the
 // model spends a round looking each one up: M1 took three rounds for one 15 ms keep_in_mind call, F1 and D3 ~6 s per look. A desk turn whose
 // kind is plain gets only the tools that kind uses, few enough to be given whole. The model's own file tools and shell are apart from this menu.
-export type DeskKind = 'keep' | 'tidy' | 'deck' | 'note' | 'file' | 'ask' | 'question'
+type DeskKind = 'keep' | 'tidy' | 'deck' | 'note' | 'file' | 'ask' | 'question'
 const MEMORY_TOOLS = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats']
 // c3c r2: "…발표 자료 만들고 숫자 검증까지 해줘" took the deck menu, which had no report_result_check, so the check they asked for could not run.
 // The host offers that tool only when a check was asked for (ipc.ts, result-check.ts asksForCheck); every menu keeps it, and still fits the preload limit.
@@ -450,7 +450,7 @@ const KIND_FOLDERS: readonly [string, RegExp][] = [
   ['텍스트', /^(txt|md)$/], ['발표 자료', /^(pptx?|key|odp)$/], ['압축 파일', /^(zip|7z|rar|tar|gz)$/],
 ]
 const OTHER_FOLDER = '기타'
-export const kindFolder = (file: string): string => KIND_FOLDERS.find(([, ext]) => ext.test(extname(file).slice(1).toLowerCase()))?.[0] ?? OTHER_FOLDER
+const kindFolder = (file: string): string => KIND_FOLDERS.find(([, ext]) => ext.test(extname(file).slice(1).toLowerCase()))?.[0] ?? OTHER_FOLDER
 const CRITERION = /([가-힣]+)별(?=로|\s|$|[.,!~])/g
 const BY_KIND = /^(?:종류|형식|확장자|유형|포맷|타입|형태)$/
 const ONLY_SOME = /[가-힣a-z0-9]만(?=\s|$|[.,!~])/i
@@ -521,7 +521,7 @@ export async function sortByKind(message: string, workspace: string, move: MoveT
 // reply in another form is a question about its meaning next to that reply, so the quick voice answers it (reshapePrompt), reading both. The host
 // only keeps out what cannot be one: no reply yet, a long or multi-line message, a slash command, a named file. A late or failed voice is a no:
 // the turn keeps its usual route. The voice has no tools, so a wrong yes can only write text, never send, save or search.
-export const RESHAPE_MAX = 40
+const RESHAPE_MAX = 40
 export const RESHAPE_MS = 3500
 export const reshapeCandidate = (message: string, lastReply: string | undefined): boolean => {
   const text = message.trim()
@@ -531,7 +531,7 @@ export const reshapeCandidate = (message: string, lastReply: string | undefined)
 }
 // c13c Q4: "the same facts and nothing else" made the explanation line a fact, so "더 짧게" came back as long as before (42 vs 42) and
 // nothing checked it. The voice names the form it wrote and the asked thing it reshaped; the host checks the form where it is structural.
-export const RESHAPE_FORMS = ['shorter', 'longer', 'simpler', 'language', 'tone', 'table', 'other'] as const
+const RESHAPE_FORMS = ['shorter', 'longer', 'simpler', 'language', 'tone', 'table', 'other'] as const
 // c14b (cause W, Q4: "정중한 영어 이메일 한 줄로" → "더 짧게" came back as "Sorry I'm late."): the voice read only its last reply, never the ask
 // that set its constraints. It now reads that ask, and its rewrite is checked for meaning against both (written-check "dropped").
 export const reshapePrompt = (message: string, lastReply: string, ask?: string): string => [
@@ -602,8 +602,8 @@ function rewritten(reply: string, last: string): number {
 // (c18b) by the quick model inside the turn's own time. A one-line short-ask answer is not held (c16c r2: see checkedDesk's fromSource).
 export const structured = (text: string): boolean => text.split('\n').filter(line => line.trim()).length >= 2
 // shortcut: one budget for every desk kind from the turn's start (the summary row has 20 s); a desk turn already past it keeps its draft.
-export const DESK_CHECK_DUE_MS = 18_000
-export const SOURCE_CHARS = 6000
+const DESK_CHECK_DUE_MS = 18_000
+const SOURCE_CHARS = 6000
 // c16c r2 (Codex r1: a one-line summary of a meeting note asked as 결정사항 and 할 일 skipped the check): the line count stood in for "this turn's
 // bar has room for a check", but a one-line draft is exactly how a named part goes missing. What has room is the kind of turn: an answer drawn
 // from a named note or file (fromSource: desk kinds note and file, bars 20 s and up) is checked at any length; a short ask (8 s) only when structured.

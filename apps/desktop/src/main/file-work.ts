@@ -30,7 +30,7 @@ const TEXT_OUTPUTS = new Set(['.html', '.svg', '.py', '.js', '.ts', '.sh', '.ps1
 const kindOf = (name: string) => extname(name).toLowerCase()
 const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EEXIST'
 
-export function outputName(value: unknown): string {
+function outputName(value: unknown): string {
   if (typeof value !== 'string' || !/^[\p{L}\p{N}_][\p{L}\p{N}_. ()-]{0,119}$/u.test(value) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) || !OUTPUT_EXTENSIONS.has(kindOf(value))) throw new Error('Use a plain filename with a supported extension, without directories.')
   return value
 }
@@ -66,7 +66,7 @@ const sha = (data: Buffer | string) => createHash('sha256').update(data).digest(
 // What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
 // artifact: the saved output (its id) these bytes are linked by in the chat.
 // outputs: the saved-outputs folder, where the version a change to the file itself replaces is removed from.
-export interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
+interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
 // Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
 const versionsFile = (handIns: string) => join(handIns, 'previous')
 // Which saved output a change to the file itself removed, and the one that file is now: `earlier id\0id` per line (see findArtifact).
@@ -303,7 +303,7 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
 // made: outputs this turn's other tools saved (a composed document or deck: taskOutputs), read back like the file tools' own
 // (QA 0.8.145 S02/S04: the comet was told to read its new docx back, and the read asked the person and stalled the turn).
 // turn: this turn's id (placeInTask).
-export interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
+interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
 
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
   const approved = new Set(attachedPaths)

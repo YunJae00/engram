@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { RIPPLE_MIN_PX, SMALL_MAX_PX, type OrbId } from '../lib/botAvatar.js'
 import { ORB_LOOP_MS, ORB_WAVE_LAYERS, ORB_WORK_LAYERS, orbPaths } from '../lib/orbWave.js'
 
-export type OrbMotion = 'static' | 'idle' | 'working'
+type OrbMotion = 'static' | 'idle' | 'working'
 
 // S1 Glass: a dark glass ball with a silver rim, mist lit from below, and one S-shaped wave of light across the middle.
 // bot-orb.css paints the ball, the mist and the rim; the two svgs here hold the wave and its working overlay (see lib/orbWave.ts).

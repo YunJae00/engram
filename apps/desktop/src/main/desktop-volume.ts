@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { AgentTool } from 'core'
 
-export type VolumeRunner = (args: string[], signal?: AbortSignal) => Promise<string>
+type VolumeRunner = (args: string[], signal?: AbortSignal) => Promise<string>
 
 const osascript: VolumeRunner = (args, signal) => new Promise((resolve, reject) => {
   execFile('osascript', args, { timeout: 5_000, ...(signal ? { signal } : {}) }, (error, stdout) => error ? reject(error) : resolve(String(stdout)))
@@ -11,7 +11,7 @@ const ACTIONS = ['get', 'set', 'mute', 'unmute'] as const
 type Action = typeof ACTIONS[number]
 const READ = ['-e', 'get volume settings']
 
-export function volumePercent(value: unknown): number {
+function volumePercent(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('percent must be a number from 0 to 100')
   return Math.min(100, Math.max(0, Math.round(value)))
 }

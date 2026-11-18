@@ -1,6 +1,6 @@
 import { ORBS, defaultCharacter, type OrbId } from './botAvatar.js'
 
-export const PICKER_COLUMNS = 4
+const PICKER_COLUMNS = 4
 
 // Arrows move ±1 across and ±4 down, wrapping, in the 4x2 grid.
 export function stepGrid(index: number, count: number, key: string): number | null {
@@ -17,7 +17,7 @@ export function pickerOptions(): readonly OrbId[] {
   return ORBS
 }
 
-export type AvatarChange = { kind: 'pick'; next: OrbId } | { kind: 'default' }
+type AvatarChange = { kind: 'pick'; next: OrbId } | { kind: 'default' }
 export type AvatarOps = { update(avatar: { character: OrbId }): Promise<{ avatar?: unknown }> }
 
 // A later manual Default uses the plain hash of the real id; the no-repeat step only applies at creation.

@@ -6,7 +6,7 @@ import { firefoxPlaces } from './browser-roots.js'
 import { flog } from './flog.js'
 
 interface Db { exec(sql: string): { values: unknown[][] }[]; close(): void }
-export interface PlacesBookmark { title: string; url: string; folder: string; folderPath: string[] }
+interface PlacesBookmark { title: string; url: string; folder: string; folderPath: string[] }
 
 // Firefox holds places.sqlite open while it runs: each profile's file is read
 // from a copy, with sql.js. One unreadable profile does not hide the others.

@@ -7,7 +7,7 @@ import { flog } from './flog.js'
 
 type Identity = { runtimeId?: string; type: string; name: string; path: string }
 type Field = 'window' | 'pid' | 'control' | 'enabled' | 'name' | 'value'
-export interface QuietConfirmation {
+interface QuietConfirmation {
   before: QuietObservationDto
   target: Identity
   editors: { identity: Identity; value: string | null | undefined }[]

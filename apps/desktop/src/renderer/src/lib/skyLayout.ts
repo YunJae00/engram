@@ -5,9 +5,9 @@ export const VH = 800
 
 // Held at 150 deliberately. Lifting it is a S4 question, gated on the solver
 // becoming incremental — a synchronous 300-node solve costs ~90ms.
-export const NODE_CAP = 150
+const NODE_CAP = 150
 
-export interface SolvedSky {
+interface SolvedSky {
   pos: { x: number; y: number }[]
   edges: [number, number][]
   /** Node index → its neighbours. The solver needs it; so does the hover halo. */
@@ -18,7 +18,7 @@ export interface SolvedSky {
 
 // The adjacency the spring forces need is the same adjacency "what is this
 // connected to" needs, so it is built once and rides the shape memo out.
-export function buildAdjacency(count: number, edges: readonly (readonly [number, number])[]): number[][] {
+function buildAdjacency(count: number, edges: readonly (readonly [number, number])[]): number[][] {
   const neighbors: number[][] = Array.from({ length: count }, () => [])
   for (const [s, t] of edges) {
     neighbors[s]!.push(t)
@@ -35,7 +35,7 @@ function byDegree(neighbors: readonly number[][]): number[] {
 
 // Test/measurement probe. `frames` proves the renderer is genuinely idle when
 // nothing moves; `solves` proves a frontmatter-only publish never re-solves.
-export interface SkyProbe {
+interface SkyProbe {
   frames: number
   solves: number
 }

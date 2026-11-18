@@ -7,7 +7,7 @@ import type { DesktopHost } from './desktop-host.js'
 import { PERMISSION_STATE_DESCRIPTION } from './desktop-opt-in.js'
 
 export type PermissionName = 'accessibility' | 'screenRecording' | 'inputMonitoring'
-export type PermissionState = Record<PermissionName, boolean>
+type PermissionState = Record<PermissionName, boolean>
 type KnownState = Record<PermissionName, boolean | undefined>
 const ORDER: PermissionName[] = ['accessibility', 'screenRecording', 'inputMonitoring']
 const LABEL = {
@@ -41,7 +41,7 @@ export async function readPermissionState(host: Pick<DesktopHost, 'request'>, si
   return lastRead
 }
 
-export function describePermissionState(state: KnownState, ko: boolean): string {
+function describePermissionState(state: KnownState, ko: boolean): string {
   const lang = ko ? 'ko' : 'en'
   const word = (on: boolean | undefined) => on === undefined ? (ko ? '아직 확인 안 됨' : 'not checked yet') : on ? (ko ? '켜짐' : 'on') : (ko ? '꺼짐' : 'off')
   const lines = ORDER.map(name => `${LABEL[lang][name]}: ${word(state[name])} — ${NEED[lang][name]}`)
@@ -59,7 +59,7 @@ export function permissionGuidance(code: PermissionCode, ko: boolean): string {
 }
 
 // Fallback when the helper does not answer: Electron's no-prompt reads plus the helper's last Input Monitoring answer.
-export function permissionStateNow(): KnownState {
+function permissionStateNow(): KnownState {
   const read = <T>(get: () => T): T | undefined => { try { return get() } catch { return undefined } }
   return {
     accessibility: read(() => systemPreferences.isTrustedAccessibilityClient(false)) ?? lastRead?.accessibility,

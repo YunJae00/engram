@@ -61,7 +61,7 @@ type Native = NonNullable<Parameters<typeof runComet>[2]>['native']
 export const laneSearches = new Map<string, { query: string; found: string }>()
 const sameWords = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase()
 export const memberLane = (channel: string, id: string): string => `${channel}~team-${id}`
-export const laneMember = (lane: string): RegExpExecArray | null => /^(bot-[^~]+)~team-(m\d+)$/.exec(lane)
+const laneMember = (lane: string): RegExpExecArray | null => /^(bot-[^~]+)~team-(m\d+)$/.exec(lane)
 export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
 
 // What one lead or member turn hands over so its members can be run the same way.

@@ -8,7 +8,7 @@ import { closingLang, type ClosingLang } from './task-closing.js'
 
 export const AWAY_MS = 10 * 60_000
 type Said = readonly { role: string; text: string }[]
-export interface AwayRow { botId: string; name: string; finished: number; waiting: number; running: number; stopped?: number }
+interface AwayRow { botId: string; name: string; finished: number; waiting: number; running: number; stopped?: number }
 export interface AwayIo {
   tasks(): Promise<DelegatedTask[]>
   bots(): Promise<{ id: string; name: string }[]>
@@ -31,7 +31,7 @@ const movedAt = (task: DelegatedTask): number => Date.parse(task.state === 'done
 // A scheduled run already has its own bell item. Its task is the first one its bot started inside that run's
 // time, or, when the run picked up a waiting task instead, the one that kept moving through it (the conversation
 // is busy for the whole run). Other work on the same bot, started before or alongside it, still belongs in the summary.
-export function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
+function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
   return notices.some(n => {
     if (n.kind !== 'scheduled' || n.botId !== task.botId) return false
     // A finished run without `began` never started a task (ipc.ts runPrompt), so it hides nothing.

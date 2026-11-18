@@ -36,7 +36,7 @@ export interface SessionSdk {
   ): unknown
 }
 
-export interface SessionSpec {
+interface SessionSpec {
   env?: NodeJS.ProcessEnv
   sdk: SessionSdk
   binary: string
@@ -93,7 +93,7 @@ interface PartialEvent {
 }
 const blocks = (content: unknown): { type?: string; id?: string; tool_use_id?: string }[] => Array.isArray(content) ? content.filter(block => block && typeof block === 'object') : []
 
-export class WarmSession {
+class WarmSession {
   private resetNative: () => void = () => {}
   private readonly startedAt = performance.now()
   readonly signature: string

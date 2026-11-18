@@ -28,7 +28,7 @@ export function DeveloperPopover({ label, trigger, disabled, children, className
   return <><button className={className} ref={anchor} disabled={disabled} aria-label={label} title={hint} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)}>{trigger}</button>{open && createPortal(<div className="dev-popover" ref={panel} id={id} role="dialog" aria-label={label}><header><strong>{label}</strong><button className="dev-control" aria-label={`Close ${label}`} onClick={close}><X size={14} /></button></header>{children(close)}</div>, document.body)}</>
 }
 
-export const ACCESS: { id: DevMode; name: string; detail: string }[] = [
+const ACCESS: { id: DevMode; name: string; detail: string }[] = [
   { id: 'review', name: 'Ask before changes', detail: 'Review edits and command requests before approving.' },
   { id: 'plan', name: 'Plan only', detail: 'Inspect and discuss. Do not approve file changes.' },
   { id: 'auto-edit', name: 'Automatic edits', detail: 'Edit in a separate worktree. Other actions may still ask.' },

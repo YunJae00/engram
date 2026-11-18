@@ -22,11 +22,11 @@ async function readSessionState(): Promise<boolean> {
   }
 }
 
-export function isSessionWatchEnabled(): boolean {
+function isSessionWatchEnabled(): boolean {
   return sessionEnabled
 }
 
-export async function setSessionWatchEnabled(enabled: boolean): Promise<void> {
+async function setSessionWatchEnabled(enabled: boolean): Promise<void> {
   sessionEnabled = enabled
   await writeFile(SESSION_STATE_FILE(), JSON.stringify({ enabled })).catch(() => undefined)
   if (enabled && watchCtx) void startTimer(watchCtx)

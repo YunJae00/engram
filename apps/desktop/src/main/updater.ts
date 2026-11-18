@@ -14,7 +14,7 @@ const RELEASES_URL = 'https://github.com/YunJae00/engram/releases/latest'
 // would turn this back into a real self-update.
 const SELF_INSTALLS = process.platform !== 'darwin'
 
-export interface UpdateCheck {
+interface UpdateCheck {
   // 'available' means only that a newer version exists. On a platform that
   // installs for itself the bytes still have to arrive, and until they do
   // there is nothing to restart into — that is 'downloading'. Collapsing the
@@ -167,10 +167,3 @@ export async function installUpdateNow(beforeInstall: () => void): Promise<{ sta
   return { started: true }
 }
 
-export function updateDownloadPercent(): number {
-  return downloadPercent
-}
-
-export function pendingUpdateVersion(): string | null {
-  return latestSeen
-}

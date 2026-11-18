@@ -15,7 +15,7 @@ import { flog } from './flog.js'
 // sql.js (wasm — no native ABI to fight electron over). Timestamps are WebKit
 // epoch (1601-01-01, microseconds).
 
-export interface WebVisit {
+interface WebVisit {
   title: string
   host: string
   at: number

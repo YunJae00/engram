@@ -134,7 +134,7 @@ function hostFor(lane: string): DesktopHost {
   })
   return host
 }
-export async function desktopSources(): Promise<DesktopCapturerSource[]> {
+async function desktopSources(): Promise<DesktopCapturerSource[]> {
   if (!DesktopHost.available()) return []
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))
   const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 } })

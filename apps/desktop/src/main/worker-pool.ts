@@ -7,7 +7,7 @@ import { flog } from './flog.js'
 // How many Claude turns run at once, from the machine and its live load.
 
 const MB = 1024 * 1024
-export const WORKER_BYTES = 600 * MB
+const WORKER_BYTES = 600 * MB
 const MAX_BASE = 8
 
 export function workerBase(totalBytes: number, cores: number): number {
@@ -17,7 +17,7 @@ export function workerBase(totalBytes: number, cores: number): number {
 }
 
 export interface Sample { freePct: number; swapGrowthBytes: number; cpuBusyPct: number }
-export interface TargetState { target: number; healthy: number }
+interface TargetState { target: number; healthy: number }
 
 export function nextTarget(state: TargetState, base: number, s: Sample): TargetState {
   const clamp = (n: number): number => Math.min(base, Math.max(1, n))
@@ -60,7 +60,7 @@ export function idleBeyond(rows: { key: string; busy: boolean; lastUsed: number 
 
 export const waitLine = (korean: boolean): string => (korean ? '앞 작업 끝나면 바로 할게' : 'Starting as soon as the current job finishes')
 
-export interface SamplerDeps {
+interface SamplerDeps {
   platform?: NodeJS.Platform
   os?: Pick<typeof os, 'freemem' | 'totalmem' | 'loadavg' | 'cpus'>
   sysctl?: () => Promise<string>

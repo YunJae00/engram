@@ -81,7 +81,7 @@ async function renderNow(folder: string, file: string, kind: 'pdf' | 'png', size
 }
 
 // One hidden window at a time: an 8 GB machine does not render pages side by side.
-export function renderToBuffer(folder: string, file: string, kind: 'pdf' | 'png', size: { width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
+function renderToBuffer(folder: string, file: string, kind: 'pdf' | 'png', size: { width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
   const turn = queue.then(() => renderNow(folder, file, kind, size, signal))
   queue = turn.catch(() => undefined)
   return turn

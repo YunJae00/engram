@@ -35,10 +35,6 @@ export function quietVerdict(lane: string, app?: string): { verdict: 'covered' |
   }
   return { verdict: 'unknown' }
 }
-export function quietCovers(lane: string, app?: string): string | null {
-  const found = quietVerdict(lane, app)
-  return found.verdict === 'covered' ? found.title ?? null : null
-}
 function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare', result: QuietObservationDto, find?: string, full = true): void {
   const windows = covered.get(lane) ?? new Map<string, Coverage>()
   const previous = windows.get(binding.window)
@@ -95,7 +91,7 @@ async function request<T>(binding: DesktopBinding, method: DesktopMethod, args: 
   return result
 }
 
-export async function personBusyIn(binding: DesktopBinding, signal?: AbortSignal): Promise<boolean> {
+async function personBusyIn(binding: DesktopBinding, signal?: AbortSignal): Promise<boolean> {
   const state = await request<QuietStateDto>(binding, 'quietState', {}, signal)
   return state.foreground && state.idleMs < STILL_MS
 }
@@ -154,7 +150,7 @@ export async function quietPress(lane: string, app: string, snapshot: string, co
 // While an app is still answering it offers a way to stop it, usually where
 // its send control was; a status line that holds still is not an answer.
 const STOP_CONTROL = /^\s*(stop|cancel)(\s+(generating|response|responding|streaming|answer))?\s*$|^\s*((응답|답변|생성)\s*)?(중지|정지|멈추기)\s*$/i
-export const answeringControl = (observation: QuietObservationDto): string | undefined =>
+const answeringControl = (observation: QuietObservationDto): string | undefined =>
   observation.controls.find(control => control.enabled && !control.offscreen && control.can.press && STOP_CONTROL.test(control.name))?.name
 
 // Read text once, or keep reading until it has stopped changing for a while

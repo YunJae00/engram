@@ -85,6 +85,3 @@ export function runHistory(tasks: unknown, botId: string): RunEntry[] {
   return kept.sort((a, b) => b.time - a.time).slice(0, 20).map(k => k.entry)
 }
 
-export function formatRun(date: Date, lang: 'ko' | 'en'): string {
-  return new Intl.DateTimeFormat(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date)
-}

@@ -5,7 +5,7 @@ import { flog } from './flog.js'
 export type ClosingReason = 'budget' | 'turn-limit' | 'error' | 'empty' | 'restart'
 export type ClosingLang = 'en' | 'ko'
 type Turn = { role: string; text: string; at?: string; progress?: boolean }
-export interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string; log?: readonly { line: string }[]; team?: TaskTeam }
+interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string; log?: readonly { line: string }[]; team?: TaskTeam }
 
 export const ENDED_LOG = 'The turn ended without an answer.'
 const ENDED_KO = '답을 마치지 못하고 끝났어요.'

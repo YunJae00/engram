@@ -11,7 +11,7 @@ export interface CometMessage extends ChatTurnDto {
   work?: string[]
 }
 
-export function withWork(messages: CometMessage[], work: string[]): CometMessage[] {
+function withWork(messages: CometMessage[], work: string[]): CometMessage[] {
   if (!work.length) return messages
   const at = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   if (at < 0 || messages[at]!.work) return messages
@@ -46,7 +46,7 @@ export interface CometThread {
   window: string[]; coverage: string[]; unseenAppend: number
 }
 
-export interface CometThreadsSnapshot {
+interface CometThreadsSnapshot {
   selectedId: string | null
   threads: Readonly<Record<string, CometThread>>
 }
@@ -57,7 +57,7 @@ const EMPTY: CometThread = { unapplied: [], queued: [], messages: [], loaded: fa
 const CHANNEL_PREFIX = 'bot-'
 const WORK_LINES_KEPT = 64
 const TRANSCRIPT_CAP = 400
-export const PAGE_SIZE = 100
+const PAGE_SIZE = 100
 
 type PageRead = (id: string, before: number, limit: number) => Promise<ChatTurnDto[]>
 

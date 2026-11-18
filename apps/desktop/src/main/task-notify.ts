@@ -31,9 +31,6 @@ export function taskQueued(botId: string, pending: boolean): void {
   if (pending) queued.add(botId)
   else { queued.delete(botId); flushNotice(botId) }
 }
-export function discardTaskNotice(botId: string): void {
-  clearTimeout(held.get(botId)?.timer); held.delete(botId)
-}
 const HOLD_MS = 15 * 60_000
 // Notifications can appear on the lock screen; the words never carry task contents.
 const WORDS = {
@@ -91,7 +88,7 @@ const MILESTONE_MS = 10 * 60_000
 const reported = new Map<string, Set<string>>()
 const milestoneAt = new Map<string, number>()
 const hasReported = (m: TeamMember): boolean => m.state === 'done' || m.state === 'released' && !m.result?.startsWith('Failed:')
-export interface BotVoice { name: string | undefined; level: string | undefined; transcript: Said }
+interface BotVoice { name: string | undefined; level: string | undefined; transcript: Said }
 
 // A member handing its part to the lead is progress worth a word on a long job, at most once per ten minutes per task.
 export async function teamReported(tasks: readonly DelegatedTask[], voice: (botId: string) => Promise<BotVoice>, broadcast: (event: EngramEvent) => void, now = Date.now()): Promise<void> {

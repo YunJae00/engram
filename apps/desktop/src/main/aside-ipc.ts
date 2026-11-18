@@ -9,7 +9,7 @@ import { broadcast, tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { asides, STEER_CAP, turnGoals, workSoFar } from './turn-state.js'
 
-export interface AsideIpcDeps {
+interface AsideIpcDeps {
   paths: VaultPaths
   // A turn is running, or a task is still finishing, in this conversation.
   busy(channel: string): boolean
@@ -96,7 +96,7 @@ export const asideReply = async (...args: Parameters<typeof asideVoice>): Promis
 // c3a review r2 #2: "1년은 몇 초야?" said mid-work had no answer until the work ended (GROKBOT rule 2). A short general-knowledge
 // question (fast-lane quickQuestion, the same test and prompt as on an idle thread) is answered whole by the quick voice, at once.
 // Nothing when the voice is unsure (NONE), late or absent: the question then goes to the running work as before.
-export async function asideAnswer(voice: Voice | Promise<Voice>, workdir: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string | undefined> {
+async function asideAnswer(voice: Voice | Promise<Voice>, workdir: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string | undefined> {
   if (!quickQuestion(said)) return undefined
   const line = await voiceLine(voice, quickAnswerPrompt(said, korean), workdir, budgetMs)
   return fits(line, said, korean) ? line : undefined

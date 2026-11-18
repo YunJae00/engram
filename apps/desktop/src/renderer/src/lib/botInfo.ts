@@ -1,5 +1,5 @@
-export const INSTRUCTIONS_SAVE_MS = 500
-export const INSTRUCTIONS_MAX = 2000
+const INSTRUCTIONS_SAVE_MS = 500
+const INSTRUCTIONS_MAX = 2000
 
 export function capInstructions(text: string): string {
   const kept = text.slice(0, INSTRUCTIONS_MAX)

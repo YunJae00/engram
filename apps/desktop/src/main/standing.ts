@@ -7,7 +7,7 @@ import { dueNow, loadBots, markBotTaskRun, removeBotTask, scheduleOver, type Tas
 
 export const STANDING_TICK_MS = 60_000
 
-export interface StandingDeps {
+interface StandingDeps {
   paths: VaultPaths
   // The routine door. `blocked` is the person's own earlier decision for the
   // day (a rerun refused), which counts as run; any other refusal is a

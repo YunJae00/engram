@@ -12,7 +12,7 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
-export interface CodexVoiceSpec { rpc: CodexRpcFactory; env: NodeJS.ProcessEnv; config: string[]; cwd: string; model?: string }
+interface CodexVoiceSpec { rpc: CodexRpcFactory; env: NodeJS.ProcessEnv; config: string[]; cwd: string; model?: string }
 
 export class CodexVoice {
   private readonly rpc: CodexRpc
