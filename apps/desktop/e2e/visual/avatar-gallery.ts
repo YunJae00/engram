@@ -29,7 +29,7 @@ async function avatarCss(): Promise<string> {
   return `${orb}\n${avatar!.replace(/^@import[^;]+;\s*/m, '')}`
 }
 
-export function galleryCells(): Cell[] {
+function galleryCells(): Cell[] {
   const cells: Cell[] = []
   for (const size of SIZES) for (const state of STATES) {
     cells.push({ id: 'gallery-primary', primary: true, size, state })
@@ -39,7 +39,7 @@ export function galleryCells(): Cell[] {
   return cells
 }
 
-export async function railBg(theme: Theme): Promise<string> {
+async function railBg(theme: Theme): Promise<string> {
   const css = await readFile(new URL('styles.css', CSS_DIR), 'utf8')
   const start = css.indexOf(`[data-theme='${theme}'] {`)
   if (start < 0) throw new Error(`styles.css has no [data-theme='${theme}'] block`)

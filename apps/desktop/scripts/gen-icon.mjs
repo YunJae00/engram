@@ -10,7 +10,7 @@ const regular = master('icon.svg')
 const small = master('icon-small.svg')
 const SMALL_MAX = 48
 
-export const renderIcon = (px) => resample(px <= SMALL_MAX ? small : regular, px).data
+const renderIcon = (px) => resample(px <= SMALL_MAX ? small : regular, px).data
 
 function encodeIco(entries) {
   const header = Buffer.alloc(6)

@@ -59,7 +59,7 @@ async function gone(pid) {
   }
   assert.fail('The owned scanner remained alive after its owner stopped')
 }
-export function testDesktopScannerProtocol(desktop, output) {
+function testDesktopScannerProtocol(desktop, output) {
   assert.equal(process.platform, 'win32')
   const framework = path.join(process.env.WINDIR, 'Microsoft.NET/Framework64/v4.0.30319')
   const executable = path.join(output, 'ScannerProtocolCheck.exe')

@@ -89,7 +89,7 @@ export default async function adhocSign(context) {
 
 const CERTIFICATE_REQUIREMENT = 'certificate leaf = H"d07aaaf365c495145f4e6cbac17d0fb72f140dc4"'
 
-export function assertCertificateRequirement(target) {
+function assertCertificateRequirement(target) {
   const output = execFileSync('codesign', ['-d', '-r-', target], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   console.log(output.trim())
   if (!output.includes(CERTIFICATE_REQUIREMENT))

@@ -1,4 +1,4 @@
-export interface GoldenNote {
+interface GoldenNote {
   id: string
   date: string
   type?: string

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { deferred, near, type Check } from './spec.js'
 
 type Box = { left: number; right: number; width: number; height: number } | null
-export interface InfoPaneTools { probe(selector: string): Promise<Box>; shellOverflow(): Promise<number | null>; main: string; column: string; pill: string }
+interface InfoPaneTools { probe(selector: string): Promise<Box>; shellOverflow(): Promise<number | null>; main: string; column: string; pill: string }
 
 const PANE = '[data-testid="bot-info-pane"]'
 

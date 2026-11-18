@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-export type ProbeData = { intervals: number[]; longtasks: number[]; events: { name: string; duration: number }[]; keydowns: number; mutations: number; elapsedMs: number }
+type ProbeData = { intervals: number[]; longtasks: number[]; events: { name: string; duration: number }[]; keydowns: number; mutations: number; elapsedMs: number }
 type ProbeOptions = { mutationSelector?: string }
 type ProbeWindow = Window & { __perfProbe?: { stop: () => ProbeData } }
 
@@ -79,7 +79,7 @@ export const unpausedAnimations = (page: Page) => page.evaluate(() => document.g
   return target instanceof Element && !!target.closest('.comet-activity-icon, .bot-avatar, .comet-avatar') && a.playState !== 'paused'
 }).length)
 
-export type StreamWatch = { tokens: { at: number; text: string }[]; doneAt: number | null; doneText: string | null; settledAt: number | null }
+type StreamWatch = { tokens: { at: number; text: string }[]; doneAt: number | null; doneText: string | null; settledAt: number | null }
 
 export async function watchStream(page: Page, channel: string): Promise<void> {
   await page.evaluate((ch) => {

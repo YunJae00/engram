@@ -2,8 +2,8 @@ import { initVault, type Bot, type BotTurn } from 'core'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export const BOT_COUNT = 50
-export const TURNS_PER_BOT = 2000
+const BOT_COUNT = 50
+const TURNS_PER_BOT = 2000
 export const MOCK_REPLY_CHARS = 6000
 export const REPLY_SENTINEL = 'PERF-REPLY-END'
 
@@ -47,7 +47,7 @@ function assistantText(rand: () => number, n: number): string {
   return `> ${sentence(rand, 6)}\n\n1. ${sentence(rand, 5)}\n2. ${sentence(rand, 5)}\n\n| a | b |\n|---|---|\n| ${n} | ${Math.floor(rand() * 100)} |`
 }
 
-export function mockReply(): string {
+function mockReply(): string {
   const rand = prng(6000)
   let text = '# Streaming reply\n\n'
   for (let n = 0; text.length < MOCK_REPLY_CHARS; n++) text += assistantText(rand, n) + '\n\n'

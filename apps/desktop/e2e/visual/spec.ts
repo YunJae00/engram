@@ -12,7 +12,7 @@ export type StateName = typeof STATES[number]
 export const ROW_STATUSES: readonly RowStatus[] = ['pass', 'fail', 'missing', 'partial', 'deferred']
 export const CHECK_STATUSES: readonly CheckStatus[] = ['pass', 'fail', 'missing', 'deferred']
 
-export interface ChecklistRow { row: number; target: string; assertion: string; states: StateName[] }
+interface ChecklistRow { row: number; target: string; assertion: string; states: StateName[] }
 
 const SIDE: StateName[] = ['chat', 'sidebar-states']
 export const CHECKLIST: ChecklistRow[] = [
@@ -57,18 +57,18 @@ export function contrastRatio(fg: Rgba, layers: Rgba[]): number | null {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 }
 
-export function overflowCount(items: { scrollWidth: number; clientWidth: number; ellipsis: boolean }[]): number {
+function overflowCount(items: { scrollWidth: number; clientWidth: number; ellipsis: boolean }[]): number {
   return items.filter(item => !item.ellipsis && item.scrollWidth > item.clientWidth).length
 }
 
-export function radiusPx(computed: string, width: number, height: number): number | null {
+function radiusPx(computed: string, width: number, height: number): number | null {
   const m = /^(-?\d*\.?\d+)(px|%)$/.exec(computed.trim())
   if (!m) return null
   const n = Number(m[1])
   return m[2] === 'px' ? n : n / 100 * Math.min(width, height)
 }
 
-export function maxWidthStatus(maxWidth: string, width: number): 'pass' | 'fail' | 'missing' {
+function maxWidthStatus(maxWidth: string, width: number): 'pass' | 'fail' | 'missing' {
   if (maxWidth.trim() === 'none') return 'fail'
   const m = /^(-?\d*\.?\d+)px$/.exec(maxWidth.trim())
   if (!m || !Number.isFinite(width)) return 'missing'
@@ -95,18 +95,18 @@ const make = (what: string, selector: string, measured: number | string | null, 
 export function near(what: string, selector: string, value: number | null, target: number, tol: number, expected?: string): Check {
   return make(what, selector, value, expected ?? `${target}±${tol}`, value === null ? null : Math.abs(value - target) <= tol)
 }
-export function atLeast(what: string, selector: string, value: number | null, min: number, expected: string): Check {
+function atLeast(what: string, selector: string, value: number | null, min: number, expected: string): Check {
   return make(what, selector, value, expected, value === null ? null : value >= min)
 }
 
-export interface EllipsisStyle { textOverflow: string; overflowX: string }
-export interface EllipsisDescendant extends EllipsisStyle { visible: boolean; holdsPreviewText: boolean }
+interface EllipsisStyle { textOverflow: string; overflowX: string }
+interface EllipsisDescendant extends EllipsisStyle { visible: boolean; holdsPreviewText: boolean }
 const ellipsized = (s: EllipsisStyle) => s.textOverflow === 'ellipsis' && s.overflowX !== 'visible'
-export function hasEllipsis(node: EllipsisStyle, descendants: EllipsisDescendant[]): boolean {
+function hasEllipsis(node: EllipsisStyle, descendants: EllipsisDescendant[]): boolean {
   return ellipsized(node) || descendants.some(d => d.visible && d.holdsPreviewText && ellipsized(d))
 }
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
-export function previewHolder(ownText: string, wholeText: string): boolean {
+function previewHolder(ownText: string, wholeText: string): boolean {
   const whole = squash(wholeText)
   return whole !== '' && squash(ownText) === whole
 }

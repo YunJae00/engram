@@ -1,12 +1,12 @@
-export type Stat = { median: number; p95: number }
+type Stat = { median: number; p95: number }
 export type PartResult = { median: number | null; p95: number | null }
 export type MetricResult = { median: number; p95: number; referenceOnly?: true; parts: Record<string, PartResult> }
 export type MetricId = 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8'
 
 export const FRAME_MS = 1000 / 60
-export const DROPPED_FACTOR = 1.5
+const DROPPED_FACTOR = 1.5
 
-export const TARGETS: Record<MetricId, Record<string, number>> = {
+const TARGETS: Record<MetricId, Record<string, number>> = {
   P1: { interactiveMs: 2500 },
   P2: { cachedMs: 120, firstOpenMs: 250 },
   P3: { listMs: 80, firstRenderLongtasks: 0, scrollFrameMs: 20 },
@@ -16,7 +16,7 @@ export const TARGETS: Record<MetricId, Record<string, number>> = {
   P7: { cpuPct: 1, memoryMB: 400, rendererMB: 200 },
   P8: { frameMs: 20, svgElements: 1500, cpuOverIdlePp: 3, unpausedAfterBlur: 0 },
 }
-export const P1_MEDIAN_TARGET = 1800
+const P1_MEDIAN_TARGET = 1800
 
 export function stats(values: readonly number[]): Stat {
   if (!values.length || values.some(v => !Number.isFinite(v))) throw new Error(`stats needs finite values, got ${JSON.stringify(values)}`)
@@ -25,7 +25,7 @@ export function stats(values: readonly number[]): Stat {
   return { median, p95: sorted[Math.ceil(0.95 * n) - 1]! }
 }
 
-export const QUANTUM_MS: Record<string, number> = { eventMs: 8, maxEventMs: 8 }
+const QUANTUM_MS: Record<string, number> = { eventMs: 8, maxEventMs: 8 }
 
 export function passes(value: number | null, target: number, baseline: number | undefined, quantum = 0): boolean {
   if (value === null) return false
@@ -34,7 +34,7 @@ export function passes(value: number | null, target: number, baseline: number | 
   return value <= target && value <= baseline * 1.1 + quantum
 }
 
-export function unstable(prev: number, cur: number): boolean {
+function unstable(prev: number, cur: number): boolean {
   if (prev === 0) return cur !== 0
   return Math.abs(cur - prev) / prev > 0.15
 }

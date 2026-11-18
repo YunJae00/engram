@@ -13,7 +13,7 @@ export interface Outcome {
   error: string | null
 }
 
-export type GateAnswer = 'approve' | 'always' | 'cancel'
+type GateAnswer = 'approve' | 'always' | 'cancel'
 
 export class Person {
   private readonly trace: string[] = []

@@ -159,7 +159,7 @@ function hardenWebContents(contents: WebContents): void {
 
 const GROUND = { dark: '#1c1c1c', light: '#ffffff' } as const
 
-export function appGround(): string {
+function appGround(): string {
   return nativeTheme.shouldUseDarkColors ? GROUND.dark : GROUND.light
 }
 

@@ -9,7 +9,7 @@ import { CHECK_STATUSES, CHECKLIST, ROW_STATUSES, type RowStatus } from './spec.
 export const visualDir = (repoRoot: string) => join(repoRoot, 'tmp', 'visual')
 const WIDTH = 1280, HEIGHT = 800
 
-export function referencePath(repoRoot: string): string | null {
+function referencePath(repoRoot: string): string | null {
   const fromEnv = process.env['ENGRAM_VISUAL_REFERENCE']
   if (fromEnv) return existsSync(fromEnv) ? resolve(fromEnv) : null
   const local = join(repoRoot, 'tmp', 'plans', 'grokbot-reference.png')
@@ -23,7 +23,7 @@ export function referencePath(repoRoot: string): string | null {
 
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
 
-export function checkPng(buf: Buffer): void {
+function checkPng(buf: Buffer): void {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   if (buf.length < 8 || !buf.subarray(0, 8).equals(sig)) throw new Error('not a png')
   let at = 8, ihdr: Buffer | null = null, ended = false

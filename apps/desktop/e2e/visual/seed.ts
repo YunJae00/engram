@@ -2,7 +2,7 @@ import { formatAsk, initVault, type Bot, type BotTurn, type SidebarLayout } from
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export const PRIMARY_ID = 'vis-primary'
+const PRIMARY_ID = 'vis-primary'
 export const CHAT_ID = 'vis-chat'
 const CREATED = '2026-01-05T09:00:00.000Z'
 
