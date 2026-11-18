@@ -25,6 +25,7 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  { rules: { 'no-empty': ['error', { allowEmptyCatch: true }] } },
   {
     files: ['**/scripts/**/*.{mjs,ts}', '**/bin/**/*.mjs', '**/*.config.{js,mjs,ts}'],
     languageOptions: {
