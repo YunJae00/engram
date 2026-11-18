@@ -57,8 +57,10 @@ const noTurnStarting = (): Promise<void> => starting.size ? new Promise(resolve 
 // shortcut: a memory call cut this many times by starting turns is dropped (its turn's facts are not kept); queue it for an idle moment if facts go missing.
 export const MEMORY_YIELDS = 3
 /** Runs `call` once no person's turn is starting; a turn that starts while it runs cuts it, and it runs again later. Undefined when dropped. */
-export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T | undefined> {
-  for (let attempt = 0; attempt < MEMORY_YIELDS; attempt++) {
+// stack-15 (c15c review): `asked` is a turn where the person asked to keep something and nothing kept it yet: it still yields, but is never
+// dropped, so a "기억해" fact is not lost to busy turns.
+export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, asked = false): Promise<T | undefined> {
+  for (let attempt = 0; asked || attempt < MEMORY_YIELDS; attempt++) {
     await noTurnStarting()
     if (signal?.aborted) return undefined
     const cut = new AbortController(), stop = (): void => cut.abort()
@@ -128,6 +130,8 @@ export async function rememberTurn(deps: {
   // Addresses the turn read without failing.
   places?: string[]
   signal?: AbortSignal
+  /** The person asked to keep something on this turn and no tool kept it: this call is never dropped (yielding). */
+  asked?: boolean
 }): Promise<void> {
   if (!memorableTurn(deps.message, deps.answer)) return
   let known: string[] = []
@@ -149,7 +153,7 @@ export async function rememberTurn(deps: {
       // A short extraction on the small model: no long thinking, so it is quick and light next to a person's turn.
       effort: 'low',
       signal,
-      }), deps.signal)
+      }), deps.signal, deps.asked)
     })
     remembering = call.catch(() => undefined)
     const said = await call

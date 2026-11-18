@@ -1128,7 +1128,8 @@ export function withItems(data: MemberData, more: MemberData | undefined, judged
   // c14a r3: an entry found again is told apart by meaning where the round is judged (kindChecked's `inHand`); here only the same words are
   // the same entry. A shared page is not: two entries of one schedule often cite one page (r2 dropped the second one on it).
   const listed = new Set(judged ? [] : listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
-  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
+  // stack-15 (c15a r3 #1): a first-hand item that replaces second-hand ones (`instead`) is not the same words found again, even word for word.
+  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && (!known.has(f.text) || !!f.instead?.length))
   if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
   // c15a r3: a first-hand item judged the same entry as second-hand ones in hand stands where the first of them stood; they go.
