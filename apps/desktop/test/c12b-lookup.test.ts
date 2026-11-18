@@ -43,13 +43,22 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     expect(ipc).not.toMatch(/recheck: async/)
   })
 
-  it('with no verdict (a quick model that never answers, garbage, none at all) the rows reach the model as they came', async () => {
+  // c16b (stack15 "For cycle 16"): with no verdict on a counted ask, every row still reaches the model, but marked as not checked (never
+  // as a checked list), after one more judgment while time is left; with no quick model at all they go as they came.
+  it('with no verdict (a quick model that never answers, garbage) the rows reach the model marked unchecked; with none at all, as they came', async () => {
     const ask = '이번 달 부산 전시회 3개'
     const two = page(['- 부산 국제 사진전 — https://bexco.example/1 — x — 11월 20일', '- 해양 미술 특별전 — https://art.example/2 — x — 11월 22일'])
     const started = Date.now()
-    expect((await checked(two, ask, () => new Promise<string>(() => undefined), { judgeMs: 50 })).out).toBe(two)
+    const late = await checked(two, ask, () => new Promise<string>(() => undefined), { judgeMs: 50 })
     expect(Date.now() - started).toBeLessThan(1000)
-    expect((await checked(two, ask, 'fit: 1, 2')).out).toBe(two)
+    const garbage = await checked(two, ask, 'fit: 1, 2')
+    for (const one of [late, garbage]) {
+      expect(one.rows).toEqual(['https://bexco.example/1', 'https://art.example/2'])
+      expect(one.out).toContain('These rows could not be checked against the ask')
+      expect(one.out).not.toMatch(/They hold the|asked for were found|None of the/)
+      // One more judgment while time was left.
+      expect(one.prompts).toHaveLength(2)
+    }
     expect((await checked(two, ask)).out).toBe(two)
     // c15a: no count asked (the judge reads none): one call, and no row is left out by it.
     const plain = await checked(two, '부산 전시회 알려줘', '{"keep":[1],"asked":null}')

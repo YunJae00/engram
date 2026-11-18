@@ -1090,7 +1090,8 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   // wording (c12a round 2: "모임 두 개 알려줘" named no list word, and a lone listing page was shown as one meeting).
   if (!data || !data.facts.length || !write) return data
   // stack-12: one prompt with the lone lookup's item judge (item-check.ts); this caller reads keep, lists and names.
-  const raw = await judgedItems(brief.trim().slice(0, 400), [...inHand, ...data.facts].map(f => ({ text: f.text })), write, ms)
+  // c16b: the items in hand are the judge's context only, as in the lone lookup's later rounds.
+  const raw = await judgedItems(brief.trim().slice(0, 400), [...inHand, ...data.facts].map(f => ({ text: f.text })), write, ms, undefined, 1, inHand.length)
   if (!raw) return data
   // The verdict renumbered to the new items alone; a new item in a "same" group with one in hand is dropped.
   // c15a r3 (cause L): unless it is the group's first-hand report and the ones in hand only pass it on: then it takes their place
@@ -1104,13 +1105,15 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
     for (const n of group) if (!first || n !== top) again.add(n)
   }
   const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
-  const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
+  const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), holds: mine(raw.holds ?? []), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
   // c14a: an item the judge could not tell stays, as before for a teammate (there is no search loop here to look further); an item judged
   // a listing or aggregate is a page of several like one in `lists` (stack-13 "For cycle 14"): both go to the teammate's items rounds.
   const held = (n: number): boolean => said.keep.includes(n) || said.unsure.includes(n), several = (n: number): boolean => said.lists.includes(n) || said.listing.includes(n)
   // c15a (cause L): a fact passed on second-hand (a café post, a wiki) when another one reports it first-hand ranks after the first-hand ones.
-  const facts = firstHand(data.facts.flatMap((f, i) => held(i + 1) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}), ...(instead.has(i + 1) ? { instead: instead.get(i + 1)! } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n)).map(one => one.f)
+  // c16b (cause K2 (b)): a fact that itself states what the job wants (the figure, the state, the day) goes before ones only about it.
+  const judgedFacts = firstHand(data.facts.flatMap((f, i) => held(i + 1) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}), ...(instead.has(i + 1) ? { instead: instead.get(i + 1)! } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n))
+  const facts = (said.holds.length ? firstHand(judgedFacts, one => !said.holds.includes(one.n)) : judgedFacts).map(one => one.f)
   // None of the kind asked: said as a part that found nothing for it, with where it looked (partLines), never the wrong items.
   return facts.length ? { ...data, facts } : { ...data, facts: [], nothing: {} }
 }
