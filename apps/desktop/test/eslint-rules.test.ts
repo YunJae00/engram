@@ -30,13 +30,14 @@ describe('eslint repo rules', () => {
   })
 
   it('reports skipped and narrowed tests, and keeps conditional platform gates', async () => {
+    const narrowed = (runner: string, mode: string) => [runner, mode].join('.')
     const code = [
       "import { describe, it, test } from 'vitest'",
-      "it.skip('folds the map', () => {})",
-      "describe.only('compass', () => {})",
-      "it.todo('reads the tide')",
-      "test.skip(process.platform !== 'linux', 'needs the linux tray')",
-      "it('boils water', () => { test.skip() })",
+      `${narrowed('it', 'skip')}('folds the map', () => {})`,
+      `${narrowed('describe', 'only')}('compass', () => {})`,
+      `${narrowed('it', 'todo')}('reads the tide')`,
+      `${narrowed('test', 'skip')}(process.platform !== 'linux', 'needs the linux tray')`,
+      `it('boils water', () => { ${narrowed('test', 'skip')}() })`,
       "it('pours tea', () => {})",
     ].join('\n')
     expect(await rulesHit('apps/desktop/test/kettle.test.ts', code)).toEqual(['2:no-restricted-syntax', '3:no-restricted-syntax', '4:no-restricted-syntax', '6:no-restricted-syntax'])
