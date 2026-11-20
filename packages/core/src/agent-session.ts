@@ -6,6 +6,7 @@ import { withinBudget, toolBudgetMs, ToolOverBudget } from './tool-budget.js'
 import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
+import { ONE_BUBBLE_RULE } from './agent-voice.js'
 import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
 import { EARLIER_REPLIES_RULE, sessionRules } from './agent-session-shape.js'
@@ -264,7 +265,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ...resumeLines(options.resume),
       ...(desktop ? ['Prior-turn desktop observations are historical: use app_read for background accessibility work, or read_desktop/look_desktop for foreground work, before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       ...skillIndexLines(options.skills),
-      ...(kind === 'work' ? [EARLIER_REPLIES_RULE] : []), `Task: ${task}`, answerLanguageLine(task)].join('\n'),
+      ...(kind === 'work' ? [EARLIER_REPLIES_RULE] : []), `Task: ${task}`, answerLanguageLine(task), ONE_BUBBLE_RULE].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),
