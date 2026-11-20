@@ -126,7 +126,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
 
   it('pins the shape and the one move call in what the model is told; the chat turn reshapes nothing', async () => {
     expect(deskKind(F1_ASK)).toBe('tidy')
-    expect(DESK_NOTE).toContain('one line per folder and nothing else on it ("- PDF 6개"), no table')
+    expect(DESK_NOTE).toContain('then how many files went into each folder ("PDF 6개, 이미지 4개, 문서 3개예요."), no list and no table')
     expect(DESK_NOTE).toContain('move every file in ONE file_move call')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
     expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')

@@ -147,7 +147,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('ipc.ts')).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
     const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, kind: 'short', tools: [] })
     expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')
-    expect(rules).toContain('never a line of dashes to split messages')
+    expect(rules).toContain('not one per item, teammate or paragraph, no dash lines.')
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
     expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
     expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")

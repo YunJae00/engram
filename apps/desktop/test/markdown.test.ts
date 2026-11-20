@@ -173,6 +173,19 @@ describe('an answer as a few short messages', () => {
     expect(answerBubbles('Done.\n\n\n')).toEqual(['Done.'])
     expect(answerBubbles('')).toEqual([])
   })
+  it('keeps a reply written without a blank line as one bubble, and still draws its table and its list under the lead', () => {
+    const table = 'Three ferries run today.\n| Boat | Leaves |\n|---|---|\n| Gull | 07:40 |\n| Heron | 12:10 |'
+    expect(answerBubbles(table)).toEqual([table])
+    expect(answerHtml(table)).toContain('<p>Three ferries run today.</p>')
+    expect(answerHtml(table)).toContain('<table>')
+    const list = 'The shed is tidy now.\n- 6 oars\n- 4 life vests'
+    expect(answerBubbles(list)).toEqual([list])
+    expect(answerHtml(list)).toMatch(/<p>The shed is tidy now\.<\/p>\s*<ul>/)
+    const lines = 'Low tide is at noon.\nThe pier opens an hour before.'
+    expect(answerBubbles(lines)).toEqual([lines])
+    expect(answerHtml(lines)).toContain('Low tide is at noon.<br>The pier opens an hour before.')
+  })
+
   it('keeps file cards with the last bubble, one card per file', () => {
     const card = (name: string) => `[${name}](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-${name})`
     const words = 'The tide chart is ready.\n\nLow water is marked in blue.'

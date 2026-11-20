@@ -89,5 +89,5 @@ test('a code block\'s blank lines, and the blank lines before it, reach the pers
   expect(one.jobs).toHaveLength(1)
   expect(one.answer).toContain(CODE)
   expect(one.answer.startsWith('합계를 내는 코드예요.\n\n\n\n```python')).toBe(true)
-  expect(COLLEAGUE_CORE_RULE).toContain('A blank line starts a new message bubble')
+  expect(COLLEAGUE_CORE_RULE).toContain('A blank line is never spacing: it starts a new message bubble. Write the reply as ONE bubble with no blank line')
 })

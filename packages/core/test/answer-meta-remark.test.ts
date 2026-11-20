@@ -15,7 +15,7 @@ describe('answers never remark on their own rules', () => {
 
   it.each(flagSets)('the reply rule asks for blank-line messages and a Markdown link after each fact, with no address-line or dash-line format left (%#)', flags => {
     const reply = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
-    expect(reply).toContain('reply as two to four short messages, each started by a blank line')
+    expect(reply).toContain('reply as one message with no blank line in it, because a blank line starts a new message bubble')
     expect(reply).toContain('each fact from it is followed by a Markdown link to that page whose address is copied exactly from what a tool returned, never a site name alone')
     expect(reply).not.toMatch(/lines of only ---|its address alone on its own line|no emoji, icon or label/)
     expect(reply).toContain('the polite -요 form')
