@@ -19,3 +19,4 @@ run('node_modules/vitest/vitest.mjs', ['run', '--project', 'unit', ...(tests.len
 run('scripts/todo-scan.mjs')
 run('scripts/comment-scan.mjs')
 run('scripts/css-orphan-scan.mjs')
+run('scripts/check-rules-files.mjs')

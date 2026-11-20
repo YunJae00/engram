@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run comment-scan && pnpm run css-scan && pnpm run dead-scan",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run comment-scan && pnpm run css-scan && pnpm run dead-scan && node scripts/check-rules-files.mjs",
     "check:quick": "node scripts/check-quick.mjs",
     "verify": "node scripts/check-quick.mjs && pnpm --filter desktop build && node scripts/e2e-affected.mjs",
     "eval:quick": "cd apps/desktop && node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/eval-quick.mts",

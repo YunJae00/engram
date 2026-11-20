@@ -29,7 +29,7 @@ describe('eslint repo rules', () => {
     expect(await rulesHit('apps/desktop/src/main/garden-shed.ts', "export const lamp = /lantern/.test('x')\n")).toEqual([])
   })
 
-  it('reports skipped and narrowed tests, and keeps conditional platform gates', async () => {
+  it('reports skipped, narrowed and conditionally skipped tests in a new test file', async () => {
     const narrowed = (runner: string, mode: string) => [runner, mode].join('.')
     const code = [
       "import { describe, it, test } from 'vitest'",
@@ -38,8 +38,22 @@ describe('eslint repo rules', () => {
       `${narrowed('it', 'todo')}('reads the tide')`,
       `${narrowed('test', 'skip')}(process.platform !== 'linux', 'needs the linux tray')`,
       `it('boils water', () => { ${narrowed('test', 'skip')}() })`,
+      `${narrowed('it', 'skipIf')}(process.platform === 'win32')('rings the bell', () => {})`,
+      `${narrowed('describe', 'skipIf')}(!process.env.HARBOR)('harbor', () => {})`,
       "it('pours tea', () => {})",
     ].join('\n')
-    expect(await rulesHit('apps/desktop/test/kettle.test.ts', code)).toEqual(['2:no-restricted-syntax', '3:no-restricted-syntax', '4:no-restricted-syntax', '6:no-restricted-syntax'])
+    expect(await rulesHit('apps/desktop/test/kettle.test.ts', code)).toEqual(['2:no-restricted-syntax', '3:no-restricted-syntax', '4:no-restricted-syntax', '5:no-restricted-syntax', '6:no-restricted-syntax', '7:no-restricted-syntax', '8:no-restricted-syntax'])
+  })
+
+  it('keeps the conditional skips of the files that have one today, and nothing else there', async () => {
+    const narrowed = (runner: string, mode: string) => [runner, mode].join('.')
+    const code = [
+      "import { it, test } from 'vitest'",
+      `${narrowed('test', 'skip')}(process.platform !== 'darwin', 'needs the dock')`,
+      `${narrowed('it', 'skipIf')}(process.platform === 'win32')('rings the bell', () => {})`,
+      `${narrowed('it', 'skip')}('folds the map', () => {})`,
+      `${narrowed('it', 'only')}('reads the tide', () => {})`,
+    ].join('\n')
+    expect(await rulesHit('apps/desktop/test/app-icon.test.ts', code)).toEqual(['4:no-restricted-syntax', '5:no-restricted-syntax'])
   })
 })

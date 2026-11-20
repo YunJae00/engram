@@ -14,12 +14,8 @@ export function commentLines(file, text) {
   const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : /\.(c|m)?js$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind), seen = new Set(), found = []
   const lineOf = pos => source.getLineAndCharacterOfPosition(pos).line + 1
-  let licenseSeen = false
-  const allowed = (comment, pos) => {
-    if (DIRECTIVE.test(body(comment))) return true
-    if (licenseSeen || lineOf(pos) > 5 || !LICENSE.test(comment)) return false
-    return (licenseSeen = true)
-  }
+  const header = ts.getLeadingCommentRanges(text, ts.getShebang(text)?.length ?? 0)?.[0]
+  const allowed = (comment, pos) => DIRECTIVE.test(body(comment)) || (pos === header?.pos && LICENSE.test(comment))
   const visit = node => {
     if (node.kind !== ts.SyntaxKind.JsxText)
       for (const ranges of [ts.getLeadingCommentRanges(text, node.pos), ts.getTrailingCommentRanges(text, node.pos)])

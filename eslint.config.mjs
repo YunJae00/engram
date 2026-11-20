@@ -98,15 +98,60 @@ const koreanInCode = {
 const SKIPPED = 'Never skip or narrow tests. Update them to the spec.'
 const TEST_API = "/^(it|test|describe)$/"
 
+const SKIP_FORMS = [
+  { selector: `MemberExpression[object.name=${TEST_API}][property.name=/^(only|todo|fixme)$/]`, message: SKIPPED },
+  { selector: `MemberExpression[object.name=${TEST_API}][property.name='skip']:not(.callee)`, message: SKIPPED },
+  { selector: 'CallExpression[callee.name=/^x(it|describe|test)$/]', message: SKIPPED },
+]
+const PLAIN_SKIP_CALLS = [
+  { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.length=0]`, message: SKIPPED },
+  { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.0.type=/^(Literal|TemplateLiteral)$/]`, message: SKIPPED },
+]
+const CONDITIONAL_SKIP_TODAY = [
+  'apps/desktop/e2e/account-usage-live.spec.ts',
+  'apps/desktop/e2e/activity-ui.spec.ts',
+  'apps/desktop/e2e/app-work-live.spec.ts',
+  'apps/desktop/e2e/background-conversation-live.spec.ts',
+  'apps/desktop/e2e/browser-focus.spec.ts',
+  'apps/desktop/e2e/collection-live.spec.ts',
+  'apps/desktop/e2e/developers-live.spec.ts',
+  'apps/desktop/e2e/evidence-live.spec.ts',
+  'apps/desktop/e2e/native-browser.spec.ts',
+  'apps/desktop/e2e/packaged-app.spec.ts',
+  'apps/desktop/e2e/perf/bots-perf.spec.ts',
+  'apps/desktop/e2e/renderer-idle.spec.ts',
+  'apps/desktop/e2e/session-journey-live.spec.ts',
+  'apps/desktop/e2e/stop-resume-live.spec.ts',
+  'apps/desktop/e2e/visual/avatar-art.spec.ts',
+  'apps/desktop/e2e/visual/bots-visual.spec.ts',
+  'apps/desktop/test/activity-script.test.ts',
+  'apps/desktop/test/app-icon.test.ts',
+  'apps/desktop/test/chat-attachments.test.ts',
+  'apps/desktop/test/engine-cloud.test.ts',
+  'apps/desktop/test/file-work-host.test.ts',
+  'apps/desktop/test/general-capability.test.ts',
+  'apps/desktop/test/office-document-live.test.ts',
+  'apps/desktop/test/office-script.test.ts',
+  'apps/desktop/test/render-file.test.ts',
+  'orchestration/lib/launch-cloud.test.mjs',
+  'packages/core/test/file-work.test.ts',
+  'packages/core/test/spawn-argv-guard.test.ts',
+]
+const TEST_FILES = ['**/*.{test,spec}.{ts,tsx,mts,cts,js,mjs,cjs}']
+
 const noSkippedTests = {
-  files: ['**/*.{test,spec}.{ts,tsx,mts,cts,js,mjs,cjs}'],
+  files: TEST_FILES,
+  rules: { 'no-restricted-syntax': ['error', ...SKIP_FORMS, ...PLAIN_SKIP_CALLS] },
+}
+
+const noConditionalSkips = {
+  files: TEST_FILES,
+  ignores: CONDITIONAL_SKIP_TODAY,
   rules: {
     'no-restricted-syntax': ['error',
-      { selector: `MemberExpression[object.name=${TEST_API}][property.name=/^(only|todo|fixme)$/]`, message: SKIPPED },
-      { selector: `MemberExpression[object.name=${TEST_API}][property.name='skip']:not(.callee)`, message: SKIPPED },
-      { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.length=0]`, message: SKIPPED },
-      { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.0.type=/^(Literal|TemplateLiteral)$/]`, message: SKIPPED },
-      { selector: 'CallExpression[callee.name=/^x(it|describe|test)$/]', message: SKIPPED },
+      ...SKIP_FORMS,
+      { selector: `MemberExpression[object.name=${TEST_API}][property.name='skipIf']`, message: SKIPPED },
+      { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip']`, message: SKIPPED },
     ],
   },
 }
@@ -150,4 +195,5 @@ export default tseslint.config(
   },
   koreanInCode,
   noSkippedTests,
+  noConditionalSkips,
 )

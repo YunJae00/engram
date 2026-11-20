@@ -19,6 +19,7 @@ ds-bundle/
 
 .claude/
 CLAUDE.md
+!/CLAUDE.md
 KICKOFF.md
 apps/desktop/bundle-cache/
 .claude/worktrees/

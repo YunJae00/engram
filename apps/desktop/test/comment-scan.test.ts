@@ -34,6 +34,14 @@ describe('comment-scan', () => {
     expect(commentLines('twice.ts', twice)).toEqual([2])
   })
 
+  it('reports a license-looking comment that is not the first thing in the file', () => {
+    expect(commentLines('trail.ts', 'const lantern = 1 // Copyright the lamplighters')).toEqual([1])
+    expect(commentLines('inline.ts', 'const wick = /* SPDX-License-Identifier: MIT */ 2')).toEqual([1])
+    expect(commentLines('second.ts', ["import { a } from './a'", '// Copyright the candle guild', 'export { a }'].join('\n'))).toEqual([2])
+    expect(commentLines('below.ts', ['/* SPDX-License-Identifier: MIT */', 'export const flame = 3 // Copyright again'].join('\n'))).toEqual([2])
+    expect(commentLines('plain.ts', ['// just a note at the top', 'export const ember = 4'].join('\n'))).toEqual([1])
+  })
+
   it('allows tool pragmas and reports block comments with their line', () => {
     const text = [
       'import(/* @vite-ignore */ url)',

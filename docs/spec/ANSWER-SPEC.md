@@ -28,7 +28,7 @@ Built by one function. Nothing is added elsewhere.
 - The team: each teammate's name, role, and what they are doing right now, from live state.
 - Live jobs in this thread: their parts, who has each, state, due time, hand-backs so far.
 - The job's ask card when writing a result (section 6).
-- Source table: every page and search row a tool returned in this job, numbered [1], [2] … with title, date and a short excerpt.
+- Source table: every page and search row a tool returned in this job, with title, address, date and a short excerpt. The model copies an address from it when it links a source.
 - Files the person named or the job created, by display name.
 It never sees ids, file-system paths, tool-internal states or other teammates' raw logs.
 
@@ -46,18 +46,17 @@ One menu for every lead step. The model picks. The host makes no tool call for t
 - send / post / message / delete-file / buy: these go through the approval gate (section 9).
 
 ## 5. What the host may do to a draft
-Exactly these four things. Anything else is a spec violation.
+Exactly these three things. Anything else is a spec violation.
 1. Stream it into the thread as it arrives.
-2. Replace source tags [n] with a link to source n in the job's source table. A tag with no source is removed, the sentence stays.
-3. Split it into bubbles where the model wrote a blank line between bubbles.
-4. Attach a file card for each file a tool created or changed in this job.
-The host never writes, deletes, reorders, rewords or templates a sentence. It runs no model call that reads the draft.
+2. Split it into bubbles where the model wrote a blank line between bubbles.
+3. Attach a file card for each file a tool created or changed in this job.
+The host never writes, deletes, reorders, rewords or templates a sentence, and never adds, removes or changes a link. A source is a normal Markdown link the model writes itself, with an address copied from its source table. The host runs no model call that reads the draft.
 Two fixed lines are the only host text, from the locale catalog: the stop line ("멈췄어요.") and the sign-in/usage line when no model can answer.
 
 ## 6. Jobs, teammates and the one result
 - Parts run at the same time. A handoff (`then`) starts the next part when the first hands back, with no input from the person.
 - A teammate runs the same loop as the lead, as itself (name, role, memory), with the reading tools and hand_back. It never writes to the person's thread.
-- hand_back({items:[{text, sources:[n], date?}], status: done|partial|nothing}) is the teammate's last call. The tool keeps the teammate working when the part is not finished and time is left:
+- hand_back({items:[{text, sources:[address], date?}], status: done|partial|nothing}) is the teammate's last call. The tool keeps the teammate working when the part is not finished and time is left:
   - fewer items than `want`, or status nothing, while more than one search round fits before due → the tool returns "keep looking" with the time left, and the teammate searches again with new words taken from the person's ask (broader terms, other sources, the asked period).
   - an item with `period` set and a date outside it is refused with the reason.
   - items without a source are refused.
@@ -78,7 +77,7 @@ Two fixed lines are the only host text, from the locale catalog: the stop line (
 ## 8. Voice
 - Korean in a Korean thread. 해요체 only. No 반말, no 합쇼체 mix.
 - A person on a messenger: short bubbles, warm, plain. At most 3 bubbles per turn (ack + 2).
-- Answer first. A table when comparing. A source as a link, never a source name alone.
+- Answer first. A table when comparing. A source as a Markdown link the model writes itself, with the page's address copied exactly; never a source name alone.
 - No process narration, no step stream, no recap of steps, no "요청하신 작업이 완료되었습니다", no "무엇을 도와드릴까요", at most one 죄송.
 - Progress: at most one short line when a part the person cares about finishes ("셋 중 둘은 끝났어요.").
 - Decide, don't ask. When a choice is open, make it, say it in a few words, and offer at most one short next step.
