@@ -17,12 +17,12 @@ const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMem
   return m
 }
 const src = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8')
-const CHECK_FILES: string[] = ['item-check.ts']
+const CHECK_FILES: string[] = []
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 
 describe('stack-12 merge: one item judge', () => {
-  it('no item judge reads a draft or a hand-back: the one check file left is the teammate\'s own search, wired only in the team runner, and a teammate\'s lines reach the lead as written', () => {
+  it('no item judge reads a draft or a hand-back: no check file is left in core, the teammate\'s own search lives in its own file and is wired only in the team runner, and a teammate\'s lines reach the lead as written', () => {
     expect(readdirSync(new URL('../../../packages/core/src/', import.meta.url)).filter(file => /check/.test(file)).sort()).toEqual(CHECK_FILES)
     for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing/)
     for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toContain('checkedSearch')

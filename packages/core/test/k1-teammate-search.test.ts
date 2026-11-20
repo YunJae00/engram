@@ -1,3 +1,4 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { checkedSearch, type AgentTool } from '../src/index.js'
 
@@ -49,5 +50,15 @@ describe('K1 round 2: a teammate\'s search stays the search it had at base', () 
     const stopped = searching({ hives: page('hives', [row('Hive care', 'https://bees.example/care', 'spring')], 0) })
     expect(await checkedSearch(stopped, { ask: () => 'three items about beekeeping', due: later, read: async url => { read.push(url); return 'x' } }).run({ query: 'hives' }, { task: '', signal: stop.signal })).toBe(page('hives', [row('Hive care', 'https://bees.example/care', 'spring')], 0))
     expect(read).toEqual([])
+  })
+})
+
+describe('K1 round 3: the item check file is gone and the teammate search keeps its own file', () => {
+  it('core has no item-check, lead-check or written-check file, and the wrapper the runner uses comes from teammate-search alone', () => {
+    const dir = new URL('../src/', import.meta.url), files = readdirSync(dir).filter(file => file.endsWith('.ts'))
+    for (const gone of ['item-check.ts', 'lead-check.ts', 'written-check.ts']) expect(existsSync(new URL(gone, dir)), gone).toBe(false)
+    expect(files.filter(file => /\bfunction checkedSearch\b/.test(readFileSync(new URL(file, dir), 'utf8')))).toEqual(['teammate-search.ts'])
+    expect(files.filter(file => readFileSync(new URL(file, dir), 'utf8').includes('item-check'))).toEqual([])
+    expect(readFileSync(new URL('index.ts', dir), 'utf8')).toContain("export { checkedSearch, setJudgeLog } from './teammate-search.js'")
   })
 })

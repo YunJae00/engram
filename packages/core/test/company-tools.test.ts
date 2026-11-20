@@ -1260,4 +1260,3 @@ test('c9b r2: assign stores each teammate\'s own voice on their part and on the 
   expect(m.voice).toBe(voiceOf(kim))
   expect(m.then?.voice).toBe(voiceOf(park))
 })
-
