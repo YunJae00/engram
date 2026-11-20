@@ -576,6 +576,23 @@ it('two inputs under one name that core attached are named apart, and reading th
   expect(again.answer).toBe(shown(result))
   expect(cards(again)).toEqual([])
 })
+it('two price lists that core carded under one name leave delivery under names of their own, and the answer keeps its words', async () => {
+  const { outputCards } = await import('../../../packages/core/src/agent-session-result.js')
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(join(cwd, 'spring'), { recursive: true }); await mkdir(join(cwd, 'autumn'), { recursive: true })
+  await writeFile(join(cwd, 'spring', 'list.txt'), 'tulips 4\n'); await writeFile(join(cwd, 'autumn', 'list.txt'), 'dahlias 7\n')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const made = async (fromPath: string): Promise<TurnStep> => ({ tool: 'file_create_copy', args: { name: 'prices.txt', fromPath }, observation: await copy.run({ name: 'prices.txt', fromPath }, context) })
+  const steps = [await made(join(cwd, 'spring', 'list.txt')), await made(join(cwd, 'autumn', 'list.txt'))]
+  const seeded = outputCards(steps as unknown as Parameters<typeof outputCards>[0], 'Both price lists are ready.', cwd)
+  expect(seeded.map(card => card.name)).toEqual(['prices.txt', 'prices.txt'])
+  const result = { answer: 'Both price lists are ready.', files: [...seeded], steps }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  expect(result.answer).toBe('Both price lists are ready.')
+  expect(cards(result).map(card => card.name)).toEqual(['prices.txt', 'prices-2.txt'])
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['tulips 4\n', 'dahlias 7\n'])
+  expect(result.steps.map(step => step.args['name'])).toEqual(['prices.txt', 'prices-2.txt'])
+})
 it('two files rendered under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const rendered = async (text: string): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', source: `${text}.md` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
