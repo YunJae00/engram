@@ -17,6 +17,7 @@ it('completes a file workflow through the real session and storage tools without
   try {
     const path = join(root, 'source.json')
     await writeFile(path, '{"count":2,"untouched":"keep"}')
+    let draft = ''
     const engine = new Planner(async (job) => {
       const invoke = async (name: string, args: Record<string, unknown> = {}) => {
         const result = await job.tools.find((tool) => tool.name === name)!.run(args)
@@ -30,11 +31,13 @@ it('completes a file workflow through the real session and storage tools without
       const source = await json('file_read', { path })
       const output = await json('file_create_copy', { name: 'revised.json', sourcePath: path, expectedSha256: source.sha256, content: '{"count":3,"untouched":"keep"}' })
       expect(JSON.parse(output.content)).toEqual({ count: 3, untouched: 'keep' })
-      return { answer: `Created and verified a separate copy: ${output.link}. Original unchanged.` }
+      draft = `Created and verified a separate copy of ${String(output.content).length} characters. Original unchanged.`
+      return { answer: draft }
     })
     const result = await runToolSession({ engine, workdir: root as EngineCwd, tools: fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => true }) }, 'Revise the count in a separate file copy.')
     expect(result.incomplete).toBeUndefined()
-    expect(result.answer).toMatch(/\[revised.json\]\(engram-artifact:/)
+    expect(result.answer).toBe(draft)
+    expect(result.files).toEqual([{ name: 'revised.json', href: expect.stringMatching(/^[0-9a-f-]{36}-revised\.json$/) }])
     expect(result.steps.find((step) => step.tool === 'file_create_copy')!.args).not.toHaveProperty('content')
     expect(JSON.parse(await readFile(path, 'utf8')).count).toBe(2)
   } finally { await rm(root, { recursive: true, force: true }) }

@@ -227,6 +227,7 @@ export interface ChatTurnDto {
   error?: boolean
   errorKind?: string
   provider?: string
+  files?: import('core').FileCard[]
 }
 
 export interface DelegatedTaskDto {

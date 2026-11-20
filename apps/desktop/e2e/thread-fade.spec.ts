@@ -75,27 +75,24 @@ test('qa143 S24: with no title pill, scrolled messages are cut off at the thread
   expect(first!.y).toBeGreaterThanOrEqual(edges.threadTop)
 })
 
-test('qa143 S04/S14: one answer is one bubble, and a file made in a turn is carded once', async () => {
+test('qa143 S04/S14: an answer is one bubble per block the model set apart, with no rule or heading between, and a file made in a turn is carded once', async () => {
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Card Bot' }))
   const at = new Date().toISOString(), link = '[deck.pptx](engram-artifact:deck.pptx)'
   await appendBotTurn(paths, bot.id, { role: 'user', text: 'Make the deck', at })
-  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `Made the deck.\n\n${link}\n\n---\n\nFour slides, cover first.`, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `Made the deck.\n\n${link}\n\nFour slides, cover first.`, at })
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: `Read it again.\n\n${link}`, at })
-  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `All checked.\n---\nNothing to fix.\n\n\`\`\`replies\nThanks\nAdd a slide\n\`\`\`\n\n${link}`, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `All checked.\n\nNothing to fix.\n\n\`\`\`replies\nThanks\nAdd a slide\n\`\`\`\n\n${link}`, at })
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
   await page.getByTestId(`bot-${bot.id}`).click()
   const answers = page.locator('[data-testid="bots-view"] .bots-thread .bubble-msg.assistant')
-  await expect(answers).toHaveCount(3)
-  await expect(answers.nth(0)).toContainText('Made the deck.')
-  await expect(answers.nth(0)).toContainText('Four slides, cover first.')
-  await expect(answers.nth(0).locator('h2, hr')).toHaveCount(0)
-  await expect(answers.nth(2)).toContainText('Nothing to fix.')
+  await expect(answers).toHaveText(['Made the deck.', 'Four slides, cover first.', 'Read it again.', 'All checked.', /Nothing to fix\./])
+  await expect(answers.locator('h2, hr')).toHaveCount(0)
   await expect(page.locator('[data-testid="bots-view"] [data-testid="answer-file"]')).toHaveCount(1)
-  await expect(answers.nth(2).getByTestId('answer-file')).toHaveCount(1)
+  await expect(answers.nth(4).getByTestId('answer-file')).toHaveCount(1)
 })
 
-test('qa143 S32: an answer its re-check says again is one bubble, and a distinct reply stays', async () => {
+test('qa143 S32: an answer its re-check says again is shown once, and a distinct reply stays', async () => {
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Recheck Bot' }))
   const at = new Date().toISOString()
   const answer = 'Here are the draft numbers next to ours.\n\n| Item | Draft |\n| --- | --- |\n| Price | 12,000 |\n| Units | 300 |\n\nFill in the empty cells and I will redo the totals.'
@@ -107,7 +104,7 @@ test('qa143 S32: an answer its re-check says again is one bubble, and a distinct
   await expect(page.getByTestId('shell')).toBeVisible()
   await page.getByTestId(`bot-${bot.id}`).click()
   const answers = page.locator('[data-testid="bots-view"] .bots-thread .bubble-msg.assistant')
-  await expect(answers).toHaveCount(2)
+  await expect(answers).toHaveCount(5)
   await expect(answers.nth(0)).toHaveText('Reading the sheet first.')
   await expect(answers.nth(1)).toContainText('found no mismatch')
   await expect(page.locator('[data-testid="bots-view"] .bots-thread').getByText('Fill in the empty cells')).toHaveCount(1)

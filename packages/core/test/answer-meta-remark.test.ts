@@ -13,13 +13,11 @@ describe('answers never remark on their own rules', () => {
     expect(rules).toContain('Never say the person asked for something they did not ask for.')
   })
 
-  it.each(flagSets)('scopes the emoji limit to the page address line (%#)', flags => {
-    const lines = sessionRules(flags).split('\n').filter(l => /emoji/i.test(l))
-    const address = lines.find(l => l.includes('fenced block whose language is replies'))!
-    expect(address).toContain('its address alone on its own line with no emoji, icon or label beside that address')
-    expect(address).toContain('this limit is about the address line only, not the rest of the answer')
-    expect(address).not.toContain('no emoji, no icon, no label around it')
-    expect(address).toContain('the polite -요 form')
-    expect(address).toContain('separated by lines of only ---')
+  it.each(flagSets)('the reply rule asks for blank-line messages and a Markdown link after each fact, with no address-line or dash-line format left (%#)', flags => {
+    const reply = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(reply).toContain('reply as two to four short messages, each started by a blank line')
+    expect(reply).toContain('each fact from it is followed by a Markdown link to that page whose address is copied exactly from what a tool returned, never a site name alone')
+    expect(reply).not.toMatch(/lines of only ---|its address alone on its own line|no emoji, icon or label/)
+    expect(reply).toContain('the polite -요 form')
   })
 })

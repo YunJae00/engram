@@ -1,37 +1,37 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { answerAlone } from '../src/main/first-line.js'
-import { shareReady, withoutSameDecisions } from '../src/main/desk-lane.js'
+import { CHOICE_RULE, runComet, type Engine } from 'core'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import * as firstLine from '../src/main/first-line.js'
+import * as desk from '../src/main/desk-lane.js'
 
 const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
+const posted = async (ask: string, draft: string, options: NonNullable<Parameters<typeof runComet>[2]> = {}): Promise<string> => (await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, ask, { guided: false, modelHint: 'smart', ...options })).answer
 
-it('stack-7: the desk corrections run only for a desk answer: the desk kind exists only outside the team lane and the lookup lane (c11b: asState went)', () => {
+it('stack-7: no desk correction runs on any answer: the desk kind still exists only outside the team lane and the lookup lane, and the turn posts the model\'s words (c11b: asState went)', () => {
   expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
   expect(ipc).toContain("const short = kind === 'ask' || kind === 'question'")
-  for (const line of [
-    'if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)',
-    "if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(meant, result.answer)",
-    "if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)",
-  ]) expect(ipc).toContain(line)
+  expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
   expect(ipc).not.toContain('asState(')
-  expect(ipc.match(/withoutSameDecisions\(/g)).toHaveLength(1)
-  expect(ipc.match(/= answerAlone\(/g)).toHaveLength(2)
+  expect(ipc).not.toMatch(/withoutSameDecisions\(|answerAlone\(|result\.answer = (?!answered)/)
+  for (const gone of ['withoutSameDecisions', 'shareReady', 'onlyAsked', 'tidyCounts', 'withOffer']) expect(gone in desk, gone).toBe(false)
+  expect('answerAlone' in firstLine).toBe(false)
 })
 
-it('stack-7: what the corrections would do to a team result or a lookup answer if they ever reached one stays visible here (c11b)', () => {
+it('stack-7: a team result and a lookup answer reach the thread as written, whatever lane they came through (c11b)', async () => {
   const team = '둘 다 찾아봤어요.\n\n지민: 노션이 AI 회의록을 냈어요. [노션](https://notion.so/a)\n\n서연: 슬랙은 허들 요약을 냈어요. [슬랙](https://slack.com/b)'
-  expect(answerAlone('11월 16일 종가 기준 155.26달러예요.')).toBe('11월 16일 종가 기준 155.26달러예요.')
-  expect(withoutSameDecisions('노션, 슬랙 신기능 조사해줘', team)).toBe(team)
-  expect(answerAlone(team)).toBe(team)
+  expect(await posted('엔비디아 주식 마감 가격은?', '11월 16일 종가 기준 155.26달러예요.', { lookup: true, maxCalls: 4 })).toBe('11월 16일 종가 기준 155.26달러예요.')
+  expect(await posted('노션이랑 슬랙 새로 나온 것 살펴봐', team, { lookup: true, maxCalls: 8 })).toBe(team)
+  expect(await posted('노션이랑 슬랙 새로 나온 것 살펴봐', team)).toBe(team)
+  expect(COLLEAGUE_CORE_RULE).toContain('A decision or item is listed once, never again under a second heading.')
 })
 
-it('stack-7: a share-ready summary has one lead: the model\'s own past-tense lead stands, and the host\'s is added only when there is none', () => {
+it('stack-7: a share-ready summary has the lead its writer gave it: the host adds none and cuts none, and the lead is asked for in the rules', async () => {
   const ask = 'fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘'
   const body = '## 결정사항\n\n- 온보딩 화면은 B안으로 가요.\n\n## 할 일\n\n- 한서연 — 시안 확정, 기한: 11월 20일\n\n## 미결\n\n- 결제 모듈 후보는 다음 회의에서 정해요.'
   const own = '결정사항과 할 일, 미결 위주로 짧게 정리했어요.'
-  expect(shareReady(ask, `회의록 내용부터 다듬을게요.\n\n${own}\n\n${body}`)).toBe(`${own}\n\n${body}`)
-  expect(shareReady(ask, `팀에 공유하기 좋게 정리할게요.\n\n${body}`)).toBe(`결정사항이랑 할 일 위주로 짧게 정리했어요.\n\n${body}`)
-  expect(shareReady(ask, body)).toBe(`결정사항이랑 할 일 위주로 짧게 정리했어요.\n\n${body}`)
-  expect(shareReady(ask, `${own}\n\n${body}`)).toBe(`${own}\n\n${body}`)
+  for (const draft of [`회의록 내용부터 다듬을게요.\n\n${own}\n\n${body}`, `공유용으로 손볼게요.\n\n${body}`, body, `${own}\n\n${body}`]) expect(await posted(ask, draft)).toBe(draft)
+  expect(CHOICE_RULE).toContain('decide the way a sensible colleague would and say in a few words what you chose')
+  expect(COLLEAGUE_CORE_RULE).toContain('The answer is the first line: no opening line about what you are about to do')
 })

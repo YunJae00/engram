@@ -74,20 +74,24 @@ export function suggestedReplies(text: string, lang?: 'ko' | 'en'): string[] {
 }
 
 export function answerBubbles(text: string): string[] {
-  const parts: string[][] = [[]]
+  const blocks: string[][] = [[]]
   let fence: string | undefined
   for (const line of answerText(text).split('\n')) {
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (marker && !fence) fence = marker
     else if (marker && fence && marker[0] === fence[0] && marker.length >= fence.length && /^\s*(?:`+|~+)\s*$/.test(line)) fence = undefined
-    if (!fence && /^\s*-{3,}\s*$/.test(line)) { parts.push([]); continue }
-    parts[parts.length - 1]!.push(line)
+    if (!fence && !line.trim()) blocks.push([])
+    else blocks[blocks.length - 1]!.push(line)
   }
-  const bubbles = parts.map((part) => part.join('\n').trim()).filter(Boolean)
-  return bubbles.length ? bubbles : [answerText(text)]
+  return blocks.map(block => block.join('\n')).filter(block => block.trim()).reduce<string[]>((out, block) => {
+    if (out.length && !answerFiles(block).text.trim()) out[out.length - 1] += `\n\n${block}`
+    else out.push(block)
+    return out
+  }, [])
 }
 
-export const answerWhole = (text: string): string => answerBubbles(text).join('\n\n')
+type Filed = { text: string; files?: readonly { name: string; href: string }[] }
+export const withFiles = (message: Filed): string => message.files?.length ? [message.text, ...message.files.map(file => `[${file.name}](engram-artifact:${file.href})`)].join('\n\n') : message.text
 
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
@@ -126,15 +130,14 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }
 
-export const linkedFiles = (messages: readonly { role: string; text: string }[]): string =>
-  messages.flatMap(({ role, text }) => role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []).join('\n')
+const filesOf = (message: Filed & { role: string }): string[] => { const text = withFiles(message); return message.role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : [] }
+export const linkedFiles = (messages: readonly (Filed & { role: string })[]): string => messages.flatMap(filesOf).join('\n')
 
-export function laterFiles(messages: readonly { role: string; text: string }[]): string[] {
+export function laterFiles(messages: readonly (Filed & { role: string })[]): string[] {
   const out: string[] = [], later = new Set<string>()
   for (let i = messages.length - 1; i >= 0; i--) {
-    const { role, text } = messages[i]!
-    if (role !== 'assistant') later.clear()
-    const ids = role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []
+    if (messages[i]!.role !== 'assistant') later.clear()
+    const ids = filesOf(messages[i]!)
     out[i] = ids.filter(id => later.has(id)).join('\n')
     for (const id of ids) later.add(id)
   }
@@ -147,13 +150,13 @@ const saidLines = (text: string): string[] => answerText(text).split('\n')
     .replace(/(?<![\p{L}\p{N}])[*_`]+|[*_`]+(?![\p{L}\p{N}])/gu, '').replace(/\s*\|\s*/g, '|').replace(/\s+/g, ' ').trim().toLowerCase())
   .filter(Boolean)
 
-export function restatedAnswers(messages: readonly { role: string; text: string; evidence?: unknown }[]): boolean[] {
+export function restatedAnswers(messages: readonly (Filed & { role: string; evidence?: unknown })[]): boolean[] {
   const out: boolean[] = []
   let later: { said: Set<string>; files: Set<string>; evidence: boolean }[] = []
   for (let i = messages.length - 1; i >= 0; i--) {
     const { role, text, evidence } = messages[i]!
     if (role !== 'assistant') { later = []; out[i] = false; continue }
-    const lines = saidLines(text), files = answerFiles(answerText(text)).files.map(file => file.id)
+    const lines = saidLines(text), files = filesOf(messages[i]!)
     out[i] = lines.length > 0 && later.some(answer => (!evidence || answer.evidence)
       && files.every(id => answer.files.has(id)) && lines.every(line => answer.said.has(line)))
     if (lines.length) later.push({ said: new Set(lines), files: new Set(files), evidence: !!evidence })

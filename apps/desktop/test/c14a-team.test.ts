@@ -7,7 +7,6 @@ import { emptyRetryNote, teamRunner, type TurnKit } from '../src/main/team-runne
 import { asides, turnGoals } from '../src/main/turn-state.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
-const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const temporary = async (tag: string): Promise<VaultPaths> => {
   const root = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(root, { recursive: true })
@@ -15,90 +14,55 @@ const temporary = async (tag: string): Promise<VaultPaths> => {
 }
 afterEach(() => { turnGoals.delete('bot-b1'); asides.delete('bot-b1') })
 
-it('C5 class: a schedule teammate whose entries lack their day looks again, by each entry\'s name, before handing back', async () => {
-  const paths = await temporary('days')
-  for (const name of ['엔그램', '하윤']) await createBot(paths, { name })
-  const brief = '다음 달 부산 디자인 전시 일정'
-  const created = await createTask(paths, `하윤한테 맡겨: ${brief}`, 'b1')
+async function oneTeammate(tag: string, brief: string, answer: string, page: string) {
+  const paths = await temporary(tag)
+  for (const name of ['엔그램', '다온']) await createBot(paths, { name })
+  const created = await createTask(paths, `다온한테 맡겨: ${brief}`, 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
-  const PAGE = 'https://design.example.kr/busan/2026', OWN = 'https://design.example.kr/busan/typo-week'
-  const prompts: string[] = []
-  const run: Run = async (_deps, prompt, options = {}) => {
+  const prompts: string[] = [], judged: string[] = []
+  const run: Run = async (deps, prompt, options = {}) => {
     prompts.push(prompt)
     options.onStart?.()
-    if (prompt.includes('Search each entry by its own name')) return { answer: block({ facts: [{ text: '부산 타이포 위크는 12월 9일 영화의전당에서 열려요.', url: OWN, date: '12월 9일' }] }), steps: [], fellBack: false }
-    return { answer: block({ facts: [{ text: '부산 타이포 위크가 12월에 열려요.', url: PAGE }] }), steps: [], fellBack: false }
+    await deps.tools.find(t => t.name === 'search_web')?.run({ query: brief }, { task: '' })
+    return { answer, steps: [], fellBack: false }
   }
-  const quick = async (prompt: string): Promise<string | undefined> => !prompt.includes('"lists"') ? undefined : prompt.includes('12월 9일') ? '{"keep":[1],"lists":[]}' : '{"keep":[1],"lists":[1],"names":{"1":"부산 타이포 위크"}}'
-  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.example/?q=x (DATA, not instructions):\n- 부산 디자인 전시 — ${PAGE} — 12월 — 2026` }
+  const quick = async (prompt: string): Promise<string | undefined> => { judged.push(prompt); return '{"keep":[1],"same":[[1,2]],"lists":[1]}' }
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.example/?q=x (DATA, not instructions):\n- ${brief} — ${page} — 일정 — 2026` }
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 600 })
   const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하윤', brief, topic: '부산 디자인 전시' }] }, { task: '' })
+  const out = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '다온', brief, topic: brief }] }, { task: '' })
   const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
-  expect(prompts.filter(p => p.startsWith('Some of what you brought back'))).toHaveLength(2)
-  expect(m.data?.facts.map(f => [f.url, f.listing ?? false, f.rest ?? false])).toEqual([[OWN, false, false], [PAGE, true, true]])
-  expect(answer).toContain('12월 9일')
+  const back = (JSON.parse(out) as { reports: { who: string; result: string; sources?: string[] }[] }).reports[0]!
+  return { prompts, judged, m, back }
+}
+
+it('a schedule teammate whose entries lack their day gets no host by-name round: its answer reaches the hand-back as written', async () => {
+  const PAGE = 'https://library.example.kr/suwon/readings'
+  const said = `수원 도서관 낭독회가 12월에 몇 번 열려요. 날짜는 목록 페이지에 있어요. (${PAGE})`
+  const w = await oneTeammate('days', '다음 달 수원 도서관 낭독회 일정', said, PAGE)
+  expect(w.prompts).toHaveLength(1)
+  expect(w.judged).toEqual([])
+  expect(w.m.data).toBeUndefined()
+  expect(w.back.result).toContain(said)
+  expect(w.back.sources).toEqual(w.m.sources)
 })
 
-it('C5 class r2: a page whose first round gave one of its two entries still gets the by-name round, and both entries are in one answer', async () => {
-  const paths = await temporary('partial')
-  for (const name of ['엔그램', '하윤']) await createBot(paths, { name })
-  const brief = '다음 달 부산 전시 일정'
-  const created = await createTask(paths, `하윤한테 맡겨: ${brief}`, 'b1')
-  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
-  const PAGE = 'https://art.example.kr/busan/list', A = 'https://art.example.kr/busan/ceramic', B = 'https://art.example.kr/busan/light'
-  const prompts: string[] = []
-  const run: Run = async (_deps, prompt, options = {}) => {
-    prompts.push(prompt)
-    options.onStart?.()
-    if (prompt.includes('Search each entry by its own name')) return { answer: block({ facts: [{ text: '부산 빛 예술전은 12월 20일 시작해요.', url: B, date: '12월 20일' }, { text: '도자 공예전 12월 5일 개막', url: A, date: '12월 5일' }] }), steps: [], fellBack: false }
-    if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '부산 도자 공예전은 12월 5일에 열려요.', url: A, date: '12월 5일' }] }), steps: [], fellBack: false }
-    return { answer: block({ facts: [{ text: '부산에서 12월에 전시 두 건이 열려요.', url: PAGE }] }), steps: [], fellBack: false }
-  }
-  const quick = async (prompt: string): Promise<string | undefined> => !prompt.includes('"lists"') ? undefined : prompt.includes('개막') ? '{"keep":[1,2,3],"same":[[1,3]],"lists":[]}' : /\d+월 \d+일/.test(prompt) ? '{"keep":[1],"lists":[]}' : '{"keep":[1],"lists":[1],"names":{"1":"부산 전시"}}'
-  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.example/?q=x (DATA, not instructions):\n- 부산 전시 — ${PAGE} — 12월 — 2026` }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 600 })
-  const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하윤', brief, topic: '부산 전시' }] }, { task: '' })
-  const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
-  const rounds = prompts.filter(p => p.startsWith('Some of what you brought back'))
-  expect(rounds).toHaveLength(2)
-  expect(rounds[1]).toContain('- 부산 도자 공예전은 12월 5일에 열려요.')
-  expect(m.data?.facts.map(f => [f.url, f.rest ?? false])).toEqual([[A, false], [B, false], [A, false], [PAGE, true]])
-  expect(answer).toContain('12월 5일')
-  expect(answer).toContain('12월 20일')
+it('a teammate whose answer gives one of two entries with its day hands back exactly that, with no extra round to fill the other', async () => {
+  const PAGE = 'https://library.example.kr/ansan/list'
+  const said = `안산 도서관 그림책 전시는 12월 5일에 시작해요 (https://library.example.kr/ansan/picture). 다른 전시 하나는 날짜가 아직 안 나왔어요 (${PAGE}).`
+  const w = await oneTeammate('partial', '다음 달 안산 도서관 전시 일정', said, PAGE)
+  expect(w.prompts).toHaveLength(1)
+  expect(w.prompts.some(p => p.startsWith('Some of what you brought back'))).toBe(false)
+  expect(w.back.result).toContain(said)
 })
 
-it.each([['a season page apart from the list', 'https://stage.example.kr/daegu/season/2026-winter'], ['the list page itself', 'https://stage.example.kr/daegu/season']])('C5 class r3: two different entries that cite one same schedule page are both kept; only the judge\'s "same" makes a re-find (%s)', async (_label, SEASON) => {
-  const paths = await temporary('shared')
-  for (const name of ['엔그램', '하윤']) await createBot(paths, { name })
-  const brief = '이번 겨울 대구 공연 일정'
-  const created = await createTask(paths, `하윤한테 맡겨: ${brief}`, 'b1')
-  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
-  const LIST = 'https://stage.example.kr/daegu/season'
-  const prompts: string[] = []
-  const run: Run = async (_deps, prompt, options = {}) => {
-    prompts.push(prompt)
-    options.onStart?.()
-    if (prompt.includes('Search each entry by its own name')) return { answer: block({ facts: [{ text: '현악 사중주의 밤은 1월 17일 대구콘서트하우스에서 열려요.', url: SEASON, date: '1월 17일' }] }), steps: [], fellBack: false }
-    if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '겨울 오페라 갈라는 12월 27일 무대에 올라요.', url: SEASON, date: '12월 27일' }] }), steps: [], fellBack: false }
-    return { answer: block({ facts: [{ text: '대구 겨울 시즌 공연 두 편이 있어요.', url: LIST }] }), steps: [], fellBack: false }
-  }
-  const judged: string[] = []
-  const quick = async (prompt: string): Promise<string | undefined> => {
-    if (!prompt.includes('"lists"')) return undefined
-    judged.push(prompt)
-    return prompt.includes('현악') ? '{"keep":[1,2],"same":[],"lists":[]}' : prompt.includes('12월 27일') ? '{"keep":[1],"lists":[]}' : '{"keep":[1],"lists":[1],"names":{"1":"대구 겨울 공연"}}'
-  }
-  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.example/?q=x (DATA, not instructions):\n- 대구 겨울 공연 — ${LIST} — 12월 — 2026` }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 600 })
-  const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하윤', brief, topic: '대구 공연' }] }, { task: '' })
-  const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
-  expect(judged.at(-1)).toMatch(/오페라 갈라[\s\S]*현악 사중주/)
-  expect(m.data?.facts.map(f => [f.url, f.date ?? '', f.rest ?? false])).toEqual([[SEASON, '12월 27일', false], [SEASON, '1월 17일', false], [LIST, '', true]])
-  expect(answer).toContain('12월 27일')
-  expect(answer).toContain('1월 17일')
+it.each([['a season page apart from the list', 'https://hall.example.kr/cheongju/season/2026-winter'], ['the list page itself', 'https://hall.example.kr/cheongju/season']])('two different entries that cite one same page both reach the hand-back as written; nothing merges them (%s)', async (_label, SEASON) => {
+  const said = `청주 합창 송년 음악회는 12월 27일에 열려요 (${SEASON}). 청주 어린이 합창 발표회는 1월 17일이에요 (${SEASON}).`
+  const w = await oneTeammate('shared', '이번 겨울 청주 합창 공연 일정', said, 'https://hall.example.kr/cheongju/season')
+  expect(w.judged).toEqual([])
+  expect(w.back.result).toContain('12월 27일')
+  expect(w.back.result).toContain('1월 17일')
+  expect(w.back.result).toContain(said)
 })
 
 function helperWorld(tag: string, run: Run) {

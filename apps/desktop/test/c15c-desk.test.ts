@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { checkedDesk, structured, withoutQuoted } from '../src/main/desk-lane.js'
-import { readProblems } from 'core'
+import { readFileSync } from 'node:fs'
+import * as deskLane from '../src/main/desk-lane.js'
+import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
 
 const SOURCE = '# 무선 이어폰 리뷰\n\n## 써 본 느낌\n- 무게가 4g이라 오래 껴도 귀가 안 아프다.\n- 배터리가 5시간밖에 안 간다.\n- 노이즈 캔슬링이 지하철에서도 잘 된다.\n'
@@ -11,70 +12,70 @@ const ASK = '리뷰 메모 장점이랑 단점으로 나눠서 정리해줘'
 const DRAFT = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요'
 const FIXED = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요'
 
-describe('a structured desk answer is checked against its ask and source (D1 class)', () => {
-  it('reads structure by shape, never by words', () => {
-    expect(structured(DRAFT)).toBe(true)
-    expect(structured('1. 하나\n2. 둘')).toBe(true)
-    expect(structured('| 항목 | 값 |\n| 가 | 1 |')).toBe(true)
-    expect(structured('평년 기준으로 31,536,000초예요.')).toBe(false)
-    expect(structured('칼국수 어때요? 쌀쌀하니까요.')).toBe(false)
-    expect(structured('장점: 가벼워요.\n\n단점: 배터리가 짧아요.')).toBe(true)
-    expect(structured('원인: 캐시가 오래됐어요.\n대책: 매일 비워요.')).toBe(true)
+const ONCE = 'A decision or item is listed once, never again under a second heading.'
+const ONLY_FILE = 'holds only what is in it: add no item, number, owner, date or open question that is not there'
+async function deskTurn(draft: string, said = ASK, source = SOURCE) {
+  const jobs: ToolSessionJob[] = []
+  const quick = vi.fn(async () => '{"problems":[]}')
+  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: '/tmp/c15c-desk' as EngineCwd, tools: [] }, said, { attachmentContext: [deskLane.DESK_NOTE, deskLane.fileGiven({ name: 'memo.md', text: source })].join('\n\n') })
+  return { posted: result.answer, calls: jobs.length, quick, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
+}
+const times = (text: string, line: string): number => text.split('\n').filter(one => one.includes(line)).length
+
+describe('a structured desk answer is the model\'s own, posted as written (D1 class)', () => {
+  it('posts every shape byte for byte: a list, numbers, a table, one sentence, label rows', async () => {
+    for (const shape of [DRAFT, '1. 하나\n2. 둘', '| 항목 | 값 |\n| 가 | 1 |', '평년 기준으로 31,536,000초예요.', '칼국수 어때요? 쌀쌀하니까요.', '장점: 가벼워요.\n\n단점: 배터리가 짧아요.', '원인: 캐시가 오래됐어요.\n대책: 매일 비워요.']) expect((await deskTurn(shape)).posted, shape).toBe(shape)
   })
-  it('parts that say the same thing are found ("overlap") and the answer is rewritten once from the source', async () => {
-    const prompts: string[] = []
-    const verdicts = ['{"problems":[{"kind":"overlap","quote":"단점 - 가벼워서 오래 껴도 편해요","why":"장점과 같은 내용"},{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같은 내용"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요', 6: '' } }), '{"problems":[]}']
-    const quick = vi.fn(async (prompt: string) => { prompts.push(prompt); return verdicts.shift() })
-    const logged: string[] = []
-    const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick, since: Date.now(), log: (outcome, kinds) => logged.push(`${outcome}:${kinds.join(',')}`) })
-    expect(out).toBe(FIXED)
-    expect(quick).toHaveBeenCalledTimes(3)
-    expect(prompts[0]).toContain('"overlap"')
-    expect(prompts[0]).toContain('배터리가 5시간밖에')
-    expect(prompts[1]).toContain('You fix a message')
-    expect(prompts[1]).toContain('배터리가 5시간밖에')
-    expect(prompts[1]).toContain('overlap')
-    expect(logged).toEqual(['repaired:overlap,overlap'])
+  it('parts that say the same thing are the model\'s to avoid: it is told once is enough, has the source, and what it writes is posted in one call', async () => {
+    const { posted, told, calls, quick } = await deskTurn(FIXED)
+    expect(told).toContain(ONCE)
+    expect(told).toContain('배터리가 5시간밖에')
+    expect(posted).toBe(FIXED)
+    expect(calls).toBe(1)
+    expect(quick).not.toHaveBeenCalled()
+    expect((await deskTurn(DRAFT)).posted).toBe(DRAFT)
   })
   it('a one-line answer is never held: no call at all', async () => {
-    const quick = vi.fn(async () => '{"problems":[]}')
-    expect(await checkedDesk({ ask: '이 메모 한 줄로 요약해줘', draft: '배터리만 빼면 만족스러운 이어폰이에요.', source: SOURCE, quick, since: Date.now() })).toBe('배터리만 빼면 만족스러운 이어폰이에요.')
+    const { posted, quick } = await deskTurn('배터리만 빼면 만족스러운 이어폰이에요.', '이 메모 한 줄로 요약해줘')
+    expect(posted).toBe('배터리만 빼면 만족스러운 이어폰이에요.')
     expect(quick).not.toHaveBeenCalled()
   })
-  it('past the turn\'s budget the draft stands unchecked', async () => {
-    const quick = vi.fn(async () => '{"problems":[]}')
-    expect(await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick, since: Date.now() - 60_000 })).toBe(DRAFT)
+  it('the draft stands unchecked whatever the turn\'s time: the chat turn has no desk check to run', async () => {
+    const { posted, quick } = await deskTurn(DRAFT)
+    expect(posted).toBe(DRAFT)
     expect(quick).not.toHaveBeenCalled()
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    expect(ipc).not.toMatch(/checkedDesk|withoutQuoted|readProblems/)
+    expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
   })
-  it('two short sections are checked too (r2)', async () => {
-    const quick = vi.fn(async () => '{"problems":[]}')
+  it('two short sections go out as written too (r2)', async () => {
     const two = '장점: 가벼워요.\n\n단점: 가벼워요.'
-    await checkedDesk({ ask: ASK, draft: two, source: SOURCE, quick, since: Date.now() })
-    expect(quick).toHaveBeenCalledTimes(1)
+    const { posted, calls, quick } = await deskTurn(two)
+    expect(posted).toBe(two)
+    expect(calls).toBe(1)
+    expect(quick).not.toHaveBeenCalled()
   })
-  it('a rewrite that is still wrong never shows the lines the check named: the last text read, without them (r2)', async () => {
+  it('the host takes no line out of an answer: a line said under two parts is posted under both (r2)', async () => {
     const STILL = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요\n- 노이즈 캔슬링이 좋아요'
-    const again = ['{"problems":[{"kind":"overlap","quote":"가벼워서 오래 껴도 편해요","why":"두 번"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요' } }), '{"problems":[{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같음"}]}']
-    const logged: string[] = []
-    const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => again.shift(), since: Date.now(), log: outcome => logged.push(outcome) })
-    expect(logged).toEqual(['repaired'])
-    expect(out).not.toBe(DRAFT)
-    void STILL
-    expect(out).toBe('장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요')
+    const { posted } = await deskTurn(STILL)
+    expect(posted).toBe(STILL)
+    expect(times(posted, '노이즈 캔슬링이 좋아요')).toBe(2)
   })
-  it('a rewrite that came too late leaves the draft without the list its check found wrong (r2; stack-15: the whole list)', async () => {
-    const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 하루 종일 가요","why":"5시간"}]}', undefined]
+  it('a list with a line the file does not say is posted whole; the rule against it is in the prompt, not after the answer (r2; stack-15)', async () => {
     const draft = '좋은 점\n- 귀가 안 아파요\n- 배터리가 하루 종일 가요\n\n아쉬운 점\n- 없어요'
-    expect(await checkedDesk({ ask: '이어폰 리뷰 좋은 점 아쉬운 점으로', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })).toBe('아쉬운 점\n- 없어요')
+    const { posted, told } = await deskTurn(draft, '이어폰 리뷰 좋은 점 아쉬운 점으로')
+    expect(told).toContain(ONLY_FILE)
+    expect(posted).toBe(draft)
   })
 })
 
 describe('withoutQuoted', () => {
-  it('drops the quoted line, the copy under the part the quote names, and a heading left empty', () => {
+  it('is gone with the check that fed it: a copy under a second part and a heading are posted as the model wrote them', async () => {
     const text = '원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요'
-    expect(withoutQuoted(text, [{ kind: 'overlap', quote: '대책: 캐시가 오래됐어요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요')
-    expect(withoutQuoted(text, [{ kind: 'contradicts', quote: '서버는 정상이에요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모')
-    expect(withoutQuoted(text, [{ kind: 'asks', quote: '', why: '' }])).toBe(text)
+    for (const gone of ['withoutQuoted', 'checkedDesk', 'structured', 'withPart', 'onceEach']) expect(Object.keys(deskLane), gone).not.toContain(gone)
+    expect((await deskTurn(text)).posted).toBe(text)
+    expect(Object.keys(deskLane)).toContain('DESK_NOTE')
   })
 })
 
@@ -121,55 +122,49 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
   })
 })
 
-describe('the fallback never keeps the wrong copy and never answers empty (r3)', () => {
+describe('the host never drops a copy and never writes a line of its own (r3)', () => {
   const RETRO = '합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기'
-  it('a false item repeated in two parts: the copy under the part the quote names goes, the other stays', () => {
-    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '합의한 것: 배포는 금요일에 하기로 했어요', why: '요일은 안 정했음' }]))
-      .toBe('각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기')
-    expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '각자 할 일 - 배포는 금요일에 하기로 했어요', why: '' }]))
-      .toBe('합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
+  it('an item repeated in two parts stays under both; saying it once is asked of the model', async () => {
+    const { posted, told } = await deskTurn(RETRO)
+    expect(posted).toBe(RETRO)
+    expect(told).toContain(ONCE)
+    expect(told).toContain('Each thing goes under one of them, never both')
   })
-  it('a quote that names no part removes every copy: the host cannot tell which one is wrong', () => {
-    expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '배포는 금요일에 하기로 했어요', why: '' }]))
-      .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
-    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '배포는 금요일에 하기로 했어요', why: '' }])).toBe('')
+  it('no copy is removed: the host does not judge which one is wrong', async () => {
+    const { posted, quick } = await deskTurn(RETRO)
+    expect(times(posted, '배포는 금요일에 하기로 했어요')).toBe(2)
+    expect(quick).not.toHaveBeenCalled()
   })
-  it('every line quoted and the rewrite failed: never empty, the earlier text read or one plain line', async () => {
+  it('never a host line in place of the answer: the words posted are the model\'s, every one', async () => {
     const draft = '좋은 점\n- 배터리가 오래 가요\n\n아쉬운 점\n- 무거워요'
-    const all = '{"problems":[{"kind":"contradicts","quote":"배터리가 오래 가요","why":""},{"kind":"contradicts","quote":"무거워요","why":""}]}'
-    expect(withoutQuoted(draft, readProblems(all) ?? [])).toBe('')
-    const said = [all, undefined]
-    const out = await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })
-    expect(out.trim()).not.toBe('')
-    expect(out).toMatch(/[가-힣]/)
-    expect(out).not.toContain('배터리가 오래 가요')
-    expect(out).not.toContain('무거워요')
+    const { posted } = await deskTurn(draft, '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘')
+    expect(posted.trim()).not.toBe('')
+    expect(posted.split('\n')).toEqual(draft.split('\n'))
   })
-  it('the rewrite fully quoted but the draft only partly: the draft without its quoted lines', async () => {
+  it('a draft with a blank line inside a list keeps it: no line and no gap is taken out', async () => {
     const draft = '좋은 점\n- 귀가 안 아파요\n\n- 배터리가 오래 가요\n\n아쉬운 점\n- 없어요'
-    const rewrite = '좋은 점\n- 하루 종일 가요'
-    const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 오래 가요","why":""}]}', rewrite, '{"problems":[{"kind":"contradicts","quote":"하루 종일 가요","why":""}]}']
-    expect(await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() }))
-      .toBe('좋은 점\n- 귀가 안 아파요\n\n아쉬운 점\n- 없어요')
+    expect((await deskTurn(draft, '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘')).posted).toBe(draft)
   })
 })
 
-describe('a list with a wrong row goes whole (H2 class, rule 7)', () => {
+describe('a list goes out whole, every row as written (H2 class, rule 7)', () => {
   const DRAFT = '10월 방문자는 모두 9,200명이에요.\n\n지점별 방문자:\n\n강남점: 4,100명\n홍대점: 3,000명\n잠실점: 2,100명\n\n요일별 방문자:\n\n토요일: 4,100명\n일요일: 3,000명'
-  it('label: value rows are a list; the wrong one takes its list and its heading, the answer line stays', () => {
-    expect(withoutQuoted(DRAFT, [{ kind: 'contradicts', quote: '홍대점: 3,000명', why: '원문은 2,800명' }, { kind: 'contradicts', quote: '토요일: 4,100명', why: '지점 숫자를 옮김' }]))
-      .toBe('10월 방문자는 모두 9,200명이에요.')
+  it('label: value rows, their headings and the answer line all stay', async () => {
+    const { posted } = await deskTurn(DRAFT, '방문자 csv에서 10월 방문자 수 알려줘', '지점,요일,방문자')
+    expect(posted).toBe(DRAFT)
+    for (const row of ['강남점: 4,100명', '홍대점: 3,000명', '잠실점: 2,100명', '토요일: 4,100명', '일요일: 3,000명']) expect(posted).toContain(row)
   })
-  it('through checkedDesk: a late rewrite leaves only what was not found wrong, never a partial list', async () => {
-    const said = ['{"problems":[{"kind":"contradicts","quote":"홍대점: 3,000명","why":"2,800명"}]}', undefined]
-    const out = await checkedDesk({ ask: '방문자 csv에서 10월 방문자 수 알려줘', draft: DRAFT, source: '지점,요일,방문자', quick: async () => said.shift(), since: Date.now() })
-    expect(out).toBe('10월 방문자는 모두 9,200명이에요.\n\n요일별 방문자:\n\n토요일: 4,100명\n일요일: 3,000명')
-    expect(out).not.toContain('강남점')
+  it('a one-fact ask from a file is asked to be one sentence in the rules; a longer answer is still posted whole', async () => {
+    const { posted, told } = await deskTurn(DRAFT, '방문자 csv에서 10월 방문자 수 알려줘', '지점,요일,방문자')
+    expect(told).toContain('A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.')
+    expect(told).toContain('gets that fact in one sentence, also when it comes from a file')
+    expect(posted).toContain('강남점')
+    expect(posted.split('\n')).toHaveLength(DRAFT.split('\n').length)
   })
-  it('every list found wrong: one plain line that asks nothing of the person (c15c r3 #2)', async () => {
-    const said = ['{"problems":[{"kind":"contradicts","quote":"좋은 점 - 가벼워요","why":""},{"kind":"contradicts","quote":"무거워요","why":""}]}', undefined]
-    const out = await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft: '좋은 점\n- 가벼워요\n\n아쉬운 점\n- 무거워요', source: SOURCE, quick: async () => said.shift(), since: Date.now() })
-    expect(out).toMatch(/[가-힣]/)
-    expect(out).not.toMatch(/말씀해|다시|\?/)
+  it('no host line that asks the person for anything is added (c15c r3 #2)', async () => {
+    const draft = '좋은 점\n- 가벼워요\n\n아쉬운 점\n- 무거워요'
+    const { posted } = await deskTurn(draft, '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘')
+    expect(posted).toBe(draft)
+    expect(posted).not.toMatch(/말씀해|다시|\?/)
   })
 })

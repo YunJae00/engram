@@ -96,16 +96,6 @@ function subjectOf(ask: string, now = new Date()): string | undefined {
   const old = laneQuery(ask, now), kind = FIRST_STEPS.findIndex(([words]) => words.test(ask))
   return old && (kind >= 0 && kind < 3 ? old.query.replace(new RegExp(`\\s*(?:${KIND_WORDS[kind]}|${WEATHER_DAY.map(([, day]) => day).join('|')})$`), '').replace(/\s*(?:주말|모레|내일|주간)$/, '') : old.query).trim() || undefined
 }
-const OTHER_NAMES: [RegExp, RegExp][] = [[/애플/, /apple|aapl/i], [/엔비디아/, /nvidia|nvda/i], [/테슬라/, /tesla|tsla/i], [/삼성전자/, /삼성|samsung|005930/i], [/마이크로소프트/, /마소|microsoft|msft/i], [/구글|알파벳/, /구글|알파벳|google|alphabet|googl/i], [/아마존/, /amazon|amzn/i], [/메타/, /meta|페이스북/i], [/SK하이닉스|하이닉스/, /하이닉스|hynix/i]]
-export function namesSubject(answer: string, ask: string, now = new Date()): string {
-  const subject = subjectOf(ask, now), body = answer.trimStart()
-  if (!subject || !body) return answer
-  const end = /[.!?。](?=\s|$)|\n/.exec(body)?.index ?? body.length, first = body.slice(0, end)
-  const other = OTHER_NAMES.find(([own]) => own.test(subject))?.[1]
-  if (first.toLowerCase().includes(subject.toLowerCase()) || other?.test(first)) return answer
-  const last = subject.charCodeAt(subject.length - 1), topic = last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 ? '은' : '는'
-  return `${subject}${topic} ${body}`
-}
 export function swapRounds(ask: string, turn: AbortSignal) {
   let stop = new AbortController(), to: string | undefined
   const signal = (): AbortSignal => AbortSignal.any([turn, stop.signal])
@@ -122,7 +112,6 @@ export function swapRounds(ask: string, turn: AbortSignal) {
     },
   }
 }
-export const laneTidy = (answer: string): string => answer.replace(/(\d)\.0(?=\s*(?:도|℃|°))/g, '$1').replace(/(오늘|내일|모레)\s*\(((?:\d{1,2}월\s*)?\d{1,2}일)(?:\s*,?\s*[월화수목금토일](?:요일)?)?\)/g, '$2 $1')
 const SPLIT_INTO = ['둘로', '셋으로', '넷으로'], SPLIT_COUNT = /([2-4])\s*(개|곳|명|가지|군데|종)/
 const splitLine = (message: string, korean: boolean): string => {
   if (/봇|\bbots?\b/i.test(message)) return korean ? '봇들한테 나눠 맡길게요.' : 'Splitting this across the bots now.'

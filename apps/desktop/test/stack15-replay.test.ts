@@ -3,7 +3,8 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createBot, createTask, listTasks, loadBots, mergedReport, RELEVANCE_RULE, setReportLog, staffTool, teamSummary, updateTask, vaultPaths, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createBot, createTask, handBacks, keepRead, keepSources, listTasks, loadBots, RELEVANCE_RULE, runToolSession, setReportLog, skipWalls, staffTool, teamSummary, timeBoxed, updateTask, vaultPaths, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
@@ -11,11 +12,8 @@ import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const RUN = '/Users/kwon-yunjae/engram-orch/tmp/grokbar/runs/stack14-63bdfb8a'
-const CHECK = 'Judge meaning only', REDO = 'You fix a message'
-const none = JSON.stringify({ problems: [] })
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const scratch = async (tag: string): Promise<string> => { await mkdir(temporary, { recursive: true }); return mkdtemp(join(temporary, `engram-stack15-${tag}-`)) }
-const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const logs: string[] = []
 setReportLog(line => logs.push(line))
 
@@ -25,26 +23,24 @@ describe('C3 replay', () => {
     서연: ['슬랙', '슬랙 Mac 앱 4.53.287 버전이 나왔는데, 새 기능 소개 없이 보안 개선 사항만 담은 업데이트였어요.', 'https://slack.com/release-notes/mac', '11월 9일'],
     도윤: ['리니어', "리니어는 이번 주엔 새 기능을 내지 않았고, 가장 최근 소식은 11월 12일에 나온 'Bring your own key(BYOK)' 기능이에요.", 'https://linear.app/changelog', '11월 12일'],
   } as const
-  const members = (): TeamMember[] => Object.entries(said).map(([role, [topic, text, url, date]], i) => ({ id: `m${i}`, parentId: null, depth: 1, role, brief: `${topic} 이번 주 신기능`, topic, botId: `b${i}`, lookup: true, state: 'done', sessionKey: `s${i}`, hiredAt: new Date().toISOString(), data: { facts: [], nothing: { latest: { text, url, site: topic, date } } } }))
+  const members = (): TeamMember[] => Object.entries(said).map(([role, [topic, text, url]], i) => ({ id: `m${i}`, parentId: null, depth: 1, role, brief: `${topic} 이번 주 신기능`, topic, botId: `b${i}`, lookup: true, state: 'done', sessionKey: `s${i}`, hiredAt: new Date().toISOString(), result: `${text} ${url}`, sources: [url] }))
   const ask = '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜'
-  const draft = (names: string[]): string => JSON.stringify({ message: `셋 다 이번 주엔 새로 나온 기능이 없어요.\n\n노션은 ${names[0]}이 봤는데 10월 19일 업데이트가 가장 최근이에요. [노션](${said.지민[2]})\n슬랙은 ${names[1]}이 봤는데 11월 9일 보안 업데이트가 마지막이에요. [슬랙](${said.서연[2]})\n리니어는 ${names[2] ? `${names[2]}이 봤는데 ` : ''}11월 12일 BYOK가 가장 최근이에요. [리니어](${said.도윤[2]})`, kept: [] })
-  it('a draft that leaves one name out is repaired; a writer that fails twice gives a fallback that says the shared state once', async () => {
-    const calls: string[] = []
-    const repaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => { calls.push(prompt); return prompt.includes(CHECK) ? none : prompt.includes(REDO) ? JSON.stringify({ insert_after: { 4: ['리니어는 도윤이 봤어요.'] } }) : draft(['지민', '서연']) } })
-    console.log(`[replay C3] repaired (${calls.length} calls, ${logs.at(-1)}):\n${repaired}`)
-    expect(repaired).toContain('도윤')
-    const unrepaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => prompt.includes(CHECK) ? none : draft(['지민', '서연']) })
-    expect(unrepaired).toMatch(/^셋 다 이번 주엔 새로 나온 기능이 없어요\./)
-    const fallback = mergedReport(members())
-    console.log(`[replay C3] fallback (${logs.at(-1)}):\n${fallback}`)
-    expect(fallback.match(/이번엔 새로 나온 게 없어요/g)).toHaveLength(1)
-    expect(fallback).not.toMatch(/가장 최근엔 \S+는/)
-    for (const [, [, , url]] of Object.entries(said)) expect(fallback).toContain(url)
+  it('all three names and pages reach the lead in the hand-back; a draft that leaves one name out is posted as written, and there is no host fallback to say the shared state', async () => {
+    const got = JSON.parse(handBacks(members())) as { reports: { who: string; part: string; result: string; sources: string[] }[]; note: string }
+    expect(got.reports.map(one => [one.who, one.part])).toEqual([['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']])
+    for (const [role, [, text, url]] of Object.entries(said)) expect(got.reports.find(one => one.who === role)).toMatchObject({ result: `${text} ${url}`, sources: [url] })
+    expect(got.note).toContain('who did what in natural sentences that name each agent')
+    const draft = `세 곳 다 이번 주엔 조용했어요.\n\n노션은 지민이 봤는데 10월 19일 업데이트가 가장 최근이에요. [노션](${said.지민[2]})\n슬랙은 서연이 봤는데 11월 9일 보안 업데이트가 마지막이에요. [슬랙](${said.서연[2]})\n리니어는 11월 12일 BYOK가 가장 최근이에요. [리니어](${said.도윤[2]})`
+    const shown = (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
+    console.log(`[replay C3] posted:\n${shown}`)
+    expect(shown).toBe(draft)
+    expect(shown).not.toContain('도윤')
+    for (const gone of ['writtenReport', 'mergedReport']) expect(gone in core, gone).toBe(false)
   })
 })
 
 describe('C10 replay', () => {
-  it('stack14\'s record with 서연 left: a refused summary is repaired; the fallback ends a sentence between every person', async () => {
+  it('stack14\'s record with 서연 left: the writer is told who left and its summary is the answer as written; with no writer text the fallback ends a sentence between every person', async () => {
     if (!existsSync(join(RUN, 'vault'))) return console.log('[replay C10] stack14 vault missing: skipped')
     const root = await scratch('c10')
     await cp(join(RUN, 'vault'), root, { recursive: true })
@@ -52,32 +48,26 @@ describe('C10 replay', () => {
     await staffTool(paths, () => undefined).run({ remove: ['서연'] }, { task: '' })
     const tasks = JSON.parse(await readFile(join(root, 'workspace/.engram/tasks.json'), 'utf8')).tasks
     const now = new Date('2026-11-18T05:00:00+09:00'), message = '이번 주 팀이 한 일 요약해'
-    const record = (prompt: string): { who: string; did: string }[] => JSON.parse(prompt.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
-    const people = (prompt: string): string[] => [...new Set(record(prompt).map(job => job.who))]
-    const josa = (one: string): string => (one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'
-    const writeAs = (all: (prompt: string) => boolean) => async (prompt: string): Promise<string> => {
-      if (prompt.includes(CHECK)) return none
-      if (all(prompt)) {
-        const jobs = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
-        const line = [...new Set(jobs.map(job => job.who))].map(one => `${one}${josa(one)} ${[...new Set(jobs.filter(job => job.who === one).map(job => job.did))].join('·')}을 끝냈어요.`).join(' ')
-        return JSON.stringify({ insert_after: { 1: [`${line} 서연은 이제 팀에 없어요.`] } })
-      }
-      const who = people(prompt), named = all(prompt) ? who : who.slice(0, -1)
-      const what = (one: string): string => all(prompt) ? [...new Set(record(prompt).filter(job => job.who === one).map(job => job.did))].join('·') : '맡은 일'
-      return `이번 주엔 ${named.map(one => `${one}${(one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'} ${what(one)}을 끝냈어요.`).join(' ')}${all(prompt) ? ' 서연은 이제 팀에 없어요.' : ''}`
-    }
-    const repaired = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(prompt => prompt.includes(REDO)) })
-    console.log(`[replay C10] repaired (${logs.at(-1)}): ${repaired}`)
-    expect(logs.at(-1)).toMatch(/^summary=repaired/)
-    const fallback = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(() => false) })
+    const prompts: string[] = []
+    const written = '이번 주엔 지민이랑 도윤이 경쟁사 소식을 봤어요.\n\n서연은 슬랙 쪽을 보고 나서 팀을 떠났어요.'
+    const summary = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: async prompt => { prompts.push(prompt); return written } })
+    console.log(`[replay C10] written (${logs.at(-1)}): ${summary}`)
+    expect(summary).toBe(written)
+    expect(logs.at(-1)).toMatch(/^summary=written/)
+    expect(prompts).toHaveLength(1)
+    const record = JSON.parse(prompts[0]!.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; left?: boolean }[]
+    expect(record.filter(job => job.who === '서연').every(job => job.left === true)).toBe(true)
+    expect(record.some(job => job.who === '서연')).toBe(true)
+    expect(prompts[0]).toContain('a job with "left" true was done by someone who has since left the team: say that once')
+    const fallback = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: async () => '' })
     console.log(`[replay C10] fallback (${logs.at(-1)}): ${fallback}`)
-    expect(logs.at(-1)).toMatch(/^summary=fallback:unnamed/)
+    expect(logs.at(-1)).toMatch(/^summary=empty/)
     expect(fallback).not.toMatch(/요 [가-힣]+[은는이가] /)
   })
 })
 
 describe('C5 replay', () => {
-  it('지민\'s items with two dateless entries and a 4.5 s judge: the by-name round runs and gives their days', async () => {
+  it('지민\'s items with two dateless entries: no judge and no by-name round runs after her answer; her three lines reach the lead exactly as she wrote them', async () => {
     const root = await scratch('c5')
     const paths = { cache: join(root, '.engram') } as unknown as VaultPaths
     for (const name of ['엔그램', '지민']) await createBot(paths, { name })
@@ -86,37 +76,29 @@ describe('C5 replay', () => {
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
     const LIST = 'https://dev-event.example/2026-12'
     const first = [
-      { text: '소프트웨이브 2026(대한민국 소프트웨어 대전)이 12월 2일부터 4일까지 코엑스에서 열려요.', url: 'https://coex.example/softwave', date: '12월 2일' },
-      { text: 'ACC 2026은 12월에 열리는 IT기술 트렌드 컨퍼런스로, 생성형 AI와 클라우드 고도화 관련 내용을 다뤄요.', url: LIST },
-      { text: 'DDD Seoul 2026은 Microsoft 기술 중심의 커뮤니티 주도 개발자 컨퍼런스예요 (2026년).', url: LIST },
-    ]
-    const run: Run = async (_deps, prompt, options = {}) => {
-      options.onStart?.()
-      if (prompt.includes('Search each entry by its own name')) return { answer: block({ facts: [{ text: 'ACC 2026은 12월 9일 열려요.', url: 'https://acc.example/2026', date: '12월 9일' }, { text: 'DDD Seoul 2026은 12월 13일 열려요.', url: 'https://ddd.example/seoul', date: '12월 13일' }] }), steps: [], fellBack: false }
-      return { answer: block({ facts: first }), steps: [], fellBack: false }
-    }
-    let judges = 0
-    const quick = (prompt: string): Promise<string | undefined> => {
-      if (!prompt.includes('"lists"')) return Promise.resolve(undefined)
-      judges++
-      const dated = /12월 9일/.test(prompt)
-      return new Promise(resolve => setTimeout(() => resolve(dated ? '{"keep":[1,2,3],"lists":[]}' : '{"keep":[1,2,3],"lists":[2,3],"names":{"1":"소프트웨이브 2026","2":"ACC 2026","3":"DDD Seoul 2026"}}'), judges === 1 ? 4_500 : 200))
-    }
+      '소프트웨이브 2026(대한민국 소프트웨어 대전)이 12월 2일부터 4일까지 코엑스에서 열려요. https://coex.example/softwave',
+      `ACC 2026은 12월에 열리는 IT기술 트렌드 컨퍼런스로, 생성형 AI와 클라우드 고도화 관련 내용을 다뤄요. ${LIST}`,
+      `DDD Seoul 2026은 Microsoft 기술 중심의 커뮤니티 주도 개발자 컨퍼런스예요 (2026년). ${LIST}`,
+    ].join('\n')
+    let runs = 0, judges = 0
+    const run: Run = async (_deps, _prompt, options = {}) => { options.onStart?.(); runs++; return { answer: first, steps: [], fellBack: false } }
+    const quick = async (): Promise<string | undefined> => { judges++; return undefined }
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => `results for "x" at https://search.example/?q=x (DATA, not instructions):\n- 행사 — ${LIST} — 12월 — 2026` }
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
     const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
     const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '지민', brief, topic: '서울 IT 행사' }] }, { task: '' })
     const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
-    console.log(`[replay C5] judges=${judges} days=${JSON.stringify(m.data?.facts.filter(f => !f.listing).map(f => f.date))}\n${answer}`)
-    expect(answer).toContain('12월 9일')
-    expect(answer).toContain('12월 13일')
-    expect(answer.match(/dev-event\.example\/2026-12\)/g)).toHaveLength(2)
-    expect(answer).toContain('전체 목록은 여기 있어요. [dev-event.example](https://dev-event.example/2026-12)')
+    console.log(`[replay C5] judges=${judges} runs=${runs}\n${answer}`)
+    expect([runs, judges]).toEqual([1, 0])
+    expect(m.data).toBeUndefined()
+    expect(m.result).toBe(first)
+    expect((JSON.parse(answer) as { reports: { who: string; result: string }[] }).reports).toMatchObject([{ who: '지민', result: first }])
+    expect(answer.match(/dev-event\.example\/2026-12/g)!.length).toBeGreaterThanOrEqual(2)
   }, 20_000)
 })
 
 describe('R3 replay', () => {
-  it('stack14\'s rows (2 funding + 3 not): the 3 are not shown; a retry with the tried searches runs while time is left', async () => {
+  it('stack14\'s rows (2 funding + 3 not): all five reach the looking-up model as the search gave them, with one search and no judge; which are funding news is its call', async () => {
     const rows = [
       '- 건축 설계 자동화 스타트업 제너레잇이 누적 60억 원 투자 유치를 밝혔어요 — https://biz.chosun.example/1 — 11월 18일',
       '- 의료로봇 스타트업 메디인테크가 338억 원 규모 시리즈C 투자를 유치했어요 — https://asiae.example/2 — 11월 17일',
@@ -124,18 +106,17 @@ describe('R3 replay', () => {
       '- 3D 캐릭터 AI 룸메이트 스타트업들이 연내 시드 투자를 추진 중이에요 — https://mt.example/4 — 11월 13일',
       '- KB금융이 싱가포르에서 스타트업 데모데이를 열었어요 — https://esci.example/5 — 11월 17일',
     ]
-    const queries: string[] = [], prompts: string[] = []
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${queries.length === 1 ? rows.join('\n') : ''}` } }
-    const write = async (prompt: string): Promise<string> => {
-      prompts.push(prompt)
-      return JSON.stringify({ keep: [1, 2], unsure: prompts.length === 1 ? [3, 4, 5] : [], same: [], lists: [], names: {}, listing: [], outside: [], secondhand: [], asked: 5, search: prompts.length === 1 ? '' : 'AI 스타트업 시리즈A 유치' })
-    }
-    const out = await checkedSearch(search, { ask: () => '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', write, since: Date.now() }).run({ query: '국내 AI 스타트업 투자 유치' }, { task: '' })
-    console.log(`[replay R3] judges=${prompts.length} queries=${JSON.stringify(queries)}\n${out}`)
+    const queries: string[] = [], seen = new Set<string>(), kept: string[] = []
+    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${rows.join('\n')}` } }
+    const out = await timeBoxed(keepRead(keepSources(skipWalls(search), seen), kept), () => 28_000).run({ query: '로봇 청소기 신제품 출시' }, { task: '' })
+    console.log(`[replay R3] queries=${JSON.stringify(queries)}\n${out}`)
+    expect(out.split('\n').slice(1)).toEqual(rows)
     expect(out).toMatch(/우주|룸메이트|데모데이/)
     expect(out).not.toContain('of these rows are from the period asked')
-    expect(prompts).toHaveLength(0)
-    expect(queries).toEqual(['국내 AI 스타트업 투자 유치'])
+    expect(queries).toEqual(['로봇 청소기 신제품 출시'])
+    expect([...seen]).toEqual(['https://search.example/?q=1'])
+    for (const url of ['https://biz.chosun.example/1', 'https://esci.example/5']) expect(kept.join('\n')).toContain(url)
+    expect('checkedSearch' in core).toBe(false)
   })
 })
 

@@ -1,4 +1,4 @@
-import { outputLinks, finalDesktopFailure } from './agent-session-result.js'
+import { outputCards, finalDesktopFailure } from './agent-session-result.js'
 import { collectionProgress } from './collection-progress.js'
 import type { ToolSessionJob, ToolSessionResult } from './engine/types.js'
 import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } from './agent-loop.js'
@@ -343,12 +343,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
       await takeLate()
     }
-    if (options.deliver) {
-      let shaped: string | undefined
-      do shaped = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.deliver(session.answer), ended.then(() => undefined)]) : undefined
-      while (await takeLate())
-      if (shaped !== undefined && !signal.aborted && !session.error) session = { ...session, answer: shaped }
-    }
     const short = closed === undefined && !signal.aborted && !session.error && !asked && session.answer.trim() ? options.shortfall?.(session.answer) : undefined
     if (short) session = { ...session, answer: `${session.answer.trimEnd()}\n\n${short}` }
   } finally {
@@ -361,25 +355,25 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
-  if (closed !== undefined) return { answer: withoutSecrets(outputLinks(steps, closed, deps.workdir), task), steps, fellBack: false, tokensUsed }
-  if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"), deps.workdir), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
+  if (closed !== undefined) return { answer: withoutSecrets(closed, task), steps, files: outputCards(steps, closed, deps.workdir), fellBack: false, tokensUsed }
+  if (budgetExhausted) { const text = [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote } }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (stalled) {
     options.onMetric?.({ kind: 'host', operation: 'tool-deadline' })
-    return { answer: withoutSecrets(outputLinks(steps, `Not verified as complete.\n\n${stallNote}`, deps.workdir), task), steps, fellBack: false, incomplete: stallNote }
+    return { answer: withoutSecrets(`Not verified as complete.\n\n${stallNote}`, task), steps, files: outputCards(steps, '', deps.workdir), fellBack: false, incomplete: stallNote }
   }
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
-  if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'), deps.workdir), task), steps, fellBack: false, asked: true }
+  if (finish?.status === 'blocked') { const text = [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, asked: true } }
   const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : (options.lookup ? undefined : finalDesktopFailure(steps)) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
     : session.answer.trim()
-  return { answer: withoutSecrets(outputLinks(steps, answer, deps.workdir), task), steps, fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
+  return { answer: withoutSecrets(answer, task), steps, files: outputCards(steps, answer, deps.workdir), fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 
 export async function runComet(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {

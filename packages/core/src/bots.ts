@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, stat, writeFile, rename } from 'node:fs/pr
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { VaultPaths } from './vault.js'
+import type { FileCard } from './agent-loop.js'
 import { forgetBotMemory } from './bot-memory.js'
 import { isSchedule, type Schedule } from './schedule.js'
 import { renameWithRetry } from './rename-with-retry.js'
@@ -66,6 +67,7 @@ export interface BotTurn {
   errorKind?: string
   provider?: string
   asked?: string
+  files?: FileCard[]
 }
 
 interface BotSuggestion {

@@ -2,108 +2,106 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { messageUnits, officeTools, runToolSession, wellFormed, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from 'core'
-import { builtLine, checkedDesk, closingBuilds, onceEach, reshapeAsk, withPart, withoutQuoted } from '../src/main/desk-lane.js'
+import { officeTools, runToolSession, type AgentLoopOptions, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from 'core'
+import * as deskLane from '../src/main/desk-lane.js'
+import { closingBuilds, DESK_NOTE, fileGiven } from '../src/main/desk-lane.js'
 
-const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
-const quickOf = (check: (string | undefined)[], repair: (string | undefined)[]) => {
-  const prompts: string[] = []
-  return { prompts, quick: async (p: string) => { prompts.push(p); return p.includes(CHECK) ? check.shift() ?? '{"problems":[]}' : p.includes(REPAIR) ? repair.shift() : undefined } }
+async function turn(draft: string, said: string, options: AgentLoopOptions = {}, wait = 0) {
+  const jobs: ToolSessionJob[] = [], voiced: string[] = []
+  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); if (wait) await new Promise(resolve => setTimeout(resolve, wait)); return { answer: draft } }, quick: async (prompt: string) => { voiced.push(prompt); return '{"problems":[]}' } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: '/tmp/c19b-desk' as EngineCwd, tools: [] }, said, options)
+  return { posted: result.answer, calls: jobs.length, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
 }
-const problems = (...list: Record<string, unknown>[]): string => JSON.stringify({ problems: list })
+const fromFile = (text: string): AgentLoopOptions => ({ attachmentContext: [DESK_NOTE, fileGiven({ name: 'memo.md', text })].join('\n\n') })
+const KEEPS = 'write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed'
 
 describe('item 1: a desk answer\'s ```replies block is not prose', () => {
   const REPLIES = ['```replies', '두부도 넣어줘', '양 좀 줄여줘', '```'].join('\n')
   const SOURCE = '장보기: 대파 한 단, 계란 한 판, 우유 1L, 두부'
   const DRAFT = ['장보기 목록만 뽑았어요.', '', '- 대파 한 단', '- 계란 한 판', '- 우유 1L', '', REPLIES].join('\n')
-  it('the H2 shape (the check quotes the whole block as "asks") leaves the block byte-identical, on the desk check\'s own removal path too', async () => {
-    for (const quote of [REPLIES, '```replies', '두부도 넣어줘', '```']) {
-      const blank = JSON.stringify({ replace: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [String(i + 1), ''])) })
-      const { quick } = quickOf([problems({ kind: 'asks', quote, why: '선택지' })], [blank])
-      const out = await checkedDesk({ ask: '장보기 목록만 뽑아줘', draft: DRAFT, source: SOURCE, fromSource: true, quick, since: Date.now() })
-      expect(out.endsWith(REPLIES), quote).toBe(true)
-      expect(wellFormed(out)).toBe(true)
-      expect(withoutQuoted(DRAFT, [{ kind: 'asks', quote, why: '' }])).toContain(REPLIES)
-    }
+  it('the block reaches the person byte-identical with the answer around it: no step reads it as prose or takes a line of it', async () => {
+    const { posted, voiced } = await turn(DRAFT, '장보기 목록만 뽑아줘', fromFile(SOURCE))
+    expect(posted).toBe(DRAFT)
+    expect(posted.endsWith(REPLIES)).toBe(true)
+    expect(posted.split('\n').filter(line => line.startsWith('```'))).toEqual(['```replies', '```'])
+    expect(voiced).toEqual([])
   })
-  it('a missing part is added above the trailing block, never after it', () => {
-    const out = withPart(DRAFT, { quote: '같이 살 것', lines: ['두부'] }, SOURCE)
-    expect(out.endsWith(`같이 살 것\n- 두부\n\n${REPLIES}`)).toBe(true)
+  it('nothing is added above or after the trailing block: a part the model left out stays out', async () => {
+    const { posted } = await turn(DRAFT, '장보기 목록이랑 같이 살 것 뽑아줘', fromFile(SOURCE))
+    expect(posted.endsWith(`- 우유 1L\n\n${REPLIES}`)).toBe(true)
+    expect(posted).not.toContain('두부\n')
+    expect(Object.keys(deskLane)).not.toContain('withPart')
   })
 })
 
-describe('item 2: a repair never copies a source line under a second part', () => {
+describe('item 2: a line is under one part because the model is told so, not because a repair is refused', () => {
   const SOURCE = ['# 하반기 워크숍 회의록', '', '## 결정', '- 워크숍 장소는 양평 연수원으로 확정', '- 1박 2일 일정으로 진행', '',
     '## 업무', '- 숙소 예약 — 윤서아, 11월 25일', '- 버스 대절 견적 — 마도윤, 11월 27일', '- 프로그램 초안 — 강예린, 12월 1일'].join('\n')
   const ASK = '워크숍 회의록에서 결정이랑 담당 업무 나눠서 정리해줘'
   const DRAFT = ['워크숍 회의 정리했어요.', '', '결정', '- 워크숍 장소는 양평 연수원으로 확정', '- 1박 2일 일정으로 진행', '- 숙소 예약 — 윤서아, 11월 25일', '- 버스 대절 견적 — 마도윤, 11월 27일', '- 프로그램 초안 — 강예린, 12월 1일'].join('\n')
   const TASKS = ['- 숙소 예약 — 윤서아, 11월 25일', '- 버스 대절 견적 — 마도윤, 11월 27일', '- 프로그램 초안 — 강예린, 12월 1일']
   const reworded = ['- 윤서아 님이 숙소 예약을 11월 25일까지 해요', '- 마도윤 님이 버스 대절 견적을 11월 27일까지 받아요', '- 강예린 님이 프로그램 초안을 12월 1일까지 써요']
-  it('the reworded copy is refused and every task line stands once, under 담당 업무', async () => {
-    const units = messageUnits(DRAFT)
-    const copy = JSON.stringify({ insert_after: { [String(units.length)]: ['', '담당 업무', ...reworded] } })
-    const { quick } = quickOf([problems({ kind: 'missing', quote: '담당 업무', why: '없음', lines: TASKS })], [copy])
-    const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, fromSource: true, quick, since: Date.now() })
-    expect(out).not.toContain('님이')
-    for (const task of TASKS) expect(out.split('\n').filter(line => line === task)).toHaveLength(1)
-    const [decided, tasks] = out.split('담당 업무')
-    expect(TASKS.every(task => tasks!.includes(task) && !decided!.includes(task))).toBe(true)
-    expect(onceEach(out, SOURCE)).toBe(true)
+  it('the turn says each thing goes under one part, and the draft is posted with every task line once, where the model put it', async () => {
+    const { posted, told, calls, voiced } = await turn(DRAFT, ASK, fromFile(SOURCE))
+    expect(told).toContain('Each thing goes under one of them, never both: an item with an owner and a due date is an action item.')
+    expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(posted).toBe(DRAFT)
+    expect(posted).not.toContain('님이')
+    for (const task of TASKS) expect(posted.split('\n').filter(line => line === task)).toHaveLength(1)
+    expect(calls).toBe(1)
+    expect(voiced).toEqual([])
   })
-  it('onceEach tells a reworded copy from two different lines', () => {
-    expect(onceEach([...TASKS, ...reworded].join('\n'), SOURCE)).toBe(false)
-    expect(onceEach(TASKS.join('\n'), SOURCE)).toBe(true)
+  it('the host tells no copy from a different line: a reworded copy the model wrote is posted beside the first', async () => {
+    const twice = [...TASKS, ...reworded].join('\n')
+    expect((await turn(twice, ASK, fromFile(SOURCE))).posted).toBe(twice)
+    expect(Object.keys(deskLane)).not.toContain('onceEach')
   })
 })
 
-describe('item 3: a shorter reshape keeps the meaning check, and its repair must keep the shorter form', () => {
+describe('item 3: a shorter reshape is the model\'s own reply: one call, the ask in view, nothing rewritten after', () => {
   const ASK = '택배 늦어서 미안하다는 문자 한 줄 써줘'
   const LAST = '고객님, 택배 배송이 늦어져서 정말 죄송합니다. 최대한 빨리 받아보실 수 있도록 하겠습니다.'
-  it('a clean shorter draft goes out after one check (2 calls); a rewrite to the original is never shown', async () => {
+  const thread = (ask: string, last: string): AgentLoopOptions => ({ history: [{ role: 'user', text: ask }, { role: 'assistant', text: last }] })
+  it('a shorter draft goes out after one model call and no voice call; the original is never put back', async () => {
     const short = '택배가 늦어져 죄송합니다. 곧 받아보시게 할게요.'
-    const calls: string[] = []
-    const quick = async (prompt: string): Promise<string> => {
-      calls.push(prompt)
-      if (prompt.includes(CHECK)) return calls.length === 2 ? problems() : problems({ kind: 'dropped', quote: short, why: '' })
-      if (prompt.includes(REPAIR)) return JSON.stringify({ replace: { '1': LAST } })
-      return JSON.stringify({ form: 'shorter', was: LAST, reply: short })
-    }
-    expect(await reshapeAsk('좀 더 줄여줘', LAST, quick, ASK)).toBe(short)
-    expect(calls).toHaveLength(2)
-    calls.length = 0
-    const flagged = async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? problems({ kind: 'dropped', quote: short, why: '' }) : prompt.includes(REPAIR) ? JSON.stringify({ replace: { '1': LAST } }) : JSON.stringify({ form: 'shorter', was: LAST, reply: short }) }
-    expect(await reshapeAsk('좀 더 줄여줘', LAST, flagged, ASK)).toBeUndefined()
+    const { posted, calls, voiced } = await turn(short, '좀 더 줄여줘', thread(ASK, LAST))
+    expect(posted).toBe(short)
+    expect(posted).not.toBe(LAST)
+    expect(calls).toBe(1)
+    expect(voiced).toEqual([])
   })
-  it('a shorter draft that drops the ask\'s audience is caught and repaired in the shorter form (not the harness wording)', async () => {
+  it('the ask\'s audience is in front of the model with the rule to keep it; a draft that drops it is posted as written (not a harness wording)', async () => {
     const ask = '할머니께 보낼 생신 축하 문자 존댓말로 써줘', last = '할머니, 생신 진심으로 축하드려요. 늘 건강하시고 오래오래 저희 곁에 계셔 주세요. 사랑해요.'
-    const casual = '할머니 생일 축하해! 건강해.', fixed = '할머니, 생신 축하드려요. 건강하세요.'
-    const { quick, prompts } = quickOf([problems({ kind: 'dropped', quote: casual, why: '존댓말이 아니에요' }), problems()], [JSON.stringify({ replace: { '1': '할머니, 생신 축하드려요.', '2': '건강하세요.' } })])
-    const voice = async (p: string): Promise<string> => p.includes(CHECK) || p.includes(REPAIR) ? (await quick(p)) ?? '' : JSON.stringify({ form: 'shorter', was: last, reply: casual })
-    expect(await reshapeAsk('더 짧게 해줘', last, voice, ask)).toBe(fixed)
-    expect(prompts.some(p => p.includes(CHECK) && p.includes('존댓말로'))).toBe(true)
+    const casual = '할머니 생일 축하해! 건강해.'
+    const { posted, told } = await turn(casual, '더 짧게 해줘', thread(ask, last))
+    expect(told).toContain('존댓말로')
+    expect(told).toContain(KEEPS)
+    expect(posted).toBe(casual)
   })
-  it('on the Q4 latencies (1.7 s draft, 1.2 s check) the reshape ends under 4 s with 2 calls', async () => {
+  it('on the Q4 latency (a 1.7 s draft) the reshape ends when the draft does, with 1 call', async () => {
     vi.useFakeTimers()
     try {
-      let calls = 0
-      const quick = (prompt: string): Promise<string> => { calls++; const check = prompt.includes(CHECK); return new Promise(resolve => setTimeout(() => resolve(check ? problems() : JSON.stringify({ form: 'shorter', was: LAST, reply: '배송 늦어 죄송해요.' })), check ? 1200 : 1700)) }
-      const began = Date.now(), out = reshapeAsk('좀 더 줄여줘', LAST, quick, ASK)
-      await vi.advanceTimersByTimeAsync(2900)
-      expect(await out).toBe('배송 늦어 죄송해요.')
-      expect(Date.now() - began).toBeLessThan(4000)
-      expect(calls).toBe(2)
+      const began = Date.now(), out = turn('배송 늦어 죄송해요.', '좀 더 줄여줘', thread(ASK, LAST), 1700)
+      await vi.advanceTimersByTimeAsync(1700)
+      const { posted, calls, voiced } = await out
+      expect(posted).toBe('배송 늦어 죄송해요.')
+      expect(Date.now() - began).toBeLessThan(2000)
+      expect(calls).toBe(1)
+      expect(voiced).toEqual([])
     } finally { vi.useRealTimers() }
   })
-  it('a draft that was not shorter takes the usual route', async () => {
-    const quick = async (): Promise<string> => JSON.stringify({ form: 'shorter', was: LAST, reply: `${LAST} 감사합니다.` })
-    expect(await reshapeAsk('좀 더 줄여줘', LAST, quick, ASK)).toBeUndefined()
+  it('a draft that was not shorter is posted too: the host measures no length', async () => {
+    const longer = `${LAST} 감사합니다.`
+    expect((await turn(longer, '좀 더 줄여줘', thread(ASK, LAST))).posted).toBe(longer)
+    for (const gone of ['reshapeAsk', 'reshapeCandidate', 'reshapePrompt']) expect(Object.keys(deskLane), gone).not.toContain(gone)
   })
-  it('another form keeps the meaning check, and its repair must keep the form: a rewrite back to the last reply is refused', async () => {
+  it('another form is asked of the model the same way, and its reply is posted, never the last reply again', async () => {
     const polite = '택배 배송이 늦어져 정말 죄송해요. 최대한 빨리 받아보시게 할게요.'
-    const { quick, prompts } = quickOf([problems({ kind: 'dropped', quote: '택배 배송이 늦어져 정말 죄송해요.', why: '' })], [JSON.stringify({ replace: { '1': LAST.split('. ')[0] + '.', '2': '최대한 빨리 받아보실 수 있도록 하겠습니다.' } })])
-    const voice = async (p: string): Promise<string> => p.includes(CHECK) || p.includes(REPAIR) ? (await quick(p)) ?? '' : JSON.stringify({ form: 'tone', was: LAST, reply: polite })
-    expect(await reshapeAsk('좀 부드럽게', LAST, voice, ASK)).toBeUndefined()
-    expect(prompts.some(p => p.includes(CHECK))).toBe(true)
+    const { posted, told, voiced } = await turn(polite, '좀 부드럽게', thread(ASK, LAST))
+    expect(told).toContain('(shorter, as a table, another tone or language)')
+    expect(told).toContain(LAST)
+    expect(posted).toBe(polite)
+    expect(voiced).toEqual([])
   })
 })
 
@@ -125,7 +123,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
       await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
       return { answer: '다시 읽어 보고 고쳤어요.' }
     })
-    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(tools, true), read] }, '신제품 소개 슬라이드 만들어줘')
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(tools), read] }, '신제품 소개 슬라이드 만들어줘')
     return { result, read, after }
   }
 
@@ -135,18 +133,20 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     expect(out).not.toMatch(/verify|read (it|the file) (back|again) (before|to)/i)
   })
 
-  it('a deck with a Korean reply ends on that reply and the file, with no further model turn', async () => {
-    const { result, read } = await run(deckTools(), { slides: SLIDES, reply: '신제품 소개 자료 3장으로 만들었어요.' })
-    expect(result.answer).toBe('신제품 소개 자료 3장으로 만들었어요.\n\n[신제품 소개.pptx](engram-artifact:a1)')
+  it('a deck with a Korean reply ends on that reply exactly as written, the file as its card, with no further model turn', async () => {
+    const { result, read, after } = await run(deckTools(), { slides: SLIDES, reply: '신제품 소개 자료 3장으로 만들었어요.' })
+    expect(result.answer).toBe('신제품 소개 자료 3장으로 만들었어요.')
+    expect(result.files).toEqual([{ name: '신제품 소개.pptx', href: 'a1' }])
     expect(result.steps.map(step => step.tool)).toEqual(['ppt_build'])
     expect(JSON.parse(result.steps[0]!.observation).markdownLink).toBe(receipt.markdownLink)
     expect(read.calls).toBe(0)
+    expect(after).toBe(0)
   })
 
-  it('an English, long or technical reply gets the host line from the build instead', async () => {
+  it('an English, long or technical reply closes the turn as written too: the host has no line of its own to put there', async () => {
     for (const reply of ['I made the product deck with three slides for you.', '세 장 만들었어요. 표지도 넣었어요. 일정도 넣었어요.', 'ppt_build로 만들었어요.', '자료를 만들었어요. Great work.', '발표 자료 완성! Enjoy']) {
       const { result } = await run(deckTools(), { slides: SLIDES, reply })
-      expect(result.answer.split('\n')[0], String(reply)).toBe('신제품 소개, 3장으로 만들었어요.')
+      expect(result.answer, String(reply)).toBe(reply)
     }
   })
 
@@ -156,7 +156,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     expect(result.answer.split('\n')[0]).toBe('Galaxy Buds 소개 자료 2장 만들었어요.')
   })
 
-  it('a build marked more does not end the turn: the next file is made, and the last build closes with every file', async () => {
+  it('a build marked more does not end the turn: the next file is made, and the last build closes on its reply with a card for every file', async () => {
     const files = [{ artifact: 'p1', markdownLink: '[동아리 소개.pptx](engram-artifact:p1)' }, { artifact: 'w1', markdownLink: '[동아리 소개.docx](engram-artifact:w1)' }]
     const fake = (name: string, made: Record<string, unknown>): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify(made) })
     let second = false
@@ -168,30 +168,30 @@ describe('item 4: a build the host audit passed closes the turn', () => {
       await pause(400)
       return { answer: 'late' }
     })
-    const result = await runToolSession({ engine, workdir: WORKDIR, tools: closingBuilds([fake('ppt_build', files[0]!), fake('word_write', files[1]!)], true) }, '동아리 소개 PPT랑 워드 둘 다 만들어줘')
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: closingBuilds([fake('ppt_build', files[0]!), fake('word_write', files[1]!)]) }, '동아리 소개 PPT랑 워드 둘 다 만들어줘')
     expect(second).toBe(true)
     expect(result.steps.map(step => step.tool)).toEqual(['ppt_build', 'word_write'])
-    expect(result.answer.startsWith('동아리 소개 발표 자료랑 문서 만들었어요.')).toBe(true)
-    for (const one of files) expect(result.answer).toContain(one.markdownLink)
+    expect(result.answer).toBe('동아리 소개 발표 자료랑 문서 만들었어요.')
+    expect(result.files).toEqual([{ name: '동아리 소개.pptx', href: 'p1' }, { name: '동아리 소개.docx', href: 'w1' }])
   })
 
-  it('a passed build marked more: false with no usable reply ends the turn on the host line, nothing read back', async () => {
-    for (const args of [{ slides: SLIDES }, { slides: SLIDES, reply: '' }, { slides: SLIDES, more: false }]) {
-      const { result, read, after } = await run(deckTools(), args)
-      expect(result.answer.split('\n')[0]).toBe('신제품 소개, 3장으로 만들었어요.')
-      expect(read.calls).toBe(0)
-      expect(after).toBe(0)
+  it('a passed build marked more: false with no reply does not close: the model writes the answer in its next step, and that is posted', async () => {
+    for (const args of [{ slides: SLIDES }, { slides: SLIDES, reply: '' }, { slides: SLIDES, reply: '   ' }]) {
+      const { result, after } = await run(deckTools(), args)
+      expect(result.answer).toBe('다시 읽어 보고 고쳤어요.')
+      expect(result.files).toEqual([{ name: '신제품 소개.pptx', href: 'a1' }])
+      expect(after).toBe(1)
     }
   })
 
-  it('an English title from the build never reaches a Korean line', async () => {
+  it('an English title in the model\'s reply reaches the person as the model wrote it; no host line is built from the file', async () => {
     const slides = [{ title: 'Quarterly Kickoff' }, { title: '팀 소개', bullets: ['새 멤버'] }]
     const { result } = await run(deckTools(), { slides, reply: 'Quarterly Kickoff 자료 2장 만들었어요.' })
-    expect(result.answer.split('\n')[0]).toBe('발표 자료를 2장으로 만들었어요.')
-    expect(builtLine('word_write', { title: 'Weekly Notes' }, true)).toBe('문서로 만들었어요.')
-    expect(builtLine('file_create_workbook', { name: 'budget_2027.xlsx', sheets: [{}] }, true)).toBe('파일을 시트 1개로 만들었어요.')
-    expect(builtLine('ppt_build', { slides: [{ title: 'Galaxy Buds 소개' }] }, true)).toBe('Galaxy Buds 소개, 1장으로 만들었어요.')
-    expect(builtLine('ppt_build', { slides: [{ title: 'Quarterly Kickoff' }] }, false)).toBe('Made "Quarterly Kickoff", 1 slides.')
+    expect(result.answer).toBe('Quarterly Kickoff 자료 2장 만들었어요.')
+    expect(Object.keys(deskLane)).not.toContain('builtLine')
+    const schema = closingBuilds(deckTools()).find(tool => tool.name === 'ppt_build')!.argsSchema as { properties: Record<string, { description: string }>; required: string[] }
+    expect(schema.properties['reply']!.description).toContain('in their language and polite form, at most two short sentences')
+    expect(schema.required).toContain('more')
   })
 
   it('an audit refusal goes back to the model, which keeps working', async () => {
@@ -202,20 +202,21 @@ describe('item 4: a build the host audit passed closes the turn', () => {
       await pause(300)
       return { answer: '다시 만들게요.' }
     })
-    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools(), true), read] }, 'x')
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools()), read] }, 'x')
     expect(result.answer).toBe('다시 만들게요.')
   })
 
-  it('a doc build and a sheet build close the same way, each with its host line when the reply is unusable', async () => {
+  it('a doc build and a sheet build close the same way, each on the reply the model gave', async () => {
     const fake = (name: string, link: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async args => { expect(args['reply']).toBeUndefined(); return JSON.stringify({ markdownLink: link }) } })
     const doc = await run([fake('word_write', '[동아리 회칙.docx](engram-artifact:d1)')], { title: '동아리 회칙', blocks: [{ kind: 'paragraph', text: '제1조' }], reply: 'Done.' }, 'word_write')
-    expect(doc.result.answer).toBe('동아리 회칙 문서로 만들었어요.\n\n[동아리 회칙.docx](engram-artifact:d1)')
+    expect(doc.result.answer).toBe('Done.')
+    expect(doc.result.files).toEqual([{ name: '동아리 회칙.docx', href: 'd1' }])
     expect(doc.read.calls).toBe(0)
     const sheet = await run([fake('file_create_workbook', '[가계부.xlsx](engram-artifact:s1)')], { name: '가계부.xlsx', sheets: [{ sheet: '11월', rows: [['a']] }, { sheet: '12월', rows: [['b']] }], reply: '가계부 엑셀 만들었어요.' }, 'file_create_workbook')
-    expect(sheet.result.answer).toBe('가계부 엑셀 만들었어요.\n\n[가계부.xlsx](engram-artifact:s1)')
-    expect(builtLine('file_create_workbook', { name: '가계부.xlsx', sheets: [{}, {}] }, true)).toBe('가계부 파일을 시트 2개로 만들었어요.')
+    expect(sheet.result.answer).toBe('가계부 엑셀 만들었어요.')
+    expect(sheet.result.files).toEqual([{ name: '가계부.xlsx', href: 's1' }])
     const edit: AgentTool = { name: 'file_edit_package', description: 'edit', argsSchema: {}, run: async () => '{}' }
-    expect(closingBuilds([edit], true)[0]).toBe(edit)
+    expect(closingBuilds([edit])[0]).toBe(edit)
   })
 
   it('on the s18 D3 latencies (20.8 s to the build, a 1.0 s build) the turn ends within 1 s of the passed build', async () => {
@@ -233,7 +234,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
         return { answer: 'late' }
       })
       let ended = 0
-      const turn = runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools(1_004), true), read] }, 'x').then(result => { ended = Date.now(); return result })
+      const turn = runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools(1_004)), read] }, 'x').then(result => { ended = Date.now(); return result })
       await vi.advanceTimersByTimeAsync(23_000)
       const result = await turn
       expect(result.answer.startsWith('신제품 소개 3장 만들었어요.')).toBe(true)

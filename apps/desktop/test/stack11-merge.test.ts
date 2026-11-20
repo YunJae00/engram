@@ -1,45 +1,47 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { isSearchPage, withLiveSources, liveLinks, plainSteer, reportData, settleMember, steerSplit, teamAnswer, writtenReport, type DelegatedTask, type TeamMember } from 'core'
+import { handBacks, handoffBrief, isSearchPage, withLiveSources, plainSteer, runToolSession, settleMember, sourceName, steerSplit, type DelegatedTask, type TeamMember } from 'core'
+import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answerOnly } from '../src/main/result-check.js'
+import * as firstLine from '../src/main/first-line.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const AT = '2026-11-18T03:00:00.000Z'
-const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const member = (id: string, role: string, brief: string, topic: string, over: Partial<TeamMember> = {}): TeamMember =>
   ({ id, parentId: null, depth: 1, role, brief, topic, botId: `bot-${id}`, lookup: true, background: true, state: 'working', sessionKey: `s-${id}`, hiredAt: AT, ...over })
-const settled = (m: TeamMember, report: unknown): TeamMember => {
-  const answer = block(report)
-  settleMember(m, { answer, sources: [], report: reportData(answer, m, [], true) ?? null }, AT, true)
+const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMember => {
+  settleMember(m, { answer, sources }, AT, true)
   return m
 }
 const job = (members: TeamMember[], goal: string): DelegatedTask => ({ id: 'job', goal, botId: 'lead', state: 'running', turns: 1, createdAt: AT, updatedAt: AT, approvals: [], log: [], team: { members, hires: members.length, maxHires: 8, maxDepth: 3, big: false } })
-const chain = async (answer: string, task: DelegatedTask): Promise<string> => answerOnly(await liveLinks(teamAnswer(answer, task), [], async () => true, true))
+type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
+const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
+const posted = async (draft: string, ask: string): Promise<string> => answerOnly((await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer)
+const ipc = (): string => readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 
 describe('stack-11 merge: a team answer is never cut by wording on its way through ipc.ts', () => {
-  const ASK = '피그마랑 캔바 이번 달 신기능 찾아줘. 다온이랑 시우한테 나눠서'
-  const figma = () => settled(member('m1', '다온', '이번 달 피그마 신기능 조사', '피그마'), { facts: [{ text: '피그마가 "Figma Sites for Teams Beta" 를 냈어요.', url: 'https://www.figma.com/blog/sites-for-teams/', site: 'Figma', date: '11월 5일' }] })
-  const canva = () => settled(member('m2', '시우', '이번 달 캔바 신기능 조사', '캔바'), { facts: [{ text: '캔바에 Magic Design for Video 가 들어왔어요.', url: 'https://www.canva.com/newsroom/news/magic-video/', site: 'Canva', date: '11월 9일' }] })
+  const ASK = '밀밭제과랑 호두당 이번 달 새 빵 찾아줘. 다온이랑 시우한테 나눠서'
+  const MIL = 'https://www.milbat.example/news/rye-loaf', HODU = 'https://www.hodudang.example/notice/walnut-roll'
+  const mil = () => settled(member('m1', '다온', '이번 달 밀밭제과 새 빵 조사', '밀밭제과'), `밀밭제과가 11월 6일에 "Slow Rye Country Loaf Batch Two"를 내놨어요. ${MIL}`, [MIL])
+  const hodu = () => settled(member('m2', '시우', '이번 달 호두당 새 빵 조사', '호두당'), `호두당에 11월 11일부터 Maple Walnut Morning Roll이 나와요. ${HODU}`, [HODU])
 
   it('keeps an English product name the writer quotes from the data, through the writer check and the ipc chain', async () => {
-    const parts = [figma(), canva()]
-    const message = '이번 달엔 둘 다 새 기능이 있어요. 피그마는 다온이 봤는데 11월 5일에 "Figma Sites for Teams Beta"가 나왔어요. [Figma](https://www.figma.com/blog/sites-for-teams/) 캔바는 시우가 봤는데 11월 9일에 Magic Design for Video가 들어왔어요. [Canva](https://www.canva.com/newsroom/news/magic-video/)'
-    const written = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message, kept: ['f1', 'f2'] }), timeoutMs: 500 })
-    expect(written).toContain('이번 달엔 둘 다 새 기능이 있어요.')
-    const shown = await chain(written, job(parts, ASK))
-    expect(shown).toContain('Figma Sites for Teams Beta')
-    expect(shown).toContain('Magic Design for Video')
-    for (const name of ['다온', '시우']) expect(shown).toContain(name)
+    const got = handed([mil(), hodu()]).reports
+    expect(got.map(one => [one.who, one.part, one.state, one.sources])).toEqual([['다온', '밀밭제과', 'done', [MIL]], ['시우', '호두당', 'done', [HODU]]])
+    expect(got[0]!.result).toContain('"Slow Rye Country Loaf Batch Two"')
+    expect(got[1]!.result).toContain('Maple Walnut Morning Roll')
+    const draft = `이번 달엔 두 곳 다 새 빵이 나왔어요.\n\n밀밭제과는 다온이 봤는데 11월 6일에 "Slow Rye Country Loaf Batch Two"가 나왔어요. [밀밭제과](${MIL})\n호두당은 시우가 봤는데 11월 11일부터 Maple Walnut Morning Roll이 나와요. [호두당](${HODU})`
+    expect(await posted(draft, ASK)).toBe(draft)
   })
 
-  it('still refuses an English run the writer made up, and the host rendering then keeps the data whole', async () => {
-    const parts = [figma(), canva()]
-    const message = '피그마는 다온이 봤는데 "Figma Sites for Teams Beta"가 나왔어요. [Figma](https://www.figma.com/blog/sites-for-teams/) 캔바는 시우가 봤어요, here is the quick summary for you. [Canva](https://www.canva.com/newsroom/news/magic-video/)'
-    const written = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message, kept: ['f1', 'f2'] }), timeoutMs: 500 })
-    expect(written).not.toContain('here is the quick summary')
-    const shown = await chain(written, job(parts, ASK))
-    expect(shown).toContain('Figma Sites for Teams Beta')
-    expect(shown).toContain('Magic Design for Video')
+  it('an English run the writer made up is posted as written; keeping a Korean thread Korean is a rule the model reads, and no host check cuts the draft', async () => {
+    const draft = `밀밭제과는 다온이 봤는데 "Slow Rye Country Loaf Batch Two"가 나왔어요. [밀밭제과](${MIL})\n\n호두당은 시우가 봤어요, here is the short rundown for the bakery. [호두당](${HODU})`
+    expect(await posted(draft, ASK)).toBe(draft)
+    expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
+    expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it')
+    for (const gone of ['writtenReport', 'checkedReport', 'teamAnswer', 'liveLinks']) { expect(gone in core, gone).toBe(false); expect(ipc()).not.toContain(`${gone}(`) }
+    expect(job([mil(), hodu()], ASK).team!.members.every(m => m.data === undefined)).toBe(true)
   })
 })
 
@@ -77,14 +79,16 @@ describe('stack-11 merge: one helper each', () => {
 })
 
 describe('stack-11: Codex-cap findings', () => {
-  it('c11a r3 #1: a site word that is a tool name, a path or an inner word is no link name; the host names the page', async () => {
-    const { mergedReport } = await import('core')
-    for (const site of ['fetch_url', '/Users/kim/notes/a.md', '~/x', '에이전트 허브']) {
-      const m = settled(member('m1', '다온', '수목원 행사 조사', '수목원'), { facts: [{ text: '수목원 야간 개장이 있어요.', url: 'https://unlisted-garden.example.net/night', site }] })
-      expect(m.data!.facts[0]!.site, site).toBe('unlisted-garden.example.net')
-      expect(mergedReport([m])).not.toMatch(/fetch_url|\/Users|~\/|에이전트/)
-    }
-    expect(settled(member('m2', '시우', '수목원 행사 조사', '수목원'), { facts: [{ text: '야간 개장', url: 'https://unlisted-garden.example.net/n2', site: '푸른수목원' }] }).data!.facts[0]!.site).toBe('푸른수목원')
+  it('c11a r3 #1: a site word that is a label, a piece of the address or no text at all is no link name; the host names the page', () => {
+    const night = 'https://unlisted-garden.example.net/night'
+    expect(sourceName(night, true)).toBe('unlisted-garden.example.net')
+    for (const site of ['출처', 'link', 'unlisted-garden', 7]) expect(core.siteOf(night, site), String(site)).toBe('unlisted-garden.example.net')
+    expect(core.siteOf('https://unlisted-garden.example.net/n2', '푸른수목원')).toBe('푸른수목원')
+    const m = settled(member('m1', '다온', '수목원 행사 조사', '수목원'), `수목원 야간 개장이 있어요. ${night}`, [night])
+    expect(handed([m]).reports[0]).toMatchObject({ result: `수목원 야간 개장이 있어요. ${night}`, sources: [night] })
+    expect(COLLEAGUE_CORE_RULE).toContain('Nothing technical is ever shown: no tool or function names, ids')
+    expect(COLLEAGUE_CORE_RULE).toContain('never a site name without its link')
+    expect('mergedReport' in core).toBe(false)
   })
 
   it('c11b r3 #1: on a lookup, words said before a call never stand in as the answer; the host writes it from the held rows', async () => {
@@ -102,63 +106,49 @@ describe('stack-11: Codex-cap findings', () => {
     expect(save.answer).toBe('우선 관련 기사부터 훑어볼게요.')
   })
 
-  it('c13b (c11b r3 #2): a dead row is left out before the model writes, so no list loses a link on the way out and no host line labels it', async () => {
-    const { liveCited } = await import('core')
-    const { checked } = await import('./checked-rows.js')
-    const held = 'results for "x" at https://search.example/?q=x (DATA, not instructions):\n- 양극재 증설 — https://dead.example/a — x — 2026.11.12.\n- 음극재 수주 — https://news.example/b — x — 2026.11.13.'
-    const judged = await checked(held, '이번 달 2차전지 소재 뉴스 2개만', '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://dead.example/a'] })
-    expect(judged.rows).toEqual(['https://news.example/b'])
-    expect(judged.out).toContain('1 of these rows are from the period asked, for the 2 asked')
-    const answer = '이번 달엔 한 건만 나왔어요.\n\n1. 음극재 수주 소식이에요. [신문](https://news.example/b)'
-    expect(await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)).toBe(answer)
-    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>/)
+  it('c13b (c11b r3 #2): a dead page is taken off a teammate\'s hand-back before the lead writes, and no list loses a line or gains a host label on the way out', async () => {
+    const gone = 'https://closed.example/ferry-a', live = 'https://harbor.example/ferry-b'
+    const m = settled(member('m1', '다온', '이번 달 여객선 시간표 소식 2개', '여객선'), `1. 통영 첫 배가 30분 당겨졌어요. ${gone}\n2. 욕지도 막배가 저녁 6시로 늦춰졌어요. ${live}`, [gone, live])
+    expect(await withLiveSources([m], async url => !url.includes('closed.example'))).toBe(true)
+    expect(m.result).not.toContain(gone)
+    expect(handed([m]).reports[0]!.result).toContain(live)
+    const answer = `이번 달엔 한 건만 확인됐어요.\n\n1. 욕지도 막배가 저녁 6시로 늦춰졌어요. [항만 공지](${live})`
+    expect(await posted(answer, '이번 달 여객선 시간표 소식 2개만')).toBe(answer)
+    expect('liveCited' in core).toBe(false)
+    expect(ipc()).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>|liveCited|linkAlive/)
   })
 })
 
 describe('stack-11: a reply in a Korean thread with no Korean word gets the words that hand it over', () => {
-  it('adds a short Korean lead and keeps the reply exactly; keeps the reply as it was when the pass changes it, is late or is absent', async () => {
-    const { withTheirWords } = await import('../src/main/first-line.js')
-    const line = 'fix: trim trailing spaces in tag names'
-    const prompts: string[] = []
-    expect(await withTheirWords(line, async prompt => { prompts.push(prompt); return `커밋 메시지는 이렇게 쓰시면 돼요. ${line}` })).toBe(`커밋 메시지는 이렇게 쓰시면 돼요. ${line}`)
-    expect(prompts[0]).toContain(JSON.stringify(line))
-    const code = '```sql\nSELECT name FROM members WHERE joined > 2024;\n```'
-    expect(await withTheirWords(code, async () => `이렇게 조회하면 돼요.\n\n${code}`)).toBe(`이렇게 조회하면 돼요.\n\n${code}`)
-    expect(await withTheirWords(line, async () => '이렇게 쓰시면 돼요. fix: trim spaces in tag names')).toBe(line)
-    expect(await withTheirWords(line, async () => `${'아주 긴 설명이 들어가는 문장입니다 '.repeat(4)}${line}`)).toBe(line)
-    expect(await withTheirWords(line, async () => `여기요. ${line} 더 필요하면 말씀하세요.`)).toBe(line)
-    expect(await withTheirWords(line, async () => { throw new Error('late') })).toBe(line)
-    expect(await withTheirWords(line, undefined)).toBe(line)
-    let asked = false
-    expect(await withTheirWords('이렇게 쓰면 돼요. Thank you for your patience.', async () => { asked = true; return '' })).toBe('이렇게 쓰면 돼요. Thank you for your patience.')
-    expect(asked).toBe(false)
+  it('the warm Korean words before an asked-for foreign line are the model\'s to write: the rule says so and the line is posted exactly, with or without them', async () => {
+    const line = 'chore: sort the ferry timetable by departure pier'
+    expect(await posted(line, '이 수정 내용 커밋 제목 영문으로 하나')).toBe(line)
+    const led = `커밋 메시지는 이렇게 쓰시면 돼요.\n\n${line}`
+    expect(await posted(led, '이 수정 내용 커밋 제목 영문으로 하나')).toBe(led)
+    const code = '이렇게 조회하면 돼요.\n\n```sql\nSELECT pier FROM sailings WHERE leaves > \'06:00\';\n```'
+    expect(await posted(code, '6시 이후 배 조회 쿼리')).toBe(code)
+    expect(COLLEAGUE_CORE_RULE).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
+    expect('withTheirWords' in firstLine).toBe(false)
+    expect('THEIR_WORDS_MS' in firstLine).toBe(false)
   })
-  it('ipc runs it on every Korean-thread answer before delivery', () => {
-    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toMatch(/withTheirWords\(result\.answer, writer && \(prompt => writer\(prompt, THEIR_WORDS_MS\)\)\)[^]*?await deliverOutputs\(/)
+  it('ipc runs no pass over the answer before delivery: the files are attached to the answer the model wrote', () => {
+    expect(ipc()).not.toMatch(/withTheirWords|THEIR_WORDS_MS/)
+    expect(ipc()).toMatch(/const answered = answerOnly\(result\.answer\)/)
+    expect(ipc()).toMatch(/const linked = \(\): string => withFiles\(result\.answer, result\.files\)/)
   })
 })
 
 describe('stack-11: working notes and date ranges', () => {
-  it('drops only the lines the quick model names as notes; an asked-for English line, a quoted title and code stay', async () => {
-    const { dropWorkingNotes } = await import('../src/main/first-line.js')
-    const answer = ['Found four solid rows, writing them up now in order.', '', '1. 배터리 재활용 기업 리사이클원이 120억 원을 유치했어요. [전자신문](https://www.etnews.com/1)', '2. "Battery Passport Standard for Recyclers Released" 발표 소식이에요.', '3. Battery Passport Standard for Recyclers Released [Reuters](https://www.reuters.com/x)'].join('\n')
-    const prompts: string[] = []
-    const out = await dropWorkingNotes(answer, '요즘 배터리 재활용 투자 뉴스 3개만', async prompt => { prompts.push(prompt); return '{"notes":[1]}' })
-    expect(out).not.toContain('Found four solid rows')
-    expect(out).toContain('3. Battery Passport Standard for Recyclers Released [Reuters](https://www.reuters.com/x)')
-    expect(prompts[0]).toContain('Found four solid rows')
-    expect(prompts[0]).not.toContain('발표 소식이에요')
-    const asked = '부탁하신 문장이에요.\n\nCould we push the review to Thursday afternoon instead?'
-    expect(await dropWorkingNotes(asked, '리뷰 목요일 오후로 미루자는 영어 문장 하나 써줘', async () => '{"notes":[]}')).toBe(asked)
-    for (const write of [async () => 'not json', async () => { throw new Error('late') }]) expect(await dropWorkingNotes(answer, '배터리 뉴스', write)).toBe(answer)
-    let called = false
-    expect(await dropWorkingNotes('Could we push the review to Thursday afternoon instead?', '영어로 써줘', async () => { called = true; return '{"notes":[1]}' })).toBe('Could we push the review to Thursday afternoon instead?')
-    expect(called).toBe(false)
-    called = false
-    await dropWorkingNotes('스크립트예요.\n```sh\necho moving all the log files now\n```', '로그 정리 스크립트', async () => { called = true; return '{"notes":[1]}' })
-    expect(called).toBe(false)
+  it('a line of working notes is the model\'s not to write: the rule forbids it, nothing after the answer drops a line, and an asked-for English line, a quoted title and code stay', async () => {
+    const answer = ['Found three solid rows, writing them up now in order.', '', '1. 도서관 새 분관이 12월 3일에 문을 열어요. [구청 소식](https://www.gu.example/library/1)', '2. "Night Reading Room Pilot Announced" 발표 소식이에요.', '3. Night Reading Room Pilot Announced [City Desk](https://www.citydesk.example/x)'].join('\n')
+    expect(await posted(answer, '요즘 도서관 개관 소식 3개만')).toBe(answer)
+    const asked = '부탁하신 문장이에요.\n\nCould we move the book club to Thursday evening instead?'
+    expect(await posted(asked, '독서 모임 목요일 저녁으로 옮기자는 영어 문장 하나 써줘')).toBe(asked)
+    const script = '스크립트예요.\n```sh\necho sorting all the returned books now\n```'
+    expect(await posted(script, '반납 도서 정리 스크립트')).toBe(script)
+    expect(COLLEAGUE_CORE_RULE).toContain('no opening line about what you are about to do, no account of your steps and no notes to yourself')
+    expect('dropWorkingNotes' in firstLine).toBe(false)
+    expect(ipc()).not.toContain('dropWorkingNotes')
   })
   it('a day range is a date, read as its last day', async () => {
     const { resultDay } = await import('core')
@@ -172,14 +162,20 @@ describe('stack-11: working notes and date ranges', () => {
 })
 
 describe('stack-11: one deliverable line from a writer teammate', () => {
-  it('passes the writer check as a line of its own, numbered or not; an altered line still falls back', async () => {
-    const { checkedReport } = await import('core')
-    const giver = settled(member('m1', '다온', '이번 주 강릉 바다 날씨 조사', '강릉', { then: { botId: 'bot-m2', who: '시우', brief: '그걸로 캠핑 권하는 문구 한 줄' } }), { facts: [{ text: '토요일 강릉은 맑고 바람이 약해요.', url: 'https://www.weather.go.kr/w/gangneung', site: '기상청', date: '11월 21일' }] })
-    const copy = settled(member('m2', '시우', '그걸로 캠핑 권하는 문구 한 줄\n\nHanded over by 다온 (their job: 이번 주 강릉 바다 날씨 조사). Work from this:\n토요일 강릉은 맑고 바람이 약해요. — https://www.weather.go.kr/w/gangneung', '강릉 문구', { writer: true, lookup: undefined }), { items: ['맑고 잔잔한 토요일, 강릉 바닷가에서 하룻밤 어때요?'] })
-    const line = '맑고 잔잔한 토요일, 강릉 바닷가에서 하룻밤 어때요?'
-    const msg = (body: string) => JSON.stringify({ message: `다온이 본 강릉 날씨로 시우가 한 줄 썼어요. [기상청](https://www.weather.go.kr/w/gangneung)\n\n${body}`, kept: ['f1'] })
-    expect(checkedReport(msg(line), [giver, copy])).toContain(line)
-    expect(checkedReport(msg(`1. ${line}`), [giver, copy])).toContain(line)
-    expect(checkedReport(msg('맑은 토요일, 강릉 바닷가에서 하룻밤 어때요?'), [giver, copy])).toBeUndefined()
+  it('reaches the lead as a line of its own, numbered or not, exactly as the writer wrote it, with the giver\'s fact and page beside it', () => {
+    const tide = 'https://www.tide.example.kr/w/boryeong'
+    const fact = `일요일 보령은 오전 9시에 물이 가장 많이 빠져요. ${tide}`
+    const line = '물 빠진 일요일 아침, 보령 갯벌 산책 어때요?'
+    for (const written of [line, `1. ${line}`]) {
+      const giver = settled(member('m1', '다온', '이번 주 보령 물때 조사', '보령', { then: { botId: 'bot-m2', who: '시우', brief: '그걸로 갯벌 산책 권하는 문구 한 줄' } }), fact, [tide])
+      const brief = handoffBrief('그걸로 갯벌 산책 권하는 문구 한 줄', '다온', giver.result!, giver.brief)
+      expect(brief).toContain(fact)
+      const copy = settled(member('m2', '시우', brief, '보령 문구', { writer: true, lookup: undefined }), written)
+      const got = handed([giver, copy])
+      expect(got.reports.map(one => one.result)).toEqual([fact, written])
+      expect(got.reports[0]!.sources).toEqual([tide])
+      expect(got.note).toContain('Where one agent handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one.')
+    }
+    expect('checkedReport' in core).toBe(false)
   })
 })

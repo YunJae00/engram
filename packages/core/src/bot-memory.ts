@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { withoutReplies } from './agent-history.js'
-import { namesSubject } from './search-template.js'
+import { saysSubject } from './search-template.js'
 import { secretsIn } from './secrets.js'
 import type { VaultPaths } from './vault.js'
 
@@ -67,7 +67,7 @@ export function memorableTurn(message: string, answer: string): boolean {
   if (said.length < 6 || !answer.trim()) return false
   if (TRIVIAL.test(said)) return false
   if (ECHO_PROBE.test(said) && !ASKED_TO_KEEP.test(said)) return false
-  return namesSubject(said)
+  return saysSubject(said)
 }
 
 function notAFact(text: string): boolean {

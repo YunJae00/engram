@@ -252,17 +252,21 @@ it.each(['new','none','both'])('respects artifact revision selection (%s) withou
     const id=[oldId,newId,otherId][index++]!
     return JSON.stringify({markdownLink:`[${id.slice(37)}](engram-artifact:${id})`})
   }}
+  const draft=selection==='none'?'Saved both drafts.':`Final draft: [Download](engram-artifact:${newId}).${selection==='both'?` Previous: [Earlier](engram-artifact:${oldId}).`:' Previous draft is superseded.'}`
   const engine=sessionBrain(async job=>{
     const save=job.tools.find(t=>t.name==='file_create_copy')!
     await save.run({}); await save.run({}); await save.run({})
-    return {answer:selection==='none'?'Saved both drafts.':`Final draft: [Download](engram-artifact:${newId}).${selection==='both'?` Previous: [Earlier](engram-artifact:${oldId}).`:' Previous draft is superseded.'}`}
+    return {answer:draft}
   })
   const result=await runToolSession({engine:{...engine,desktopToolIsolation:true},workdir:WORKDIR,tools:[create]},'Prepare final draft',{guided:false})
-  expect(result.answer).toContain(newId)
-  expect(result.answer).toContain(otherId)
-  if (selection==='new') expect(result.answer).not.toContain(oldId)
-  else expect(result.answer).toContain(oldId)
-  expect(result.answer.split(newId)).toHaveLength(2)
+  expect(result.answer).toBe(draft)
+  const shown=[result.answer,...result.files!.map(file=>`[${file.name}](engram-artifact:${file.href})`)].join('\n\n')
+  expect(shown).toContain(newId)
+  expect(shown).toContain(otherId)
+  if (selection==='new') expect(shown).not.toContain(oldId)
+  else expect(shown).toContain(oldId)
+  expect(shown.split(newId)).toHaveLength(2)
+  expect(result.files).toContainEqual({name:'memo.md',href:otherId})
 })
 
 it('gives desktop and web work the method rule without a separate discovery tool', async () => {

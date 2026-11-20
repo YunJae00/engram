@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { checkedSearch, judgedItems, LOOKUP_RESERVE_MS, WIDEN_MS } from '../src/item-check.js'
-import { citeMembers, NO_LIVE_SOURCE, TEAM_ANSWER_MS, teamHireTools, withLiveSources, type TeamHost } from '../src/team-hire-tools.js'
-const WIDEN_BY_MS = TEAM_ANSWER_MS - LOOKUP_RESERVE_MS
 import type { AgentTool } from '../src/agent-loop.js'
+import { runComet } from '../src/agent-session.js'
+import { handBacks } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
+import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
+import * as core from '../src/index.js'
+import { ANSWER_FROM_THIS, keepRead, keepSources, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, LOOKUP_RULE, memberPersona, NO_LIVE_SOURCE, skipWalls, teamHireTools, timeBoxed, withLiveSources, type TeamHost } from '../src/team-hire-tools.js'
 
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):`, 'Results, each as title — its own address — what it says — its date.', 'They asked for 4: list the 4 rows that are what they asked for.', ...rows, '', '이 페이지의 다른 글자들: 바이오 벤처투자 역대 최대, 정부 바이오 육성 계획'].join('\n')
 const BIO = '요즘 국내 바이오 스타트업 투자 소식 4개'
@@ -16,66 +18,78 @@ const bio = [
   '- 오믹스원, 시리즈A 120억 원 투자 유치 — https://f.example/6 — 진단 — 11월 10일',
   '- 바이오노드, 80억 원 투자 유치 — https://g.example/7 — 신약 — 11월 9일',
 ]
-const BIO_VERDICT = '{"keep":[1,3,4,5,6,7],"same":[[1,4]],"lists":[],"listing":[3],"outside":[]}'
 function search(outs: string[]): AgentTool & { queries: string[] } {
   const queries: string[] = []
   return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
 }
+interface Move { tool: string; args: Record<string, unknown> }
+interface Looked { got: string[]; answer: string; jobs: ToolSessionJob[]; sources: string[]; kept: string[] }
+async function looked(ask: string, tools: AgentTool[], moves: Move[], draft: string, left: () => number = () => 20_000): Promise<Looked> {
+  const got: string[] = [], jobs: ToolSessionJob[] = [], sources = new Set<string>(), kept: string[] = []
+  const engine = {
+    id: 'mock', detect: async () => ({ installed: true, loggedIn: true }),
+    run: async function* () { yield { type: 'result', text: '' } },
+    runTools: async (job: ToolSessionJob): Promise<ToolSessionResult> => {
+      jobs.push(job)
+      for (const move of moves) { const out = await job.tools.find(tool => tool.name === move.tool)!.run(move.args); got.push(typeof out === 'string' ? out : out.text) }
+      return { answer: draft }
+    },
+  } as unknown as Engine
+  const boxed = tools.map(tool => timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left))
+  const result = await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: boxed }, ask, { guided: false, lookup: true })
+  return { got, answer: result.answer, jobs, sources: [...sources], kept }
+}
+const FIRST = '바이오 벤처 자금 유치'
 
-describe('c13b: a counted lookup is judged on its rows, before the model writes', () => {
+describe('c13b: a counted lookup reaches the model as the search returned it, and the model writes', () => {
   it('7 rows for 4 asked: every row reaches the writer with the search\'s own count line, and no judge call is made', async () => {
-    const prompts: string[] = []
-    const tool = checkedSearch(search([page('바이오 스타트업 투자 유치', bio)]), { ask: () => BIO, write: async prompt => { prompts.push(prompt); return BIO_VERDICT }, since: 0, now: () => 0 })
-    const out = await tool.run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
-    const rows = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1])
-    expect(rows).toEqual(bio.map(line => / — (https?:\S+)/.exec(line)![1]))
-    expect(out).toContain('They asked for 4: list the 4 rows that are what they asked for.')
-    expect(prompts).toHaveLength(0)
-    expect(out).not.toContain('These rows were checked')
+    const found = page(FIRST, bio), draft = '투자 소식 네 건 찾았어요.'
+    const out = await looked(BIO, [search([found])], [{ tool: 'search_web', args: { query: FIRST } }], draft)
+    expect(out.got).toEqual([found])
+    expect(out.got[0]).toContain('They asked for 4: list the 4 rows that are what they asked for.')
+    expect(out.jobs).toHaveLength(1)
+    expect(out.answer).toBe(draft)
+    expect(out.sources).toEqual(['https://search.naver.com/search.naver?where=news&query=x'])
   })
 
-  it('a short list with no time left: no widened search, the writer is told the number in hand plainly, and no host line is made for the person', async () => {
-    const two = [bio[0]!, bio[1]!, bio[4]!]
-    const verdict = '{"keep":[1,3],"same":[],"listing":[],"outside":[],"search":"바이오 벤처 시리즈 투자"}'
-    const s = search([page('바이오 스타트업 투자 유치', two)])
-    const tool = checkedSearch(s, { ask: () => BIO, write: async () => verdict, since: 0, now: () => WIDEN_BY_MS })
-    const out = await tool.run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
-    expect(s.queries).toEqual(['바이오 스타트업 투자 유치'])
-    expect(out).toContain('3 of these rows are from the period asked, for the 4 asked, and there is no time to look further')
-    expect(out).not.toContain('They asked for 4: list the 4 rows')
-    expect(out).not.toMatch(/search no more|first sentence/)
-    expect(out).not.toMatch(/딱 맞는|개 중/)
+  it('a short list with no time left: no further search runs, and the model is told plainly to answer from what it has; no host line is made for the person', async () => {
+    const two = [bio[0]!, bio[1]!, bio[4]!], found = page(FIRST, two)
+    const s = search([found, page('바이오 벤처 시리즈 투자', bio)])
+    let left = LOOKUP_ROUND_MS - 1
+    const draft = '세 건까지 찾았어요.'
+    const out = await looked(BIO, [{ ...s, run: async (args, context) => { const text = await s.run(args, context); left = LOOKUP_CALL_MS - 1; return text } }], [{ tool: 'search_web', args: { query: FIRST } }, { tool: 'search_web', args: { query: '바이오 벤처 시리즈 투자' } }], draft, () => left)
+    expect(s.queries).toEqual([FIRST])
+    expect(out.got).toEqual([`${found}\n\n${ANSWER_FROM_THIS}`, ANSWER_FROM_THIS])
+    expect(ANSWER_FROM_THIS).toBe('No further tool call will run. Answer now from what you have, in the person\'s language.')
+    expect(out.answer).toBe(draft)
+    expect(out.answer).not.toMatch(/딱 맞는|개 중/)
   })
 
-  it('a widened search runs only when the time left covers a whole round (words, then a search); its new rows join the first ones', async () => {
+  it('a second search is the model\'s own call and runs only while the time left covers a call; its rows come back whole beside the first ones', async () => {
     const two = [bio[0]!, bio[1]!, bio[4]!]
     const more = ['- 셀젠바이오 250억 투자 유치 후속 보도 — https://h.example/8 — x — 11월 15일', '- 지노믹스허브, 시리즈B 300억 원 — https://i.example/9 — x — 11월 15일']
-    const verdicts = ['{"keep":[1,3],"same":[],"listing":[],"outside":[],"search":"바이오 벤처 시리즈 투자"}', '{"keep":[1,2,3,4],"same":[[1,3]],"listing":[],"outside":[],"search":""}']
-    const run = async (at: number) => {
-      let t = 1_000 + at - WIDEN_MS / 2
-      const s = search([page('바이오 스타트업 투자 유치', two), page('바이오 벤처 시리즈 투자', more)]), answers = [...verdicts]
-      const out = await checkedSearch({ ...s, run: async (args, context) => { t += WIDEN_MS / 2; return s.run(args, context) } }, { ask: () => BIO, write: async () => { t += WIDEN_MS / 2; return answers.shift() }, since: 1_000, now: () => t }).run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
-      return { queries: s.queries, out }
+    const run = async (left: number) => {
+      const s = search([page(FIRST, two), page('바이오 벤처 시리즈 투자', more)])
+      const out = await looked(BIO, [s], [{ tool: 'search_web', args: { query: FIRST } }, { tool: 'search_web', args: { query: '바이오 벤처 시리즈 투자' } }], 'x', () => left)
+      return { queries: s.queries, got: out.got }
     }
-    const early = await run(WIDEN_BY_MS - WIDEN_MS)
-    expect(early.queries).toEqual(['바이오 스타트업 투자 유치', '바이오 벤처 시리즈 투자'])
-    expect(early.out).toContain('https://i.example/9')
-    expect(early.out).toContain('https://h.example/8')
-    expect(early.out).not.toMatch(/of these rows are from the period asked/)
-    const late = await run(WIDEN_BY_MS - WIDEN_MS + 1)
-    expect(late.queries).toEqual(['바이오 스타트업 투자 유치'])
-    expect(late.out).not.toContain('https://i.example/9')
+    const early = await run(LOOKUP_ROUND_MS)
+    expect(early.queries).toEqual([FIRST, '바이오 벤처 시리즈 투자'])
+    expect(early.got).toEqual([page(FIRST, two), page('바이오 벤처 시리즈 투자', more)])
+    const late = await run(LOOKUP_CALL_MS - 1)
+    expect(late.queries).toEqual([])
+    expect(late.got.join('\n')).not.toContain('https://i.example/9')
+    expect(LOOKUP_RULE).toContain('search once more in other words before you report')
+    expect(LOOKUP_RULE).toContain('and never a third time')
   })
 
-  it('L1-L4-shaped single lookups: no judge call, every live row in the search\'s order; a row whose page does not open is still never shown', async () => {
+  it('L1-L4-shaped single lookups: no judge call, every row in the search\'s order, and each row\'s page kept for the hand-back', async () => {
     for (const ask of ['내일 대전 날씨 어때?', '지금 엔화 환율 얼마야?', '삼성전자 오늘 주가 알려줘', '맥북 에어 15인치 가격 알려줘']) {
-      let calls = 0
       const one = page('x', ['- 결과 하나 — https://a.example/1 — x — 11월 14일', '- 결과 둘 — https://dead.example/2 — x — 11월 14일', '- 결과 셋 — https://c.example/3 — x — 11월 14일'])
-      const out = await checkedSearch(search([one]), { ask: () => ask, write: async () => { calls++; return '{"keep":[1],"asked":null,"secondhand":[1]}' }, alive: async url => !url.includes('dead.example'), since: 0, now: () => 0 }).run({ query: 'x' }, { task: ask })
-      expect(calls, ask).toBe(0)
-      expect(out, ask).not.toContain('https://dead.example/2')
-      expect(out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]), ask).toEqual(['https://a.example/1', 'https://c.example/3'])
-      expect(out, ask).not.toContain('These rows were checked')
+      const out = await looked(ask, [search([one])], [{ tool: 'search_web', args: { query: 'x' } }], 'x')
+      expect(out.jobs, ask).toHaveLength(1)
+      expect(out.got, ask).toEqual([one])
+      expect(out.kept[0]!.split('\n').filter(line => /https:\/\/\S+$/.test(line)).map(line => line.split(' ').at(-1)), ask).toEqual(['https://a.example/1', 'https://dead.example/2', 'https://c.example/3'])
     }
   })
 })
@@ -93,11 +107,11 @@ describe('c13b: a helper\'s cited page is checked as its result is handed over',
     expect(fold.result).toContain('가격: 239만 원 — https://shop-b.example/fold8')
     expect(fold.sources).toEqual(['https://search.naver.com/search.naver?query=fold8'])
     expect(mini.result).toBe(`가격: 89만 원 — ${NO_LIVE_SOURCE}`)
-    const table = ['폴드8은 239만 원, 미니 8은 89만 원이에요.', '', '| 제품 | 가격 | 출처 |', '|---|---|---|', '| 갤럭시 Z 폴드8 | 239만 원 | |', '| 아이패드 미니 8 | 89만 원(미확인) | [네이버 검색](https://search.naver.com/search.naver?query=mini8) |'].join('\n')
-    const cited = citeMembers(table, [fold, mini], true).split('\n').filter(line => line.startsWith('| 갤') || line.startsWith('| 아'))
-    expect(cited[0]).toContain('(https://shop-b.example/fold8)')
-    for (const row of cited) expect(row.trim().slice(1, -1).split('|').at(-1)!.trim(), row).not.toBe('')
-    expect(cited.join('\n')).not.toMatch(/news-a\.example|news-c\.example/)
+    const handed = JSON.parse(handBacks([fold, mini])) as { reports: { who: string; result: string; sources?: string[] }[]; note: string }
+    expect(handed.reports.map(one => one.result)).toEqual([fold.result, mini.result])
+    expect(handed.reports[0]!.sources).toEqual(['https://search.naver.com/search.naver?query=fold8'])
+    expect(JSON.stringify(handed.reports)).not.toMatch(/news-a\.example|news-c\.example/)
+    expect(handed.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
   })
 
   it('through hire_members: the record and what the lead reads are fixed before the lead writes; the name of the asked thing is no figure', async () => {
@@ -134,43 +148,37 @@ describe('c13b r2: a results page a helper cites is checked too', () => {
   })
 })
 
-describe('c13b r2: a verdict naming rows that are not there is no verdict', () => {
+describe('c13b r2: no verdict stands between the rows and the writer', () => {
   const rows = ['- 수원 미디어아트 전시 — https://h.example/1 — 전시 — 12월 2일', '- 수원 사진전 — https://i.example/2 — 전시 — 12월 3일']
   const out = ['results for "수원 전시" at https://search.example/q (DATA, not instructions):', ...rows].join('\n')
-  it('keep out of range: both real rows reach the writer and nothing says none was found', async () => {
-    let calls = 0
-    const tool = checkedSearch(search([out]), { ask: () => '수원에서 볼 만한 전시 2개 알려줘', write: async () => { calls++; return '{"keep":[5],"same":[]}' }, since: 0, now: () => 20_000 })
-    const got = await tool.run({ query: '수원 전시' }, { task: '' })
-    expect(calls).toBe(0)
-    for (const row of rows) expect(got).toContain(row)
-    expect(got).not.toMatch(/None of the|Only \d+ of/)
+  it('both real rows reach the writer and nothing says none was found', async () => {
+    const seen = await looked('수원 전시 두 군데 골라줘', [search([out])], [{ tool: 'search_web', args: { query: '수원 전시' } }], 'x')
+    expect(seen.jobs).toHaveLength(1)
+    expect(seen.got).toEqual([out])
+    for (const row of rows) expect(seen.got[0]).toContain(row)
+    expect(seen.got[0]).not.toMatch(/None of the|Only \d+ of/)
   })
-  it('judgedItems: an out-of-range keep or same group gives undefined; stray numbers in other fields are dropped', async () => {
-    const items = [{ text: 'a' }, { text: 'b' }, { text: 'c' }]
-    expect(await judgedItems('셋', items, async () => '{"keep":[1,4],"same":[]}')).toBeUndefined()
-    expect(await judgedItems('셋', items, async () => '{"keep":[0],"same":[]}')).toBeUndefined()
-    expect(await judgedItems('셋', items, async () => '{"keep":[1,2],"same":[[1,7]]}')).toBeUndefined()
-    const ok = await judgedItems('셋', items, async () => '{"keep":[1,2,3],"same":[],"listing":[2,8],"outside":[-1,3],"lists":[9]}')
-    expect(ok).toMatchObject({ keep: [1, 2, 3], listing: [2], outside: [3], lists: [] })
+  it('the judge is gone from the package, and what the helper read is kept row for row for its hand-back', async () => {
+    for (const gone of ['judgedItems', 'checkedSearch', 'firstHand', 'judgeTime']) expect(core).not.toHaveProperty(gone)
+    const seen = await looked('수원 전시 두 군데 골라줘', [search([out])], [{ tool: 'search_web', args: { query: '수원 전시' } }], 'x')
+    expect(seen.kept).toEqual(['수원 미디어아트 전시: 전시, 12월 2일 https://h.example/1\n수원 사진전: 전시, 12월 3일 https://i.example/2'])
+    expect(seen.sources).toEqual(['https://search.example/q'])
   })
 })
 
 describe('c13b r3: a row out of the asked period is gone; a stand-in source must say the same thing', () => {
-  it('the period is the search\'s own marker, not a judge: rows it marks older do not count toward the number, and a short list widens', async () => {
+  it('the period is the search\'s own marker, not a judge: the marker line and every row, older ones too, reach the model as returned, and the host searches no further', async () => {
     const first = ['results for "광주 공연" at https://search.example/q (DATA, not instructions):', '- 광주 재즈 공연 — https://j.example/1 — 12월 5일', '- 광주 국악 공연 — https://k.example/2 — 12월 6일', '- 작년 광주 록 공연 — https://l.example/3 — 2025년 12월 5일'].join('\n')
-    const more = ['results for "광주 콘서트" at https://search.example/q2 (DATA, not instructions):', '- 광주 클래식 콘서트 — https://m.example/4 — 12월 7일'].join('\n')
-    const s = search([first, more]), verdicts = ['{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', '{"keep":[1,2,3],"same":[],"outside":[],"search":""}']
-    const out = await checkedSearch(s, { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: '광주 공연' }, { task: '' })
-    expect(s.queries).toEqual(['광주 공연'])
-    expect(out).toContain('https://l.example/3')
-    expect(out).not.toMatch(/of these rows are from the period asked/)
     const marked = first.replace('\n- 광주 재즈', '\nThe first 2 are from the last week; the ones after them are older.\n- 광주 재즈')
-    const s2 = search([marked, more]), verdicts2 = ['{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', '{"keep":[1,2,3],"same":[],"outside":[],"search":""}']
-    const widened = await checkedSearch(s2, { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => verdicts2.shift(), since: 0, now: () => 0 }).run({ query: '광주 공연' }, { task: '' })
-    expect(s2.queries).toEqual(['광주 공연', '광주 콘서트'])
-    expect(widened).toContain('https://m.example/4')
-    const late = await checkedSearch(search([marked]), { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => '{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', since: 0, now: () => WIDEN_BY_MS }).run({ query: '광주 공연' }, { task: '' })
-    expect(late).toContain('2 of these rows are from the period asked, for the 3 asked')
+    const s = search([marked])
+    const out = await looked('다음 주 광주에서 하는 공연 3개', [s], [{ tool: 'search_web', args: { query: '광주 공연' } }], '두 개만 다음 주 공연이에요.')
+    expect(out.got).toEqual([marked])
+    expect(s.queries).toEqual(['광주 공연'])
+    expect(out.got[0]).toContain('The first 2 are from the last week; the ones after them are older.')
+    expect(out.got[0]).toContain('https://l.example/3')
+    expect(out.kept[0]).not.toContain('The first 2 are from the last week')
+    expect(out.kept[0]!.split('\n')).toHaveLength(3)
+    expect(out.answer).toBe('두 개만 다음 주 공연이에요.')
   })
   it('a dead source never gives way to a line of another thing with the same figure; a line saying the same thing still takes it', async () => {
     const helper = (result: string): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '이어폰', brief: '무선 이어폰 소니 가격', lookup: true, state: 'done', sessionKey: 's', hiredAt: 'now', result, sources: [] })
@@ -194,13 +202,13 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
   })
 })
 
-describe('stack-13: the item judge checks every part the ask names', () => {
-  it('the one prompt asks for the thing on every part the ask names, and keeps only items that say too little to tell', async () => {
-    let prompt = ''
-    await judgedItems('부산 해산물 식당 개업 소식 4개', [{ text: '부산 기장에 해산물 식당 새로 문 열어' }, { text: '부산 해산물 축제 개막' }], async p => { prompt = p; return '{"keep":[1]}' }, 1000, { tried: [] })
-    expect(prompt).toContain('against everything the ask names about the thing it wants')
-    expect(prompt).toContain('keep an item only when it is that thing on every one of them')
-    expect(prompt).toContain('leave out an item that clearly lacks one')
-    expect(prompt).not.toContain('When unsure, keep it.')
+describe('stack-13: what makes a row the asked thing is told to the one who reads the rows', () => {
+  it('a lookup teammate\'s persona carries the lookup rule: report from the rows that hold what the brief asks, and label a value that belongs to another thing', () => {
+    const member: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '맛집', brief: '부산 해산물 식당 개업 소식 4개', lookup: true, state: 'hired', sessionKey: 's', hiredAt: 'now' }
+    expect(memberPersona(member)).toContain(LOOKUP_RULE)
+    expect(memberPersona({ ...member, lookup: false })).not.toContain(LOOKUP_RULE)
+    expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
+    expect(LOOKUP_RULE).toContain('a value of anything other than exactly the name in your part (another model or edition of it, the one before it) names what it belongs to')
+    expect(LOOKUP_RULE).toContain('When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report')
   })
 })

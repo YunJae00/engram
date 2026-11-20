@@ -2,20 +2,29 @@ import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { loadBotMemory, mergeMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, type VaultPaths } from 'core'
+import { loadBotMemory, mergeMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob, type VaultPaths } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE, withOffer } from '../src/main/desk-lane.js'
+import * as deskLane from '../src/main/desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
-import { answerAlone, cleanLine, firstLinePrompt, smallTalkPrompt, talkOnly, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
+import * as firstLine from '../src/main/first-line.js'
+import { cleanLine, firstLinePrompt, smallTalkPrompt, toldPrompt } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
 const COLLEAGUE_RULE = core('agent-voice.ts')
+async function turn(draft: string, said: string, options: AgentLoopOptions = {}) {
+  const jobs: ToolSessionJob[] = [], voiced: string[] = []
+  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick: async (prompt: string) => { voiced.push(prompt); return '안녕하세요!' } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: '/tmp/c5c-voice' as EngineCwd, tools: [] }, said, options)
+  return { posted: result.answer, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
+}
+const smallTalk: AgentLoopOptions = { short: true, attachmentContext: SMALL_TALK_NOTE }, shortAsk: AgentLoopOptions = { short: true, attachmentContext: SHORT_QUESTION_NOTE }
 
 describe('a document ask makes the document (D3, D4, D5)', () => {
   it('gives the document kind no way to ask, and leaves the real gates where they are', () => {
@@ -55,7 +64,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(DESK_NOTE).toContain('change that same file, the one in the list of files you saved earlier: never make a second copy')
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory')
-    expect(ipc).toMatch(/attachmentContext: \[company, attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
+    expect(ipc).toMatch(/attachmentContext: \[company, [^\]]*attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
   })
   it('opens a document turn with its first step and closes with what is in the file (D2, D4 judge)', () => {
     const line = firstLinePrompt('위 회의록으로 워드 보고서 만들어줘', true)
@@ -129,49 +138,47 @@ describe('a kept fact is corrected by the host (M2)', () => {
 })
 
 describe('small talk never sounds like a help desk (Q1)', () => {
-  it('drops the help-desk sentence in any wording and keeps the rest', () => {
-    for (const [said, left] of [
-      ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요!'], ['안녕하세요! 오늘은 무엇을 도와드릴까요?', '안녕하세요!'], ['좋은 아침이에요. 뭐 도와드릴까요?', '좋은 아침이에요.'],
-      ['안녕하세요! 도와드릴 일 있으면 말씀하세요.', '안녕하세요!'], ['반가워요. 필요하신 게 있으면 말씀해 주세요.', '반가워요.'], ['Hi there! How can I help you today?', 'Hi there!'],
-    ] as const) { expect(withoutHelpDesk(said), said).toBe(left); expect(cleanLine(said), said).toBe(left) }
-    expect(cleanLine('무엇을 도와드릴까요?')).toBeUndefined()
+  it('the quick voice is told never to ask or offer help, and its line is shown as written: no sentence is taken out of it', () => {
+    expect(smallTalkPrompt('안녕', true)).toContain('never ask or offer help in any wording')
+    for (const said of ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요! 오늘은 무엇을 도와드릴까요?', '좋은 아침이에요. 뭐 도와드릴까요?', '안녕하세요! 도와드릴 일 있으면 말씀하세요.', '반가워요. 필요하신 게 있으면 말씀해 주세요.', 'Hi there! How can I help you today?', '무엇을 도와드릴까요?']) expect(cleanLine(said), said).toBe(said)
+    for (const none of ['NONE', '  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()
   })
-  it('leaves a colleague\'s line as it is', () => {
-    for (const said of ['안녕하세요! 좋은 아침이에요.', '별말씀을요. 더 필요한 거 있으면 말씀하세요.', '회의록부터 읽어볼게요.', '거의 다 찾았어요, 금방 올릴게요.']) { expect(withoutHelpDesk(said), said).toBe(said); expect(cleanLine(said), said).toBe(said) }
-    expect(withoutHelpDesk('안녕하세요!\n\n좋은 하루 보내세요.')).toBe('안녕하세요!\n\n좋은 하루 보내세요.')
+  it('leaves a colleague\'s line as it is', async () => {
+    for (const said of ['안녕하세요! 좋은 아침이에요.', '별말씀을요. 더 필요한 거 있으면 말씀하세요.', '회의록부터 읽어볼게요.', '거의 다 찾았어요, 금방 올릴게요.']) expect(cleanLine(said), said).toBe(said)
+    expect((await turn('안녕하세요!\n\n좋은 하루 보내세요.', '안녕', smallTalk)).posted).toBe('안녕하세요!\n\n좋은 하루 보내세요.')
   })
-  it('describes the pattern in the prompts, not one string, and filters the main model\'s small talk too', () => {
+  it('describes the pattern in the prompts, not one string, and the main model\'s small talk is posted as it wrote it', async () => {
     for (const text of [smallTalkPrompt('안녕', true), SMALL_TALK_NOTE, COLLEAGUE_RULE]) { expect(text).toMatch(/help in any wording/); expect(text).toContain('뭘 도와드릴까요') }
     expect(smallTalkPrompt('안녕', true)).toContain('안녕하세요! 좋은 아침이에요.')
-    expect(source('ipc.ts')).toContain('if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))')
-    for (const said of ['뭘 도와드릴까요?', '무엇을 도와드릴까요?', '도움이 필요하시면 말씀해 주세요.']) {
-      expect(talkOnly('안녕', said, true), said).toBe('안녕하세요!')
-      expect(talkOnly('고마워 수고했어', said, true), said).toBe('별말씀을요.')
+    expect(source('ipc.ts')).not.toMatch(/talkOnly|withoutHelpDesk/)
+    for (const gone of ['talkOnly', 'withoutHelpDesk', 'answerAlone']) expect(Object.keys(firstLine), gone).not.toContain(gone)
+    for (const said of ['뭘 도와드릴까요?', '안녕하세요! 뭘 도와드릴까요?', '안녕하세요! 좋은 아침이에요.', 'How can I help you today?']) {
+      const { posted, told, voiced } = await turn(said, '안녕', smallTalk)
+      expect(posted, said).toBe(said)
+      expect(told.match(/help in any wording/g)!.length).toBeGreaterThanOrEqual(2)
+      expect(voiced).toEqual([])
     }
-    expect(talkOnly('hi', 'How can I help you today?', false)).toBe('Hi!')
-    expect(talkOnly('안녕', '안녕하세요! 뭘 도와드릴까요?', true)).toBe('안녕하세요!')
-    expect(talkOnly('안녕', '안녕하세요! 좋은 아침이에요.', true)).toBe('안녕하세요! 좋은 아침이에요.')
-    expect(talkOnly('안녕', '', true)).toBe('')
   })
 })
 
 describe('a line in another language is led by a few Korean words (Q3, c11b)', () => {
   const ask = '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', line = 'I apologize for being late to the meeting.'
-  it('puts the lead on the same line when the answer has no Hangul (c11b: asked of the model)', () => {
+  it('puts the lead on the same line when the answer has no Hangul (c11b: asked of the model)', async () => {
     expect(SHORT_QUESTION_NOTE).toContain('A line they asked for in another language is led by those few words in their own language, on the same line')
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
     for (const answer of [line, `${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``, 'Hi Minho,\n\nSorry for the delay.']) {
-      expect(answerAlone(answer), answer).toBe(answer)
-      expect(talkOnly(ask, answer, true), answer).toBe(answer)
+      const { posted, told } = await turn(answer, ask, shortAsk)
+      expect(posted, answer).toBe(answer)
+      expect(told).toContain('so the reply is never the foreign line alone')
     }
   })
-  it('opens a rewording differently, and never twice the same way in a row (c11b: asked of the model)', () => {
+  it('opens a rewording differently, and never twice the same way in a row (c11b: asked of the model)', async () => {
     expect(SHORT_QUESTION_NOTE).toContain('those words are not the ones your reply before this one opened with')
     expect(SHORT_QUESTION_NOTE).toContain('what the earlier line means and its register stay')
-    for (const answer of ['이건 어때요? I apologize for being late.', '이렇게 쓰면 돼요. My sincere apologies for the delay.']) expect(answerAlone(answer), answer).toBe(answer)
+    for (const answer of ['이건 어때요? I apologize for being late.', '이렇게 쓰면 돼요. My sincere apologies for the delay.']) expect((await turn(answer, '다르게 써줘', shortAsk)).posted, answer).toBe(answer)
   })
-  it('adds nothing when the answer has Korean, has no words, or the person wrote in English (c11b: the host adds nothing at all)', () => {
-    for (const answer of [`이렇게 쓰면 돼요. ${line}`, '정중하게는 "I apologize"가 좋아요.', line, '31,536,000', '']) expect(answerAlone(answer), answer).toBe(answer)
+  it('adds nothing when the answer has Korean, has no words, or the person wrote in English (c11b: the host adds nothing at all)', async () => {
+    for (const answer of [`이렇게 쓰면 돼요. ${line}`, '정중하게는 "I apologize"가 좋아요.', line, '31,536,000', '']) expect((await turn(answer, ask, shortAsk)).posted, answer).toBe(answer)
     expect(source('ipc.ts')).not.toContain('koreanLead')
   })
 })
@@ -199,27 +206,29 @@ describe('a follow-up names what it points at (H1)', () => {
 describe('an extraction ends with one short offer, once per thread (H4)', () => {
   const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
   const answer = '할 일만 뽑았어요.\n\n- 한서연: 온보딩 화면 시안 확정 (11월 20일)\n- 오태민: 결제 모듈 교체 일정 수립 (11월 24일)'
-  it('adds one line of at most 60 characters when the answer has none', () => {
-    const out = withOffer(ask, answer, [], true)
-    expect(out).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
-    expect([...out.split('\n').at(-1)!].length).toBeLessThanOrEqual(60)
-    expect(withOffer(ask, out, [], true)).toBe(out)
-    expect(withOffer('notes.md에서 숫자만 추려줘', '- 38%\n- 12명', [], true)).toBe('- 38%\n- 12명')
-    expect(withOffer('notes.md에서 마감만 추려줘', '- 시안 확정: 11월 20일\n- 공지 발송: 11/27', [], true)).toMatch(/\n\n원하시면 기한 순으로 일정표도 만들어 드릴게요\.$/)
-    expect(withOffer(ask, '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', [], true)).toMatch(/\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
-    expect(withOffer('Extract the action items from notes.md', '- Seoyeon: finalize the screen', [], false)).toMatch(/\n\nI can draft a reminder for each owner if you'd like\.$/)
-    expect(withOffer(ask, `${answer}\n\n\`\`\`replies\n표로\n\`\`\``, [], true)).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.\n\n\`\`\`replies\n표로\n\`\`\``)
+  const offer = '원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.'
+  const desk: AgentLoopOptions = { attachmentContext: DESK_NOTE }
+  it('the one line of at most 60 characters is asked of the model, and what it writes is posted with nothing added', async () => {
+    const { posted, told } = await turn(answer, ask, desk)
+    expect(posted).toBe(answer)
+    expect(told).toContain('ends with exactly one short offer line, a plain sentence of its own that offers the next step of the work')
+    expect(told).toContain(`("${offer}")`)
+    expect([...offer].length).toBeLessThanOrEqual(60)
+    for (const own of [`${answer}\n\n${offer}`, '- 38%\n- 12명', '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', `${answer}\n\n${offer}\n\n\`\`\`replies\n표로\n\`\`\``]) expect((await turn(own, ask, desk)).posted, own).toBe(own)
+    expect(Object.keys(deskLane)).not.toContain('withOffer')
   })
-  it('adds nothing when the answer already offers, or an earlier reply in the thread did', () => {
-    for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect(withOffer(ask, `${answer}\n\n${closing}`, [], true)).toBe(`${answer}\n\n${closing}`)
-    expect(withOffer(ask, answer, [{ role: 'user', text: '회의록 요약해줘' }, { role: 'assistant', text: '요약했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.' }], true)).toBe(answer)
-    expect(withOffer(ask, answer, [{ role: 'assistant', text: '회의록부터 읽어볼게요.\n\n', progress: true }, { role: 'assistant', text: '기억해 둘게요.' }, { role: 'user', text: '원하시면 말해요' }], true)).not.toBe(answer)
+  it('an answer that offers, and one in a thread that already had an offer, are both posted as written; the model sees the earlier reply and the once-only rule', async () => {
+    for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect((await turn(`${answer}\n\n${closing}`, ask, desk)).posted).toBe(`${answer}\n\n${closing}`)
+    const { posted, told } = await turn(answer, ask, { ...desk, history: [{ role: 'user', text: '회의록 요약해줘' }, { role: 'assistant', text: '요약했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.' }] })
+    expect(posted).toBe(answer)
+    expect(told).toContain('원하시면 워드 파일로도 만들어 드릴게요.')
+    expect(told).toContain('unless an earlier reply of yours in this conversation already ended with an offer')
   })
-  it('never adds one to another kind of turn', () => {
+  it('never adds one to another kind of turn', async () => {
     for (const other of ['엔비디아 오늘 주가 알려줘', '1년은 몇 초야?', '안녕', '고마워 수고했어', 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'fixtures/sales.csv에서 12월 매출 합계 알려줘',
-      '지민, 서연, 도윤한테 나눠서 시켜', '할 일 세 개만 골라줘', 'fixtures/meeting-notes.md에서 할 일 뽑아서 워드로 만들어줘']) expect(withOffer(other, answer, [], true), other).toBe(answer)
-    expect(withOffer(ask, '', [], true)).toBe('')
-    expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(meant, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))")
+      '빵집 세 군데에 하나씩 물어봐', '챙길 것 세 가지만 골라줘', '등산 모임 회칙을 문서 파일에 담아줘']) expect((await turn(answer, other)).posted, other).toBe(answer)
+    expect((await turn(answer, '연락선 첫 배가 언제 떠?')).told).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
+    expect(source('ipc.ts')).not.toContain('withOffer')
   })
 })
 

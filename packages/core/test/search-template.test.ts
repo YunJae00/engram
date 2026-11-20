@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { answersTheQuestion, asksForNote, deriveSearchTemplate, namesSubject, noteTitleFor, rankLinks, searchUrlFor } from '../src/search-template.js'
+import { answersTheQuestion, asksForNote, deriveSearchTemplate, noteTitleFor, saysSubject, searchResults, searchUrlFor } from '../src/search-template.js'
 
 describe('noteTitleFor', () => {
   it('takes the asking off the request', () => {
@@ -21,17 +21,17 @@ describe('asksForNote', () => {
   })
 })
 
-describe('namesSubject', () => {
+describe('saysSubject', () => {
   it('sees a pointer and a verb as naming nothing', () => {
-    expect(namesSubject('그거 처리해줘')).toBe(false)
-    expect(namesSubject('그거 다시 해줘')).toBe(false)
-    expect(namesSubject('handle that')).toBe(false)
-    expect(namesSubject('just do it')).toBe(false)
+    expect(saysSubject('그거 처리해줘')).toBe(false)
+    expect(saysSubject('그거 다시 해줘')).toBe(false)
+    expect(saysSubject('handle that')).toBe(false)
+    expect(saysSubject('just do it')).toBe(false)
   })
   it('sees a subject when one is named', () => {
-    expect(namesSubject('포털 공지 확인해줘')).toBe(true)
-    expect(namesSubject('오늘 업무일지 올려줘')).toBe(true)
-    expect(namesSubject('what did we decide about deploys?')).toBe(true)
+    expect(saysSubject('포털 공지 확인해줘')).toBe(true)
+    expect(saysSubject('오늘 업무일지 올려줘')).toBe(true)
+    expect(saysSubject('what did we decide about deploys?')).toBe(true)
   })
 })
 
@@ -71,7 +71,7 @@ describe('searchUrlFor', () => {
   })
 })
 
-describe('rankLinks', () => {
+describe('searchResults', () => {
   const links = [
     { text: '웨일 브라우저 다운로드', url: 'https://whale.example.com/ko/?wpid=theme1' },
     { text: '메일', url: 'https://mail.example.com/' },
@@ -80,15 +80,16 @@ describe('rankLinks', () => {
   ]
 
   it('puts what the question asked about first, and the furniture last', () => {
-    const ranked = rankLinks(links, 'ai 동향')
+    const ranked = searchResults(links, '', 'ai 동향')
     expect(ranked[0]!.url).toBe('https://news.example.com/a/1')
     expect(ranked.map((one) => one.url)).not.toEqual([links[0]!.url, links[1]!.url, links[2]!.url, links[3]!.url])
   })
 
   it('keeps the page order when nothing echoes the question, and honours the cap', () => {
-    const ranked = rankLinks(links, 'zzz', 2)
+    const ranked = searchResults(links, '', 'zzz', undefined, 2)
     expect(ranked).toHaveLength(2)
-    expect(ranked[0]!.text.length).toBeGreaterThanOrEqual(ranked[1]!.text.length)
+    expect(ranked[0]!.title.length).toBeGreaterThanOrEqual(ranked[1]!.title.length)
+    expect(links.map((one) => one.url)).toEqual(expect.arrayContaining(ranked.map((one) => one.url)))
   })
 })
 

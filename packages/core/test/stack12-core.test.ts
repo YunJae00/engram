@@ -1,9 +1,10 @@
 import { expect, test } from 'vitest'
 import { createBot } from '../src/bots.js'
-import { employeeWriteBack, teamRecord, withItems } from '../src/company-tools.js'
-import { datedText } from '../src/delegated-tasks.js'
+import { employeeWriteBack, teamRecord, handBacks } from '../src/company-tools.js'
+import { datedText, type TeamMember } from '../src/delegated-tasks.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
+import { settleMember } from '../src/team-hire-tools.js'
 
 test('the record line counts single items, never a listing page or the full-list line', async () => {
   const paths = await initVault(await tmpVaultRoot('stack12-record'))
@@ -27,13 +28,15 @@ test('a decimal never stands for a day, and a year-only date already in the text
   expect(datedText({ text: '3.4(수) 개막해요.', date: '3월 4일' })).toBe('3.4(수) 개막해요.')
 })
 
-test('an extra round that gives the listing page back, or only facts judged a listing, leaves the page labeled and adds no item', () => {
-  const page = 'https://club.example.kr/runs'
-  const data = { facts: [{ text: '러닝 모임 여러 개가 올라와 있어요.', url: page, site: 'c', listing: true as const }] }
-  expect(withItems(data, { facts: [{ text: '러닝 모임 세 개가 있어요.', url: page, site: 'c' }] })).toEqual(data)
-  expect(withItems(data, { facts: [{ text: '다른 모임 목록이에요.', url: 'https://club.example.kr/other', site: 'c', listing: true }] })).toEqual(data)
-  const one = withItems(data, { facts: [{ text: '12월 7일 수성못 러닝이 있어요.', url: 'https://club.example.kr/runs/7', site: 'c' }] })
-  expect(one.facts.map(f => [f.url, f.rest ?? false])).toEqual([['https://club.example.kr/runs/7', false], [page, true]])
-  const judged = withItems(data, { facts: [{ text: '12월 14일 앞산 야간 러닝이 있어요.', url: page, site: 'c', date: '12월 14일' }, { text: '다른 모임 목록이에요.', url: page, site: 'c', listing: true }] }, true)
-  expect(judged.facts.map(f => [f.text, f.rest ?? false])).toEqual([['12월 14일 앞산 야간 러닝이 있어요.', false], ['러닝 모임 여러 개가 올라와 있어요.', true]])
+test('a teammate who hands back a listing page beside its own items is passed on as written: no label, no item added or taken away', () => {
+  const answer = ['1. 12월 7일 강변 자전거 정비 교실이 열려요. https://bikeshop.example/class/7',
+    '2. 12월 14일 초보 라이딩 모임이 있어요. https://bikeshop.example/ride/14',
+    '그 밖의 모임은 이 목록에 모여 있어요. https://bikeshop.example/events'].join('\n')
+  const sources = ['https://bikeshop.example/class/7', 'https://bikeshop.example/ride/14', 'https://bikeshop.example/events']
+  const m: TeamMember = { id: 'r1', parentId: null, depth: 1, role: '단비', brief: '다음 달 자전거 가게 행사 일정', state: 'working', sessionKey: 'r1', hiredAt: '2026-11-18T00:00:00Z', lookup: true }
+  settleMember(m, { answer, sources }, '2026-11-18T00:00:09Z', true)
+  expect(m.result).toBe(answer)
+  expect(m.data).toBeUndefined()
+  const [report] = (JSON.parse(handBacks([m])) as { reports: { result: string; sources?: string[] }[] }).reports
+  expect(report).toMatchObject({ result: answer, sources })
 })

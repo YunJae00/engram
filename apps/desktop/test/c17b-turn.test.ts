@@ -6,25 +6,18 @@ const logged = vi.hoisted(() => vi.fn())
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: logged }))
-import { askNow, checkedDesk, onlyAsked, reshapePrompt, routeAsk, shareReady, withOffer } from '../src/main/desk-lane.js'
+import * as desk from '../src/main/desk-lane.js'
+import { askNow, closingBuilds, routeAsk } from '../src/main/desk-lane.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
-import { checkPrompt } from '../../../packages/core/src/written-check.js'
+import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
 
 describe('a correction is checked against the ask as the person changed it', () => {
   const earlier = [{ role: 'user', text: 'inventory.csv에서 3분기 입고 수량 알려줘' }, { role: 'assistant', text: '3분기 입고 수량은 1,240개예요.' }]
   const message = '아니 그거 말고 2분기로'
-  const quarterAsked = (prompt: string): string => {
-    const asked = /The person asked: (.*)/.exec(prompt)![1]!
-    const later = /changed it: \\"([^\\]*)\\"/.exec(asked)?.[1] ?? asked
-    return /(\d)분기/.exec(later)?.[1] ?? /(\d)분기/.exec(asked)![1]!
-  }
-  const fakeCheck = (prompt: string): string => {
-    const draft = /Message: (.*)/.exec(prompt)![1]!
-    return /(\d)분기/.exec(draft)![1] === quarterAsked(prompt) ? '{"problems":[]}' : JSON.stringify({ problems: [{ kind: 'contradicts', quote: draft, why: '다른 분기' }] })
-  }
+  const HOLDS = 'Where the two differ, the later words hold.'
   it('routes by the earlier ask, means the earlier ask with the later words holding', () => {
     expect(routeAsk(message, earlier)).toBe('inventory.csv에서 3분기 입고 수량 알려줘')
     const meant = askNow(message, earlier)
@@ -32,51 +25,53 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(meant).toContain('The person then changed it: "아니 그거 말고 2분기로". Where the two differ, the later words hold.')
     expect(askNow('inventory.csv 품목 수 알려줘', earlier)).toBe('inventory.csv 품목 수 알려줘')
   })
-  it('a 2분기 draft is not called "contradicts", and is delivered as written', async () => {
-    const prompts: string[] = []
-    const draft = '2분기 입고 수량은 980개예요.'
-    const out = await checkedDesk({ ask: askNow(message, earlier), draft, source: '분기,입고\n2,980\n3,1240', fromSource: true, quick: async p => { prompts.push(p); return fakeCheck(p) }, since: Date.now() })
-    expect(out).toBe(draft)
-    expect(prompts).toHaveLength(1)
-    expect(prompts[0]).toContain('2분기')
-    expect(fakeCheck(checkPrompt({ data: {}, ask: routeAsk(message, earlier), parts: true }, draft))).toContain('contradicts')
+  it('a 2분기 reply written with a build closes the turn exactly as the model wrote it', async () => {
+    const draft = '2분기 입고 수량은 980개예요.\n\n표로도 넣어 뒀어요.'
+    const receipt = JSON.stringify({ markdownLink: '[입고-2분기.xlsx](engram-artifact:stock-q2.xlsx)' })
+    const seen: Record<string, unknown>[] = []
+    const made = (): ReturnType<typeof closingBuilds>[number] => closingBuilds([{ name: 'file_create_workbook', description: '', argsSchema: { type: 'object', properties: {}, required: [] }, run: async args => { seen.push(args); return receipt } }])[0]!
+    const build = made(), silent = made()
+    const out = await build.run({ name: '입고-2분기.xlsx', reply: draft, more: false }, { task: askNow(message, earlier) })
+    expect(build.closesOn!(out)).toBe(true)
+    expect(build.closeAnswer!(out)).toBe(draft)
+    expect(seen).toEqual([{ name: '입고-2분기.xlsx' }])
+    expect(silent.closesOn!(await silent.run({ name: '입고-2분기.xlsx', more: false }, { task: '' }))).toBe(false)
   })
-  it('a check rewrite reads the later words too, so it cannot put 3분기 back', async () => {
-    const prompts: string[] = []
-    const said = [JSON.stringify({ problems: [{ kind: 'missing', quote: '입고 수량', why: '' }] })]
-    const out = await checkedDesk({
-      ask: askNow(message, earlier), draft: '2분기는 980개예요.', source: '분기,입고\n2,980\n3,1240', fromSource: true, since: Date.now(),
-      quick: async p => { prompts.push(p); return p.startsWith('You fix a message') ? JSON.stringify({ insert_after: { 1: [`${quarterAsked(p)}분기 입고 수량은 ${quarterAsked(p) === '2' ? '980' : '1,240'}개예요.`] } }) : said.shift() ?? fakeCheck(p) },
-    })
-    expect(out).toContain('2분기 입고 수량은 980개예요.')
-    expect(out).not.toContain('3분기')
-    expect(prompts.find(p => p.startsWith('You fix a message'))).toContain('Where the two differ, the later words hold.')
+  it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
+    for (const gone of ['checkedDesk', 'reshapePrompt', 'reshapeAsk', 'onlyAsked', 'shareReady', 'withOffer', 'withoutSameDecisions', 'tidyCounts']) { expect(Object.keys(desk)).not.toContain(gone); expect(ipc).not.toContain(`${gone}(`) }
+    expect(askNow(message, earlier)).toContain(HOLDS)
+    expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
+    expect(ipc).toMatch(/attachmentContext: \[[^\]]*changedNote[^\]]*\]/)
+    expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
   })
-  it('the filters and the offer read the corrected meaning', () => {
-    const before = [{ role: 'user', text: 'notes/branch-sync.md에서 서울 지점 할 일만 뽑아줘' }, { role: 'assistant', text: '- 김하늘: 재고 점검 — 12월 2일' }]
+  it('the corrected meaning names the new part, and the rules for one part and one offer are the model\'s', () => {
+    const before = [{ role: 'user', text: 'notes/branch-sync.md에서 서울 지점 과제만 골라줘' }, { role: 'assistant', text: '- 김하늘: 재고 점검 — 12월 2일' }]
     const meant = askNow('그냥 부산 걸로 바꿔', before)
     expect(meant).toContain('"그냥 부산 걸로 바꿔"')
-    const answer = '할 일\n- 이도윤: 매장 점검 — 12월 3일\n- 정수아: 발주 정리 — 12월 5일\n\n미결\n- 휴무일 조정'
-    expect(onlyAsked(meant, answer)).toBe(answer)
-    expect(withOffer(meant, '- 이도윤: 매장 점검 — 12월 3일', [], true)).toMatch(/원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
+    expect(meant).toContain('notes/branch-sync.md에서 서울 지점 과제만 골라줘')
+    expect(COLLEAGUE_CORE_RULE).toContain('When they ask for one part of something, give that part only.')
+    expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
-  it('a correction that widens the ask keeps what the earlier narrowing word would have cut', () => {
+  it('a correction that widens the ask reaches the model with the earlier narrowing word and the widening after it', () => {
     const before = [{ role: 'user', text: 'docs/branch-week.md에서 할 일만 추려줘' }, { role: 'assistant', text: '- 재고 점검' }]
-    const answer = '할 일\n- 재고 점검\n\n미결\n- 휴무일 조정'
-    for (const widen of ['아니 그거 말고 다 보여줘', '음 그거 말고 미결까지 같이']) expect(onlyAsked(askNow(widen, before), answer)).toBe(answer)
-    expect(onlyAsked(askNow('아 그거 말고 할 일만 다시', [{ role: 'user', text: 'docs/branch-week.md 요약해줘' }]), answer)).toBe('- 재고 점검')
-    expect(onlyAsked('docs/branch-week.md에서 할 일만 추려줘', answer)).toBe('- 재고 점검')
-  })
-  it('along a chain, only the latest correction narrows', () => {
-    const answer = '할 일\n- 발주 확인\n\n미결\n- 회식 날짜'
-    const chain = [{ role: 'user', text: 'memo/store-plan.md 정리해줘' }, { role: 'user', text: '아 그거 말고 할 일만' }]
-    for (const widen of ['아니 그거 말고 전부 다', '음 그거 말고 처음처럼']) {
-      expect(onlyAsked(askNow(widen, chain), answer)).toBe(answer)
-      expect(onlyAsked(askNow('그거 말고 다 줘', [...chain, { role: 'user', text: widen }]), answer)).toBe(answer)
+    for (const widen of ['아니 그거 말고 다 보여줘', '음 그거 말고 미결까지 같이']) {
+      const meant = askNow(widen, before)
+      expect(meant.indexOf('할 일만 추려줘')).toBeGreaterThan(-1)
+      expect(meant.indexOf(`"${widen}"`)).toBeGreaterThan(meant.indexOf('할 일만 추려줘'))
+      expect(meant).toContain(HOLDS)
     }
-    expect(onlyAsked(askNow('아니 그거 말고 할 일만 줘', [...chain, { role: 'user', text: '음 그거 말고 전체로' }]), answer)).toBe('- 발주 확인')
-    const notes = '일시: 12월 1일\n\n할 일\n- 발주 확인'
-    expect(shareReady(askNow('그거 말고 원래대로', [{ role: 'user', text: 'memo/a.md 요약해줘' }, { role: 'user', text: '아 그거 말고 공유하기 좋게' }]), notes)).toBe(notes)
+    expect(askNow('아니 그거 말고 과제만 다시', [{ role: 'user', text: 'docs/branch-week.md 간추려줘' }])).toContain('"아니 그거 말고 과제만 다시"')
+    expect(askNow('docs/branch-week.md에서 과제만 추려줘', [])).toBe('docs/branch-week.md에서 과제만 추려줘')
+  })
+  it('along a chain, every correction is given in order and the latest one is last', () => {
+    const chain = [{ role: 'user', text: 'memo/store-plan.md 정리해줘' }, { role: 'user', text: '아니 그거 말고 과제만' }]
+    for (const widen of ['아니 그거 말고 전부 다', '음 그거 말고 처음처럼']) {
+      const meant = askNow(widen, chain)
+      expect(meant).toContain(`"아니 그거 말고 과제만", then "${widen}". Where they differ, the later words hold.`)
+      expect(askNow('그거 말고 다 줘', [...chain, { role: 'user', text: widen }])).toContain(`"아니 그거 말고 과제만", then "${widen}", then "그거 말고 다 줘".`)
+    }
+    expect(askNow('아니 그거 말고 과제만 줘', [...chain, { role: 'user', text: '음 그거 말고 전체로' }])).toMatch(/then "아니 그거 말고 과제만 줘"\. Where they differ, the later words hold\.$/)
+    expect(routeAsk('그거 말고 원래대로', [{ role: 'user', text: 'memo/a.md 간추려줘' }, { role: 'user', text: '아니 그거 말고 돌려보기 편하게' }])).toBe('memo/a.md 간추려줘')
   })
   it('successive corrections keep the original task as the route and every change in the meaning, oldest first', () => {
     const turns = [
@@ -90,15 +85,17 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(meant).toContain('changed it: "아 그거 말고 전부로", then "아니 그거 말고 저자별로", then "음 그거 말고 출판연도순으로". Where they differ, the later words hold.')
     expect(routeAsk('아 그거 말고 장르별로', [...turns, { role: 'user', text: 'notes/plan.md 요약해줘' }])).toBe('notes/plan.md 요약해줘')
   })
-  it('every check, rewrite, filter and offer in the turn reads the meaning; the route alone decides the lane', () => {
-    for (const use of ['withoutSameDecisions(meant,', 'shareReady(meant,', 'onlyAsked(meant,', 'tidyCounts(meant,', 'withOffer(meant,', 'ask: meant, draft: result.answer', 'namedText(meant,']) expect(ipc).toContain(use)
+  it('the model reads the meaning in its turn context and the named file; the route alone decides the lane', () => {
+    for (const use of ['namedText(meant,', 'namedBy(meant, path)', 'const meant = askNow(request.message, savedHistory)']) expect(ipc).toContain(use)
     const routedUses = ipc.split('\n').filter(line => /\brouted\b/.test(line) && !line.trim().startsWith('//'))
     for (const line of routedUses) expect(line).toMatch(/const routed = routeAsk|fastLane\(routed|deskLane\(routed|deskKind\(routed|routed === request\.message|deskLight\(kind, routed/)
     expect(ipc).toContain('What the person asks for now: ${meant}')
+    expect(ipc).toMatch(/await deliverAnswer\(\s*`\$\{result\.asked \? askText\(result\.answer, result\.options\) : result\.answer\}\$\{note\}`/)
   })
-  it('a reshape and the rewrite check keep a changed fact at its new value', () => {
-    expect(reshapePrompt('더 짧게', '부산 지점 할 일은 두 개예요.', '서울 지점 할 일 알려줘')).toContain('A fact the person has since changed in this conversation takes its new value.')
-    expect(checkPrompt({ data: {}, ask: '더 짧게', rewrite: true }, 'x')).toContain('A fact the person has since changed takes its new value')
+  it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', () => {
+    expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
+    expect(COLLEAGUE_CORE_RULE).toContain('means do the new thing at once - never ask which one they mean when the thread already says it')
+    expect(askNow('더 짧게', [{ role: 'user', text: '서울 지점 할 일 알려줘' }, { role: 'assistant', text: '부산 지점 할 일은 두 개예요.' }])).toBe('더 짧게')
   })
 })
 

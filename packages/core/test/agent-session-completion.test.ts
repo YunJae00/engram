@@ -1,4 +1,4 @@
-import { finalDesktopFailure, outputLinks } from '../src/agent-session-result.js'
+import { finalDesktopFailure, outputCards } from '../src/agent-session-result.js'
 import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { ANSWER_NOW, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
@@ -235,19 +235,20 @@ it('finishes a blocked collection once without rewriting it as incomplete', asyn
   expect(result.stopped).toBeUndefined()
 })
 
+const cardLinks = (steps: unknown[], answer: string, cwd?: string) => outputCards(steps as Parameters<typeof outputCards>[0], answer, cwd).map(card => `[${card.name}](engram-artifact:${card.href})`)
+
 it('attaches word_write and ppt_build outputs the answer did not link, without repeating a linked one', () => {
   const doc = { markdownLink: '[report.docx](engram-artifact:11111111-2222-3333-4444-555555555555-report.docx)' }
   const deck = { markdownLink: '[deck.pptx](engram-artifact:11111111-2222-3333-4444-666666666666-deck.pptx)' }
   const steps = [
     { tool: 'word_write', args: {}, observation: JSON.stringify(doc) },
     { tool: 'ppt_build', args: {}, observation: JSON.stringify(deck) },
-  ] as unknown as Parameters<typeof outputLinks>[0]
-  const unlinked = outputLinks(steps, '다 만들었어요.')
-  expect(unlinked).toContain(doc.markdownLink)
-  expect(unlinked).toContain(deck.markdownLink)
-  const linked = outputLinks(steps, `보고서: ${doc.markdownLink}`)
-  expect(linked.split(doc.markdownLink).length - 1).toBe(1)
-  expect(linked).toContain(deck.markdownLink)
+  ]
+  expect(outputCards(steps as unknown as Parameters<typeof outputCards>[0], '다 만들었어요.')).toEqual([
+    { name: 'report.docx', href: '11111111-2222-3333-4444-555555555555-report.docx' },
+    { name: 'deck.pptx', href: '11111111-2222-3333-4444-666666666666-deck.pptx' },
+  ])
+  expect(cardLinks(steps, `보고서: ${doc.markdownLink}`)).toEqual([deck.markdownLink])
 })
 
 it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name in a turn, and points a link to an earlier build at it', (tool) => {
@@ -255,34 +256,32 @@ it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name i
   const made = (id: number, input: string) => ({ tool, args: { title: 'report', blocks: [input] }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.${ext})` }) })
   const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
   const a1 = made(1, 'sales'), a2 = made(2, 'sales'), b = made(3, 'costs')
-  const steps = [a1, b, a2] as unknown as Parameters<typeof outputLinks>[0]
-  const linked = outputLinks(steps, `보고서: ${link(a2)}`)
-  expect(linked).toBe(`보고서: ${link(a2)}`)
-  expect(outputLinks(steps, `보고서: ${link(a1)}`)).toBe(`보고서: ${link(a2)}`)
-  const unlinked = outputLinks(steps, '다 만들었어요.')
-  expect(unlinked).toBe(`다 만들었어요.\n\n${link(a2)}`)
+  const steps = [a1, b, a2]
+  expect(cardLinks(steps, `보고서: ${link(a2)}`)).toEqual([])
+  expect(cardLinks(steps, `보고서: ${link(a1)}`)).toEqual([link(a2)])
+  expect(cardLinks(steps, '다 만들었어요.')).toEqual([link(a2)])
   const copy = { tool: 'file_create_copy', args: { name: `report.${ext}` }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-000000000009-report.${ext})` }) }
-  expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(copy)}`)).toContain(link(b))
-  expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(b)}`)).not.toContain(link(copy))
+  expect(cardLinks([copy, b], `보고서: ${link(copy)}`)).toEqual([link(b)])
+  expect(cardLinks([copy, b], `보고서: ${link(b)}`)).toEqual([])
 })
 
 it('shows only the edited file when this turn builds a file and then edits it', () => {
   const a = '[deck.pptx](engram-artifact:11111111-1111-1111-1111-111111111111-deck.pptx)', b = '[deck.pptx](engram-artifact:22222222-2222-2222-2222-222222222222-deck.pptx)', c = '[deck.pptx](engram-artifact:33333333-3333-3333-3333-333333333333-deck.pptx)'
   const build = { tool: 'ppt_build', args: {}, observation: JSON.stringify({ markdownLink: a }) }
   const edit = (path: string, link: string) => ({ tool: 'file_edit_package', args: { sourcePath: path }, observation: JSON.stringify({ markdownLink: link }) })
-  const steps = [build, edit('/task/deck.pptx', b)] as unknown as Parameters<typeof outputLinks>[0]
-  expect(outputLinks(steps, `수정했어요. ${b}`, '/task')).toBe(`수정했어요. ${b}`)
-  expect(outputLinks(steps, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${b}`)
-  expect(outputLinks(steps, '수정했어요.', '/task')).toBe(`수정했어요.\n\n${b}`)
-  const twice = [build, edit('deck.pptx', b), edit('/outputs/22222222-2222-2222-2222-222222222222-deck.pptx', c)] as unknown as Parameters<typeof outputLinks>[0]
-  expect(outputLinks(twice, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${c}`)
-  expect(outputLinks([build, edit('/task/other.pptx', b.replace('[deck', '[other').replace('-deck', '-other'))] as unknown as Parameters<typeof outputLinks>[0], '끝', '/task')).toContain(a)
+  const steps = [build, edit('/task/deck.pptx', b)]
+  expect(cardLinks(steps, `수정했어요. ${b}`, '/task')).toEqual([])
+  expect(cardLinks(steps, `수정했어요. ${a}`, '/task')).toEqual([b])
+  expect(cardLinks(steps, '수정했어요.', '/task')).toEqual([b])
+  const twice = [build, edit('deck.pptx', b), edit('/outputs/22222222-2222-2222-2222-222222222222-deck.pptx', c)]
+  expect(cardLinks(twice, `수정했어요. ${a}`, '/task')).toEqual([c])
+  expect(cardLinks([build, edit('/task/other.pptx', b.replace('[deck', '[other').replace('-deck', '-other'))], '끝', '/task')).toContain(a)
 })
 
 it('attaches only the last copy of one source when the answer links nothing, and still both of two sources', () => {
   const copy = (id: number, args: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ tool: 'file_create_copy', args: { name: 'report.md', ...args }, observation: JSON.stringify({ markdownLink: `[report.md](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.md)`, ...extra }) })
   const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
-  const links = (steps: unknown[], answer = 'Stopped at the budget.') => outputLinks(steps as Parameters<typeof outputLinks>[0], answer, '/task').split('\n\n').slice(1)
+  const links = (steps: unknown[], answer = 'Stopped at the budget.') => cardLinks(steps, answer, '/task')
   const r1 = copy(1, { fromPath: 'report.md' }), r2 = copy(2, { fromPath: './report.md' }), r3 = copy(3, { fromPath: '/task/report.md' })
   expect(links([r1, r2, r3])).toEqual([link(r3)])
   const other = copy(4, { fromPath: 'drafts/report.md' })

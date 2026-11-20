@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { conversation, RELEVANCE_RULE } from '../src/agent-history.js'
 import { openSystemLines, personaLines } from '../src/agent-prompt.js'
-import { checkPrompt, readProblems } from '../src/written-check.js'
+import { runComet } from '../src/agent-session.js'
+import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 import { nearMissSlide, officeTools, type OfficeOp } from '../src/office-tools.js'
 import { officeWriteUnverified } from '../src/office-verification.js'
 
@@ -27,12 +28,19 @@ describe('a remembered fact carries the rule for when it belongs (H1 class)', ()
   })
 })
 
-describe('kind "overlap" for answers with parts (D1 class)', () => {
-  it('is asked only of a text with parts, and read back as a problem', () => {
-    const input = { data: { source: '장점: 가볍다. 단점: 배터리가 짧다.' }, ask: '이 리뷰 장점이랑 단점 나눠서 정리해줘' }
-    expect(checkPrompt(input, '장점\n- 가볍다\n\n단점\n- 가볍다')).not.toContain('"overlap"')
-    expect(checkPrompt({ ...input, parts: true }, '장점\n- 가볍다\n\n단점\n- 가볍다')).toContain('"overlap"')
-    expect(readProblems('{"problems":[{"kind":"overlap","quote":"단점 - 가볍다","why":"장점과 같음"}]}')).toEqual([{ kind: 'overlap', quote: '단점 - 가볍다', why: '장점과 같음' }])
+describe('an item under two headings is ruled out in the prompt, not looked for afterwards (D1 class)', () => {
+  it('a draft that repeats an item under a second heading is delivered as written from one model call that carries the listed-once rule', async () => {
+    const draft = '좋은 점\n- 배가 자주 다녀요\n\n아쉬운 점\n- 배가 자주 다녀요'
+    const jobs: ToolSessionJob[] = []
+    const engine = {
+      id: 'mock', detect: async () => ({ installed: true, loggedIn: true }),
+      run: async function* () { yield { type: 'result', text: '' } },
+      runTools: async (job: ToolSessionJob): Promise<ToolSessionResult> => { jobs.push(job); return { answer: draft } },
+    } as unknown as Engine
+    const result = await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, '이 여객선 후기 좋은 점이랑 아쉬운 점 나눠서 정리해줘', { guided: false })
+    expect(result.answer).toBe(draft)
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.system).toContain('A decision or item is listed once, never again under a second heading.')
   })
 })
 

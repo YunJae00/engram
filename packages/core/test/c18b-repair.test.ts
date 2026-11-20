@@ -1,175 +1,183 @@
-import { afterEach, expect, test } from 'vitest'
-import { handoffBrief, koreanDates, mergedReport, reportCheck, setReportLog, valueOf, writtenReport } from '../src/company-tools.js'
+import { expect, test } from 'vitest'
+import type { AgentTool } from '../src/agent-loop.js'
+import { runAgentLoop } from '../src/agent-loop.js'
+import { runComet } from '../src/agent-session.js'
+import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { handBacks, handedFrom, handoffBrief, partOutcome } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { deckChecked, officeTools } from '../src/office-tools.js'
-import { runAgentLoop } from '../src/agent-loop.js'
 import { MockEngine } from '../src/engine/mock.js'
-import { engineCwd } from '../src/engine/types.js'
+import { engineCwd, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from '../src/engine/types.js'
+import * as core from '../src/index.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
-import { foreignRun, messageUnits, quotedUnits, repairedWrite, spliced, withoutSentences } from '../src/written-check.js'
 
-const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
-const none = JSON.stringify({ problems: [] })
-const problems = (...list: Record<string, unknown>[]): string => JSON.stringify({ problems: list })
-function model(answers: { check?: (string | undefined)[]; repair?: (string | undefined)[]; write?: (string | undefined)[] }) {
-  const calls: string[] = []
-  const quick = async (prompt: string): Promise<string | undefined> => {
-    calls.push(prompt)
-    return prompt.includes(CHECK) ? answers.check?.shift() ?? none : prompt.includes(REPAIR) ? answers.repair?.shift() : answers.write?.shift()
-  }
-  return { quick, calls }
+interface HandBack { reports: { who: string; part?: string; state: string; result: string; sources?: string[] }[]; note: string }
+async function lead(ask: string, draft: string, handed?: string): Promise<{ answer: string; jobs: ToolSessionJob[]; got: string[] }> {
+  const jobs: ToolSessionJob[] = [], got: string[] = []
+  const assign: AgentTool = { name: 'assign', description: 'hands parts to teammates', argsSchema: { type: 'object' }, run: async () => handed ?? '' }
+  const engine = {
+    id: 'mock', detect: async () => ({ installed: true, loggedIn: true }),
+    run: async function* () { yield { type: 'result', text: '' } },
+    runTools: async (job: ToolSessionJob): Promise<ToolSessionResult> => {
+      jobs.push(job)
+      if (handed !== undefined) { const out = await job.tools.find(tool => tool.name === 'assign')!.run({ wait: true }); got.push(typeof out === 'string' ? out : out.text) }
+      return { answer: draft }
+    },
+  } as unknown as Engine
+  const result = await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: handed === undefined ? [] : [assign] }, ask, { guided: false })
+  return { answer: result.answer, jobs, got }
 }
-const logged: string[] = []
-afterEach(() => { logged.length = 0; setReportLog(() => undefined) })
+async function stepped(ask: string, draft: string): Promise<{ answer: string; prompts: string[] }> {
+  const prompts: string[] = []
+  const engine = new MockEngine({ default: prompt => { prompts.push(prompt); return JSON.stringify({ tool: 'answer', args: { text: draft } }) } }, { gapMs: 0 })
+  const result = await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask, { guided: false })
+  return { answer: result.answer, prompts }
+}
+const back = (handed: string): HandBack => JSON.parse(handed) as HandBack
 
 const MEETING = ['영업팀 11월 월간 회의를 주요 결정 위주로 정리했어요.', '', '주요 결정', '- 1월 신규 요금제 출시로 확정', '- 대리점 수수료는 동결', '- 지방 순회 설명회는 2월로 미룸', '', '미결', '- 판촉물 업체는 다음 주에 확정한다.'].join('\n')
 
-test('a repair that only inserts the missing part is spliced in, every other line byte-equal and in order', () => {
-  const units = messageUnits(MEETING)
-  const insert = JSON.stringify({ insert_after: { [String(units.length - 2)]: ['', '담당자별 업무', '- 김하준: 견적 비교표, 11월 28일까지', '- 오세린: 대리점 공지, 12월 2일까지'] } })
-  const out = spliced(MEETING, insert, new Set())!
-  expect(out).toContain('담당자별 업무')
-  const kept = out.split('\n').filter(line => MEETING.split('\n').includes(line))
-  expect(kept.filter(Boolean)).toEqual(MEETING.split('\n').filter(Boolean))
+test('a draft that leaves a part out gets no line spliced in: every line reaches the person byte-equal and in order', async () => {
+  const { answer, jobs } = await lead('영업팀 회의록 결정이랑 담당자별 업무로 정리해줘', MEETING)
+  expect(answer).toBe(MEETING)
+  expect(answer.split('\n')).toEqual(MEETING.split('\n'))
+  expect(answer).not.toContain('담당자별 업무')
+  expect(jobs).toHaveLength(1)
 })
 
-test('a repair that rewrites a line no problem names is discarded', () => {
-  const rewrite = JSON.stringify({ replace: { '1': '11월 회의 정리예요.' }, insert_after: { '4': ['담당자별 업무', '- 김하준: 견적 비교표'] } })
-  expect(spliced(MEETING, rewrite, new Set())).toBeUndefined()
-  expect(spliced(MEETING, JSON.stringify({ insert_after: { '0': ['- 대리점 수수료는 동결'] } }), new Set())).toBeUndefined()
-  expect(spliced(MEETING, 'not json', new Set())).toBeUndefined()
+test('no line of the draft is rewritten on the step path either: one model step, and its answer text is the reply', async () => {
+  const { answer, prompts } = await stepped('영업팀 회의록 정리해줘', MEETING)
+  expect(answer).toBe(MEETING)
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0]).toMatch(/^JOB: COMET-STEP/m)
+  for (const gone of ['spliced', 'messageUnits', 'quotedUnits']) expect(core).not.toHaveProperty(gone)
 })
 
-test('register: the copied 한다체 line becomes 해요체 and nothing else changes', async () => {
-  const units = messageUnits(MEETING), quote = '판촉물 업체는 다음 주에 확정한다.'
-  const at = quotedUnits(units, quote)
-  expect(at).toEqual([units.length - 1])
-  const { quick, calls } = model({
-    check: [problems({ kind: 'register', quote, why: '한다체' })],
-    repair: [JSON.stringify({ replace: { [String(at[0]! + 1)]: '- 판촉물 업체는 다음 주에 정해요.' } })],
-  })
-  const out = await repairedWrite({ data: { source: '' }, ask: '회의록 정리해줘', parts: true, draft: MEETING, check: quick, due: Date.now() + 15_000, log: o => logged.push(o) })
-  expect(out.text).toBe(MEETING.replace('- 판촉물 업체는 다음 주에 확정한다.', '- 판촉물 업체는 다음 주에 정해요.'))
-  expect(out.outcome).toBe('repaired')
-  expect(calls.filter(p => p.includes(REPAIR))[0]).toContain(`Only these units may be replaced: [${at[0]! + 1}]`)
-  expect(calls.filter(p => p.includes(CHECK))).toHaveLength(1)
+test('register: a copied 한다체 line stays as the model wrote it, and the turn that wrote it was told the -요 form', async () => {
+  const { answer, jobs } = await lead('회의록 정리해줘', MEETING)
+  expect(answer.split('\n').at(-1)).toBe('- 판촉물 업체는 다음 주에 확정한다.')
+  expect(answer).toBe(MEETING)
+  expect(jobs).toHaveLength(1)
+  expect(jobs[0]!.system).toContain('Register: in Korean keep the polite-casual -요 form through the whole reply')
+  expect(jobs[0]!.system).toContain('never switch to -습니다 or to 반말')
 })
 
-test('a contradicting sentence that the repair did not fix is the only thing that goes', async () => {
+test('a sentence that claims more than was found is not taken out: the whole draft goes, and the rule against showing a part as finished is in the prompt', async () => {
   const draft = '세 곳 다 찾았어요. 울산은 성인 왕복 1만 5천 원이에요.\n포항은 1만 2천 원이에요.'
-  const { quick } = model({ check: [problems({ kind: 'contradicts', quote: '세 곳 다 찾았어요.', why: '경주는 못 찾음' })], repair: ['{}'] })
-  const out = await repairedWrite({ data: {}, ask: '케이블카 요금 비교해줘', draft, check: quick, due: Date.now() + 15_000 })
-  expect(out.text).toBe('울산은 성인 왕복 1만 5천 원이에요.\n포항은 1만 2천 원이에요.')
-  expect(out.outcome).toBe('kept')
-  expect(withoutSentences(draft, [{ kind: 'shape', quote: '포항은 1만 2천 원이에요.', why: '' }])).toBe('세 곳 다 찾았어요. 울산은 성인 왕복 1만 5천 원이에요.')
+  const { answer, jobs } = await lead('케이블카 세 곳 삯 견줘줘', draft)
+  expect(answer).toBe(draft)
+  expect(jobs).toHaveLength(1)
+  expect(jobs[0]!.system).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
+  expect(core).not.toHaveProperty('withoutSentences')
 })
 
-test('a shape finding never withholds the draft: no repair, no time or no model leaves it as written', async () => {
-  const shape = [{ kind: 'shape' as const, quote: '', why: 'the message opens with the items' }]
-  expect((await repairedWrite({ data: {}, ask: 'a', draft: '초안이에요.', shape, check: undefined, due: Date.now() + 9000 })).text).toBe('초안이에요.')
-  expect((await repairedWrite({ data: {}, ask: 'a', draft: '초안이에요.', shape, check: model({}).quick, due: Date.now() + 9000 })).text).toBe('초안이에요.')
-  expect((await repairedWrite({ data: {}, ask: 'a', draft: '초안이에요.', shape, check: model({}).quick, due: Date.now() + 10 })).outcome).toBe('kept')
+test('nothing withholds the draft: with or without tools on the turn, and on either path, it is delivered as written', async () => {
+  expect((await lead('a', '초안이에요.')).answer).toBe('초안이에요.')
+  expect((await lead('a', '초안이에요.', handBacks([]))).answer).toBe('초안이에요.')
+  expect((await stepped('a', '초안이에요.')).answer).toBe('초안이에요.')
+  expect(core).not.toHaveProperty('repairedWrite')
 })
 
 const part = (id: string, role: string, brief: string, rest: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: '', ...rest })
 const SOURCE = 'https://event.example.com/winter'
-const minji = part('m1', '민지', '연말 이벤트 조사', { then: { botId: 'bot-m2', who: '하늘', brief: '이벤트 문구 2개' }, data: { facts: [{ text: '12월 20일 성수동 겨울 마켓이 열려요.', url: SOURCE, site: '이벤트' }] } })
+const FOUND = `성수동 겨울 마켓이 스무날에 열려요. — ${SOURCE}`
+const minji = part('m1', '민지', '연말 이벤트 조사', { then: { botId: 'bot-m2', who: '하늘', brief: '이벤트 문구 2개' }, result: FOUND, sources: [SOURCE] })
 const ITEMS = ['성수동에서 만나는 따뜻한 겨울', '12월 20일, 겨울 마켓으로 오세요']
-const haneul = part('m2', '하늘', handoffBrief('이벤트 문구 2개', '민지', `12월 20일 성수동 겨울 마켓이 열려요. — ${SOURCE}`, '연말 이벤트 조사'), { lookup: undefined, writer: true, data: { facts: [], items: ITEMS } })
-const json = (message: string): string => JSON.stringify({ message, kept: [] })
+const haneul = part('m2', '하늘', handoffBrief('이벤트 문구 2개', '민지', FOUND, '연말 이벤트 조사'), { lookup: undefined, writer: true, result: `1. ${ITEMS[0]}\n2. ${ITEMS[1]}` })
 const OPENS_WITH_WORK = `하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.\n\n1. ${ITEMS[0]}\n2. ${ITEMS[1]}`
+const HANDOFF_ASK = '민지가 다 찾으면 하늘이 문구 두 개 쓰게 해줘'
 
-test('a writer draft that opens on its lead before the items is shown as written, with no repair, and never reaches the host fallback', async () => {
-  setReportLog(line => logged.push(line))
-  const units = messageUnits(OPENS_WITH_WORK)
-  const { quick, calls } = model({ write: [json(OPENS_WITH_WORK)], repair: [JSON.stringify({ replace: { '1': '' }, insert_after: { [String(units.length)]: ['하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.'] } })] })
-  const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000 })
-  expect(out.split('\n')[0]).toMatch(/^하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요\./)
-  expect(out).not.toContain('하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.')
-  expect(out).toContain(SOURCE)
-  expect(calls.filter(p => p.includes(REPAIR))).toHaveLength(0)
-  expect(logged.join('\n')).not.toMatch(/writer=fallback/)
+test('a draft that opens on its lead before the items is shown as written, from the two hand-backs the lead model read', async () => {
+  const handed = handBacks([minji, haneul])
+  const { answer, jobs, got } = await lead(HANDOFF_ASK, OPENS_WITH_WORK, handed)
+  expect(answer).toBe(OPENS_WITH_WORK)
+  expect(got).toEqual([handed])
+  expect(back(handed).reports.map(one => [one.who, one.result])).toEqual([['민지', FOUND], ['하늘', `1. ${ITEMS[0]}\n2. ${ITEMS[1]}`]])
+  expect(back(handed).reports[0]!.sources).toEqual([SOURCE])
+  expect(jobs).toHaveLength(1)
 })
 
-test('a draft with its lead before the items is shown where the writer put it (c19a: no host move), not as the host template', async () => {
-  setReportLog(line => logged.push(line))
-  const { quick } = model({ write: [json(OPENS_WITH_WORK)], repair: [undefined] })
-  const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000 })
-  expect(out.split('\n')[0]).toMatch(/^하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요\./)
-  expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.')
-  expect(out.indexOf('하늘이 민지가')).toBeLessThan(out.indexOf(ITEMS[0]!))
-  expect(out).not.toBe(mergedReport([minji, haneul]))
-  expect(logged.join('\n')).toMatch(/writer=accepted/)
+test('the lead sentence stays where the writer put it, before the items; no host template takes the draft\'s place', async () => {
+  const { answer } = await lead(HANDOFF_ASK, OPENS_WITH_WORK, handBacks([minji, haneul]))
+  expect(answer.split('\n')[0]).toBe('하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.')
+  expect(answer.indexOf('하늘이 민지가')).toBeLessThan(answer.indexOf(ITEMS[0]!))
+  expect(answer.split('\n').slice(2)).toEqual([`1. ${ITEMS[0]}`, `2. ${ITEMS[1]}`])
+  for (const gone of ['mergedReport', 'writtenReport']) expect(core).not.toHaveProperty(gone)
 })
 
-test('a draft with one contradicting sentence loses only that sentence', async () => {
+test('a sentence the teammate never reported is not cut from the draft; the lead was handed only what the teammate said, and told not to cite what it did not read', async () => {
   const draft = `민지가 찾아보니 12월 20일 성수동 겨울 마켓이 열려요. [이벤트](${SOURCE}) 입장료는 1만 원이에요.`
-  const solo = part('m1', '민지', '연말 이벤트 조사', { data: minji.data! })
-  const { quick } = model({ write: [JSON.stringify({ message: draft, kept: ['f1'] })], check: [problems({ kind: 'contradicts', quote: '입장료는 1만 원이에요.', why: '자료에 없음' })], repair: [undefined] })
-  const out = await writtenReport({ ask: '연말 이벤트 찾아줘', members: [solo], write: quick, timeoutMs: 15_000 })
-  expect(out).toBe(`민지가 찾아보니 12월 20일 성수동 겨울 마켓이 열려요. [이벤트](${SOURCE})`)
+  const solo = part('m1', '민지', '연말 이벤트 조사', { result: FOUND, sources: [SOURCE] })
+  const { answer, jobs, got } = await lead('연말 이벤트 찾아줘', draft, handBacks([solo]))
+  expect(answer).toBe(draft)
+  expect(back(got[0]!).reports[0]!.result).toBe(FOUND)
+  expect(got[0]).not.toContain('입장료')
+  expect(jobs[0]!.system).toContain('no source line added for a fact you did not read this turn')
 })
 
-test('the made-from sentence stays in the answer, said once, whatever the ack said', () => {
-  const told = mergedReport([minji, haneul])
-  expect(told.match(/하늘이 민지가 찾은 [^\n]*만든 거예요\./g)).toHaveLength(1)
-  expect(told).toContain(SOURCE)
+test('who it was made from travels in the second teammate\'s brief and in the hand-back note, so the lead can say it once', () => {
+  const from = handedFrom(haneul.brief)!
+  expect(from.from).toBe('민지')
+  expect(from.job).toBe('연말 이벤트 조사')
+  expect(from.result).toBe(FOUND)
+  expect(from.brief).toBe('이벤트 문구 2개')
+  const handed = back(handBacks([minji, haneul]))
+  expect(handed.note).toContain('Where one agent handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one.')
+  expect(handed.reports.map(one => one.who)).toEqual(['민지', '하늘'])
 })
 
-test('with the ack in the turn, a writer draft without a made-from sentence gets it by the one repair', async () => {
+test('a draft of the items alone gets no made-from sentence added by a repair; the prompt is where telling it as a team is asked', async () => {
   const items = `1. ${ITEMS[0]}\n2. ${ITEMS[1]}`
-  const { quick, calls } = model({ write: [json(items)], repair: [JSON.stringify({ insert_after: { 2: ['하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.'] } })] })
-  const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000, said: ['민지가 찾은 걸 하늘이한테 넘겼어요.'] })
-  expect(calls.some(p => p.includes(REPAIR))).toBe(true)
-  expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.')
-  expect(calls[0]).not.toContain('toldBefore')
+  const { answer, jobs } = await lead(HANDOFF_ASK, items, handBacks([minji, haneul]))
+  expect(answer).toBe(items)
+  expect(jobs).toHaveLength(1)
+  expect(jobs[0]!.system).toContain('When teammates did parts of it, tell it the way a team would - who found or made what and who took it from there')
 })
 
-const cable = (id: string, topic: string, text: string, url: string): TeamMember => part(id, `${topic}요금`, `${topic} 케이블카 요금`, { topic, data: { facts: [{ text, url, site: topic }] } })
-test('the helpers fallback: three parts with evidenced values are three sentences, each with its link, no label cells', () => {
-  const out = mergedReport([
+const cable = (id: string, topic: string, text: string, url: string): TeamMember => part(id, `${topic}요금`, `${topic} 케이블카 요금`, { topic, result: `${text} ${url}`, sources: [url] })
+test('three parts come back as three reports, each with its own words and its own address, and the note asks for a link after what it backs', () => {
+  const members = [
     cable('h1', '울산', '요금: 대왕암공원 해상케이블카 일반 왕복 요금은 성인 기준 15,000원으로 책정되어 운영되고 있다', 'https://a.example/ulsan'),
     cable('h2', '포항', '요금: 12,000원', 'https://b.example/pohang'),
     cable('h3', '경주', '경주 케이블카는 성인 왕복 1만 원이에요.', 'https://c.example/gyeongju'),
-  ], new Map(), [], true)
-  const lines = out.split('\n').filter(Boolean)
-  expect(lines.slice(1)).toHaveLength(3)
-  for (const line of lines.slice(1)) expect(line).toMatch(/요\. \[[^\]]+\]\(https:\/\/[a-c]\.example\/[a-z]+\)$/)
-  expect(out).not.toMatch(/^\|/m)
-  expect(out).not.toMatch(/내용|출처|요금:/)
-  expect(out).toContain('포항 요금은 12,000원으로 나와 있어요.')
-  expect(out).not.toContain('운영되고 있다')
-  expect(out).toContain('울산은 요금은 성인 기준 15,000원으로 나와 있어요.')
-  expect(out).toContain('경주 케이블카는 성인 왕복 1만 원이에요.')
+  ]
+  const handed = back(handBacks(members))
+  expect(handed.reports).toHaveLength(3)
+  expect(handed.reports.map(one => one.part)).toEqual(['울산', '포항', '경주'])
+  expect(handed.reports.map(one => one.result)).toEqual(members.map(m => m.result))
+  expect(handed.reports.map(one => one.sources)).toEqual([['https://a.example/ulsan'], ['https://b.example/pohang'], ['https://c.example/gyeongju']])
+  expect(handed.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result, never a site name alone')
+  expect(members.map(partOutcome)).toEqual(['found', 'found', 'found'])
 })
 
-test('r2: three 수영장 compared on one point (자유수영 요금) are a table; two things on it are sentences', () => {
-  const pool = (id: string, topic: string, fee: string): TeamMember => part(id, topic, `${topic} 수영장 요금`, { topic, data: { facts: [{ text: `자유수영 요금: ${fee}`, url: `https://pool.example/${id}`, site: '구청' }] } })
-  const three = mergedReport([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원'), pool('c', '성동', '5,000원')], new Map(), [], true)
-  expect(three).toMatch(/^\| \| 자유수영 요금 \|$/m)
-  expect(three).toContain('| 용산 | 3,500원 [구청](https://pool.example/b) |')
-  const none = part('d', '강서', '강서 수영장 요금', { topic: '강서', sources: ['https://pool.example/gangseo'], data: { facts: [] } })
-  expect(mergedReport([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원'), none], new Map(), [], true)).toMatch(/^\| 강서 \| 못 찾았어요 \[[^\]]+\]\(https:\/\/pool\.example\/gangseo\) \|$/m)
-  expect(mergedReport([pool('a', '마포', '4,000원'), none], new Map(), [], true)).toMatch(/강서는 이번엔 못 찾았어요\. \[[^\]]+\]\(https:\/\/pool\.example\/gangseo\)/)
-  const two = mergedReport([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원')], new Map(), [], true)
-  expect(two).not.toMatch(/^\|/m)
-  expect(two).toContain('[구청](https://pool.example/b)')
+test('r2: a table is the lead\'s to write only when asked for; a part with no words is handed back as it is and its table row is delivered as written', async () => {
+  const pool = (id: string, topic: string, fee: string): TeamMember => part(id, topic, `${topic} 수영장 요금`, { topic, result: `자유수영 요금: ${fee} https://pool.example/${id}`, sources: [`https://pool.example/${id}`] })
+  const none = part('d', '강서', '강서 수영장 요금', { topic: '강서', state: 'failed', result: 'Failed: it ended without an answer.', sources: ['https://pool.example/gangseo'] })
+  const handed = handBacks([pool('a', '마포', '4,000원'), pool('b', '용산', '3,500원'), none])
+  expect(back(handed).note).toContain('A table only when the person asked to compare or for a table.')
+  expect(back(handed).reports[2]).toEqual({ who: '강서', part: '강서', state: 'failed', result: 'Failed: it ended without an answer.', sources: ['https://pool.example/gangseo'] })
+  expect(partOutcome(none)).toBe('unfinished')
+  const draft = '마포랑 용산은 찾았고 강서는 못 찾았어요.\n\n| | 자유수영 요금 |\n|---|---|\n| 마포 | 4,000원 [구청](https://pool.example/a) |\n| 용산 | 3,500원 [구청](https://pool.example/b) |\n| 강서 | 못 찾았어요 |'
+  const { answer, jobs } = await lead('수영장 세 곳 자유수영 값 표로 보여줘', draft, handed)
+  expect(answer).toBe(draft)
+  expect(jobs).toHaveLength(1)
 })
 
-test('the helpers fallback is a table only for three things on two or more points, with short value cells', () => {
-  const phone = (id: string, topic: string, price: string, date: string): TeamMember => part(id, topic, `${topic} 가격 출시일`, { topic, data: { facts: [{ text: `가격: ${price}`, url: `https://p.example/${id}`, site: 'p' }, { text: `출시일: ${date}`, url: `https://d.example/${id}`, site: 'd' }] } })
-  const out = mergedReport([phone('a', '태블릿 A', '89만 원', '2026.03.02'), phone('b', '태블릿 B', '72만 원', '2026.04.10'), phone('c', '태블릿 C', '65만 원', '2027.01.15')], new Map(), [], true)
-  expect(out).toMatch(/^\| \| 가격 \| 출시일 \|$/m)
-  expect(out).toContain('3월 2일')
-  expect(out).toContain('2027년 1월 15일')
-  expect(out).not.toMatch(/가격:|출시일:/)
+test('a table draft with dates in digits is delivered cell for cell; no host pass turns a date into other words', async () => {
+  const draft = '세 태블릿 값과 나온 날이에요.\n\n| | 가격 | 출시일 |\n|---|---|---|\n| 태블릿 A | 89만 원 | 2026.03.02 |\n| 태블릿 B | 72만 원 | 2026.04.10 |\n| 태블릿 C | 65만 원 | 2027.01.15 |'
+  const { answer, jobs } = await lead('태블릿 세 개 값과 나온 날 표로 줘', draft)
+  expect(answer).toBe(draft)
+  expect(answer).toContain('2026.03.02')
+  expect(answer).not.toContain('3월 2일')
+  expect(jobs).toHaveLength(1)
 })
 
-test('dates are said the Korean way and a value clause is never the whole quote', () => {
-  expect(koreanDates('출시일은 2026.08.12.', new Date(2026, 0, 1))).toBe('출시일은 8월 12일')
-  expect(valueOf('오늘 낮 최고 기온은 18도까지 오르겠고 밤부터 비가 내리겠다고 기상청은 밝혔다')).toBe('낮 최고 기온은 18도까지')
-  expect(valueOf('맑음')).toBe('맑음')
+test('how a date and a figure are said is a rule for the writer; a draft with a dotted date reaches the person unchanged on the step path', async () => {
+  const draft = '출시일은 2026.08.12.'
+  expect((await stepped('출시일 알려줘', draft)).answer).toBe(draft)
+  expect(COLLEAGUE_CORE_RULE).toContain('A figure is written the way a person says it: a whole number has no ".0", and a day is said with its date in plain words, never in brackets.')
+  for (const gone of ['koreanDates', 'valueOf']) expect(core).not.toHaveProperty(gone)
 })
 
 test('a deck build result lists what was checked: the slide count, every title and the audit result', () => {
@@ -190,89 +198,76 @@ test('ppt_build and word_write: a built file returns the checked verdict in its 
   expect(doc.checked).toContain('2 blocks')
 })
 
-test('r2: a register-only repair that adds a line, or English the draft and data do not hold, is discarded and the draft stands', async () => {
-  const draft = '인사팀 회의는 목요일에 해요.\n채용 공고는 다음 달에 올린다.'
-  const register = problems({ kind: 'register', quote: '채용 공고는 다음 달에 올린다.', why: '한다체' })
-  const fixLine = { replace: { '2': '채용 공고는 다음 달에 올려요.' } }
-  const notes = { source: '- 채용 공고는 다음 달에 올린다.' }, quoted = '인사팀 회의는 목요일에 해요.\n"채용 공고는 다음 달에 올린다"라고 적혀 있어요.'
-  const added = model({ check: [register], repair: [JSON.stringify({ ...fixLine, insert_after: { '2': ['채용 일정은 따로 정리해 둘게요.'] } })] })
-  expect((await repairedWrite({ data: notes, ask: '회의 정리해줘', draft, check: added.quick, due: Date.now() + 15_000 })).text).toBe(quoted)
-  expect(added.calls.find(p => p.includes(REPAIR))).toContain('Add no new lines')
-  const english = model({ check: [register], repair: [JSON.stringify({ replace: { '2': 'We will post the job ad next month.' } })] })
-  expect((await repairedWrite({ data: notes, ask: '회의 정리해줘', draft, check: english.quick, due: Date.now() + 15_000 })).text).toBe(quoted)
-  const clean = model({ check: [register], repair: [JSON.stringify(fixLine)] })
-  expect((await repairedWrite({ data: {}, ask: '회의 정리해줘', draft, check: clean.quick, due: Date.now() + 15_000 })).text).toBe('인사팀 회의는 목요일에 해요.\n채용 공고는 다음 달에 올려요.')
+test('r2: a draft with a plain-form line, a line more or an English sentence is delivered as it is; Korean lines are asked for in the prompt', async () => {
+  const asked = '산악회 회의 정리해줘'
+  for (const draft of ['산악회 회의는 목요일에 해요.\n산행 공지는 다음 달에 올린다.', '산악회 회의는 목요일에 해요.\n산행 공지는 다음 달에 올려요.\n산행 일정은 따로 정리해 둘게요.', '산악회 회의는 목요일에 해요.\nWe will post the hike notice next month.']) {
+    const { answer, jobs } = await lead(asked, draft)
+    expect(answer, draft).toBe(draft)
+    expect(jobs, draft).toHaveLength(1)
+    expect(jobs[0]!.system).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
+  }
 })
 
-test('r2: English the data holds (a product name) is not foreign; a missing part may still insert lines', () => {
-  expect(foreignRun('가격이에요.', 'Galaxy Tab S Ultra Max 가격', 'Galaxy Tab S Ultra Max')).toBeUndefined()
-  expect(foreignRun('가격이에요.', 'Here is the latest price now', '')).toBe('Here is the latest price now')
-  expect(foreignRun('It is fine.', 'Here is the latest price now', '')).toBeUndefined()
-  expect(spliced('결정만 있어요.', JSON.stringify({ insert_after: { '1': ['할 일', '- 공지 발송'] } }), new Set(), true)).toBe('결정만 있어요.\n할 일\n- 공지 발송')
-  expect(spliced('결정만 있어요.', JSON.stringify({ insert_after: { '1': ['할 일', '- 공지 발송'] } }), new Set(), false)).toBeUndefined()
+test('r2: an English product name in a Korean draft is left alone, and so is everything else: no test of foreign words runs', async () => {
+  const draft = 'Galaxy Tab S Ultra Max 가격이에요.\n\n할 일\n- 공지 발송'
+  expect((await lead('태블릿 가격 알려줘', draft)).answer).toBe(draft)
+  expect((await stepped('태블릿 가격 알려줘', draft)).answer).toBe(draft)
+  expect(core).not.toHaveProperty('foreignRun')
 })
 
-const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { data: { facts: [{ text, url, site: '도서관' }] } })
+const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { result: `${text} ${url}`, sources: [url] })
 test('r2: a one-teammate draft that names nobody is shown as written, with no host attribution', async () => {
   const yuna = library('y', '유나', '주말에는 오후 5시까지 열어요.', 'https://lib.example/weekend')
   const draft = `주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)`
-  const { quick } = model({ write: [JSON.stringify({ message: draft, kept: ['f1'] })], repair: [undefined] })
-  const out = await writtenReport({ ask: '유나한테 도서관 주말 운영시간 알아보라고 해', members: [yuna], write: quick, timeoutMs: 15_000 })
-  expect(out).toBe('주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)')
+  const { answer, got } = await lead('유나가 도서관 토·일 여는 시간 봐 줬으면 해', draft, handBacks([yuna]))
+  expect(answer).toBe('주말에는 오후 5시까지 열어요. [도서관](https://lib.example/weekend)')
+  expect(back(got[0]!).reports).toEqual([{ who: '유나', state: 'done', result: yuna.result, sources: ['https://lib.example/weekend'] }])
 })
 
-const checked = (message: string, members: TeamMember[]) => { const out = reportCheck(JSON.stringify({ message }), members); if (!('text' in out)) throw new Error(out.refused); return out }
-const unnamedOf = (out: ReturnType<typeof checked>): string[] => out.soft.filter(one => one.refused === 'unnamed').map(one => one.quote ?? '')
-test('r2: an unnamed teammate in a merged message is a soft finding quoting their own sentence; the named, the told and a one-part message are left alone', () => {
+test('r2: naming each teammate is asked for in the hand-back note; a merged draft that leaves one unnamed is delivered as it is', async () => {
   const yuna = library('y', '유나', '평일은 밤 9시까지예요.', 'https://lib.example/weekday'), taeo = library('t', '태오', '월요일은 쉬어요.', 'https://lib.example/closed')
   const text = '- 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)\n태오 말로는 월요일은 쉬어요. [도서관](https://lib.example/closed)'
-  const two = checked(text, [yuna, taeo])
-  expect(two.text).toBe(text)
-  expect(unnamedOf(two)).toEqual([expect.stringContaining('평일은 밤 9시까지예요.')])
-  const one = checked('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)', [yuna])
-  expect(one.text).toBe('도서관 두 곳 다 봤어요. 평일은 밤 9시까지예요. [도서관](https://lib.example/weekday)')
-  expect(one.soft).toEqual([])
-  const both = checked('평일은 밤 9시까지예요. [도서관](https://lib.example/weekday) 월요일은 쉬어요. [도서관](https://lib.example/closed)', [yuna, taeo])
-  expect(both.text).not.toMatch(/유나|태오|찾아보니/)
-  expect(unnamedOf(both)).toHaveLength(2)
-  const table = checked('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |', [yuna])
-  expect(table.text).toBe('| 평일 | 밤 9시 [도서관](https://lib.example/weekday) |')
-  expect(table.soft).toEqual([])
+  const { answer, jobs, got } = await lead('도서관 평일 시간은 유나, 쉬는 날은 태오가 봐줘', text, handBacks([yuna, taeo]))
+  expect(answer).toBe(text)
+  expect(answer).not.toContain('유나')
+  expect(jobs).toHaveLength(1)
+  expect(back(got[0]!).note).toContain('who did what in natural sentences that name each agent (never a line that starts with a name and a colon)')
+  expect(back(got[0]!).reports.map(one => one.who)).toEqual(['유나', '태오'])
 })
 
-const garden = (id: string, role: string, text: string): TeamMember => part(id, role, '수목원 운영 조사', { data: { facts: [{ text, url: 'https://garden.example/hours', site: '수목원' }] } })
-test('r3: two teammates citing one page are each an unnamed finding, in any order, and the draft is not rewritten', () => {
+const garden = (id: string, role: string, text: string): TeamMember => part(id, role, '수목원 운영 조사', { result: `${text} https://garden.example/hours`, sources: ['https://garden.example/hours'] })
+test('r3: two teammates citing one page are two reports with that page each, in the order given, and the draft is not rewritten', async () => {
   const draft = '정기 휴관일은 매주 화요일이에요. [수목원](https://garden.example/hours)\n야간 개장은 금요일 저녁 9시까지예요. [수목원](https://garden.example/hours)'
   const a = garden('a', '다온', '정기 휴관일은 매주 화요일이에요.'), b = garden('b', '시우', '야간 개장은 금요일 저녁 9시까지예요.')
   for (const order of [[a, b], [b, a]]) {
-    const out = checked(draft, order)
-    expect(out.text).toBe(draft)
-    expect(unnamedOf(out)).toHaveLength(2)
+    const { answer, got } = await lead('수목원 휴관일은 다온, 야간 개장은 시우가 봐줘', draft, handBacks(order))
+    expect(answer).toBe(draft)
+    expect(back(got[0]!).reports.map(one => one.who)).toEqual(order.map(m => m.role))
+    expect(back(got[0]!).reports.map(one => one.sources)).toEqual([['https://garden.example/hours'], ['https://garden.example/hours']])
   }
-  const one = checked(draft.replace('\n', ' '), [b, a])
-  expect(one.text).not.toMatch(/찾아보니/)
-  expect(unnamedOf(one)).toHaveLength(2)
 })
 
-test('r3: an unrepaired register line is a quotation when the notes hold it, gone when they do not, kept when it is all there is', async () => {
+test('r3: a plain-form line is not turned into a quotation, taken out or shortened, whether or not it is all there is', async () => {
   const draft = '분기 예산 회의는 다음 주 수요일이에요.\n- 출장비 한도는 30만 원으로 낮춘다.\n- 비품 구매는 팀장이 승인해요.'
-  const flagged = problems({ kind: 'register', quote: '출장비 한도는 30만 원으로 낮춘다.', why: '한다체' })
-  const late = (): ReturnType<typeof model> => model({ check: [flagged], repair: [undefined] })
-  const fromNotes = await repairedWrite({ data: { source: '출장비 한도는 30만 원으로 낮춘다.' }, ask: '예산 회의 요약해줘', parts: true, draft, check: late().quick, due: Date.now() + 15_000 })
-  expect(fromNotes.text).toBe(draft.replace('- 출장비 한도는 30만 원으로 낮춘다.', '- "출장비 한도는 30만 원으로 낮춘다"라고 적혀 있어요.'))
-  const own = await repairedWrite({ data: { source: '출장비 30만' }, ask: '예산 회의 요약해줘', draft, check: late().quick, due: Date.now() + 15_000 })
-  expect(own.text).not.toContain('낮춘다')
-  expect(own.text).toContain('비품 구매는 팀장이 승인해요.')
+  const whole = await lead('예산 회의 요약해줘', draft)
+  expect(whole.answer).toBe(draft)
+  expect(whole.answer).not.toContain('라고 적혀 있어요')
   const alone = '출장비 한도는 30만 원으로 낮춘다.'
-  expect((await repairedWrite({ data: {}, ask: '요약해줘', draft: alone, check: late().quick, due: Date.now() + 15_000 })).text).toBe('출장비 한도는 30만 원으로 낮춤')
+  expect((await lead('요약해줘', alone)).answer).toBe(alone)
+  expect((await stepped('요약해줘', alone)).answer).toBe(alone)
+  expect(whole.jobs).toHaveLength(1)
 })
 
-test('r3: items after a sentence about who made them stay where the writer put them; a draft already items-first is untouched too', () => {
-  const slogan = part('s2', '루아', '축제 슬로건 2개', { lookup: undefined, writer: true, data: { facts: [], items: ['가을밤, 강가에서 만나요', '불빛 따라 걷는 축제'] } })
+test('r3: items after a sentence about who made them stay where the writer put them; a draft already items-first is untouched too', async () => {
+  const slogan = part('s2', '루아', '축제 슬로건 2개', { lookup: undefined, writer: true, result: '1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제' })
   const draft = '루아가 축제 슬로건을 두 개 뽑았어요.\n\n1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n마음에 드는 걸로 쓰시면 돼요.'
-  expect(checked(draft, [slogan])).toEqual({ text: draft, soft: [], adds: [], unlinked: [] })
   const ready = '1. 가을밤, 강가에서 만나요\n2. 불빛 따라 걷는 축제\n\n루아가 뽑았어요.'
-  expect(checked(ready, [slogan])).toEqual({ text: ready, soft: [], adds: [], unlinked: [] })
+  for (const text of [draft, ready]) {
+    const { answer, jobs, got } = await lead('루아한테 축제 슬로건 두 개 뽑게 해', text, handBacks([slogan]))
+    expect(answer).toBe(text)
+    expect(jobs).toHaveLength(1)
+    expect(back(got[0]!).reports[0]!.result).toBe(slogan.result)
+  }
 })
 
 test('r3 D3: a deck built clean is answered with no read-back asked by the host, and the build verdict is in what the model reads next', async () => {

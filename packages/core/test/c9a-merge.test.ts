@@ -1,56 +1,55 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { citeMembers, figurePages, isSearchPage, pointQueries, sourceName, type TeamMember } from '../src/index.js'
+import { figurePages, isSearchPage, LOOKUP_RULE, pointQueries, settleMember, sourceName, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 
 const r2 = JSON.parse(readFileSync(new URL('./fixtures/c9a-r2-helpers.json', import.meta.url), 'utf8')) as { members: TeamMember[] }
 const links = (text: string): string[] => [...text.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map(found => found[1]!)
 const host = (url: string): string => new URL(url).hostname
 const search = (words: string): string => `https://search.naver.com/search.naver?query=${encodeURIComponent(words)}`
 
-test('c9a R2: the stored three helpers through the merge give three rows on three hosts, platform names, a figure in every price cell', () => {
-  const table = ['셋이 하나씩 맡아서 알아봤어요.', '', '| 모델 | 가격 | 출시일 | 출처 |', '|---|---|---|---|',
-    '| 아이폰 18 | 일반형은 미발표 (프로 기준 199만 원부터) | 일반형은 내년 봄 예상 (프로·듀오는 10월 23일 이미 출시) | [출처](https://cafe.naver.com/appletouch/2303631) |',
-    '| 갤럭시 S27 | 미발표, 전작 S26 140만 3,600원 | 미발표, 2027년 1~2월 공개설 | [출처](https://cafe.naver.com/sm2022sf/1328949) |',
-    `| 픽셀 11 | 899달러부터 (기본형, 미국 기준) | 2026년 8월 12일 공개, 8월 20일 판매 시작 | [출처](${search('구글 픽셀 11 가격 출시일')}) |`].join('\n')
-  const out = citeMembers(table, r2.members, true)
-  const shown = links(out)
-  expect(shown).toHaveLength(3)
-  expect(new Set(shown.map(host)).size).toBe(3)
-  expect(shown.slice(0, 2).some(isSearchPage)).toBe(false)
-  expect(out).toContain('[스마트스토어](https://smartstore.naver.com/main/products/12990053235)')
-  expect(out).toContain('[네이버 카페](https://cafe.naver.com/appletouch/2303631)')
-  expect(out).not.toMatch(/\[출처\]/)
-  for (const row of out.split('\n').filter(line => /^\| (아이폰|갤럭시|픽셀)/.test(line))) expect(row.split('|')[2], row).toMatch(/\d.*(원|달러)|미발표/)
+interface Handed { members: { role: string; state: string; result: string; sources?: string[] }[]; note: string }
+async function hired(helpers: readonly TeamMember[], alive?: (url: string) => Promise<boolean>): Promise<Handed> {
+  const task = { id: 't', goal: '가격 비교', botId: 'lead', state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [] } as DelegatedTask
+  const host: TeamHost = {
+    self: null, load: async () => task, change: async work => work(task),
+    run: async ids => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) { const from = helpers.find(one => one.role === m.role)!; Object.assign(m, { state: 'done', result: from.result, ...(from.sources ? { sources: from.sources } : {}) }) } },
+    release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
+    live: () => false, tokensLeft: async () => 1_000_000, personSaid: () => '', ...(alive ? { alive } : {}),
+  }
+  return JSON.parse(await teamHireTools(host)[0]!.run({ members: helpers.map(h => ({ role: h.role, brief: h.brief, lookup: true })) }, { task: '' })) as Handed
+}
+
+test('c9a R2 → k1: the stored three helpers reach the lead as three results with the pages each wrote, and the lead is told to name a platform post by its platform', async () => {
+  const out = await hired(r2.members)
+  expect(out.members.map(m => m.result)).toEqual(r2.members.map(m => m.result))
+  expect(out.members.map(m => m.sources)).toEqual(r2.members.map(m => m.sources))
+  const written = out.members.flatMap(m => m.result.match(/https?:\/\/[^\s),]+/g) ?? [])
+  expect(written).toContain('https://smartstore.naver.com/main/products/12990053235')
+  expect(written).toContain('https://cafe.naver.com/appletouch/2303631')
+  expect(written.some(isSearchPage)).toBe(false)
+  expect(new Set(written.map(host)).size).toBeGreaterThanOrEqual(3)
+  for (const m of out.members) expect(m.result, m.role).toMatch(/\d.*(원|달러)/)
+  expect(out.note).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id')
 })
 
-test('c9a R2: a search page never stands for a row whose helper cited a real page', () => {
-  const head = '| 모델 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n'
-  const tesla: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'tesla', brief: '테슬라 모델 2의 가격과 출시일 조사', lookup: true, state: 'done', sessionKey: 's1', hiredAt: '', sources: [search('테슬라 모델 2 가격 출시일')], result: '가격: 예상 2만 5천 달러 — https://www.hankyung.com/article/2026111700001\n출시일: 2027년 상반기 예상 — https://blog.naver.com/ev/1' }
-  const byd: TeamMember = { id: 'm2', parentId: null, depth: 1, role: 'byd', brief: 'BYD 돌핀의 가격과 출시일 조사', lookup: true, state: 'done', sessionKey: 's2', hiredAt: '', sources: [search('BYD 돌핀 가격 출시일'), 'https://www.hankyung.com/article/2026111700009'], result: '가격: 2,450만 원부터 — https://blog.naver.com/ev/2\n출시일: 2025년 4월 15일 국내 출시 — https://www.hankyung.com/article/2026111700009' }
-  const out = citeMembers(`${head}| 테슬라 모델 2 | 예상 2만 5천 달러 | 2027년 상반기 예상 | [출처](${search('테슬라 모델 2 가격 출시일')}) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://blog.naver.com/ev/2) |`, [tesla, byd], true)
-  const shown = links(out)
-  expect(shown.some(isSearchPage)).toBe(false)
-  expect(shown).toEqual(['https://www.hankyung.com/article/2026111700001', 'https://www.hankyung.com/article/2026111700009', 'https://blog.naver.com/ev/2'])
-  expect(out.split('\n').at(-1)).toMatch(/\]\(https:\/\/www\.hankyung\.com\/article\/2026111700009\) · \[[^\]]+\]\(https:\/\/blog\.naver\.com\/ev\/2\) \|$/)
-  const one: TeamMember = { ...byd, result: '가격: 2,450만 원부터, 2025년 4월 15일 출시 — https://blog.naver.com/ev/2\n소식 — https://www.hankyung.com/article/2026111700009' }
-  expect(links(citeMembers(`${head}| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://www.hankyung.com/article/2026111700009) |`, [one], true))).toEqual(['https://blog.naver.com/ev/2'])
-  const a: TeamMember = { ...tesla, sources: [], result: '가격: 2만 5천 달러 — https://cafe.naver.com/ev/1' }
-  const b: TeamMember = { ...byd, sources: [], result: '가격: 2,450만 원부터 — https://cafe.naver.com/ev/2\n출시일: 2025년 4월 15일 — https://www.youtube.com/watch?v=x1' }
-  const spread = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://cafe.naver.com/ev/2) |`, [a, b], true)
-  expect(links(spread)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1', 'https://cafe.naver.com/ev/2'])
-  const c: TeamMember = { ...byd, sources: [], result: '소식 — https://cafe.naver.com/ev/2\n소식 — https://www.youtube.com/watch?v=x1' }
-  const apart = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 미정 | 미정 | [출처](https://cafe.naver.com/ev/2) |`, [a, c], true)
-  expect(links(apart)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1'])
-  expect(apart).toContain('[유튜브](https://www.youtube.com/watch?v=x1)')
+test('c9a R2 → k1: a search page never stands before a real page among the pages a helper read, and its own addresses stay in its words', () => {
+  const ferry: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'ferry', brief: '목포 제주 여객선 요금과 첫 배 시간 조사', lookup: true, state: 'working', sessionKey: 's1', hiredAt: '' }
+  const answer = '요금: 일반석 3만 2천 원 — https://www.hankyung.com/article/2026111700021\n첫 배: 오전 9시 출항 — https://blog.naver.com/port/7'
+  settleMember(ferry, { answer, sources: [search('목포 제주 여객선 요금'), 'https://www.hankyung.com/article/2026111700021', 'https://blog.naver.com/port/7'] }, '2026-11-17T00:00:00Z', true)
+  expect(ferry.result).toBe(answer)
+  expect(ferry.sources).toEqual(['https://www.hankyung.com/article/2026111700021', 'https://blog.naver.com/port/7', search('목포 제주 여객선 요금')])
+  expect(links(`[a](${ferry.sources![0]})`).some(isSearchPage)).toBe(false)
+  expect(LOOKUP_RULE).toContain('the page itself, never a search-results address, unless the fact was read on the results page itself')
 })
 
-test('c9a r3 (Codex r2): a source cell with a search page beside an article keeps the article only', () => {
-  const head = '| 모델 | 가격 | 출처 |\n|---|---|---|\n'
-  const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'tesla', brief: '테슬라 모델 2 가격', lookup: true, state: 'done', sessionKey: 's1', hiredAt: '', sources: [search('테슬라 모델 2 가격')], result: '가격: 2만 5천 달러 — https://www.hankyung.com/article/2026111700001' }
-  const out = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [한국경제](https://www.hankyung.com/article/2026111700001) |`, [m], true)
-  expect(links(out)).toEqual(['https://www.hankyung.com/article/2026111700001'])
-  const two = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [네이버 검색](${search('모델 2')}) |`, [m], true)
-  expect(links(two)).toEqual(['https://www.hankyung.com/article/2026111700001'])
+test('c9a r3 (Codex r2) → k1: an article read after several searches is still among the pages handed back, ahead of every search page', () => {
+  const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'ferry', brief: '완도 여객선 요금', lookup: true, state: 'working', sessionKey: 's1', hiredAt: '' }
+  const article = 'https://www.hankyung.com/article/2026111700033'
+  settleMember(m, { answer: `요금: 2만 8천 원 — ${article}`, sources: [search('완도 여객선 요금'), search('완도 배편'), search('완도 여객선'), article] }, '2026-11-17T00:00:00Z', true)
+  expect(m.sources).toHaveLength(3)
+  expect(m.sources![0]).toBe(article)
+  expect(m.sources!.slice(1).every(isSearchPage)).toBe(true)
+  expect(m.review).toEqual({ ok: true, note: 'auto: sourced lookup' })
 })
 
 test('c9a R2: platforms are named by the platform; a search page and an unknown site keep their names (c11a: unknown site by host)', () => {

@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest'
 import stack5 from './fixtures/grokbar-stack5-team.json' with { type: 'json' }
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { foundNothing, liveLinks, liveCited, localAddress, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, citeMembers, citeOwn, keepRead, keepSources, keepTitle, placeNamed, priorPriceQuery, sourceName, timeBoxed, periodsIn, dateLine, datedQuery, ANSWER_FROM_THIS, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, MERGED_SHAPE, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { foundNothing, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, keepRead, keepSources, keepTitle, priorPriceQuery, sourceName, timeBoxed, periodsIn, dateLine, datedQuery, ANSWER_FROM_THIS, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, MERGED_SHAPE, answeredLookup, AUTO_REVIEW, skipWalls, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import * as hireTools from '../src/team-hire-tools.js'
+import { deadOf, NO_LIVE_SOURCE, withLiveSources } from '../src/team-hire-tools.js'
+import { handBacks } from '../src/company-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -99,24 +102,10 @@ describe('team hire tools', () => {
     expect(settled({ answer: '로봇 확인 화면이 떠서 읽지 못했습니다.', sources: naver }).review).toBeUndefined()
     expect(settled({ answer: '서울 12.4도 흐림', sources: naver, timedOut: true }).review).toBeUndefined()
     expect(answeredLookup('서울 12.4도 흐림', naver)).toBe(true)
-    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과 [네이버 금융](https://search.naver.com/search.naver?query=원달러%20환율)')
-    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C. [weather.example](https://www.weather.example/seoul)')
-    expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).toBe('엔비디아는 159.22달러예요. [Bing 검색](https://www.bing.com/search?q=NVDA)')
-    expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).not.toMatch(/출처|bing\.com\]/)
-    expect(citeOwn('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |', ['https://finance.example/nvda'], true)).toBe('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)')
-    expect(citeOwn('- 첫째\n- 둘째', naver, true)).toBe('- 첫째\n- 둘째\n\n[네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)')
-    const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
-    expect(citeOwn(linked, naver, true)).toBe(linked)
-    expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
-    expect(citeOwn('오늘 서울은 오후부터 비가 와요.\n\n퇴근길 우산 챙기세요.\n\n[네이버 날씨](https://weather.naver.com/today)', naver, true)).toBe('오늘 서울은 오후부터 비가 와요.\n\n퇴근길 우산 챙기세요. [네이버 날씨](https://weather.naver.com/today)')
-    expect(citeOwn('애플은 352.34달러예요.\n[네이버 증권](https://finance.naver.com/aapl)\n', [], true)).toBe('애플은 352.34달러예요. [네이버 증권](https://finance.naver.com/aapl)')
-    for (const kept of ['| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)', '- 첫째\n- 둘째\n\n[네이버 검색](https://search.naver.com/x)', '[네이버 날씨](https://weather.naver.com/today)']) expect(citeOwn(kept, naver, true)).toBe(kept)
-    expect(citeOwn('', naver, true)).toBe('')
-    const replies = '\n\n```replies\n애플 주가도 알려줘\n어제랑 비교해줘\n```'
-    expect(citeOwn(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요.\n\n[네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`, [], true))
-      .toBe(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요. [네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`)
-    expect(citeOwn(`1,335원이에요.${replies}`, ['https://finance.example/usd'], true)).toBe(`1,335원이에요. [finance.example](https://finance.example/usd)${replies}`)
-    expect(citeOwn(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)${replies}`, [], true)).toBe(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)${replies}`)
+    const rate = settled({ answer: '지금 1달러에 1,335.40원이에요.', sources: ['https://search.naver.com/search.naver?query=원달러 환율'] })
+    expect(rate.result).toBe('지금 1달러에 1,335.40원이에요.')
+    expect(rate.sources).toEqual(['https://search.naver.com/search.naver?query=원달러 환율'])
+    expect(hireTools).not.toHaveProperty('citeOwn')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`
@@ -264,8 +253,8 @@ describe('team hire tools', () => {
     expect(full.state).toBe('done')
     settleMember(broken, { answer: '', error: 'it was stopped.' }, 'now')
     expect(broken.state).toBe('failed')
-    expect(cutShortAnswer('Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 15도')).toBe('부산 15도')
-    expect(cutShortAnswer('부산 15도')).toBe('부산 15도')
+    expect((full as TeamMember).result).toContain('서울 12도 (https://weather.example)')
+    expect(hireTools).not.toHaveProperty('cutShortAnswer')
   })
 
   it('lets a member hire a helper at depth 2 and 3, and refuses a depth-3 member', async () => {
@@ -409,36 +398,13 @@ describe('team hire tools', () => {
     void call
   })
 
-  it('carries every member\'s link into its own row of the one merged table, and leaves an answer that already cites them alone', () => {
-    const member = (id: string, role: string, sources: string[] | undefined, state = 'released', botId?: string) => ({ id, role, sources, state, parentId: null, depth: 1, brief: '', sessionKey: id, hiredAt: '', ...(botId ? { botId } : {}) }) as never
-    const members = [member('m1', '서울 날씨', ['https://weather.naver.com/today/09']), member('m2', '부산 날씨', ['https://search.naver.com/search.naver?query=부산 날씨']), member('m3', '제주 날씨', ['https://weather.naver.com/today/14']), member('m4', '대구 날씨', undefined), member('m5', '광주 날씨', ['https://failed.example'], 'failed')]
-    const table = '세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | 네이버 날씨 검색 |\n| 제주 | 흐림 | 15.6°C | 네이버 날씨 검색 |'
-    const cited = citeMembers(table, members, true)
-    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
-    for (const row of cited.split('\n').slice(4)) { expect(row).toMatch(/\]\(https:\/\//); expect(row).not.toMatch(/\((서울|부산|제주) 날씨\)/) }
-    expect(citeMembers(cited, members, true)).toBe(cited)
-    expect(cited).not.toContain('failed.example')
-    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨) |')
-    const staff = [member('m1', '지민', ['https://www.notion.com/releases'], 'released', 'bot-jimin'), member('m2', '서연', ['https://slack.com/changelog'], 'released', 'bot-seoyeon'), member('m3', '도윤', undefined, 'released', 'bot-doyun')]
-    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | - |\n| 슬랙(서연) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | [노션](https://www.notion.com/releases) |\n| 슬랙(서연) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
-    const namedStaff = [member('m1', '지민', ['https://www.notion.com/releases'], 'released', 'bot-jimin')]
-    namedStaff[0]!['brief' as never] = '노션 신기능 조사' as never
-    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션 | AI 회의록 | 노션 블로그 |', namedStaff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | [노션 블로그](https://www.notion.com/releases) |')
-    const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
-    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [네이버](https://weather.naver.com/today/09) · [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
-    const phones = [member('m1', 'iPhone18', ['https://www.bing.com/search?q=iPhone+18']), member('m2', 'GalaxyS27', ['https://www.bing.com/search?q=Galaxy+S27']), member('m3', 'Pixel11', ['https://www.bing.com/search?q=iPhone+18'])]
-    const closing = citeMembers('세 기종 모두 아직 공식 가격이 안 나왔어요.', phones, true)
-    expect(closing).toBe('세 기종 모두 아직 공식 가격이 안 나왔어요.\n\n출처: [Bing 검색](https://www.bing.com/search?q=iPhone+18) · [Bing 검색](https://www.bing.com/search?q=Galaxy+S27)')
-    expect(closing).not.toMatch(/iPhone18|GalaxyS27|Pixel11/)
-    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table)
-    const missing = '| 도시 | 날씨 |\n|---|---|\n| 대구 | 아직 찾는 중이에요. |\n| 광주 | 못 찾았어요. |'
-    expect(citeMembers(missing, members.slice(3), true)).toBe(missing)
-    expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [Naver](https://weather.naver.com/today/09)')
-    expect(citeMembers('', members, true)).toBe('')
-    const searched = members.slice(0, 2).map((m, i) => ({ ...(m as object), sources: [`https://search.naver.com/search.naver?query=${i}`], result: `맑아요. https://news.example/${i}.` }) as never)
-    const linkedRows = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 가 | 맑음 | [뉴스](https://news.example/0) |\n| 나 | 비 | [뉴스](https://news.example/1) |'
-    expect(citeMembers(linkedRows, searched, true)).toBe(linkedRows)
-    expect(citeMembers(linkedRows.replace('[뉴스](https://news.example/1)', '뉴스'), searched, true)).toContain('\n\n출처: [네이버 검색](https://search.naver.com/search.naver?query=1)')
+  it('carries every member\'s page in its own report of the one hand-back, and a member with none carries none', () => {
+    const part = (id: string, role: string, result: string, sources?: string[]): TeamMember => ({ id, parentId: null, depth: 1, role, brief: role, state: 'released', sessionKey: id, hiredAt: '', result, ...(sources ? { sources } : {}) })
+    const members = [part('m1', '빵집', '3월 4일에 열어요.', ['https://bakery.example/open']), part('m2', '둘레길', '2구간이 막혔어요.', ['https://park.example/notice/7']), part('m3', '여객선', '시간표를 못 찾았어요.')]
+    const back = JSON.parse(handBacks(members)) as { reports: { who: string; sources?: string[] }[]; note: string }
+    expect(back.reports.map(r => [r.who, r.sources])).toEqual([['빵집', ['https://bakery.example/open']], ['둘레길', ['https://park.example/notice/7']], ['여객선', undefined]])
+    expect(back.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
+    expect(hireTools).not.toHaveProperty('citeMembers')
   })
 
   it('never re-runs a lookup member: ok=false releases it with what it had', async () => {
@@ -588,8 +554,7 @@ describe('team hire tools', () => {
     await expect(listTasks(paths)).rejects.toThrow('Invalid saved tasks; the file was preserved.')
   })
 
-  it('checks each address the turn did not load once: a live link is kept, a dead one gives way to the page that was read, a slow one is kept', async () => {
-    const read = ['https://search.naver.com/search.naver?query=부산 날씨']
+  it('checks each address once: a live link is kept, a dead one is named dead, a slow one is kept', async () => {
     const asked: string[] = []
     const alive = (dead: string[], slow: string[] = []) => async (url: string, signal: AbortSignal): Promise<boolean> => {
       asked.push(url)
@@ -597,74 +562,57 @@ describe('team hire tools', () => {
       if (dead.some(host => url.includes(host))) throw new Error('net::ERR_NAME_NOT_RESOLVED')
       return true
     }
-    const live = '부산은 맑고 18도예요. [기상청](https://www.weather.go.kr/w/index.do) [네이버 날씨](https://search.naver.com/search.naver?query=%EB%B6%80%EC%82%B0%20%EB%82%A0%EC%94%A8)'
-    expect(await liveLinks(live, read, alive([]), true)).toBe(live)
-    expect(asked).toEqual(['https://www.weather.go.kr/w/index.do'])
-    const dead = '부산은 맑고 18도예요. 강수 소식은 없네요. [korea247.kr](https://korea247.kr/weather/busan)'
-    const swapped = '부산은 맑고 18도예요. 강수 소식은 없네요. [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨)'
-    expect(await liveLinks(dead, read, alive(['korea247.kr']), true)).toBe(swapped)
-    expect(await liveLinks(dead, read, async () => false, true)).toBe(swapped)
-    expect(await liveLinks(dead, [], alive(['korea247.kr']), true)).toBe('부산은 맑고 18도예요. 강수 소식은 없네요. korea247.kr')
-    expect(await liveLinks(`${live} [블로그](https://korea247.kr/x)`, read, alive(['korea247.kr']), true)).toBe(`${live} 블로그`)
-    const table = '| 서울 | 12도 | [a](https://dead.example/a) |\n| 부산 | 18도 | [b](https://dead.example/a/b) |\n| 제주 | 20도 | [c](https://ok.example/c) |'
-    expect(await liveLinks(table, [], async url => url !== 'https://dead.example/a', true)).toBe(table.replace('[a](https://dead.example/a)', ''))
     const started = Date.now()
-    const slow = '[느린 곳](https://slow.example/1) [또 느린 곳](https://slow.example/2) [죽은 곳](https://gone.example/3)'
-    expect(await liveLinks(slow, [], alive(['gone.example'], ['slow.example']), true, 60)).toBe('[느린 곳](https://slow.example/1) [또 느린 곳](https://slow.example/2) 죽은 곳')
+    expect(await deadOf(['https://park.example/notice', 'https://gone.example/3', 'https://slow.example/1'], alive(['gone.example'], ['slow.example']), 100)).toEqual(['https://gone.example/3'])
     expect(Date.now() - started).toBeLessThan(600)
+    expect(asked).toEqual(['https://park.example/notice', 'https://gone.example/3', 'https://slow.example/1'])
     expect(LINK_CHECK_MS).toBe(1_500)
-    const stuck = Date.now()
-    expect(await liveLinks(slow, [], () => new Promise<boolean>(() => undefined), true, 40)).toBe(slow)
-    expect(Date.now() - stuck).toBeLessThan(600)
     const before = asked.length
-    expect(await liveLinks('부산은 맑아요.', read, alive([]), true)).toBe('부산은 맑아요.')
+    expect(await deadOf([], alive([]), 100)).toEqual([])
     expect(asked).toHaveLength(before)
   })
 
-  it('asks a link taken from a kept results page, and gives a row no other teammate\'s page', async () => {
-    const results = 'https://search.naver.com/search.naver?query=서울 IT 행사'
+  it('gives a line whose page died no other teammate\'s page: it is marked as having no live source', async () => {
     const asked: string[] = []
     const alive = async (url: string): Promise<boolean> => { asked.push(url); return !url.includes('gone.example') }
-    const answer = '지민이 서울 IT 행사 일정 정리해 왔어요.\n\n- 12월 2일 행사 A [a.example](https://a.example/a)\n- 12월 9일 행사 B [gone.example](https://gone.example/b)'
-    expect(await liveLinks(answer, [results], alive, true, LINK_CHECK_MS, [results])).toBe(answer.replace('[gone.example](https://gone.example/b)', '[네이버 검색](https://search.naver.com/search.naver?query=서울%20IT%20행사)'))
-    expect(asked).toEqual(['https://a.example/a', 'https://gone.example/b'])
-    expect(await liveLinks(answer, [results, 'https://other.example/read'], alive, true, LINK_CHECK_MS, [])).toBe(answer.replace('[gone.example](https://gone.example/b)', 'gone.example'))
+    const part = (id: string, result: string): TeamMember => ({ id, parentId: null, depth: 1, role: id, brief: '빵집 개점일', lookup: true, state: 'done', sessionKey: id, hiredAt: '', result })
+    const members = [part('m1', '밀밭 빵집은 3월 4일에 열어요. https://gone.example/b'), part('m2', '호두 과자점은 3월 9일에 열어요. https://a.example/a')]
+    expect(await withLiveSources(members, alive)).toBe(true)
+    expect(asked).toEqual(['https://gone.example/b', 'https://a.example/a'])
+    expect(members[0]!.result).toBe(`밀밭 빵집은 3월 4일에 열어요. ${NO_LIVE_SOURCE}`)
+    expect(members[1]!.result).toBe('호두 과자점은 3월 9일에 열어요. https://a.example/a')
   })
 
-  it('joins a lone closing link to its sentence when the address has a space in it', () => {
-    expect(citeOwn('1달러에 1,336.80원이에요.\n\n[네이버](https://search.naver.com/search.naver?query=원달러 환율)', [], true)).toBe('1달러에 1,336.80원이에요. [네이버](https://search.naver.com/search.naver?query=원달러 환율)')
+  it('keeps a closing link line where the teammate wrote it, also when its address has a space in it', () => {
+    const answer = '오늘 파도는 1.5미터예요.\n[바다 예보](https://sea.example/search?q=오늘 파도)'
+    const one: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: '오늘 파도 높이', lookup: true, state: 'working', sessionKey: 'k', hiredAt: '' }
+    settleMember(one, { answer }, 'now', true)
+    expect(one.result).toBe(answer)
   })
 
-  it('never asks an address on this machine or its own network', () => {
-    for (const url of ['http://localhost:3000/x', 'http://127.0.0.1/admin', 'http://10.0.0.5/', 'http://192.168.0.1/reboot', 'http://172.20.1.1/', 'http://169.254.169.254/latest', 'http://[::1]/', 'http://printer/', 'http://nas.local/', 'not an address']) expect(localAddress(url), url).toBe(true)
-    for (const url of ['https://finance.naver.com/item/main.naver?code=005930', 'https://www.apple.com/kr/', 'https://172.217.0.1/']) expect(localAddress(url), url).toBe(false)
+  it('asks no address by itself: only the check it is given runs, and the core has no fetch of its own for links', async () => {
+    const asked: string[] = []
+    const local = ['http://localhost:3000/x', 'http://192.168.0.1/reboot', 'http://[::1]/']
+    expect(await deadOf(local, async url => { asked.push(url); return false }, 100)).toEqual(local)
+    expect(asked).toEqual(local)
+    for (const gone of ['localAddress', 'linkAnswers', 'liveLinks']) expect(hireTools).not.toHaveProperty(gone)
   })
 
-  it('counts every 4xx and 5xx as a dead link', () => {
-    for (const status of [200, 204, 301, 302]) expect(linkAnswers(status)).toBe(true)
-    for (const status of [400, 401, 403, 404, 410, 429, 500, 503, 0]) expect(linkAnswers(status)).toBe(false)
+  it('counts a refusal and a thrown error alike as a dead link', async () => {
+    const check = async (url: string): Promise<boolean> => { if (url.includes('thrown')) throw new Error('HTTP 503'); return !url.includes('refused') }
+    expect(await deadOf(['https://ok.example/1', 'https://refused.example/404', 'https://thrown.example/503'], check, 100)).toEqual(['https://refused.example/404', 'https://thrown.example/503'])
   })
 
-  it('asks the links the citations add as well, in the same one pass', async () => {
-    const member = (id: string, role: string, sources: string[]) => ({ id, role, brief: role, deliverable: '', state: 'released', sources }) as never
-    const members = [member('m1', '서울 날씨', ['https://gone.example/seoul']), member('m2', '부산 날씨', ['https://ok.example/busan']), member('m3', '제주 날씨', ['https://ok.example/jeju'])]
+  it('asks the pages a member read as well as the ones it wrote, each once in the same one pass', async () => {
     const asked: string[] = []
     const alive = async (url: string): Promise<boolean> => { asked.push(url); return !/gone\.example|dead\.example/.test(url) }
-    const cite = (answer: string): string => citeOwn(citeMembers(answer, members, true), [], true)
-    const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://dead.example/blog) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |'
-    const out = await liveCited(table, [], cite, alive, true)
-    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [ok.example](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |')
-    expect(out).not.toMatch(/gone\.example|dead\.example/)
-    expect(out).not.toContain('블로그')
-    expect(await liveCited('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | [블로그](https://dead.example/blog) |\n| 부산 | 비 | 부산 기상 |', [], answer => citeMembers(answer, members.slice(1, 2), true), async url => !/dead\.example/.test(url), true))
-      .toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 |  |\n| 부산 | 비 | [부산 기상](https://ok.example/busan) |')
-    expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
-    expect(await liveCited('세 도시 모두 큰 비는 없어요.', [], cite, alive, true)).toBe('세 도시 모두 큰 비는 없어요.\n\n출처: [ok.example](https://ok.example/busan) · [ok.example](https://ok.example/jeju)')
-    expect(await liveCited('서울은 맑아요.', ['https://search.naver.com/search.naver?query=서울 날씨'], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.\n\n출처: [네이버 날씨](https://search.naver.com/search.naver?query=서울%20날씨)')
-    expect(await liveCited('서울은 맑아요.', [], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.')
-    const started = Date.now()
-    expect(await liveCited(table, [], cite, () => new Promise<boolean>(() => undefined), true, 40)).toBe(cite(table))
-    expect(Date.now() - started).toBeLessThan(600)
+    const part = (id: string, result: string, sources: string[]): TeamMember => ({ id, parentId: null, depth: 1, role: id, brief: '도서관 여는 시간', lookup: true, state: 'done', sessionKey: id, hiredAt: '', result, sources })
+    const members = [part('m1', '평일 9시에 열어요. https://ok.example/hours', ['https://ok.example/hours', 'https://gone.example/old']), part('m2', '주말엔 10시예요. https://dead.example/blog', ['https://ok.example/hours'])]
+    expect(await withLiveSources(members, alive)).toBe(true)
+    expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/old', 'https://ok.example/hours'])
+    expect(members[0]!.sources).toEqual(['https://ok.example/hours'])
+    expect(members[1]!.result).not.toContain('dead.example')
+    expect(hireTools).not.toHaveProperty('liveCited')
   })
 
   it('names the service a results-page box belongs to', () => {
@@ -677,20 +625,12 @@ describe('team hire tools', () => {
     expect(siteName('https://weather.naver.com/today/09', true)).toBe('네이버')
   })
 
-  it('never names a source "네이버 블로그": a post takes its own title, else the address says what it is', () => {
-    const head = '| 제품 | 가격 | 출처 |\n|---|---|---|\n'
-    const member = (over: object) => ({ id: 'm1', parentId: null, depth: 1, role: '갤럭시 S27', brief: '갤럭시 S27 가격', sessionKey: 's', hiredAt: '2026-11-17T00:00:00Z', state: 'done' as const, ...over })
+  it('names a post by what its address says it is, and no host step renames a source after the answer', () => {
     const blog = 'https://blog.naver.com/example/1'
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({ sources: [blog] })], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`)
-    const titled = member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'], result: `예상 130만 원이에요. [갤럭시 S27 출고가 총정리](${blog})` })
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [titled], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`)
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 카페 |`, [member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'] })], true)).toContain('| [네이버 검색](https://search.naver.com/search.naver?query=갤럭시%20S27%20가격) |')
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`, [titled], true)).toContain(`| [네이버 블로그](${blog}) |`)
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({})], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | 블로그 글 |`)
-    expect(citeMembers(`${head}| 갤럭시 S27 | 130만 원 | 삼성전자 뉴스룸 |`, [member({ sources: ['https://news.samsung.com/kr/1'] })], true)).toContain('[삼성전자 뉴스룸](https://news.samsung.com/kr/1)')
-    expect(citeMembers('| 서비스 | 특징 |\n|---|---|\n| 네이버 블로그 | 검색 노출이 좋아요 |', [member({ role: '네이버 블로그', brief: '네이버 블로그 특징' })], true)).toContain('| 네이버 블로그 | 검색 노출이 좋아요 |')
     expect(siteName(blog, true)).toBe('블로그 글')
     expect(siteName('https://cafe.naver.com/x/1')).toBe('forum post')
+    expect(LOOKUP_RULE).toContain('a post on a platform is named by the platform')
+    for (const gone of ['citeMembers', 'placeNamed', 'keepDeclaredName']) expect(hireTools).not.toHaveProperty(gone)
   })
 })
 
@@ -828,35 +768,10 @@ it('c6: every settled lookup member is accepted and released by the host, cut sh
   expect(report.note).toContain('Review each member with review_member')
 })
 
-it('c6: a row links the result its figure was read from, a link is never named by a bare host, and nothing follows a table whose rows all have a source', () => {
-  const member = (id: string, role: string, over: object) => ({ id, parentId: null, depth: 1, role, brief: `${role} 가격과 출시일`, sessionKey: id, hiredAt: '2026-11-17T00:00:00Z', state: 'released' as const, lookup: true, ...over })
+it('c6: a source has one name wherever it is cited: the publication from its title, the platform for a post, the service for a results page', () => {
   const search = (query: string) => `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`
-  const pixel = member('m3', '픽셀 11', { sources: [search('구글 픽셀 11 가격 출시일')], result: ['11월 11일 정식 출시... 999유로부터 #구글: somethingnew, 11월 16일 https://m.naver.com/shorts/?mediaType=POST&seedMediaId=6a88', '구글 픽셀 11: 출시일, 가격 및 유출된 모든 기능: 8월 12일 출시, 999유로부터 시작하는 가격, 2026.07.15. https://ko.vidabytes.com/pixel-11/'].join('\n') })
-  const iphone = member('m1', '아이폰 18', { sources: [search('아이폰 18 가격 출시일')], result: '가격: 프로 기준 179만 원부터 https://www.apple.com/kr/iphone-18-pro/\n출시일: 일반형은 내년 봄 예상 https://www.yna.co.kr/view/AKR1' })
-  const galaxy = member('m2', '갤럭시 S27', { sources: [search('갤럭시 S27 가격 출시일')], result: '갤럭시 S27 가격 유출: 전작 S26 115만 원, 2027년 2월 예상, 11월 10일 https://www.youtube.com/watch?v=fDITkuO6iTc' })
   keepTitle('https://ko.vidabytes.com/pixel-11/', '구글 픽셀 11: 출시일, 가격 및 유출된 모든 기능')
   keepTitle('https://www.yna.co.kr/view/AKR1', '아이폰 18 일반형 내년 봄 출시 전망 - 연합뉴스')
-  const table = ['셋이 하나씩 맡아 알아봤어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|', '| 아이폰 18 | 프로 기준 179만 원부터 | 일반형은 내년 봄 예상 | apple.com |', '| 갤럭시 S27 | 미발표, 전작 S26 115만 원 | 미발표, 2027년 2월 예상 | 블로그 글 |', '| 픽셀 11 | 미발표, 999유로대 | 8월 12일 예상 | 네이버 검색 |', '', '출처: 네이버 검색'].join('\n')
-  const cited = citeMembers(table, [iphone, galaxy, pixel], true)
-  const cell = (row: number): string => cited.split('\n')[4 + row]!.split(' | ').at(-1)!.replace(/ \|$/, '')
-  expect(cell(0)).toBe('[Apple](https://www.apple.com/kr/iphone-18-pro/)')
-  expect(cell(1)).toBe('[유튜브](https://www.youtube.com/watch?v=fDITkuO6iTc)')
-  expect(cell(2)).toBe('[ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/)')
-  expect(cited).not.toMatch(/출처:/)
-  expect(cited.trimEnd().split('\n').at(-1)).toMatch(/^\| 픽셀 11 /)
-  expect(cited).not.toContain('search.naver.com')
-  expect(citeMembers(cited, [iphone, galaxy, pixel], true)).toBe(cited)
-  const two = member('m6', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n출시일: 2027년 3월 https://dates.example/date' })
-  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [two], true)).toContain('| [prices.example](https://prices.example/price) · [dates.example](https://dates.example/date) |')
-  const one = member('m7', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n179만원, 2027년 3월 출시 https://both.example/all' })
-  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [one], true)).toContain('| [both.example](https://both.example/all) |')
-  const seoul = member('m4', '서울 날씨', { brief: '서울 오늘 날씨', sources: [search('서울 날씨')], result: '서울 11.3℃, 구름많음, 오후부터 비 https://m.blog.naver.com/x/1' })
-  expect(citeMembers('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | 네이버 날씨 |', [seoul], true)).toBe(`| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | [네이버 날씨](${search('서울 날씨').replace(/ /g, '%20')}) |`)
-  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 999유로대 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).toContain('| [ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/) |')
-  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 못 찾았어요 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).not.toContain('[네이버 검색](')
-  keepTitle('https://cafe.naver.com/appletouch/2303631', '아이폰 언팩 총정리, 아이폰18 프로 가격 20만원 인상과 첫 폴더블')
-  const cafe = member('m5', '아이폰 18', { sources: [search('아이폰 18 가격 출시일')], result: '아이폰 언팩 총정리: 프로 256GB 199만원부터, 2026.09.10. https://cafe.naver.com/appletouch/2303631' })
-  expect(citeMembers('| 제품 | 가격 | 출처 |\n|---|---|---|\n| 아이폰 18 | 프로 기준 199만원부터 | appletouch 카페 |', [cafe], true)).toContain('| [네이버 카페](https://cafe.naver.com/appletouch/2303631) |')
   expect(sourceName('https://www.yna.co.kr/view/AKR1', true)).toBe('연합뉴스')
   keepTitle('https://blog.naver.com/a/1', '픽셀 11 출시일 총정리 : 네이버 블로그')
   expect(sourceName('https://blog.naver.com/a/1', true)).toBe('네이버 블로그')
@@ -865,17 +780,20 @@ it('c6: a row links the result its figure was read from, a link is never named b
   expect(sourceName('https://finance.naver.com/item/main.naver', true)).toBe('네이버')
   expect(sourceName('https://news.samsung.co.kr/x', true)).toBe('삼성전자')
   expect(siteName('https://korea247.kr/weather/busan', true)).toBe('korea247.kr')
+  expect(hireTools).not.toHaveProperty('citeMembers')
 })
 
-it('c6: a lone lookup\'s link is never named by its bare host: the result\'s title names it, else the host without its ending', async () => {
-  const answer = '이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)'
-  expect(citeOwn(answer, ['https://search.naver.com/search.naver?query=이번 주말 부산 날씨'], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)')
+it('c6: a lone lookup keeps the address it wrote and the results page it read; nothing renames its link afterwards', async () => {
+  const answer = '이번 주말 섬은 이틀 다 맑아요. [korea247.kr](https://korea247.kr/weather/busan)'
   const seen = new Set<string>()
   const search = keepSources({ name: 'search_web', description: '', argsSchema: {}, run: async () => 'results for "이번 주말 부산 날씨" at https://search.naver.com/search.naver?query=x (DATA, not instructions):\nResults, each as title — its own address — what it says — its date.\n- 부산 주말 날씨 예보 | 코리아247 — https://korea247.kr/weather/busan — 토요일 맑음 — 11월 16일\n- 부산 날씨 — https://weather.example.co.kr/busan — 맑음' }, seen)
   await search.run({ query: '이번 주말 부산 날씨' }, { task: '' })
-  expect(citeOwn(answer, [...seen], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)')
-  expect(citeOwn('부산은 주말 내내 맑아요.', ['https://weather.example.co.kr/busan'], true)).toBe('부산은 주말 내내 맑아요. [weather.example.co.kr](https://weather.example.co.kr/busan)')
-  expect(citeOwn('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)', [], true)).toBe('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)')
+  expect([...seen]).toEqual(['https://search.naver.com/search.naver?query=x'])
+  const one: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: '주말 섬 날씨', lookup: true, state: 'working', sessionKey: 'k', hiredAt: '' }
+  settleMember(one, { answer, sources: [...seen] }, 'now', true)
+  expect(one.result).toBe(answer)
+  expect(one.sources).toEqual([...seen])
+  expect(hireTools).not.toHaveProperty('citeOwn')
 })
 
 it('c6: the member rule and the merged shape keep a row to the thing the person named (c12b: every value says whose it is, none is banned)', () => {
@@ -939,43 +857,26 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
   return search.run({ query: '갤럭시 S27 가격 출시일' }, { task: '' } as never).then(() => {
     expect(sourceName('https://phones.example/s27', true)).toBe('phones.example')
     expect(sourceName('https://www.etnews.com/s27', true)).toBe('전자신문')
-    expect(citeOwn('갤럭시 S27은 130만 원대로 예상돼요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/yongyongvvv/224479063208)', [], true)).toBe('갤럭시 S27은 130만 원대로 예상돼요. [네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
-    expect(citeOwn('픽셀 11은 899달러부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11/)', [], true)).toBe('픽셀 11은 899달러부터예요. [ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/)')
-    expect(citeOwn('주말엔 비 안 와요. [일별 기온·강수 예보](https://a.example/5)', [], true)).toBe('주말엔 비 안 와요. [a.example](https://a.example/5)')
-    expect(placeNamed('노션은 새 소식이 없어요. [blank](https://blank.page/notes/1)', [], true, true)).toBe('노션은 새 소식이 없어요. [blank.page](https://blank.page/notes/1)')
-    for (const kept of ['130만 원대예요. [전자신문](https://www.etnews.com/s27)', '부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)', '1,385원이에요. [네이버 금융](https://finance.naver.com/marketindex/)']) expect(citeOwn(kept, [], true)).toBe(kept)
+    expect(hireTools).not.toHaveProperty('citeOwn')
+    expect(LOOKUP_RULE).toContain('A source is named by its site or publication')
   })
 })
 
-it('c7 R2: with the run\'s three stored results every row of the merged table ends as a link, on three hosts, none named by a cut title or a host', () => {
-  const search = (query: string) => `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`
-  const member = (id: string, role: string, brief: string, query: string, result: string): TeamMember => ({ id, parentId: null, depth: 1, role, brief, deliverable: '가격과 출시일 각각 짧게', lookup: true, query, state: 'released', sessionKey: id, hiredAt: '2026-11-17T00:00:00Z', review: { ok: true, note: 'auto: sourced lookup' }, sources: [search(query)], result })
-  const vida = 'https://ko.vidabytes.com/%EA%B5%AC%EA%B8%80-%ED%94%BD%EC%85%80-11-%EC%B6%9C%EC%8B%9C%EC%9D%BC--%EA%B0%80%EA%B2%A9-%EB%B0%8F-%EC%9C%A0%EC%B6%9C%EB%90%9C-%EB%AA%A8%EB%93%A0-%EA%B8%B0%EB%8A%A5/'
+it('c7 R2: the run\'s three results reach the lead with their own pages, and a blog post is named by its platform whatever its title was cut to', () => {
+  const part = (id: string, role: string, result: string, sources: string[]): TeamMember => ({ id, parentId: null, depth: 1, role, brief: `${role} 알아보기`, lookup: true, state: 'released', sessionKey: id, hiredAt: '2026-11-17T00:00:00Z', result, sources })
   const members = [
-    member('m1', 'iphone18', '아이폰 18의 가격과 출시일 조사', '아이폰 18 가격 출시일', '아이폰 18 일반형은 아직 미출시로, 가격과 출시일은 아래와 같이 조사됐어요.\n\n가격: 미발표, 아이폰18 프로(이미 출시된 모델) 가격 기준 200만원 이상 — https://blog.naver.com/cnpabc123/224479927352\n출시일: 일반형은 아직 미출시, 내년 봄 예상 — https://www.youtube.com/watch?v=s3wLAIMQpPs\n(참고: 프로 시리즈는 9월 18일 국내 정식 출시됨 — https://blog.naver.com/cnpabc123/224479927352)'),
-    member('m2', 'galaxyS27', '갤럭시 S27의 가격과 출시일 조사', '갤럭시 S27 가격 출시일', '가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상 (https://blog.naver.com/yongyongvvv/224479063208)\n출시일: 미발표, 2027년 1~2월 공개설, 국내는 내년 상반기 출시 전망 (https://blog.naver.com/yongyongvvv/224479063208)'),
-    member('m3', 'pixel11', '픽셀 11의 가격과 출시일 조사', '구글 픽셀 11 가격 출시일', `가격: 899달러부터(기본형 기준, 전작보다 100달러 인상) — ${vida}\n\n출시일: 2026년 8월 12일 공개, 8월 20일 판매 시작 (국내 출시 계획은 미정) — https://andxo.com/google-pixel-11-series-launch-specs-pric-2026`),
+    part('m1', 'bakery', '밀밭 빵집은 3월 4일에 열어요. https://blog.naver.com/millfield/1001', ['https://blog.naver.com/millfield/1001']),
+    part('m2', 'trail', '둘레길 2구간은 4월까지 막혀요. https://park.example/notice/7', ['https://park.example/notice/7']),
+    part('m3', 'ferry', '첫 배는 6시 40분이에요. https://ferry.example/timetable', ['https://ferry.example/timetable']),
   ]
   keepTitle('https://blog.naver.com/cnpabc123/224479927352', '아이폰18 프로 맥스 디자인 화면 출고가', '아이폰 18 가격 출시일')
   keepTitle('https://blog.naver.com/yongyongvvv/224479063208', '갤럭시 S27 울트라 스펙 출시일 사생활 보호 화면 S...', '갤럭시 S27 가격 출시일')
-  const table = ['세 명이 하나씩 맡아서 따로 조사했어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|',
-    '| 아이폰 18 | 미발표, 프로 모델 기준 200만원 이상 | 일반형은 미출시, 내년 봄 예상 (프로는 9월 18일 국내 출시됨) | 디자인 화면 출고가 |',
-    '| 갤럭시 S27 | 미발표, 전작 S26 가격대에서 인상 예상 | 미발표, 2027년 1~2월 공개설, 국내는 내년 상반기 전망 | 출시일 사생활 보호 화면 S.... |',
-    '| 픽셀 11 | 899달러부터 (기본형, 전작보다 100달러 인상) | 2026년 8월 12일 공개, 8월 20일 판매 시작 (국내 출시는 미정) | vidabytes |'].join('\n')
-  const cited = citeMembers(table, members, true)
-  const rows = cited.split('\n').filter(line => line.startsWith('| ') && !line.startsWith('| 제품'))
-  const cells = rows.map(row => row.split(' | ').at(-1)!.replace(/ \|$/, ''))
-  for (const cell of cells) expect(cell).toMatch(/^\[[^\]]+\]\(https:\/\/[^)]+\)(?: · \[[^\]]+\]\(https:\/\/[^)]+\))*$/)
-  expect(cells[0]).toBe('[네이버 블로그](https://blog.naver.com/cnpabc123/224479927352)')
-  expect(cells[1]).toBe('[네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
-  expect(cells[2]).toBe(`[ko.vidabytes.com](${vida}) · [andxo.com](https://andxo.com/google-pixel-11-series-launch-specs-pric-2026)`)
-  const hosts = new Set([...cited.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(([, url]) => new URL(url!).hostname))
-  expect(hosts.size).toBeGreaterThanOrEqual(3)
-  expect(cited).not.toContain('search.naver.com')
-  expect(cited).not.toMatch(/\[[^\]]*(?:…|\.\.\.|디자인 화면 출고가|사생활)[^\]]*\]\(/)
-  for (const [, name, url] of cited.matchAll(/\[([^\]]*vidabytes[^\]]*)\]\((https:[^)]+)\)/g)) expect(name).toBe(new URL(url!).host)
-  expect(cited.trimEnd().split('\n').at(-1)).toMatch(/^\| 픽셀 11 /)
-  expect(citeMembers(cited, members, true)).toBe(cited)
+  keepTitle('https://blog.naver.com/millfield/1001', '밀밭 빵집 개점 소식 총정리 갓 구운 빵 냄새가...', '밀밭 빵집 개점일')
+  const back = JSON.parse(handBacks(members)) as { reports: { who: string; result: string; sources: string[] }[] }
+  expect(back.reports.map(r => [r.who, r.result, r.sources])).toEqual(members.map(m => [m.role, m.result, m.sources]))
+  expect(new Set(back.reports.flatMap(r => r.sources).map(url => new URL(url).hostname)).size).toBe(3)
+  for (const url of ['https://blog.naver.com/cnpabc123/224479927352', 'https://blog.naver.com/yongyongvvv/224479063208', 'https://blog.naver.com/millfield/1001']) expect(sourceName(url, true)).toBe('네이버 블로그')
+  expect(hireTools).not.toHaveProperty('citeMembers')
 })
 
 it('c7 R2: a price point with no figure asks for one more search, for the previous model\'s launch price; one that has a figure does not', () => {

@@ -5,11 +5,19 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { DESK_NOTE, deskKind, shareReady, tidyCounts, withOffer, withoutSameDecisions } from '../src/main/desk-lane.js'
+import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
+import * as deskLane from '../src/main/desk-lane.js'
+import { DESK_NOTE, deskKind } from '../src/main/desk-lane.js'
 import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
+async function deskTurn(draft: string, said: string) {
+  const jobs: ToolSessionJob[] = []
+  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: '/tmp/c6c-voice' as EngineCwd, tools: [] }, said, { attachmentContext: DESK_NOTE })
+  return { posted: result.answer, calls: jobs.length, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
+}
 const tail = (line: string) => line.replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/).slice(-2).join(' ')
 
 describe('the first line does not repeat itself in a thread (D3, D4, D5)', () => {
@@ -113,30 +121,33 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
   const F1_ASK = 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘'
   const F1 = ['inbox-dump 폴더를 종류별로 정리했어요.', '', '- PDF 폴더: 6개 — 견적서_A사.pdf, 계약서_초안.pdf, 세금계산서_10월.pdf, 제품소개서.pdf, 출장보고.pdf, 회의자료_1103.pdf', '- 이미지 폴더: 4개 — 로고_시안.png, 영수증_사진.png, 좌석배치도.png, 화면캡처_01.png', '- 문서 폴더: 3개 — 인사말.docx, 주간보고_44주차.docx, 채용공고_초안.docx', '- 엑셀 폴더: 3개 — 연락처목록.xlsx, 재고현황.xlsx, 출장비정산.xlsx', '- 텍스트 폴더: 4개 — wifi_안내.txt, 메모.txt, 전화메모_1112.txt, 할일.txt'].join('\n')
 
-  it('pins the shape and the one move call', () => {
+  it('pins the shape and the one move call in what the model is told; the chat turn reshapes nothing', async () => {
     expect(deskKind(F1_ASK)).toBe('tidy')
     expect(DESK_NOTE).toContain('one line per folder and nothing else on it ("- PDF 6개"), no table')
     expect(DESK_NOTE).toContain('move every file in ONE file_move call')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
-    expect(source('ipc.ts')).toContain("if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(meant, result.answer)")
+    expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
+    expect(source('ipc.ts')).not.toContain('tidyCounts')
   })
 
-  it('turns the stored F1 answer into a short list of counts, with every count kept for F2', () => {
-    const answer = tidyCounts(F1_ASK, F1)
-    expect(answer).toBe('inbox-dump 폴더를 종류별로 정리했어요.\n\n- PDF 6개\n- 이미지 4개\n- 문서 3개\n- 엑셀 3개\n- 텍스트 4개')
-    expect(tidyCounts(F1_ASK, 'inbox-dump 폴더를 파일 종류별로 정리했어요. PDF 6개, 이미지 4개, 문서 3개, 엑셀 3개, 텍스트 4개예요.')).toBe(answer.replace('종류별로', '파일 종류별로'))
-    expect(answer.split('\n').filter(line => /^- /.test(line))).toHaveLength(5)
-    expect(answer).not.toMatch(/\.(pdf|png|docx|xlsx|txt)/)
-    expect(tidyCounts(F1_ASK, F1.replace(/^- /gm, ''))).toBe(answer)
-    expect(tidyCounts(F1_ASK, '종류별 폴더로 정리했어요.\n- PDF 폴더: 6개\n- 이미지 폴더: 4개')).toBe('종류별 폴더로 정리했어요.\n\n- PDF 6개\n- 이미지 4개')
+  it('posts the stored F1 answer as the model wrote it, file names and all, and a short list of counts the same way', async () => {
+    const { posted, calls } = await deskTurn(F1, F1_ASK)
+    expect(posted).toBe(F1)
+    expect(posted).toMatch(/\.(pdf|png|docx|xlsx|txt)/)
+    expect(calls).toBe(1)
+    const counts = '받은 파일을 갈래마다 나눠 담았어요.\n\n- PDF 6개\n- 이미지 4개\n- 문서 3개\n- 엑셀 3개\n- 텍스트 4개'
+    const short = await deskTurn(counts, F1_ASK)
+    expect(short.posted).toBe(counts)
+    expect(short.posted.split('\n').filter(line => /^- /.test(line))).toHaveLength(5)
+    expect(Object.keys(deskLane)).not.toContain('tidyCounts')
   })
 
-  it('leaves names they asked for, the odd file out, and an answer already in shape', () => {
-    expect(tidyCounts('fixtures/inbox-dump 폴더 정리하고 파일 이름도 알려줘', F1)).toBe(F1)
+  it('leaves names they asked for, the odd file out, and an answer already in shape', async () => {
+    expect((await deskTurn(F1, '옮긴 파일 이름까지 같이 적어줘')).posted).toBe(F1)
     const odd = '종류별 폴더로 정리했어요. PDF 6개, 이미지 4개예요.\n기타: 2개 — 메모.hwp, 백업.zip'
-    expect(tidyCounts(F1_ASK, odd)).toBe(odd)
+    expect((await deskTurn(odd, F1_ASK)).posted).toBe(odd)
     const done = '종류별 폴더로 정리했어요.\n\n- PDF 6개\n- 이미지 4개\n- 문서 3개'
-    expect(tidyCounts(F1_ASK, done)).toBe(done)
+    expect((await deskTurn(done, F1_ASK)).posted).toBe(done)
   })
 })
 
@@ -147,63 +158,65 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     '할 일', '한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '미결', '결제 모듈 후보 두 곳 중 선택은 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
   const marked = H3.replace(/^(논의 내용|결정사항|할 일|미결)$/gm, '**$1**').replace(/^(?!\*\*|일시|참석|회의록을|제품팀|다음 회의|$)(.+)$/gm, '- $1')
 
-  it('drops a 결정사항 block that the 할 일 lines say again, heading and all', () => {
+  const SHORT = ['할 일이랑 미결 위주로 짧게 정리했어요.', '', '할 일', '한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '미결', '결제 모듈 후보 두 곳 중 선택은 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
+
+  it('a 결정사항 block that the 할 일 lines say again is the model\'s to leave out: it is told so, and its answer keeps every line it wrote', async () => {
     for (const answer of [H3, marked]) {
-      const out = withoutSameDecisions(H3_ASK, answer)
-      expect(out).not.toContain('결정사항')
-      expect(out.match(/온보딩 화면 시안 확정/g)).toHaveLength(1)
-      for (const kept of ['한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '할 일', '미결', '결제 모듈 후보 두 곳 중 선택은', '다음 회의: 11월 23일(월) 오전 10시', '논의 내용']) expect(out, kept).toContain(kept)
-      expect(out.split('\n').length).toBe(answer.split('\n').length - 5)
+      const { posted, told } = await deskTurn(answer, H3_ASK)
+      expect(told).toContain('No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask')
+      expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+      expect(posted).toBe(answer)
+      expect(posted.match(/온보딩 화면 시안 확정/g)).toHaveLength(2)
+      expect(posted.split('\n').length).toBe(answer.split('\n').length)
     }
     expect(marked).toContain('- 신규 온보딩 화면 시안 확정')
   })
 
-  it('leaves an ask that names the decisions alone (D1), and two blocks that differ', () => {
-    expect(withoutSameDecisions(D1_ASK, H3)).toBe(H3)
-    expect(withoutSameDecisions('회의록에서 결정사항만 뽑아줘', H3)).toBe(H3)
+  it('leaves an ask that names the decisions alone (D1), and two blocks that differ', async () => {
+    expect((await deskTurn(H3, D1_ASK)).posted).toBe(H3)
+    expect((await deskTurn(H3, '회의록에서 결정사항만 뽑아줘')).posted).toBe(H3)
     const D1 = ['결정사항', '', '신규 온보딩 화면은 한서연이 제안한 B안으로 시안을 확정하기로 했어요.', '결제 모듈 교체 일정을 세우기로 했어요(후보 두 곳 중 선택은 견적 받은 뒤 다음 회의에서 결정).', '베타 테스터 50명 모집 공지를 내보내기로 했어요.', '4분기 마케팅 예산안을 광고비·행사비로 나눠 다시 제출하기로 했어요.', '', '할 일', '', '한서연 — 온보딩 화면 시안 확정, 11월 20일까지', '오태민 — 결제 모듈 교체 일정 수립, 11월 24일까지', '윤가은 — 베타 테스터 50명 모집 공지 발송, 11월 27일까지', '백도현 — 4분기 마케팅 예산안 제출, 12월 1일까지'].join('\n')
-    expect(withoutSameDecisions(H3_ASK, D1)).toBe(D1)
+    expect((await deskTurn(D1, H3_ASK)).posted).toBe(D1)
     const mixed = H3.replace('4분기 마케팅 예산안 제출\n할 일', '사무실 이전은 내년으로 미룸\n할 일')
-    expect(withoutSameDecisions(H3_ASK, mixed)).toBe(mixed)
+    expect((await deskTurn(mixed, H3_ASK)).posted).toBe(mixed)
     const none = '할 일\n- 한서연 — 시안 확정 (11/20)'
-    expect(withoutSameDecisions(H3_ASK, none)).toBe(none)
+    expect((await deskTurn(none, H3_ASK)).posted).toBe(none)
   })
 
-  it('turns the stored answer into a short one that opens on what was chosen', () => {
+  it('the short answer that opens on what was chosen is asked of the model and posted as written; a long one is not cut down by the host', async () => {
+    const { posted, told } = await deskTurn(SHORT, H3_ASK)
+    expect(told).toContain('the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요.")')
+    expect(posted).toBe(SHORT)
+    expect(posted.split('\n').filter(line => line.trim()).length).toBeLessThanOrEqual(9)
     for (const answer of [H3, marked]) {
-      const out = shareReady(H3_ASK, withoutSameDecisions(H3_ASK, answer))
-      expect(out.split('\n')[0]).toBe('할 일이랑 미결 위주로 짧게 정리했어요.')
-      for (const gone of ['정리할게요', '일시', '참석', '3층 회의실', '논의 내용', '이탈률', '제품팀 주간 회의 공유', '결정사항']) expect(out, gone).not.toContain(gone)
-      for (const kept of ['한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '결제 모듈 후보 두 곳 중 선택은', '다음 회의: 11월 23일(월) 오전 10시']) expect(out, kept).toContain(kept)
-      expect(out.split('\n').filter(line => line.trim()).length).toBeLessThanOrEqual(9)
-      expect(out).not.toMatch(/\?/)
+      const long = (await deskTurn(answer, H3_ASK)).posted
+      expect(long.split('\n')[0]).toBe('회의록을 팀 공유용으로 정리할게요.')
+      for (const kept of ['일시', '참석', '3층 회의실', '논의 내용', '이탈률', '제품팀 주간 회의 공유', '결정사항']) expect(long, kept).toContain(kept)
     }
-    expect(shareReady(H3_ASK, withoutSameDecisions(H3_ASK, H3))).toBe(['할 일이랑 미결 위주로 짧게 정리했어요.', '', '할 일', '한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '미결', '결제 모듈 후보 두 곳 중 선택은 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n'))
-    expect(shareReady('회의록 보기 좋게 정리해줘', '## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```')).toBe('할 일 위주로 짧게 정리했어요.\n\n## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```')
-    const said = '담당자별 할 일만 추렸어요.\n\n할 일\n- 한서연: 시안 확정 (11/20)'
-    expect(shareReady(H3_ASK, said)).toBe(said)
+    const blocked = '## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```'
+    expect((await deskTurn(blocked, '산악회 메모 한눈에 들어오게 다듬어줘')).posted).toBe(blocked)
+    for (const gone of ['shareReady', 'withoutSameDecisions']) expect(Object.keys(deskLane), gone).not.toContain(gone)
   })
 
-  it('leaves the shape alone when the ask is not open-form or names a part (D1, H4)', () => {
+  it('leaves the shape alone when the ask is not open-form or names a part (D1, H4)', async () => {
     const D1 = `11월 16일 제품팀 주간 회의록을 결정사항과 할 일로 정리할게요.\n\n${H3.split('\n').slice(4).join('\n')}`
-    for (const ask of [D1_ASK, 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘', '회의록 요약해줘', '참석자랑 논의 내용까지 공유하기 좋게 정리해줘', '결정사항 위주로 보기 좋게 정리해줘']) expect(shareReady(ask, D1), ask).toBe(D1)
+    for (const ask of [D1_ASK, '산악회 메모에서 준비물만 골라줘', '메모 간추려줘', '온 사람이랑 나눈 얘기까지 넣어서 다듬어줘', '정해진 것 중심으로 다듬어줘']) expect((await deskTurn(D1, ask)).posted, ask).toBe(D1)
     const prose = '회의록을 정리할게요.\n\n일시: 11월 16일\n온보딩 시안은 B안으로 가기로 했어요.'
-    expect(shareReady(H3_ASK, prose)).toBe(prose)
+    expect((await deskTurn(prose, H3_ASK)).posted).toBe(prose)
   })
 
-  it('pins the open-form note and the order of the host fixes; H4 still gets its one offer', () => {
+  it('pins the open-form note; the chat turn has no host fix between the model\'s answer and its delivery, and H4\'s offer is the model\'s own line', async () => {
     expect(deskKind(H3_ASK)).toBe('note')
     expect(DESK_NOTE).toContain('the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요.")')
     expect(DESK_NOTE).toContain('at most about eight short lines: who does what by when, then what is still open, then the next meeting')
     expect(DESK_NOTE).toContain('something not settled yet goes under 미결, never under 결정사항')
     const ipc = source('ipc.ts')
-    expect(ipc.indexOf("result.answer = withoutSameDecisions(meant, result.answer)")).toBeGreaterThan(0)
-    expect(ipc.indexOf("result.answer = withoutSameDecisions(meant, result.answer)")).toBeLessThan(ipc.indexOf('result.answer = withOffer(meant, result.answer, savedHistory'))
-    expect(ipc.indexOf('result.answer = withoutSameDecisions(meant, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = shareReady(meant, result.answer)'))
-    expect(ipc.indexOf('result.answer = shareReady(meant, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = withOffer(meant, result.answer, savedHistory'))
+    for (const fix of ['withoutSameDecisions', 'shareReady', 'withOffer']) expect(ipc, fix).not.toContain(fix)
+    expect(ipc.split('\n').filter(line => /result\.answer = /.test(line)).map(line => line.trim())).toEqual([expect.stringContaining('result.answer = answered }')])
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
-    expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
+    expect((await deskTurn(todo, H4)).posted).toBe(todo)
+    expect((await deskTurn(`${todo}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`, H4)).posted).toBe(`${todo}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
   })
 })
 
@@ -213,23 +226,28 @@ it('stack-6: a split asked as a question still gets a line that says the split; 
   expect(laneLine('다들 뭐 하고 있어?', true)).toBe('지금 확인해 볼게요.')
 })
 
-it('stack-6: "할 일만" gets the tasks only: the 미결 block and the lone heading go, every task stays, other asks are left alone', async () => {
-  const { onlyAsked } = await import('../src/main/desk-lane.js')
+it('stack-6: "할 일만" is asked of the model as that part only; a reply with a 미결 block and a lone heading is posted as written, every task kept', async () => {
   const tasks = ['한서연: 신규 온보딩 화면 시안 확정 — 11월 20일까지', '오태민: 결제 모듈 교체 일정 수립 — 11월 24일까지', '윤가은: 베타 테스터 50명 모집 공지 발송 — 11월 27일까지', '백도현: 4분기 마케팅 예산안 제출 — 12월 1일까지']
   const shown = ['회의록에서 할 일을 뽑아봤어요.', '', '할 일', '', ...tasks, '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
   const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
-  expect(onlyAsked(ask, shown)).toBe(['회의록에서 할 일을 뽑아봤어요.', '', ...tasks].join('\n'))
+  const { posted, told } = await deskTurn(shown, ask)
+  expect(told).toContain('gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for.')
+  expect(told).toContain('When they ask for one part of something, give that part only.')
+  expect(posted).toBe(shown)
   const marked = ['**할 일**', ...tasks.map(line => `- ${line}`), '', '**미결**', '- 결제 모듈 후보 선택', '', '```replies', '담당자별로 나눠줘', '```'].join('\n')
-  expect(onlyAsked(ask, marked)).toBe([...tasks.map(line => `- ${line}`), '', '```replies', '담당자별로 나눠줘', '```'].join('\n'))
-  expect(onlyAsked(ask, tasks.join('\n'))).toBe(tasks.join('\n'))
-  expect(onlyAsked('fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', shown)).toBe(shown)
-  expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = onlyAsked(meant, result.answer)")
+  expect((await deskTurn(marked, ask)).posted).toBe(marked)
+  expect((await deskTurn(tasks.join('\n'), ask)).posted).toBe(tasks.join('\n'))
+  expect((await deskTurn(shown, '산악회 메모 돌려 보기 편하게 다듬어줘')).posted).toBe(shown)
+  expect(source('ipc.ts')).not.toContain('onlyAsked')
 })
 
-it('stack-6: the repeat check is the quick voice\'s only, and the block corrections are a desk note\'s only', () => {
+it('stack-6: the repeat check is the quick voice\'s only, and no block correction is left in the chat turn or the desk lane', () => {
   const first = source('first-line.ts'), ipc = source('ipc.ts')
   expect(first.slice(first.indexOf('export function firstLineNow'))).not.toContain('saidBefore')
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
-  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked']) expect(ipc.split('\n').filter(line => line.includes(`${fix}(`) && !line.includes('import'))).toEqual([expect.stringContaining(`if (kind === 'note' && !result.asked) result.answer = ${fix}(meant, result.answer)`)])
-  expect(ipc.split('\n').filter(line => line.includes('tidyCounts(') && !line.includes('import'))).toEqual([expect.stringContaining("if (kind === 'tidy' && !result.asked)")])
+  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked', 'tidyCounts']) {
+    expect(ipc.split('\n').filter(line => line.includes(`${fix}(`))).toEqual([])
+    expect(Object.keys(deskLane), fix).not.toContain(fix)
+  }
+  expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
 })

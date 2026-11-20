@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { expect, it } from 'vitest'
-import { firstSearches, isSearchPage, searchWords } from 'core'
-import { swapRounds, swappedAsk, teamAsk } from '../src/main/fast-lane.js'
+import { expect, it, vi } from 'vitest'
+import { firstSearches, handBacks, isSearchPage, keepRead, runComet, searchWords, skipWalls, type AgentTool, type Engine, type TeamMember, type ToolSessionJob } from 'core'
+import { LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, swapRounds, swappedAsk, teamAsk } from '../src/main/fast-lane.js'
 
 const source = (file: string) => readFileSync(fileURLToPath(new URL(`../src/main/${file}`, import.meta.url)), 'utf8')
 const ipc = source('ipc.ts'), runner = source('team-runner.ts')
@@ -40,8 +40,9 @@ it('stack-9: one first-search helper, at most three searches, no words twice, ru
 
 it('stack-9: one search-page test', () => {
   const tools = readFileSync(fileURLToPath(new URL('../../../packages/core/src/company-tools.ts', import.meta.url)), 'utf8')
-  expect(tools).toMatch(/import \{[^}]*\bisSearchPage\b[^}]*\} from '\.\/team-hire-tools\.js'/)
-  expect(tools).toContain('!isSearchPage(f.url)')
+  const core = (file: string) => readFileSync(fileURLToPath(new URL(`../../../packages/core/src/${file}`, import.meta.url)), 'utf8')
+  expect(core('team-hire-tools.ts').match(/export const isSearchPage = /g)).toHaveLength(1)
+  expect(runner).toContain('!isSearchPage(url)')
   expect(tools).not.toMatch(/\[\?&\]\(q\|query\)=/)
   expect(isSearchPage('https://www.bing.com/search?q=linear')).toBe(true)
   expect(isSearchPage('https://linear.app/changelog')).toBe(false)
@@ -59,33 +60,33 @@ it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 �
   expect(foundNothing('12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.')).toBe(false)
 })
 
-it('stack-9 (c9a Codex r3, c13b): the statistic is left out before writing by the verdict, never by a headline word; the host adds nothing after', async () => {
-  const { checked } = await import('./checked-rows.js')
+it('stack-9 (c9a Codex r3): the statistic row reaches the model with the rest and is its to leave out by the note; the host adds nothing after the answer and cuts nothing from it', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', names = ['메디인테크', '업스테이지', '뤼튼', '리벨리온', '아크']
   const held = [`results for "x" at https://search.naver.com/search.naver?query=x (DATA, not instructions):`,
     ...names.map((name, i) => `- ${name}, 100억 원 투자 유치 — https://news.example/${i} — 투자 — 11월 ${i + 1}일`), '- 올해 벤처투자 역대 최대 — https://news.example/bg — 통계 — 11월 9일'].join('\n')
-  const now = new Date(2026, 10, 17, 9, 30)
   const answer = ['요즘 투자 소식 네 개예요.', '', ...names.slice(0, 4).map((name, i) => `${i + 1}. ${name}가 100억 원을 유치했어요. [기사](https://news.example/${i})`), '', '더 찾으면 알려드릴게요.'].join('\n')
   expect(answer).toContain('더 찾으면')
-  expect(now.getDate()).toBe(17)
-  const judged = await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[6],"outside":[]}')
-  expect(judged.rows).toEqual([...names.map((_, i) => `https://news.example/${i}`), 'https://news.example/bg'])
-  expect(judged.prompts).toHaveLength(0)
-  expect(judged.out).not.toContain('of these rows are from the period asked')
-  expect((await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[],"outside":[]}')).rows).toContain('https://news.example/bg')
+  const quick = vi.fn(async () => '')
+  let out = '', told = ''
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => held }
+  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer } } } as unknown as Engine
+  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
+  expect(out).toBe(held)
+  expect(out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)![1])).toEqual([...names.map((_, i) => `https://news.example/${i}`), 'https://news.example/bg'])
+  expect(quick).not.toHaveBeenCalled()
+  expect(told).toContain('a statistic, a plan or an opinion piece that only touches the topic is not one')
+  expect(told).toContain('nothing after the last item: no closing paragraph, no remark on an item')
+  expect(result.answer).toBe(answer)
 })
 
-it('stack-9: a teammate\'s line on how many there are is no item and is not shown again under the opener', async () => {
-  const { mergedReport, reportData } = await import('core')
+it('stack-9: a teammate\'s line on how many there are is handed to the lead once, in the teammate\'s own words, with nothing written over it', () => {
   const m = { id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', botId: 'bot-1', voice: '차분하고 또박또박', title: '다음 달 서울 IT 행사 일정 정리', lookup: true as const, query: '2026년 12월 서울 IT 행사 일정', background: true as const, state: 'released' as const, sessionKey: 's', hiredAt: '2026-11-17T07:55:08.846Z', finishedAt: '2026-11-17T07:55:17.834Z',
     result: '12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - COEX Hall A, AI·SW 비즈니스 전시회 — https://www.coex.co.kr/exhibitions/sw-2026/\n\n확실한 일정은 이거 하나예요. 나머지 검색 결과는 날짜가 2026년 12월로 명시되지 않거나 서울 IT 행사와 직접 관련이 없었어요.',
     sources: ['https://search.naver.com/search.naver?query=x'], review: { ok: true, note: 'auto' } }
-  const data = reportData('```report\n' + JSON.stringify({ facts: [{ text: '12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.', url: 'https://www.coex.co.kr/exhibitions/sw-2026/', date: '12월 2일' }], note: '확실한 일정은 이거 하나예요.' }) + '\n```', m, m.sources, true)
-  expect(data?.facts).toHaveLength(1)
-  const out = mergedReport([{ ...m, data: data! }])
-  expect(out).not.toMatch(/두 개|2개/)
-  expect(out).not.toContain('확실한 일정은 이거 하나예요')
-  expect(out.split('\n')).toHaveLength(1)
-  expect(out).toMatch(/^지민이 찾아보니 12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw-2026\/\)$/)
-  expect(out).not.toContain('[출처]')
+  const out = handBacks([m as TeamMember]), back = JSON.parse(out) as { reports: { who: string; state: string; result: string; sources: string[] }[]; note: string }
+  expect(back.reports).toEqual([{ who: '지민', state: 'done', result: m.result, sources: m.sources }])
+  expect(out.match(/확실한 일정은 이거 하나예요/g)).toHaveLength(1)
+  expect(out).not.toMatch(/지민이 찾아보니|\[출처\]/)
+  expect(back.note).toContain('Give the person ONE merged answer in their language')
+  expect(back.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
 })

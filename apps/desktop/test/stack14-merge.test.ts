@@ -2,144 +2,102 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createBot, createTask, LOOKUP_RESERVE_MS, mergedReport, REPORT_WRITER_MS, reportData, settleMember, TEAM_ANSWER_MS, updateTask, WIDEN_MS, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { ANSWER_FROM_THIS, createBot, createTask, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, TEAM_ANSWER_MS, timeBoxed, updateTask, type AgentTool, type VaultPaths } from 'core'
+import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
+type Report = { who: string; part?: string; state: string; result: string }
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-stack14-${tag}-`)), '.engram') } as unknown as VaultPaths }
-const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
-const CHECK = 'Judge meaning only', REDO = 'You fix a message'
-const none = JSON.stringify({ problems: [] })
-const problem = (kind: string, quote: string): string => JSON.stringify({ problems: [{ kind, quote, why: '데이터와 달라요' }] })
-const rows = (from: number, n: number): string => Array.from({ length: n }, (_, i) => `- 전주 한옥 카페 ${from + i}호점 개업 — https://news.example.kr/${from + i} — 11월 ${from + i}일`).join('\n')
+const ASK = '거제랑 남해 오늘 여객선 운항 여부 하람이랑 이든이가 하나씩 맡아서 봐줘'
+const TO = [{ who: '하람', brief: '거제 오늘 여객선 운항 여부', topic: '거제' }, { who: '이든', brief: '남해 오늘 여객선 운항 여부', topic: '남해' }]
+const GEOJE = '거제 여객선은 오늘 첫 배부터 정상 운항해요. https://ferry.example.kr/geoje'
+const crew = async (tag: string, run: Run) => {
+  const paths = await vault(tag)
+  for (const name of ['엔그램', '하람', '이든']) await createBot(paths, { name })
+  const created = await createTask(paths, ASK, 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const quick: string[] = []
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
+  const kit: TurnKit = { engine: { id: 'claude', quick: async (prompt: string) => { quick.push(prompt); return undefined } } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => ASK, nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit) }
+  const assign = team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!
+  return { team, assign, quick }
+}
+const whoOf = (persona = ''): '하람' | '이든' => persona.includes('이든') ? '이든' : '하람'
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-14 merge: one clock', () => {
-  it('slow search rounds end on the lookup deadline; a team answer whose check needs a rewrite still lands before 35 s', async () => {
-    let t = 0
-    const queries: string[] = []
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { t += 7_000; queries.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${rows(queries.length * 10, 2)}` } }
-    let round = 0
-    const write = async (): Promise<string> => { t += 2_500; round++; return JSON.stringify({ keep: [1], unsure: [], same: [], lists: [], names: {}, listing: [], outside: [], search: `전주 카페 개업 ${round}` }) }
-    const tool = checkedSearch(search, { ask: () => '전주 한옥 카페 개업 소식 5개', write, since: 0, now: () => t })
-    t = 7_000
-    await tool.run({ query: '전주 한옥 카페 개업' }, { task: '' })
-    const searchEnded = t
-    expect(searchEnded).toBeLessThanOrEqual(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS + WIDEN_MS)
-    expect(new Set(queries).size).toBe(queries.length)
-
-    const T0 = Date.parse('2026-11-18T03:00:00Z')
-    vi.useFakeTimers({ now: T0 + TEAM_ANSWER_MS, toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    const part = (id: string, role: string, topic: string, text: string, url: string): TeamMember => {
-      const m: TeamMember = { id, parentId: null, depth: 1, role, brief: `${topic} 오늘 바다 날씨`, topic, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: new Date(T0).toISOString() }
-      const answer = block({ facts: [{ text, url }] })
-      settleMember(m, { answer, report: reportData(answer, m, [], true) ?? null }, new Date(T0 + TEAM_ANSWER_MS).toISOString(), true)
-      return m
-    }
-    const members = [part('m1', '하람', '강릉', '강릉 바다는 오늘 물결이 1미터로 잔잔해요.', 'https://sea.example.kr/gangneung'), part('m2', '이든', '속초', '속초 바다는 오늘 풍랑주의보가 있어요.', 'https://sea.example.kr/sokcho')]
-    const body = '강릉은 하람이 봤는데 물결이 잔잔해요. [a](https://sea.example.kr/gangneung)\n속초는 이든이 봤는데 풍랑주의보가 있어요. [b](https://sea.example.kr/sokcho)'
-    const said = (lead: string): string => JSON.stringify({ message: `${lead}\n\n${body}`, kept: ['f1', 'f2'] })
-    const writer = (each: number) => {
-      const verdicts = [problem('contradicts', '두 곳 다 잔잔해요.'), none], calls: string[] = []
-      return { calls, write: (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => { calls.push(prompt); resolve(prompt.includes(CHECK) ? verdicts.shift() ?? none : prompt.includes(REDO) ? JSON.stringify({ replace: { 1: '강릉은 잔잔하고 속초는 풍랑주의보가 있어요.' } }) : said('두 곳 다 잔잔해요.')) }, each)) }
-    }
-    const quick = writer(800)
-    const pending = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: quick.write })
-    await vi.runAllTimersAsync()
-    const out = await pending, took = Date.now() - T0
-    expect(quick.calls).toHaveLength(4)
-    expect(out).toMatch(/^강릉은 잔잔하고 속초는 풍랑주의보가 있어요\./)
-    expect(took).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
-    expect(took).toBeLessThan(35_000)
-    vi.setSystemTime(T0 + TEAM_ANSWER_MS)
-    const slow = writer(1_500)
-    let landed = 0
-    const late = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: slow.write }).then(text => { landed = Date.now(); return text })
-    await vi.runAllTimersAsync()
-    const shown = await late
-    expect(shown).not.toContain('두 곳 다 잔잔해요')
-    expect(shown).toContain('속초는 이든이 봤는데 풍랑주의보가 있어요.')
-    void mergedReport
-    expect(landed - T0).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
+  it('the hand-back costs no model call of the host: two parts come back in their own words well before 35 s, and the turn stays open for the lead to write', async () => {
+    const words = { 하람: GEOJE, 이든: '남해 여객선은 오늘 오후 배가 결항이에요. https://ferry.example.kr/namhae' }
+    const runs: string[] = []
+    const { assign, quick } = await crew('clock', async (_deps, _prompt, options = {}) => { options.onStart?.(); const who = whoOf(options.persona); runs.push(who); return { answer: words[who], steps: [], fellBack: false } })
+    const began = Date.now()
+    const out = JSON.parse(await assign.run({ wait: true, to: TO }, { task: ASK })) as { reports: Report[]; note: string }
+    expect(Date.now() - began).toBeLessThan(TEAM_ANSWER_MS)
+    expect(out.reports.map(one => [one.who, one.part, one.state, one.result])).toEqual([['하람', '거제', 'done', words.하람], ['이든', '남해', 'done', words.이든]])
+    expect(runs.sort()).toEqual(['이든', '하람'])
+    expect(quick).toEqual([])
+    expect(assign.closes?.({ wait: true, to: TO })).toBe(false)
+    expect(assign.closes?.({ wait: false, to: TO })).toBe(true)
   })
 })
 
 describe('stack-14 merge: a part retried empty reaches the writer as a missing part', () => {
-  it('c14a retries the empty part once; c14b\'s check reads it as brought nothing, keeps a question off the thread, and the host line stays', async () => {
-    const paths = await vault('retry')
-    for (const name of ['엔그램', '하람', '이든']) await createBot(paths, { name })
-    const ask = '강릉이랑 속초 오늘 바다 날씨 하람이랑 이든이가 나눠서 알아봐줘'
-    const created = await createTask(paths, ask, 'b1')
-    await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  it('c14a retries the empty part once; it is then handed back as failed beside the part that has words, and nothing is written or asked by the host', async () => {
     const runs: Record<string, number> = { 하람: 0, 이든: 0 }
-    const run: Run = async (_deps, prompt, options = {}) => {
+    const { assign, quick } = await crew('retry', async (_deps, _prompt, options = {}) => {
       options.onStart?.()
-      const who = (options.persona ?? '').includes('이든') ? '이든' : '하람'
+      const who = whoOf(options.persona)
       runs[who]!++
-      if (who === '하람') return { answer: block({ facts: [{ text: '강릉 바다는 오늘 물결이 1미터로 잔잔해요.', url: 'https://sea.example.kr/gangneung' }] }), steps: [], fellBack: false }
-      return { answer: block({ facts: [] }), steps: [], fellBack: false }
-    }
-    const asked: string[] = []
-    const asking = JSON.stringify({ message: '강릉은 하람이 봤는데 물결이 잔잔해요. [a](https://sea.example.kr/gangneung)\n\n속초는 다시 찾아볼까요?', kept: ['f1'] })
-    const verdicts = [problem('asks', '속초는 다시 찾아볼까요?'), none]
-    const quick = async (prompt: string): Promise<string | undefined> => {
-      asked.push(prompt)
-      if (prompt.includes(CHECK)) return verdicts.shift() ?? none
-      if (prompt.includes('"lists"')) return '{"keep":[1],"lists":[]}'
-      if (prompt.includes(REDO)) return JSON.stringify({ replace: { 2: '' } })
-      return asking
-    }
-    const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
-    const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => ask, nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit) }
-    const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하람', brief: '강릉 오늘 바다 날씨', topic: '강릉' }, { who: '이든', brief: '속초 오늘 바다 날씨', topic: '속초' }] }, { task: ask })
+      return { answer: who === '하람' ? GEOJE : '', steps: [], fellBack: false }
+    })
+    const out = JSON.parse(await assign.run({ wait: true, to: TO }, { task: ASK })) as { reports: Report[]; note: string }
     expect(runs).toEqual({ 하람: 1, 이든: 2 })
-    const check = asked.find(p => p.includes(CHECK))!
-    const data = JSON.parse(check.split('\n').find(line => line.startsWith('Data: '))!.slice(6)) as { broughtNothing?: { name: string }[]; shownAfterMessage?: string }
-    expect(data.broughtNothing?.map(one => one.name)).toEqual(['이든'])
-    expect(data.shownAfterMessage).toContain('속초(이든)')
-    expect(answer).not.toContain('까요?')
-    expect(answer.startsWith('강릉은 하람이 봤는데')).toBe(true)
-    expect(answer.endsWith(data.shownAfterMessage!)).toBe(true)
-    expect(asked.filter(p => p.includes(CHECK))).toHaveLength(2)
+    expect(out.reports.map(one => [one.who, one.state])).toEqual([['하람', 'done'], ['이든', 'failed']])
+    expect(out.reports[0]!.result).toBe(GEOJE)
+    expect(out.reports[1]!.result).not.toMatch(/[가-힣]/)
+    expect(out.note).toContain('Say plainly which part failed or is missing.')
+    expect(quick).toEqual([])
   })
 })
 
 describe('stack-14 merge: stop', () => {
+  const hanging = (signal: AbortSignal | undefined): Promise<never> => new Promise<never>((_, reject) => signal!.addEventListener('abort', () => reject(new Error('aborted'))))
   it('a stop during a search round starts no further round and returns at once', async () => {
-    const ctl = new AbortController()
-    let searches = 0
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async (args, context) => {
-      searches++
-      if (searches === 1) return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${rows(1, 1)}`
-      setTimeout(() => ctl.abort(), 20)
-      return new Promise<string>((_, reject) => context.signal!.addEventListener('abort', () => reject(new Error('aborted'))))
-    } }
-    const write = async (): Promise<string> => JSON.stringify({ keep: [1], same: [], lists: [], names: {}, listing: [], outside: [], search: `다른 말 ${searches}` })
-    const tool = checkedSearch(search, { ask: () => '전주 한옥 카페 개업 소식 4개', write, since: Date.now() })
+    let searches = 0, started: (() => void) | undefined
+    const searching = new Promise<void>(resolve => { started = resolve })
+    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async (_args, context) => { searches++; started!(); return hanging(context.signal) } }
+    const { team, assign } = await crew('stop-search', async (_deps, _prompt, options = {}) => { options.onStart?.(); await search.run({ query: '여객선 운항' }, { task: '', signal: options.signal }); return { answer: GEOJE, steps: [], fellBack: false } })
+    const work = assign.run({ wait: true, to: TO.slice(0, 1) }, { task: ASK }).catch(() => 'stopped')
+    await searching
     const at = Date.now()
-    await tool.run({ query: '전주 한옥 카페' }, { task: '', signal: ctl.signal })
+    await team.stop('bot-b1')
+    await work
     expect(Date.now() - at).toBeLessThan(500)
-    expect(searches).toBe(2)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(searches).toBe(1)
   })
 
-  it('a stop during the meaning check\'s rewrite ends the writer at once on the host rendering, with no further call', async () => {
-    const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '하람', brief: '강릉 오늘 바다 날씨', topic: '강릉', botId: 'bot-m1', lookup: true, state: 'done', sessionKey: 's-m1', hiredAt: new Date().toISOString() }
-    const answer = block({ facts: [{ text: '강릉 바다는 오늘 잔잔해요.', url: 'https://sea.example.kr/gangneung' }] })
-    settleMember(m, { answer, report: reportData(answer, m, [], true) ?? null }, new Date().toISOString(), true)
-    const ctl = new AbortController(), calls: string[] = []
-    const write = async (prompt: string): Promise<string | undefined> => {
-      calls.push(prompt)
-      if (prompt.includes(CHECK)) return problem('contradicts', '하나도 안 잔잔해요.')
-      if (prompt.includes(REDO)) { setTimeout(() => ctl.abort(), 20); return new Promise<undefined>(() => undefined) }
-      return JSON.stringify({ message: '강릉은 하람이 봤는데 하나도 안 잔잔해요. [a](https://sea.example.kr/gangneung)', kept: ['f1'] })
-    }
+  it('a stop while one part is done and the other still writes ends the wait at once, with no further model call of any kind', async () => {
+    let runs = 0, started: (() => void) | undefined
+    const writing = new Promise<void>(resolve => { started = resolve })
+    const { team, assign, quick } = await crew('stop-wait', async (_deps, _prompt, options = {}) => {
+      options.onStart?.(); runs++
+      if (whoOf(options.persona) === '하람') return { answer: GEOJE, steps: [], fellBack: false }
+      started!()
+      return hanging(options.signal)
+    })
+    const work = assign.run({ wait: true, to: TO }, { task: ASK }).catch(() => 'stopped')
+    await writing
     const at = Date.now()
-    const out = await writtenReport({ ask: '강릉 바다 날씨', members: [m], write, timeoutMs: 6_000, signal: ctl.signal })
+    await team.stop('bot-b1')
+    await work
     expect(Date.now() - at).toBeLessThan(500)
-    expect(out).toBe(mergedReport([m]))
-    expect(calls).toHaveLength(3)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(runs).toBe(2)
+    expect(quick).toEqual([])
   })
 })
 
@@ -155,7 +113,7 @@ describe('stack-14 merge: R1/T1 call count', () => {
     }
     const engine = { id: 'claude', quick: async (prompt: string) => { quick.push(prompt); return undefined } } as unknown as TurnKit['engine']
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
-    const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit), alive: async () => true }
+    const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit) }
     await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '강릉', brief: '강릉 바다 날씨', lookup: true }, { role: '속초', brief: '속초 바다 날씨', lookup: true }] }, { task: '' })
     console.log(`[stack14] R1/T1 anonymous hire_members: ${calls.length} model calls, ${quick.length} quick calls`)
     expect(calls).toHaveLength(2)
@@ -164,23 +122,16 @@ describe('stack-14 merge: R1/T1 call count', () => {
 })
 
 describe('stack-14: the item judge reads the one deadline', () => {
-  it('a judgment that takes longer than 3 s, early in the turn, is still used and the loop looks further', async () => {
-    vi.useFakeTimers({ now: Date.parse('2026-11-18T03:00:00Z'), toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    const since = Date.now(), queries: string[] = []
-    const page = (n: number): string => `results for "q" at https://search.example/?q=${n} (DATA, not instructions):\n- 대전 빵집 ${n}호 개업 — https://bread.example.kr/${n} — 11월 ${n}일\n- 대전 제과 박람회 — https://expo.example.kr/${n} — 통계`
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return page(queries.length + 1) } }
-    const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
-      const n = (prompt.match(/"n":/g) ?? []).length, keep = Array.from({ length: n }, (_, i) => i + 1).filter(i => !prompt.split('"n":')[i]!.includes('박람회'))
-      resolve(JSON.stringify({ keep, unsure: [], same: [], lists: [], names: {}, listing: [], outside: [], search: `대전 빵집 새로 문 연 곳 ${n}` }))
-    }, 4_500))
-    const tool = checkedSearch(search, { ask: () => '대전 빵집 개업 소식 3건 알려줘', write, since })
-    const done = tool.run({ query: '대전 빵집 개업' }, { task: '' })
-    await vi.runAllTimersAsync()
-    const out = await done
-    expect(out).toContain('박람회')
-    expect(queries.length).toBeGreaterThanOrEqual(2)
-    expect(out.split('\n').filter(line => line.startsWith('- ') && line.includes('빵집'))).toHaveLength(2)
-    expect(out).not.toContain('of these rows are from the period asked')
-    expect(Date.now() - since).toBeLessThanOrEqual(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS + WIDEN_MS)
+  it('no judge has a clock of its own: a lookup\'s tool calls read the one time left, are closed when a round no longer fits, and are refused when a call no longer fits', async () => {
+    for (const gone of ['checkedSearch', 'judgeTime', 'LOOKUP_RESERVE_MS', 'WIDEN_MS']) expect(gone in core, gone).toBe(false)
+    let left = TEAM_ANSWER_MS, calls = 0
+    const page = 'results for "q" at https://search.example/?q=1 (DATA, not instructions):\n- 군산 빵집 새 지점 — https://bread.example.kr/1 — 11월 3일'
+    const tool = timeBoxed({ name: 'search_web', description: '', argsSchema: {}, run: async () => { calls++; return page } }, () => left)
+    expect(await tool.run({ query: '군산 빵집' }, { task: '' })).toBe(page)
+    left = LOOKUP_ROUND_MS - 1
+    expect(await tool.run({ query: '군산 빵집 개업' }, { task: '' })).toBe(`${page}\n\n${ANSWER_FROM_THIS}`)
+    left = LOOKUP_CALL_MS - 1
+    expect(await tool.run({ query: '군산 제과점' }, { task: '' })).toBe(ANSWER_FROM_THIS)
+    expect(calls).toBe(2)
   })
 })

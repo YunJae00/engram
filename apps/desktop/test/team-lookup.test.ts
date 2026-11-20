@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, mergedReport, reportData, LATE_CEILING_MS, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, handBacks, listTasks, LATE_CEILING_MS, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
@@ -136,11 +136,10 @@ it('hands the lead each member\'s pages and does not wait for a straggler past t
     ['released', '부산 비 14도\n14도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)', [address('부산 날씨')]],
     ['released', '제주 흐림 13도', [address('제주 날씨')]],
   ])
-  const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 흐림 13도 | 네이버 날씨 |\n| 부산 | 비 14도 | 네이버 날씨 |\n| 제주 | 흐림 13도 | 네이버 날씨 |'
-  const cited = await team.cited('bot-b1', table)
-  expect(cited.split('\n')).toHaveLength(5)
-  for (const city of ['서울', '부산', '제주']) expect(cited.split('\n').find(row => row.includes(city))).toContain(`[네이버 날씨](${address(`${city} 날씨`)})`)
-  expect(await team.cited('bot-other', table)).toBe(table)
+  expect('cited' in team).toBe(false)
+  const stored = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
+  const back = JSON.parse(handBacks(stored)) as { reports: { result: string; sources: string[] }[] }
+  expect(back.reports.map(one => [one.result, one.sources])).toEqual(out.members.map((m: { result: string; sources: string[] }) => [m.result, m.sources]))
 })
 
 it('c6: a lookup member with search words starts with that search already run: results in its first message, its page and rows on record', async () => {
@@ -227,17 +226,13 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   expect(doyun!.result).toContain('SMTECHNO PLC Trainer 660,000원')
   expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
   expect(seoyeon!.read).toBeUndefined()
-  const block = (o: object) => '```report\n' + JSON.stringify(o) + '\n```'
-  doyun!.data = reportData(block({ facts: [], nothing_in_period: {} }), doyun!, doyun!.sources, true)!
-  seoyeon!.data = reportData(block({ facts: [{ text: '슬랙이 Huddles 요약을 냈어요.', url: 'https://slack.com/blog/huddles' }] }), seoyeon!, seoyeon!.sources, true)!
-  const table = mergedReport([doyun!, seoyeon!])
-  expect(table).toContain('이번엔 새로 나온 게 없어요. (도윤) [네이버 검색](')
-  expect(table).not.toContain('신기능 조사(')
-  expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
-  expect(table).not.toContain('shopping.naver')
-  expect(table).toContain('슬랙이 Huddles 요약을 냈어요. (서연) [슬랙](https://slack.com/blog/huddles)')
-  expect(table).not.toContain('한도')
-  expect(table).not.toContain('출처')
+  const back = JSON.parse(handBacks([doyun!, seoyeon!])) as { reports: { who: string; state: string; result: string; sources?: string[] }[]; note: string }
+  expect(back.reports.map(one => [one.who, one.state])).toEqual([['도윤', 'done'], ['서연', 'done']])
+  expect(back.reports[0]!.result).toBe(doyun!.result)
+  expect(back.reports[0]!.sources).toEqual(doyun!.sources)
+  expect(back.reports[1]!.result).toBe(seoyeon!.result)
+  expect(back.note).toContain('Say plainly which part failed or is missing.')
+  expect(JSON.stringify(back.reports)).not.toContain('이번엔 새로 나온 게 없어요')
 })
 
 it('c7 R2: a price reported with no figure gets one host-run search for the previous model\'s launch price and one more round to write it in', async () => {

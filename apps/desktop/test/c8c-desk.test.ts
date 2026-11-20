@@ -3,14 +3,15 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fileWorkTools, HOUSE_THEME, loadBotMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, resolveTheme, type VaultPaths } from 'core'
+import { fileWorkTools, HOUSE_THEME, loadBotMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, resolveTheme, runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob, type VaultPaths } from 'core'
 
 const fake = vi.hoisted(() => ({ directory: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.directory, isPackaged: false }, shell: { openPath: async () => '' }, ipcMain: { handle: () => {} } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { DESK_NOTE, deskKind, deskLight, fixSlideTitle, keptFix, plainKeep, slideTitleFix, withOffer } from '../src/main/desk-lane.js'
+import * as deskLane from '../src/main/desk-lane.js'
+import { DESK_NOTE, deskKind, deskLight, fixSlideTitle, keptFix, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
 import { buildDeck } from '../src/main/deck-render.js'
@@ -90,7 +91,7 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(ipc).toContain("const retitle = !handed && kind === 'deck' ? slideTitleFix(request.message) : undefined")
     expect(ipc).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
     expect(ipc).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
-    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : reshaped ? { answer: reshaped, steps: [], fellBack: false } : await lookup.run(')
+    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await lookup.run(')
   })
 })
 
@@ -167,20 +168,31 @@ describe('recommendations name the trip and are things of that place (H1)', () =
 describe('an offer is the next step, never the same content in another shape (H4)', () => {
   const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
   const answer = '한서연: 온보딩 화면 시안 확정 — 11/20까지\n오태민: 결제 모듈 교체 일정 수립 — 11/24까지\n윤가은: 베타 테스터 모집 공지 발송 — 11/27까지'
-  it('the host\'s line and the note\'s example agree, and neither offers a table or a file', () => {
+  async function turn(draft: string, options: AgentLoopOptions = {}) {
+    const jobs: ToolSessionJob[] = []
+    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
+    const result = await runToolSession({ engine, workdir: '/tmp/c8c-desk' as EngineCwd, tools: [] }, ask, { attachmentContext: DESK_NOTE, ...options })
+    return { posted: result.answer, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
+  }
+  it('the offer is the model\'s line, asked for by the note\'s example; the host adds none, and the note offers no table or file', async () => {
     const offer = '원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.'
-    const out = withOffer(ask, answer, [], true)
-    expect(out).toBe(`${answer}\n\n${offer}`)
-    expect(DESK_NOTE).toContain(`("${offer}")`)
+    const { posted, told } = await turn(answer)
+    expect(posted).toBe(answer)
+    expect(told).toContain(`("${offer}")`)
     expect(DESK_NOTE).toContain('never the same content in another shape (a table, a file)')
     expect([...offer].length).toBeLessThanOrEqual(60)
-    expect(out.split('\n').slice(-2).filter(line => /(게요\.|까요\?)$/.test(line))).toHaveLength(1)
-    for (const text of [DESK_NOTE, out, withOffer(ask, `| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |`, [], true), withOffer(ask, answer, [], false)]) expect(text).not.toMatch(/표로 묶어|표로도 정리|워드 파일로도|in a table|Word file/)
+    const own = `${answer}\n\n${offer}`
+    expect((await turn(own)).posted).toBe(own)
+    expect(Object.keys(deskLane)).not.toContain('withOffer')
+    for (const text of [DESK_NOTE, posted]) expect(text).not.toMatch(/표로 묶어|표로도 정리|워드 파일로도|in a table|Word file/)
   })
-  it('dated lines get a timeline, anything else no offer, and never a second offer in a thread', () => {
-    expect(withOffer('notes.md에서 마감만 추려줘', '- 시안 확정: 11월 20일\n- 공지 발송: 11월 27일', [], true)).toMatch(/\n\n원하시면 기한 순으로 일정표도 만들어 드릴게요\.$/)
-    expect(withOffer('notes.md에서 숫자만 추려줘', '- 38%\n- 12명', [], true)).toBe('- 38%\n- 12명')
-    expect(withOffer(ask, answer, [{ role: 'assistant', text: '정리했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.' }], true)).toBe(answer)
+  it('dated lines, bare figures and a thread that already had an offer are all posted as written; the once-a-thread rule and the earlier reply are the model\'s to read', async () => {
+    for (const draft of ['- 시안 확정: 11월 20일\n- 공지 발송: 11월 27일', '- 38%\n- 12명']) expect((await turn(draft)).posted).toBe(draft)
+    const earlier = '정리했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.'
+    const { posted, told } = await turn(answer, { history: [{ role: 'user', text: '회의록 정리해줘' }, { role: 'assistant', text: earlier }] })
+    expect(posted).toBe(answer)
+    expect(told).toContain('unless an earlier reply of yours in this conversation already ended with an offer')
+    expect(told).toContain('원하시면 워드 파일로도 만들어 드릴게요.')
   })
 })
 

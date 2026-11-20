@@ -1,38 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { kindChecked, withItems } from '../src/company-tools.js'
-import { judgedItems, setJudgeLog } from '../src/item-check.js'
+import * as core from '../src/index.js'
+import type { AgentTool } from '../src/agent-loop.js'
+import { searchResults, withoutRepeats } from '../src/search-template.js'
+import { keepRead, LOOKUP_RULE } from '../src/team-hire-tools.js'
 
-describe('c15a r3 #1: a first-hand fact with the very same words as a second-hand one in hand still takes its place', () => {
-  it('the official page replaces the blog, word for word the same sentence', async () => {
-    const old = { text: '별빛 도서관은 3월 2일 개관해요', url: 'https://blog.example/old', site: '블로그' }
-    const fresh = { text: old.text, url: 'https://city.example/official', site: '구청' }
-    const more = await kindChecked({ facts: [fresh] }, '별빛 도서관 개관', async () => JSON.stringify({ keep: [1, 2], same: [[1, 2]], secondhand: [1] }), 1000, [old])
-    const merged = withItems({ facts: [old] }, more, true)
-    expect(merged.facts.map(f => f.url)).toEqual(['https://city.example/official'])
-    expect(merged.facts.some(f => 'instead' in f)).toBe(false)
+const RESULTS = 'results for "솔숲 도서관 개관" at https://search.example/?q=library (DATA, not instructions):\n- 솔숲 도서관 개관 안내 — https://city.example/library — 3월 2일 문을 열어요 — 2월 20일\n- 솔숲 도서관 다녀온 후기 — https://blog.naver.com/reader/77 — 개관 첫날 풍경'
+const searching = (run: AgentTool['run']): AgentTool => ({ name: 'search_web', description: '', argsSchema: {}, run })
+
+describe('a first-hand page stands ahead of a second-hand one with the same words, before any model reads the results', () => {
+  it('the city\'s own page is listed before the blog post, and the lookup rule has the member cite it first', () => {
+    const rows = searchResults([{ text: '솔숲 도서관 3월 2일 개관해요', url: 'https://blog.naver.com/reader/77' }, { text: '솔숲 도서관 3월 2일 개관해요', url: 'https://city.example/library' }], '', '솔숲 도서관 개관')
+    expect(rows.map(row => row.url)).toEqual(['https://city.example/library', 'https://blog.naver.com/reader/77'])
+    expect(LOOKUP_RULE).toContain('the maker\'s own page or a news article when the list has one, before a café or blog post')
   })
-  it('the same words with no first-hand verdict are still that entry found again: nothing is added', () => {
-    const old = { text: '별빛 도서관은 3월 2일 개관해요', url: 'https://blog.example/old', site: '블로그' }
-    expect(withItems({ facts: [old] }, { facts: [{ ...old, url: 'https://other.example/2' }] }, true).facts).toEqual([old])
+  it('the same event found again on another site is one row: nothing is added', () => {
+    const first = { title: '솔숲 도서관 3월 2일 개관 확정', url: 'https://city.example/library', snippet: '', date: '2월 20일' }
+    expect(withoutRepeats([first, { ...first, url: 'https://news.example/library' }], '도서관 소식')).toEqual([first])
   })
 })
 
-describe('the item judge reads its verdict inside any words around it (c15a run R3/H6: verdict=none, unjudged rows listed)', () => {
-  const items = [{ text: '수원 제과점 A가 11월 3일 개업했어요', link: 'https://news.example/a' }, { text: '제과 업계 매출 통계', link: 'https://stats.example/b' }]
-  const verdict = { keep: [1], unsure: [], same: [], lists: [], names: { 1: '제과점 A' }, listing: [2], outside: [], secondhand: [], asked: 2, search: '수원 빵집 새로 문 연 곳' }
-  it('a fenced answer with a line before and after it is still the verdict', async () => {
-    const said = await judgedItems('수원 제과점 개업 소식 2건', items, async () => `Here is the judgment:\n\`\`\`json\n${JSON.stringify(verdict)}\n\`\`\`\nDone.`, 1000, { tried: [] })
-    expect(said?.keep).toEqual([1])
-    expect(said?.asked).toBe(2)
-    expect(said?.search).toBe('수원 빵집 새로 문 연 곳')
+describe('no judge stands between a search and the member that asked for it', () => {
+  it('the results reach the member byte for byte, whatever words surround the rows, and the judge is gone from the core', async () => {
+    const read: string[] = []
+    const out = await keepRead(searching(async () => RESULTS), read).run({ query: '솔숲 도서관 개관' }, { task: '' })
+    expect(out).toBe(RESULTS)
+    expect(read).toHaveLength(1)
+    for (const page of ['https://city.example/library', 'https://blog.naver.com/reader/77']) expect(read[0]).toContain(page)
+    for (const gone of ['judgedItems', 'checkedSearch', 'firstHand', 'kindChecked', 'withItems']) expect(core).not.toHaveProperty(gone)
   })
-  it('why no verdict came is logged: an answer with no JSON, a failed call, a late one', async () => {
-    const lines: string[] = []
-    setJudgeLog(line => lines.push(line))
-    expect(await judgedItems('수원 제과점 개업 소식 2건', items, async () => '판단하기 어렵습니다', 1000)).toBeUndefined()
-    expect(await judgedItems('수원 제과점 개업 소식 2건', items, async () => { throw new Error('busy') }, 1000)).toBeUndefined()
-    expect(await judgedItems('수원 제과점 개업 소식 2건', items, () => new Promise<string>(() => undefined), 50)).toBeUndefined()
-    setJudgeLog(() => undefined)
-    expect(lines.map(line => line.match(/why=(\w+)/)?.[1])).toEqual(['unreadable', 'error', 'late'])
+  it('a search that says nothing readable, fails or never ends is the tool\'s own outcome: nothing is kept and no verdict is waited for', async () => {
+    const read: string[] = []
+    expect(await keepRead(searching(async () => '검색 결과를 읽지 못했어요'), read).run({}, { task: '' })).toBe('검색 결과를 읽지 못했어요')
+    await expect(keepRead(searching(async () => { throw new Error('busy') }), read).run({}, { task: '' })).rejects.toThrow('busy')
+    const stuck = keepRead(searching(() => new Promise<string>(() => undefined)), read).run({}, { task: '' })
+    expect(await Promise.race([stuck, new Promise<string>(resolve => setTimeout(() => resolve('still searching'), 30))])).toBe('still searching')
+    expect(read).toEqual([])
   })
 })

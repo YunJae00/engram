@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createBot, helperParts, initVault, loadBots, mergedReport, recordFacts, reportData, setReportLog, reportPrompt, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, teamSummary, writtenReport, type AgentTool, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
+import { createBot, employeesAnswer, handBacks, initVault, loadBots, partOutcome, recordFacts, runToolSession, setReportLog, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, teamSummary, type AgentTool, type DelegatedTask, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
+import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -10,80 +11,62 @@ import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(join(__dirname, '../src/main', file), 'utf8')
 const ipc = src('ipc.ts')
 const tick = (ms = 0): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
-const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
-const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line)).slice(1)
+const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
+type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
+const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-17: a correction after a lookup reaches the item judge as its meaning (c17b askNow × c17a points)', () => {
   const history = [{ role: 'user', text: '청주 내일 날씨 어때?' }, { role: 'assistant', text: '청주는 내일 맑고 낮 최고 13도예요.' }]
   const message = '아니 그거 말고 춘천으로'
-  const judge = (prompts: string[]) => agreeing(async (prompt: string): Promise<string> => {
-    prompts.push(prompt)
-    const ask = JSON.parse(prompt.split('\n').find(line => line.startsWith('Ask: '))!.slice(5)) as string
-    const later = /changed it: (.*)/.exec(ask)?.[1] ?? ask, place = ['춘천', '청주'].find(one => later.includes(one))
-    const items = JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string }[]
-    const hit = items.find(item => place && item.text.includes(place))
-    return JSON.stringify({ keep: items.map(item => item.n), asked: 1, search: '', points: /날씨/.test(ask) ? ['내일 날씨'] : [], holds: hit ? { [hit.n]: { '내일 날씨': hit.text.split(' — ')[1] } } : {} })
-  })
-  it('the route is the earlier lookup, the judge reads the earlier ask with the later words holding, and only the 춘천 row is shown', async () => {
+  it('the route is the earlier lookup, the model reads the earlier ask with the later words holding, and its reply about 춘천 is posted as written with no row judged away', async () => {
     expect(routeAsk(message, history)).toBe('청주 내일 날씨 어때?')
-    const meant = askNow(message, history), prompts: string[] = []
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => page(String(args['query']), [
-      '- 청주 내일 날씨 — https://weather.example/cheongju — 청주 내일 맑음, 낮 최고 13도 — 11월 19일',
-      '- 춘천 내일 날씨 — https://weather.example/chuncheon — 춘천 내일 흐림, 낮 최고 8도 — 11월 19일',
-    ]) }
-    const out = await checkedSearch(search, { ask: () => meant, write: agreeing(judge(prompts)), since: 0, now: () => 0 }).run({ query: '춘천 내일 날씨' }, { task: meant })
-    expect(prompts).toHaveLength(0)
+    const meant = askNow(message, history)
     expect(meant).toContain('청주 내일 날씨 어때?')
     expect(meant).toContain('그거 말고 춘천으로')
     expect(meant).toContain('the later words hold')
-    expect(out).toContain('춘천 내일 흐림, 낮 최고 8도')
-    expect(out).toContain('weather.example/cheongju')
+    const draft = '춘천은 내일 흐리고 낮 최고 8도예요. [날씨 예보](https://weather.example/chuncheon)'
+    expect(await posted(draft, meant)).toBe(draft)
+    expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
+    expect('checkedSearch' in core).toBe(false)
   })
-  it('in the turn, every reader of the lookup\'s ask (judge, page read, helpers\' writer, lead check) reads the meaning; the rounds and host swaps keep the plain words', () => {
-    expect(ipc).toContain('const askedNow = (): string => lookup.ask() === request.message ? meant : lookup.ask()')
-    expect(ipc).toContain("checkedSearch(tool, { ask: () => [askedNow(), ...steered].join('\\n')")
-    expect(ipc).toContain('readPage.run({ url }, { task: askedNow(),')
-    expect(ipc).toContain("helperAnswer({ ask: [askedNow(), ...steered].join('\\n')")
-    expect(ipc).toContain('asks = [askedNow(), ...steered]')
+  it('in the turn, the meaning reaches the model as a note of the turn; no judge, page read, helpers\' writer or lead check reads it after the answer, and the rounds keep the plain words', () => {
+    expect(ipc).toContain('const meant = askNow(request.message, savedHistory)')
+    expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
     expect(ipc).toContain('const lookup = swapRounds(request.message, signal)')
-    expect(ipc).toContain('namesSubject(answer, lookup.ask())')
+    for (const gone of ['askedNow', 'checkedSearch(', 'helperAnswer(', 'namesSubject(', 'checkedLead(']) expect(ipc, gone).not.toContain(gone)
   })
 })
 
 describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenReport data → c17c fallback)', () => {
   const at = new Date().toISOString()
-  const parts = (): TeamMember[] => helperParts([
-    { id: 'h1', parentId: null, depth: 1, role: '목동 조사', topic: '목동', brief: '목동 수영장 자유수영 요금', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's1', hiredAt: at, result: 'x',
-      said: '목동 수영장 11월 이용 안내 총정리예요. [블로그](https://blog.example/mokdong)', sources: ['https://search.example/?q=1'],
-      proof: [{ point: '요금', quote: '자유수영 성인 4,500원', url: 'https://pool.example/mokdong' }], missing: [] },
-    { id: 'h2', parentId: null, depth: 1, role: '잠실 조사', topic: '잠실', brief: '잠실 수영장 자유수영 요금이랑 운영시간', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's2', hiredAt: at, result: 'x',
-      said: '잠실 수영장 요금 안내예요. [블로그](https://blog.example/jamsil)', sources: [],
-      proof: [{ point: '요금', quote: '성인 1회 5,000원', url: 'https://pool.example/jamsil' }], missing: ['운영시간'] },
-  ])
-  it('the writer\'s data holds the verified quotes, never the headline; the host table (writer refused) shows the same, with the missing point said', () => {
-    const data = JSON.parse(reportPrompt('목동 잠실 수영장 자유수영 요금', parts(), new Map(), { helpers: true }).split('\nData: ')[1]!.split('\n')[0]!) as { part: string; facts?: { text: string; link: string }[] }[]
-    const text = JSON.stringify(data)
-    expect(text).toContain('이용 안내 총정리')
-    expect(text).toContain('blog.example/mokdong')
-    expect(text).not.toContain('자유수영 성인 4,500원')
-    expect(text).not.toContain('못 찾았어요')
-    const table = mergedReport(parts(), new Map(), [], true)
-    expect(tableRows(table)).toHaveLength(0)
-    expect(table).toContain('총정리')
-    expect(table).toContain('blog.example/mokdong')
-    expect(table).not.toContain('못 찾았어요')
-    expect(table).not.toMatch(/\((목동|잠실) 조사/)
+  const helper = (id: string, town: string, brief: string, answer: string, sources: string[]): TeamMember => {
+    const m: TeamMember = { id, parentId: null, depth: 1, role: `${town} 조사`, topic: town, brief, lookup: true, state: 'working', sessionKey: `s${id}`, hiredAt: at }
+    settleMember(m, { answer, sources }, at, true)
+    return m
+  }
+  const MOKDONG = '목동 수영장 자유수영은 성인 4,500원이에요. [목동 수영장](https://pool.example/mokdong)'
+  const JAMSIL = '잠실 수영장 자유수영은 성인 1회 5,000원이에요. [잠실 수영장](https://pool.example/jamsil)\n운영시간은 확인하지 못했어요.'
+  const parts = (): TeamMember[] => [helper('h1', '목동', '목동 수영장 자유수영 요금', MOKDONG, ['https://pool.example/mokdong']), helper('h2', '잠실', '잠실 수영장 자유수영 요금이랑 운영시간', JAMSIL, ['https://pool.example/jamsil'])]
+  it('the lead is handed each helper\'s own sentences with the page each figure was read on, and the point a helper said it could not find, in that helper\'s words', () => {
+    const got = handed(parts())
+    expect(got.reports.map(one => [one.who, one.part, one.result])).toEqual([['목동 조사', '목동', MOKDONG], ['잠실 조사', '잠실', JAMSIL]])
+    expect(got.reports.map(one => one.sources)).toEqual([['https://pool.example/mokdong'], ['https://pool.example/jamsil']])
+    expect(parts().map(partOutcome)).toEqual(['found', 'found'])
+    expect(JSON.stringify(got.reports)).not.toContain('못 찾았어요')
+    for (const gone of ['reportPrompt', 'mergedReport', 'helperParts']) expect(gone in core, gone).toBe(false)
   })
-  it('one helper alone: its row is its quote, not its headline', () => {
+  it('one helper alone: what is handed back is its sentence and its page, with no row, label or name tag made by the host', () => {
     const [one] = parts()
-    const text = mergedReport([one!], new Map(), [], true)
-    expect(text).toContain('총정리')
-    expect(text).not.toContain('자유수영 성인 4,500원')
+    const got = handed([one!])
+    expect(got.reports).toEqual([{ who: '목동 조사', part: '목동', state: 'done', result: MOKDONG, sources: ['https://pool.example/mokdong'] }])
+    expect(got.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
   })
 })
 
@@ -109,16 +92,11 @@ function hostToolSdk(script: (tool: (args: unknown) => Promise<unknown>) => Asyn
 describe('stack-17: the step idle bound never cuts a lookup waiting on a host-side page open (c17b × c17a)', () => {
   it('a page open longer than STEP_IDLE_MS, with no stream event, runs to its end; the turn is not interrupted', async () => {
     vi.useFakeTimers()
-    const opened: string[] = [], verdicts = [
-      JSON.stringify({ keep: [1], asked: 1, search: '', points: ['요금'], open: 1, holds: {} }),
-      JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { 요금: '성인 1회 4,500원' } } }),
-    ]
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => page(String(args['query']), ['- 목동 수영장 이용 안내 — https://pool.example/mokdong — 목동 수영장 소식 — 11월 2일']) }
-    const tool = checkedSearch(search, { ask: () => '목동 수영장 자유수영 요금', write: agreeing(async () => verdicts.shift()), due: () => Date.now() + 120_000,
-      read: async url => { opened.push(url); await tick(STEP_IDLE_MS + 15_000); return '목동 수영장 요금\n자유수영 성인 1회 4,500원' } })
+    const opened: string[] = []
+    const tool: AgentTool = { name: 'open_page', description: '', argsSchema: {}, run: async args => { opened.push(String(args['url'])); await tick(STEP_IDLE_MS + 15_000); return 'page "목동 수영장 요금" at https://pool.example/mokdong\n자유수영 성인 1회 4,500원' } }
     let observed = ''
     const { sdk, interruptions } = hostToolSdk(async function* (call) {
-      observed = JSON.stringify(await call({ query: '목동 수영장 요금' }))
+      observed = JSON.stringify(await call({ url: 'https://pool.example/mokdong' }))
       yield { type: 'assistant', message: { content: [{ type: 'text', text: '목동은 4,500원이에요.' }] } }
       yield { type: 'result', subtype: 'success', result: '목동은 4,500원이에요.' }
     })
@@ -159,31 +137,23 @@ describe('stack-17: memory waits for a person\'s turn, never for background team
 })
 
 describe('stack-17: one clock on a C3-shape split of three teammates (c17a due × c16a writer × c17c)', () => {
-  it('every part at the team deadline, a draft refused for leaving one teammate out and repaired: the answer lands before 35 s', async () => {
+  it('every part at the team deadline: the hand-back for the lead is ready that instant, with all three teammates in it and no timer left running, so the answer can land before 35 s', () => {
     const T0 = Date.parse('2026-11-18T03:00:00Z')
     vi.useFakeTimers({ now: T0 + TEAM_ANSWER_MS, toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
     const part = (id: string, role: string, topic: string, text: string, url: string): TeamMember => {
-      const m: TeamMember = { id, parentId: null, depth: 1, role, brief: `${topic} 이번 주 신메뉴`, topic, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: new Date(T0).toISOString() }
-      const answer = block({ facts: [{ text, url }] })
-      settleMember(m, { answer, report: reportData(answer, m, [], true) ?? null }, new Date(T0 + TEAM_ANSWER_MS).toISOString(), true)
+      const m: TeamMember = { id, parentId: null, depth: 1, role, brief: `${topic} 이번 주 신메뉴`, topic, botId: `bot-${id}`, lookup: true, background: true, state: 'working', sessionKey: `s-${id}`, hiredAt: new Date(T0).toISOString() }
+      settleMember(m, { answer: `${text} ${url}`, sources: [url] }, new Date(T0 + TEAM_ANSWER_MS).toISOString(), true)
       return m
     }
     const members = [part('m1', '하윤', '스타벅스', '스타벅스는 이번 주 겨울 딸기 라떼를 냈어요.', 'https://menu.example/sb'), part('m2', '다인', '투썸', '투썸은 이번 주 밤 케이크를 냈어요.', 'https://menu.example/ts'), part('m3', '로운', '메가커피', '메가커피는 이번 주 새 메뉴가 없어요.', 'https://menu.example/mg')]
-    const body = (names: string[]) => `스타벅스는 ${names[0]}이 봤는데 겨울 딸기 라떼가 나왔어요. [a](https://menu.example/sb)\n투썸은 ${names[1]}이 봤는데 밤 케이크가 나왔어요. [b](https://menu.example/ts)\n메가커피는 ${names[2] ? `${names[2]}가 봤는데 ` : ''}새 메뉴가 없어요. [c](https://menu.example/mg)`
-    const calls: string[] = []
-    const write = agreeing((prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
-      calls.push(prompt)
-      resolve(prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : prompt.includes('You fix a message') ? JSON.stringify({ insert_after: { 4: ['메가커피는 로운이 봤어요.'] } }) : JSON.stringify({ message: `스타벅스랑 투썸은 신메뉴가 나왔고 메가커피는 없어요.\n\n${body(['하윤', '다인'])}`, kept: ['f1', 'f2', 'f3'] }))
-    }, 1_500)))
-    const pending = writtenReport({ ask: '스타벅스 투썸 메가커피 이번 주 신메뉴 하윤 다인 로운한테 나눠서 알아봐줘', members, write })
-    await vi.runAllTimersAsync()
-    const out = await pending
-    expect(calls).toHaveLength(3)
-    expect(out).toContain('메가커피(로운)는 새 메뉴가 없어요.')
-    expect(out).not.toMatch(/로운이 찾아보니|맡아서 했어요/)
-    for (const link of ['sb', 'ts', 'mg']) expect(out).toContain(`menu.example/${link}`)
+    const task: DelegatedTask = { id: 'job', goal: '카페 세 곳 이번 주 새 메뉴 하윤 다인 로운이 하나씩 확인', botId: 'lead', state: 'running', turns: 1, createdAt: new Date(T0).toISOString(), updatedAt: new Date(T0).toISOString(), approvals: [], log: [], team: { members, hires: 3, maxHires: 8, maxDepth: 3, big: false } }
+    const out = JSON.parse(employeesAnswer(task)!) as { reports: Report[]; note: string }
+    expect(out.reports.map(one => [one.who, one.part])).toEqual([['하윤', '스타벅스'], ['다인', '투썸'], ['로운', '메가커피']])
+    for (const link of ['sb', 'ts', 'mg']) expect(JSON.stringify(out.reports)).toContain(`menu.example/${link}`)
+    expect(out.note).toContain('who did what in natural sentences that name each agent')
+    expect(vi.getTimerCount()).toBe(0)
     expect(Date.now() - T0).toBeLessThan(35_000)
+    expect('writtenReport' in core).toBe(false)
   })
 })
 
@@ -223,7 +193,7 @@ describe('stack-17: a turn that starts in the same tick as a memory call holds i
 })
 
 describe('stack-17: a job said only in filler words is still checked in the summary', () => {
-  it('a draft that leaves out the 주말 소식 job is refused as missing and repaired', async () => {
+  it('the 주말 소식 job is in the record the writer reads, under the rule that every job is named; a draft that leaves it out is the answer as written, with one call', async () => {
     const logged: string[] = []
     setReportLog(line => logged.push(line))
     try {
@@ -231,23 +201,24 @@ describe('stack-17: a job said only in filler words is still checked in the summ
       await createBot(paths, { name: '엔그램' })
       await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
       await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
-      const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', added = '하윤은 주말 소식을 찾았어요.', fixed = `${left}\n${added}`
-      const drafts = [left, JSON.stringify({ insert_after: { 1: [added] } })], calls: string[] = []
-      const write = agreeing(async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : drafts.shift() ?? '' })
-      expect(await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write })).toBe(fixed)
-      expect(calls[2]).toContain('You fix a message')
-      expect(calls[2]).toContain('주말 소식')
-      expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:missing /)])
+      const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', calls: string[] = []
+      const write = async (prompt: string): Promise<string> => { calls.push(prompt); return left }
+      expect(await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write })).toBe(left)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toContain('"did":"주말 소식 조사"')
+      expect(calls[0]).toContain('every job\'s subject is named in its own words')
+      expect(logged).toEqual([expect.stringMatching(/^summary=written /)])
     } finally { setReportLog(() => undefined) }
   })
 })
 
 describe('stack-17: the words before a reply in another form keep the 해요체 register', () => {
-  it('the hand-over prompt rules out -습니다, and the reply is kept whole', async () => {
-    const { withTheirWords } = await import('../src/main/first-line.js')
-    const prompts: string[] = []
-    const out = await withTheirWords('Thank you for your patience while we fix the invoice.', async prompt => { prompts.push(prompt); return '이렇게 쓰면 돼요. Thank you for your patience while we fix the invoice.' })
-    expect(prompts[0]).toContain('never -습니다')
-    expect(out).toBe('이렇게 쓰면 돼요. Thank you for your patience while we fix the invoice.')
+  it('the one voice rule rules out -습니다 for the whole reply, the foreign line is handed over unchanged, and the reply is posted whole', async () => {
+    expect(COLLEAGUE_CORE_RULE).toContain('in Korean keep the polite-casual -요 form through the whole reply')
+    expect(COLLEAGUE_CORE_RULE).toContain('never switch to -습니다')
+    expect(COLLEAGUE_CORE_RULE).toContain('which you hand over unchanged after a few warm Korean words')
+    const reply = '이렇게 쓰면 돼요.\n\nThank you for waiting while we reprint the hiking club roster.'
+    expect(await posted(reply, '명단 다시 뽑는 동안 기다려줘서 고맙다는 영어 문장')).toBe(reply)
+    expect('withTheirWords' in firstLine).toBe(false)
   })
 })

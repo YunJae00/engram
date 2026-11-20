@@ -419,7 +419,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       }
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages), next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
+        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}), ...(event.files?.length ? { files: event.files } : {}) }
         settle(id, at >= 0 ? underAsides(next, at) : next, { offer: event.offer ?? null })
         return id
       }

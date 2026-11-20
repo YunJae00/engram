@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { employeesReport, failOnRestart, lateShown, listTasks, logTask, markLate, updateTask, type TaskTeam, type TeamMember } from 'core'
+import { employeesAnswer, failOnRestart, lateShown, listTasks, logTask, markLate, updateTask, type TaskTeam, type TeamMember } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { awaitingEmployees } from '../src/shared/task-waits.js'
 
@@ -124,38 +124,43 @@ it('a part that ends while the report without it is being written still gets its
   expect(s.sent.filter(one => one.extra?.report)).toHaveLength(4)
 })
 
-it('an owed late part survives a restart: its report comes once if it had ended, and one plain line if it died with the app', async () => {
-  const report = async (s: World, extra: { report?: true } | undefined, said = '답') => {
-    if (!extra?.report) return done(said)
+it('an owed late part survives a restart: its hand-back reaches one report step if it had ended, and as a failed part if it died with the app', async () => {
+  const handed: string[] = []
+  const lead = async (s: World, extra: { report?: true } | undefined, said: string) => {
+    if (!extra?.report) return done('네, 알겠어요.')
     const task = (await listTasks(s.paths)).find(t => t.state === 'running')!
-    const text = employeesReport(task) ?? ''
+    handed.push(employeesAnswer(task) ?? '')
     await updateTask(s.paths, task.id, lateShown)
-    return done(text)
+    return done(said)
   }
   for (const died of [false, true]) {
+    const early = '민서가 보니 자전거 보관소는 지하 1층이에요. [관리실 안내](https://apt.example/bike)\n\n택배함은 우진이 아직 찾는 중이에요. 끝나면 이어서 올릴게요.'
+    const late = died ? '택배함은 우진이 이번엔 못 찾았어요.' : '우진이 찾아보니 택배함은 정문 옆에 있어요. [단지 지도](https://apt.example/map)'
     const before: World = await setup(async (_request, turn, extra) => {
-      if (turn === 1) { await seed(before, teamOf(employee('working', { brief: '노션 조사', topic: '노션' }), employee('working', { id: 'm2', role: '서연', brief: '슬랙 조사', topic: '슬랙', botId: 'seo', sessionKey: 'team-x-m2' }))); return done('지민, 서연한테 나눠 맡겼어요.') }
-      return report(before, extra)
+      if (turn === 1) { await seed(before, teamOf(employee('working', { role: '민서', brief: '자전거 보관소 위치', topic: '자전거 보관소' }), employee('working', { id: 'm2', role: '우진', brief: '택배함 위치', topic: '택배함', botId: 'woo', sessionKey: 'team-x-m2' }))); return done('민서, 우진한테 나눠 맡겼어요.') }
+      return lead(before, extra, early)
     })
-    await before.chat('노션, 슬랙 조사해줘. 지민, 서연한테 나눠서 시켜')
+    await before.chat('자전거 보관소랑 택배함 위치 알아봐줘. 민서, 우진한테 나눠서 맡겨')
     const id = (await first(before)).id
-    await finishMember(before)
-    await updateTask(before.paths, id, t => { t.team!.members[0]!.data = { facts: [{ text: '11월 20일 서울 AI 서밋', url: 'https://example.com/summit', site: 'example.com' }] } })
-    await updateTask(before.paths, id, markLate)
+    await updateTask(before.paths, id, t => { Object.assign(t.team!.members[0]!, { state: 'done', result: '자전거 보관소는 지하 1층이에요. https://apt.example/bike' }); markLate(t) })
     await before.runner.report(id, 'bot-bot-1')
-    await vi.waitFor(async () => expect(await first(before)).toMatchObject({ state: 'waiting', team: { lateTold: true } }))
-    expect((await first(before)).result).toContain('슬랙(서연): 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')
-    await updateTask(before.paths, id, t => { if (died) t.state = 'running'; else Object.assign(t.team!.members[1]!, { state: 'done', result: '슬랙이 캔버스 공유를 냈어요. https://example.com/b', data: { facts: [{ text: '슬랙이 캔버스 공유를 냈어요.', url: 'https://example.com/b', site: 'example.com' }] } }) })
-    const after: World = await setup(async (_request, _turn, extra) => report(after, extra), true, undefined, undefined, before.paths)
+    await vi.waitFor(async () => expect(await first(before)).toMatchObject({ state: 'waiting', result: early, team: { lateTold: true } }))
+    expect(handed.at(-1)).toContain('"who":"민서"')
+    expect(handed.at(-1)).toContain('자전거 보관소는 지하 1층이에요. https://apt.example/bike')
+    expect((await first(before)).result).toBe(early)
+    await updateTask(before.paths, id, t => { if (died) t.state = 'running'; else Object.assign(t.team!.members[1]!, { state: 'done', result: '택배함은 정문 옆에 있어요. https://apt.example/map' }) })
+    const after: World = await setup(async (_request, _turn, extra) => lead(after, extra, late), true, undefined, undefined, before.paths)
     await after.runner.resume()
     expect(await first(after)).toMatchObject({ state: 'waiting', awaitingEmployees: true })
     expect((await first(after)).question).toBeUndefined()
     if (died) await updateTask(after.paths, id, t => { failOnRestart(t.team!, new Date().toISOString()) })
     await after.runner.report(id, 'bot-bot-1')
-    await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', team: { lateDone: true } }))
-    expect((await first(after)).result).toBe(died ? '서연은 이번엔 못 찾았어요.' : '서연이 찾아보니 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
+    await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', result: late, team: { lateDone: true } }))
+    expect(handed.at(-1)).toContain('"who":"우진"')
+    expect(handed.at(-1)).toContain(died ? 'Failed: the app restarted while this member was working.' : '택배함은 정문 옆에 있어요. https://apt.example/map')
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(() => expect(after.runner.activeChannels()).toEqual([]))
     expect(after.sent.filter(one => one.extra?.report)).toHaveLength(1)
+    expect((await first(after)).result).toBe(late)
   }
 })

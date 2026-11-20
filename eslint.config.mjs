@@ -61,9 +61,7 @@ const KOREAN_TODAY = [
   'packages/core/src/delegated-tasks.ts',
   'packages/core/src/document-tools.ts',
   'packages/core/src/import.ts',
-  'packages/core/src/item-check.ts',
   'packages/core/src/jobs/librarian.ts',
-  'packages/core/src/lead-check.ts',
   'packages/core/src/office-theme.ts',
   'packages/core/src/parsers.ts',
   'packages/core/src/preferences-tools.ts',
@@ -79,7 +77,6 @@ const KOREAN_TODAY = [
   'packages/core/src/team-hire-tools.ts',
   'packages/core/src/untitled-bot.ts',
   'packages/core/src/work-map.ts',
-  'packages/core/src/written-check.ts',
 ]
 const HANGUL = '/[가-힣]/'
 

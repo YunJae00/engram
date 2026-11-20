@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { citeMembers, liveCited, liveLinks, LOOKUP_RULE, memberPersona, MERGED_SHAPE, type TeamMember } from '../src/index.js'
+import * as core from '../src/index.js'
+import { LOOKUP_RULE, memberPersona, MERGED_SHAPE, NO_LIVE_SOURCE, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 
 const helper = (role: string, brief: string, result: string, sources: string[] = ['https://search.naver.com/search.naver?query=x']): TeamMember =>
   ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-18T00:00:00Z', state: 'released', lookup: true, sources, result })
@@ -20,33 +21,39 @@ it('c12b: a helper\'s rule has no tier ban and no fixed "미발표" frame; value
   expect(MERGED_SHAPE).not.toMatch(/same tier|another tier|"미발표 \(/)
 })
 
-it('c12b: the merged table keeps every value its helpers reported, labeled, for an unreleased base model beside a released upper model and for a released phone', () => {
+interface Handed { members: { role: string; state: string; result: string; sources?: string[] }[]; note: string }
+async function hired(helpers: readonly TeamMember[], alive?: (url: string) => Promise<boolean>): Promise<Handed> {
+  const task = { id: 't', goal: '가격 비교', botId: 'lead', state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [] } as DelegatedTask
+  const host: TeamHost = {
+    self: null, load: async () => task, change: async work => work(task),
+    run: async ids => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) { const from = helpers.find(one => one.role === m.role)!; Object.assign(m, { state: 'done', result: from.result, ...(from.sources ? { sources: from.sources } : {}) }) } },
+    release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
+    live: () => false, tokensLeft: async () => 1_000_000, personSaid: () => '', ...(alive ? { alive } : {}),
+  }
+  return JSON.parse(await teamHireTools(host)[0]!.run({ members: helpers.map(h => ({ role: h.role, brief: h.brief, lookup: true })) }, { task: '' })) as Handed
+}
+
+it('c12b → k1: the lead is handed every value its helpers reported, labeled, for an unreleased base model beside a released upper model and for a released phone, and is told to keep each in its row', async () => {
   const fold = helper('폴드', '갤럭시 Z 폴드 8의 가격과 출시일 조사', '기본형은 아직 미발표예요. 울트라는 지난달 출시됐어요.\n가격: 울트라 출시가 289만 원부터 (https://news.example.kr/fold8-ultra)\n출시일: 기본형 2027년 7월 예상 (https://news.example.kr/fold8)')
   const razr = helper('레이저', '모토로라 레이저 70의 가격과 출시일 조사', '가격: 출시가 129만 원 (https://moto.example.com/razr70)\n출시일: 2026년 6월 5일 (https://moto.example.com/razr70)')
-  const table = ['둘 다 찾았어요. 폴드 8은 울트라만 나왔고, 레이저 70은 이미 출시됐어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|',
-    '| 갤럭시 Z 폴드 8 | 울트라 출시가 289만 원부터 | 기본형 2027년 7월 예상 | [뉴스](https://news.example.kr/fold8-ultra) |',
-    '| 모토로라 레이저 70 | 출시가 129만 원 | 2026년 6월 5일 | [모토로라](https://moto.example.com/razr70) |'].join('\n')
-  const out = citeMembers(table, [fold, razr], true)
-  const rows = out.split('\n').filter(line => /^\| (갤럭시|모토로라)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
-  expect(rows[0]!.slice(0, 3)).toEqual(['갤럭시 Z 폴드 8', '울트라 출시가 289만 원부터', '기본형 2027년 7월 예상'])
-  expect(rows[1]!.slice(0, 3)).toEqual(['모토로라 레이저 70', '출시가 129만 원', '2026년 6월 5일'])
-  expect(out).not.toContain('미발표')
-  expect(out).not.toContain('못 찾았어요')
-  for (const figure of ['289만 원', '2027년 7월', '129만 원', '2026년 6월 5일']) expect(out).toContain(figure)
-  expect(rows[0]!.at(-1)).toContain('https://news.example.kr/fold8-ultra')
+  const out = await hired([fold, razr])
+  expect(out.members.map(m => [m.role, m.result])).toEqual([['폴드', fold.result], ['레이저', razr.result]])
+  const handed = JSON.stringify(out.members)
+  for (const figure of ['289만 원', '2027년 7월', '129만 원', '2026년 6월 5일', 'https://news.example.kr/fold8-ultra', 'https://moto.example.com/razr70']) expect(handed).toContain(figure)
+  expect(out.note).toContain('Every concrete value a member reported stays in its row, labeled as the member labeled it')
+  expect(out.note).toContain('a thing already out has its 출시가 and date')
 })
 
-it('c12b: a table cell whose only link is dead shows no bare site name; a cell with another live link keeps that one', async () => {
+it('c12b → k1: a page that no longer opens is marked in the helper\'s result before the lead writes, a live page beside it stays, and no link is taken out of the written answer afterwards', async () => {
   const alive = async (url: string): Promise<boolean> => !url.includes('gone.example')
-  const table = ['| 제품 | 가격 | 출처 |', '|---|---|---|',
-    '| 낫싱 폰 4 | 예상 79만 원 | [gadgetzone](https://gone.example/phone4) |',
-    '| 샤오미 17 | 출시가 99만 원 | [gadgetzone](https://gone.example/mi17) · [샤오미](https://mi.example/17) |'].join('\n')
-  const out = await liveLinks(table, [], alive, true, 500, [])
-  expect(out).not.toContain('gadgetzone')
-  expect(out).toContain('| 낫싱 폰 4 | 예상 79만 원 |  |')
-  expect(out).toContain('| 샤오미 17 | 출시가 99만 원 | [샤오미](https://mi.example/17) |')
-  const cited = await liveCited(table, [], answer => answer, alive, true, 500)
-  expect(cited).not.toContain('gadgetzone')
-  expect(cited).toContain('[샤오미](https://mi.example/17)')
-  expect(await liveLinks('가젯존 리뷰에 따르면 79만 원이에요. [가젯존](https://gone.example/r)', [], alive, true, 500, [])).toBe('가젯존 리뷰에 따르면 79만 원이에요. 가젯존')
+  const kettle = helper('주전자', '전기 주전자 3 가격 조사', '가격: 예상 6만 원 (https://gone.example/kettle3)', ['https://gone.example/kettle3'])
+  const toaster = helper('토스터', '토스터 7 가격 조사', '가격: 출시가 9만 원 (https://gone.example/toaster7)\n가격: 출시가 9만 원이에요 (https://toast.example/7)', ['https://gone.example/toaster7', 'https://toast.example/7'])
+  const out = await hired([kettle, toaster], alive)
+  expect(JSON.stringify(out.members)).not.toContain('gone.example')
+  expect(out.members[0]!.result).toBe(`가격: 예상 6만 원 (${NO_LIVE_SOURCE})`)
+  expect(out.members[0]!.sources).toBeUndefined()
+  expect(out.members[1]!.result).toContain('https://toast.example/7')
+  expect(out.members[1]!.sources).toEqual(['https://toast.example/7'])
+  expect(out.note).toContain('A value marked "(no live source)" lost the page it was read on')
+  for (const gone of ['liveLinks', 'liveCited', 'citeMembers']) expect(Object.keys(core)).not.toContain(gone)
 })

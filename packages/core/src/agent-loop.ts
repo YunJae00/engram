@@ -79,7 +79,6 @@ export interface AgentLoopOptions {
   steerReplied?: boolean
   recheck?(answer: string): string | undefined | Promise<string | undefined>
   shortfall?(answer: string): string | undefined
-  deliver?(answer: string): Promise<string>
 }
 
 export interface AgentLoopStep {
@@ -91,11 +90,14 @@ export interface AgentLoopStep {
   seeded?: boolean
 }
 
+export interface FileCard { name: string; href: string }
+
 export interface AgentLoopResult {
   tokensUsed?: number
   budgetExhausted?: boolean
   answer: string
   steps: AgentLoopStep[]
+  files?: FileCard[]
   fellBack: boolean
   stopped?: 'calls' | 'repetition' | 'oscillation'
   asked?: boolean

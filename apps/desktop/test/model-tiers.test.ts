@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { vaultPaths, type EngineCwd, type ToolSessionJob } from 'core'
+import { FILE_JOB_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const fixture = vi.hoisted(() => ({
   query: vi.fn(), binary: vi.fn(), flog: vi.fn(), created: [] as string[],
@@ -358,17 +359,17 @@ describe('instant first line', () => {
     expect(laneLine('이것 좀 해줘', true)).toBe('지금 바로 할게요.')
     for (const said of ['김대리 하나 뽑아줘', '내 일정 뭐 있어?', '이것 좀 해줘']) expect(laneLine(said, true)).not.toMatch(/^네[,.]|알겠습니다|습니다/)
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
-    expect(source('ipc.ts')).toMatch(/if \(company && !handed && !summing\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    expect(source('ipc.ts')).toMatch(/if \(company && !handed && !summing && !turn\?\.report\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
     expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && !split && !change && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
     expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : split \? \{ tool: 'assign', args: split \} : hire \? \{ tool: 'agents', args: hire \} : change \? \{ tool: 'agents', args: change \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
     expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : fixed \? /)
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
     expect(source('ipc.ts')).toMatch(/const reporting = !direct && company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(reporting, writer, lastTeamResult\(await listTasks\(paths\), reporting\), turnSaid\(request\.history \?\? \[\]\)\)\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    expect(source('ipc.ts')).toMatch(/: !company \|\| turn\?\.report \? undefined\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)\n\s*const handedBack = employeesAnswer\(reporting\)/)
+    expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
     expect(source('ipc.ts')).toMatch(/const summing = !direct && !!company && chief && !turn\?\.report && isTeamWorkAsk\(request\.message\) && \(request\.scheduled === true \|\| !isDutyAsk\(request\.message\)\)\n\s*if \(summing\) firstLineNow\(/)
-    expect(source('ipc.ts')).toMatch(/if \(teamTask\) result\.answer = teamAnswer\(result\.answer, teamTask\)\n\s*if \(company && !result\.asked && \/https/)
-    expect(source('ipc.ts')).toMatch(/const writer = engine\.id === 'claude' && engine\.quick \? \(prompt: string, ms = REPORT_WRITER_MS\) => engine\.quick!\(prompt, \{ workdir: engineCwd\(paths\), timeoutMs: ms \}\) : undefined/)
+    expect(source('ipc.ts')).not.toMatch(/teamAnswer\(|lastTeamResult|REPORT_WRITER_MS|liveLinks\(/)
   })
 
   it('an ask the host answers itself is decided before the first line and shows none', async () => {
@@ -453,8 +454,9 @@ describe('instant first line', () => {
       firstLineReady('bot-1')
       const reply = smallTalkAnswer('bot-1')
       await vi.advanceTimersByTimeAsync(900)
-      expect(await reply, message).toBe('안녕하세요!')
+      expect(await reply, message).toBe('안녕하세요! 오늘은 무엇을 도와드릴까요?')
       expect(live.quick.mock.calls[0]![0]).toContain('small talk')
+      expect(live.quick.mock.calls[0]![0]).toContain('never ask or offer help in any wording')
       expect(show).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
       expect(firstLineCarried('bot-1')).toBeUndefined()
@@ -626,6 +628,7 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).not.toContain('koreanLead(')
-    expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(")
+    expect(ipc).not.toMatch(/withOffer\(|result\.answer = (?!answered)/)
+    expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
 })

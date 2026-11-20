@@ -1,7 +1,7 @@
 import { Clock } from 'lucide-react'
 import { memo, useId, type CSSProperties, type ReactNode } from 'react'
 import type { CometMessage } from '../lib/cometThreads.js'
-import { answerWhole, laterFiles, linkedFiles, restatedAnswers } from '../markdown.js'
+import { answerBubbles, laterFiles, linkedFiles, restatedAnswers, withFiles } from '../markdown.js'
 import { ChatFiles } from './AnswerFiles.js'
 import { CometWork } from './CometWork.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
@@ -27,9 +27,9 @@ const MessageTurn = memo(function MessageTurn({ message: m, live, divider: label
     <CometWork busy={live} lines={[...work]} lang={lang} />
     {failed(m)
       ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} /></div>
-      : m.text && !restated ? <div className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchor}-0` } as CSSProperties}>
-          <StreamingAnswer text={answerWhole(displayTaskAnswer(m.text, lang))} done={!m.streaming} skipFiles={skipFiles} />
-        </div> : null}
+      : !restated ? answerBubbles(displayTaskAnswer(withFiles(m), lang)).map((bubble, index, all) => <div key={index} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchor}-${index}` } as CSSProperties}>
+          <StreamingAnswer text={bubble} done={!m.streaming || index < all.length - 1} skipFiles={skipFiles} />
+        </div>) : null}
   </div>
 }, sameTurn)
 

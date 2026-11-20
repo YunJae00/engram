@@ -15,8 +15,8 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { mistypedWords, officeAgentTools } from '../src/main/office-agent.js'
 import { artifactDirectory, cometFileTools, placeInTask, saveOutput, taskOutputs, twinsFile } from '../src/main/file-work.js'
 import { fixSlideTitle } from '../src/main/desk-lane.js'
-import { deliverOutputs } from '../src/main/native-tools.js'
-import { outputLinks } from '../../../packages/core/src/agent-session-result.js'
+import { deliverOutputs, withFiles } from '../src/main/native-tools.js'
+import { outputCards } from '../../../packages/core/src/agent-session-result.js'
 
 const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 const THEME = { field: '#1F2937', accent: '#7C3AED', fonts: { title: 'Pretendard', body: 'Pretendard' } }
@@ -122,31 +122,31 @@ describe('an edit is saved to the file it read', () => {
     expect(copy.receipt.taskPath).not.toBe(built.receipt.taskPath)
     expect(await files('.pptx')).toEqual(['고객 설문 결과 요약본.pptx', '고객 설문 결과.pptx'])
     const steps = [built.step, outline.step, copy.step]
-    const answer = outputLinks(steps, `요약본도 만들었어요. ${copy.receipt.markdownLink}`, task)
-    const result = { answer, steps }
+    const answer = `요약본도 만들었어요. ${copy.receipt.markdownLink}`
+    const result = { answer, steps, files: outputCards(steps, answer, task) }
     await deliverOutputs(paths(), task, result, 0, 'x')
-    expect(result.answer).toContain(copy.receipt.markdownLink)
-    expect(result.answer.match(/engram-artifact:/g)).toHaveLength(2)
-    expect(result.answer).toContain(built.receipt.markdownLink)
+    expect(result.answer).toBe(answer)
+    expect(result.files).toHaveLength(1)
+    expect(withFiles('', result.files).trim()).toBe(built.receipt.markdownLink)
     const book = await run(t1, 'file_create_workbook', { name: '동호회 회비.xlsx', sheet: '3월', rows: [['이름', '회비'], ['가람', 20000]] })
     const wb = await run(t1, 'file_read_package', { path: book.receipt.path, part: 'xl/workbook.xml' })
     const wbPart = (JSON.parse(wb.step.observation) as { partSha256: string }).partSha256
     const april = await run(t1, 'file_edit_package', { sourcePath: book.receipt.path, expectedSha256: wb.receipt.sha256, name: '동호회 회비 4월.xlsx', edits: [{ part: 'xl/workbook.xml', expectedSha256: wbPart, before: 'name="3월"', after: 'name="4월"' }] })
     expect(april.receipt.taskPath).not.toBe(book.receipt.taskPath)
-    const raw = { answer: `4월 것도 만들었어요. ${april.receipt.markdownLink}`, steps: [book.step, wb.step, april.step] }
+    const raw: Parameters<typeof deliverOutputs>[2] = { answer: `4월 것도 만들었어요. ${april.receipt.markdownLink}`, steps: [book.step, wb.step, april.step] }
     await deliverOutputs(paths(), task, raw, 0, 'x')
-    expect(raw.answer.match(/engram-artifact:/g)).toHaveLength(2)
-    expect(raw.answer).toContain(april.receipt.markdownLink)
-    expect(raw.answer).toContain(encodeURIComponent(book.receipt.artifact))
+    expect(raw.answer).toBe(`4월 것도 만들었어요. ${april.receipt.markdownLink}`)
+    expect(raw.files).toEqual([{ name: '동호회 회비.xlsx', href: encodeURIComponent(book.receipt.artifact) }])
 
     const t2 = turnTools('t2')
     const deck = await run(t2, 'ppt_build', { slides: SLIDES, saveAs: '팀 워크숍 안내.pptx', theme: THEME })
     const seen = await run(t2, 'file_read_package', { path: deck.receipt.path, outline: true })
     const fix = await run(t2, 'file_edit_package', { sourcePath: deck.receipt.path, expectedSha256: seen.receipt.sha256, name: '팀 워크숍 안내.pptx', edits: [{ slide: 2, with: '준비물' }] })
     expect(fix.receipt.taskPath).toBe(deck.receipt.taskPath)
-    const one = { answer: outputLinks([deck.step, seen.step, fix.step], `고쳤어요. ${fix.receipt.markdownLink}`, task), steps: [deck.step, seen.step, fix.step] }
+    const one = { answer: `고쳤어요. ${fix.receipt.markdownLink}`, steps: [deck.step, seen.step, fix.step], files: outputCards([deck.step, seen.step, fix.step], `고쳤어요. ${fix.receipt.markdownLink}`, task) }
     await deliverOutputs(paths(), task, one, 0, 'x')
     expect(one.answer).toBe(`고쳤어요. ${fix.receipt.markdownLink}`)
+    expect(one.files).toEqual([])
   })
 
   it('a new build never overwrites a same-name file an earlier turn made', async () => {

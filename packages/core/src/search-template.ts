@@ -192,27 +192,6 @@ export function askedCount(ask: string): number | undefined {
   return /^\d/.test(word) ? Number(word) : KO_COUNT.indexOf(word) + 1 || EN_COUNT.indexOf(word) + 1
 }
 
-export function rankLinks(
-  links: { text: string; url: string }[],
-  query: string,
-  cap = 5,
-  from?: string,
-): { text: string; url: string }[] {
-  const words = query
-    .toLowerCase()
-    .split(/[\s,./?!]+/)
-    .filter((word) => word.length > 1)
-  const scored = resultLinks(links, from).map((link, order) => {
-    const hay = `${link.text} ${link.url}`.toLowerCase()
-    const hits = words.filter((word) => (isLatin(word) ? hay.includes(word) : gluedWord(word, hay))).length
-    return { link, score: hits * 100 + Math.min(link.text.length, 60) - order / 100 }
-  })
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, cap)
-    .map((one) => one.link)
-}
-
 function isLatin(word: string): boolean {
   return /^[\p{Script=Latin}\p{Nd}\p{P}]+$/u.test(word)
 }
@@ -252,7 +231,7 @@ const ASKING = new Set([
   'please', 'handle', 'do', 'deal', 'fix', 'check', 'take', 'care', 'of', 'go', 'ahead', 'run', 'make', 'get', 'sort',
   'out', 'with', 'just', 'now', 'again', 'it', 'the', 'a', 'an', 'on', 'for', 'to', 'can', 'you', 'and', 'then',
 ])
-export function namesSubject(text: string): boolean {
+export function saysSubject(text: string): boolean {
   return contentWords(text).some((word) => {
     if (POINTERS.has(word) || ASKING.has(word)) return false
     const stem = word.replace(/(해주세요|해줄래|해줘|해봐|해라|하자|해요|해|좀|요)$/u, '')

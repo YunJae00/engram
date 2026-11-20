@@ -1,13 +1,12 @@
-import {
-  ANSWER_NOW, backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, LATE_CEILING_MS, listTasks, LOOKUP_MAX_CALLS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, TEAM_ANSWER_MS, teamHireTools, teamNote, unreviewed, updateTask,
-  type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
-} from 'core'
+import { ANSWER_NOW, backgroundOpen, failOnRestart, keepRead, timeBoxed, keepSources, LATE_CEILING_MS, listTasks, LOOKUP_MAX_CALLS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, TEAM_ANSWER_MS, teamHireTools, teamNote, unreviewed, updateTask, type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
+import { answerOnly } from './result-check.js'
+import { withFiles } from './native-tools.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, checkedSearch, ITEM_CHECK_MS, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
@@ -16,10 +15,6 @@ const MIN_PART_MS = TEAM_ANSWER_MS / 2
 const SOFT_SHARE = 0.5
 const RESERVE_SHARE = 0.25
 const REPORT_ROUND_MS = 6_000
-const ANSWER_GRACE_MS = 1_000
-const ITEMS_ROUND_MS = 6_000
-const OWN_PAGE = 'These pages did not give each entry its own day. Search each entry by its own name for its own page and day, and give those instead.'
-const HAVE_NOTE = 'These entries are already in hand; give only the others:'
 const EMPTY_RETRY_MS = 10_000
 const noData = (m: TeamMember): boolean => m.data ? !m.data.facts.length && !m.data.nothing?.latest : m.state === 'failed' || !!m.empty || !m.result?.trim()
 export const emptyRetryNote = (words: readonly string[], others: readonly string[]): string => [
@@ -38,7 +33,6 @@ export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
 
 export interface TurnKit {
   engine: Deps['engine']; workdir: Deps['workdir']; guided: boolean; said(): string
-  alive?(url: string, signal: AbortSignal): Promise<boolean>
   nativeFor(lane: string): Promise<Native>
   toolsFor(lane: string, native: Native): Promise<AgentTool[]>
 }
@@ -64,7 +58,6 @@ export function teamRunner(deps: {
   const taskDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + answerMs, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + MIN_PART_MS * scale))
   const reading = new Map<string, Set<string>>()
   setReportLog(line => flog('team-report', line))
-  setJudgeLog(line => flog('item-judge', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
   const inflight = new Map<string, number>()
@@ -121,7 +114,7 @@ export function teamRunner(deps: {
       const { me, helpers } = member
       role = me.role; roles.set(key, role)
       if (me.background) charged = false
-      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : me.lookup ? 'lookup' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
+      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
@@ -131,14 +124,11 @@ export function teamRunner(deps: {
       let startedAt: number | undefined, stopAt = Infinity, reserveMs = 0
       const toolRound = new AbortController()
       control.signal.addEventListener('abort', () => toolRound.abort(), { once: true })
-      const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
-      if (!me.botId) due -= (quick ? ITEM_CHECK_MS : LEAD_ANSWER_MS) * scale
-      let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
-      const stopped = new Promise<undefined>(resolve => control.signal.addEventListener('abort', () => { if (!timedOut) resolve(undefined) }, { once: true }))
+      if (!me.botId) due -= LEAD_ANSWER_MS * scale
+      let answering = false, reserve: ReturnType<typeof setTimeout> | undefined
       const readSome = (): boolean => kept.length > 0 || [...sources].some(url => !isSearchPage(url))
       const answerNow = () => {
         if (control.signal.aborted || !readSome()) return
-        written = quick?.(keptReportPrompt(me.brief, kept), reserveMs + ANSWER_GRACE_MS * scale).catch(() => undefined)
         if (/```|^\s*\{/.test(draft)) return
         answering = true; toolRound.abort()
       }
@@ -161,20 +151,13 @@ export function teamRunner(deps: {
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
       const left = (): number => (due - Date.now()) / scale
-      let opener: AgentTool | undefined
-      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {
-        ask: () => me.brief, ...(quick ? { write: quick } : {}), due: () => due - reserveMs,
-        ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
-      }) : tool
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
         const menu = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name)))
-        const open = menu.find(tool => tool.name === 'open_page')
-        if (open) opener = keepRead(keepSources(skipWalls(open), sources), kept)
-        const boxed = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left)
+        const boxed = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left)
         tools = menu.map(tool => screenGuard(me.lookup ? boxed(tool) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
@@ -203,7 +186,7 @@ export function teamRunner(deps: {
           })
           if (!round && me.lookup) flog('team', `first-step role=${role} ms=${Date.now() - stepAt} pages=${(prompt.match(/^The page at /gm) ?? []).length} answered=${!!result.answer.trim()}`)
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
-          outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
+          outcome = { answer: withFiles(cutShort ? answerOnly(result.answer) : result.answer, result.files), ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
           whole = undefined
           const prior = !priced && search && !result.asked && !result.budgetExhausted && !control.signal.aborted ? priorPriceQuery(me, outcome.answer) : ''
           if (prior && search) {
@@ -224,44 +207,21 @@ export function teamRunner(deps: {
       })
       if (answering && !control.signal.aborted) {
         draft = ''
-        try { outcome = { answer: (await turn(`${ANSWER_NOW} Write it as the report block your rules describe. What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } }
+        try { outcome = { answer: (await turn(`${ANSWER_NOW} What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } }
       }
       clearTimeout(reserve)
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
       if (timedOut && !signal?.aborted) outcome = whole ?? { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
-      const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
-      let data = structured ? reportData(outcome.answer, me, [...sources], isKorean(goal)) : undefined
-      if (structured && !data && written) {
-        let wait: ReturnType<typeof setTimeout> | undefined
-        const by = Math.max(0, Math.min(stopAt, Date.now() + reserveMs) + ANSWER_GRACE_MS * scale - Date.now())
-        data = reportData(await Promise.race([written, stopped, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
-        clearTimeout(wait)
-      }
-      const judge = (prompt: string, ms?: number) => Promise.race([quick!(prompt, ms), stopped])
-      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due))
-      const opened = new Set<string>(), named = new Set<string>()
-      for (;;) {
-        const pages = me.lookup ? listingPages(data).filter(url => !named.has(url)) : []
-        if (!data || !pages.length || left() < ITEMS_ROUND_MS || timedOut || control.signal.aborted) break
-        draft = ''
-        const byName = pages.every(url => opened.has(url)), have = data.facts.filter(f => !f.listing).map(f => `- ${f.text}`)
-        for (const url of pages) (byName ? named : opened).add(url)
-        const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
-        const checked = await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due), data.facts.filter(f => !f.listing))
-        data = withItems(data, checked, !!checked && checked !== more)
-      }
       clearTimeout(hardStop)
       reading.delete(key)
-      const report = structured ? data ?? null : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
-          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
+          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}) }, now(), isKorean(goal))
           if (me.lookup && !me.botId) m.shown = [...new Set([...sources, ...kept.flatMap(text => text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? [])])]
-          if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
             for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'shown'] as const) delete m[field]
             m.state = 'hired'; retry = true
@@ -387,7 +347,6 @@ export function teamRunner(deps: {
         live: id => [...live.keys()].some(key => key.endsWith(`/${id}`) && live.get(key)!.channel === leadChannel),
         tokensLeft: async () => { const task = await load(); return task ? tokensLeft(task.id) : 0 },
         personSaid: kit.said,
-        ...(kit.alive ? { alive: kit.alive, due: async () => { const task = await load(); return task ? taskDue(task) : undefined } } : {}),
         ...(self === null && deps.steered ? { steered: (signal: AbortSignal) => deps.steered!(leadChannel, signal) } : {}),
       }
       if (!staffChanged || self !== null) return teamHireTools(host)
@@ -428,10 +387,6 @@ export function teamRunner(deps: {
     },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
-    async cited(channel: string, answer: string): Promise<string> {
-      const task = (await listTasks(paths)).find(t => t.state === 'running' && channelOf(t) === channel)
-      return task?.team ? citeMembers(answer, task.team.members, isKorean(task.goal)) : answer
-    },
     async stop(channel: string): Promise<void> {
       halting.add(channel)
       try {

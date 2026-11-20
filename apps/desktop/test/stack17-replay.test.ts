@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { checkedSearch, createBot, handoffBrief, helperParts, initVault, loadBots, mergedReport, recordFacts, reportData, settleMember, staffTool, TEAM_MEMORY, teamSummary, writtenReport, type AgentTool, type TeamMember } from 'core'
+import { createBot, handBacks, handoffBrief, initVault, keepRead, keepSources, loadBots, LOOKUP_RULE, pointQueries, recordFacts, runToolSession, settleMember, skipWalls, staffTool, TEAM_MEMORY, teamSummary, timeBoxed, type AgentTool, type TeamMember } from 'core'
+import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { askNow, checkedDesk } from '../src/main/desk-lane.js'
+import { askNow } from '../src/main/desk-lane.js'
+import * as desk from '../src/main/desk-lane.js'
+import { LANE_NOTE } from '../src/main/fast-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
-import { agreeing } from '../../../packages/core/test/agreeing.js'
 
+const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
+const looking = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), new Set<string>()), []), () => 28_000)
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (url: string, title: string, snippet: string, day = '11월 18일'): string => `- ${title} — ${url} — ${snippet} — ${day}`
 function search(outs: string[]): AgentTool & { queries: string[] } {
@@ -19,25 +23,27 @@ describe('R1 (stack16: 서울 cell was the headline "서울 11월 18일 오늘 �
   const ask = '서울 오늘 날씨'
   const headline = row('https://news.example/joseilbo', '서울 11월 18일 오늘 날씨 요약', '조세일보 날씨 요약 기사')
   const weather = row('https://weather.example/seoul', '서울 날씨', '서울 현재 기온 6.1도, 흐림, 오후 한때 비')
-  it('headline + a weather row with a temperature: only the second holds and is shown', async () => {
+  it('headline + a weather row with a temperature: both reach the looking-up model as the search gave them, and answering from the row that holds the value is its rule', async () => {
     const s = search([page('q', [headline, weather])])
-    const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing(async () => JSON.stringify({ keep: [1, 2], asked: 1, search: '', points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' }, 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })) }).run({ query: 'q' }, { task: ask })
+    const out = await looking(s).run({ query: 'q' }, { task: ask })
     console.log(`R1 replay (both rows):\n${out}`)
     expect(urls(out)).toEqual(['https://news.example/joseilbo', 'https://weather.example/seoul'])
     expect(out).toContain('서울 현재 기온 6.1도')
+    expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
   })
-  it('the headline alone: the host opens the page (a reader) or searches again (none); the headline is never the answer', async () => {
-    const quotedHeadline = JSON.stringify({ keep: [1], asked: 1, search: '서울 현재 기온', open: 1, points: ['오늘 기온이나 하늘 상태'], holds: { 1: { '오늘 기온이나 하늘 상태': '서울 11월 18일 오늘 날씨 요약' } } })
+  it('the headline alone: the host opens no page and searches no further by itself; opening a page or searching again is the model\'s next step by its rule, and the headline is never made the answer by the host', async () => {
     const opened: string[] = []
-    const withReader = await checkedSearch(search([page('q', [headline])]), { ask: () => ask, since: 0, now: () => 0, write: agreeing((() => { const v = [quotedHeadline, JSON.stringify({ keep: [], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '낮 최고 9도, 맑음' } } })]; return async () => v.shift() })()),
-      read: async url => { opened.push(url); return '서울 11월 18일 오늘 날씨 요약\n오늘 서울은 낮 최고 9도, 맑음이에요.' } }).run({ query: 'q' }, { task: ask })
+    const open: AgentTool = { name: 'open_page', description: '', argsSchema: {}, run: async args => { opened.push(String(args['url'])); return 'page "서울 날씨" at https://news.example/joseilbo\n오늘 서울은 낮 최고 9도, 맑음이에요.' } }
     const s = search([page('q', [headline]), page('서울 현재 기온', [weather])])
-    const noReader = await checkedSearch(s, { ask: () => ask, since: 0, now: () => 0, write: agreeing((() => { const v = [quotedHeadline, JSON.stringify({ keep: [2], asked: 1, search: '', holds: { 2: { '오늘 기온이나 하늘 상태': '서울 현재 기온 6.1도, 흐림' } } })]; return async () => v.shift() })()) }).run({ query: 'q' }, { task: ask })
-    console.log(`R1 replay (headline alone): opened ${opened.join(', ')}\n${withReader}\n--- no reader, searches: ${s.queries.join(' | ')}\n${noReader}`)
-    expect(opened).toEqual(['https://news.example/joseilbo'])
-    expect(withReader).toContain('낮 최고 9도, 맑음')
+    const out = await looking(s).run({ query: 'q' }, { task: ask })
+    console.log(`R1 replay (headline alone): opened ${opened.join(', ')} searches: ${s.queries.join(' | ')}\n${out}`)
+    expect(opened).toEqual([])
     expect(s.queries).toEqual(['q'])
-    expect(urls(noReader)).toEqual(['https://news.example/joseilbo'])
+    expect(urls(out)).toEqual(['https://news.example/joseilbo'])
+    expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
+    expect(LOOKUP_RULE).toContain('search once more in other words before you report')
+    expect(await looking(open).run({ url: 'https://news.example/joseilbo' }, { task: ask })).toContain('낮 최고 9도, 맑음')
+    expect(opened).toEqual(['https://news.example/joseilbo'])
   })
 })
 
@@ -53,62 +59,51 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
     row('https://news.example/6', 'AI 투자 시장 분위기', '올해 AI 투자 시장이 커졌다'),
     row('https://news.example/7', '뤼튼, 투자 유치 완료', '뤼튼이 신규 투자 유치를 완료했다'),
   ]
-  it('4 of 7 kept rows have a verified kind quote: the loop goes on while time is left; at the due 4 items and one line that one more was not found', async () => {
+  it('all 7 rows reach the looking-up model in the search\'s order with one search: which 5 are funding news is its call, and no host line says one more was not found', async () => {
     const s = search([page('q', rows), page('AI 스타트업 시리즈 투자 유치', [row('https://news.example/8', 'AI 행사 일정', '이번 주 AI 행사 모음')])])
-    const verdicts = [
-      JSON.stringify({ keep: [1, 2, 3, 4, 5, 6, 7], asked: 5, kind, search: 'AI 스타트업 시리즈 투자 유치', holds: { 1: { kind: '업스테이지가 시리즈C 투자를 유치했다' }, 3: { kind: '리벨리온이 프리IPO 투자를 받았다' }, 5: { kind: '트웰브랩스가 시리즈B 투자를 마무리했다' }, 7: { kind: '뤼튼이 신규 투자 유치를 완료했다' } } }),
-      JSON.stringify({ keep: [8], asked: 5, search: '', holds: {} }),
-    ]
-    let t = 0
-    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 4000; return verdicts.shift() }), since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
+    const out = await looking(s).run({ query: 'q' }, { task: ask })
     console.log(`R3 replay: searches ${s.queries.join(' | ')}\n${out}`)
     expect(s.queries).toEqual(['q'])
     expect(urls(out)).toEqual(rows.map((_, i) => `https://news.example/${i + 1}`))
     expect(out).not.toContain('of these rows are from the period asked')
-    expect(verdicts).toHaveLength(2)
+    expect(out).not.toContain(kind)
+    expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them')
+    expect('checkedSearch' in core).toBe(false)
   })
 })
 
 describe('R2 (stack16: prices only, 출시일 never looked for)', () => {
-  it('a part with a price quote and no date: a date search runs; at the due the row says the date was not found', async () => {
+  it('a part that asks price and date is searched for each point; a helper that found the price and no date says so in its own line, which is handed back as written with no host "못 찾았어요"', () => {
     const ask = '갤럭시 S27 가격이랑 출시일'
-    const s = search([page('q', [row('https://samsung.example/s27', '갤럭시 S27 가격', '갤럭시 S27 기본 모델 출고가 125만 4천 원')]), page('갤럭시 S27 출시일', [row('https://blog.example/rumor', '삼성 신제품 루머', '내년 초 여러 제품 전망')])])
-    const verdicts = [JSON.stringify({ keep: [1], asked: 1, points: ['가격: 기본 모델 국내 출고가', '출시일'], search: '갤럭시 S27 출시일', holds: { 1: { '가격: 기본 모델 국내 출고가': '기본 모델 출고가 125만 4천 원' } } }), JSON.stringify({ keep: [], asked: 1, search: '', holds: {} })]
-    let t = 0, found: { proof: unknown[]; missing: string[] } | undefined
-    const out = await checkedSearch(s, { ask: () => ask, write: agreeing(async () => { t += 8000; return verdicts.shift() }), since: 0, now: () => t, proved: (proof, missing) => { found = { proof, missing } } }).run({ query: 'q' }, { task: ask })
-    const [part] = helperParts([{ id: 'h', parentId: null, depth: 1, role: '갤럭시 조사', topic: '갤럭시 S27', brief: ask, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: new Date().toISOString(), result: 'x', said: '', ...(found ? { proof: found.proof, missing: found.missing } : {}) } as TeamMember])
-    const table = mergedReport([part!], new Map(), [], true)
-    console.log(`R2 replay: searches ${s.queries.join(' | ')}\n${out}\n--- the row:\n${table}`)
-    expect(s.queries).toEqual(['q'])
-    expect(found).toBeUndefined()
+    expect(pointQueries(ask)).toEqual(['갤럭시 S27 출고가', '갤럭시 S27 출시일'])
+    expect(LOOKUP_RULE).toContain('report each on a line of its own, "가격: …", "출시일: …"')
+    const answer = '가격: 기본 모델 출고가 125만 4천 원 https://samsung.example/s27\n출시일: 아직 발표된 날짜가 없어요.'
+    const m: TeamMember = { id: 'h', parentId: null, depth: 1, role: '갤럭시 조사', topic: '갤럭시 S27', brief: ask, lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
+    settleMember(m, { answer, sources: ['https://samsung.example/s27'] }, new Date().toISOString(), true)
+    const out = (JSON.parse(handBacks([m])) as { reports: { result: string }[] }).reports[0]!.result
+    console.log(`R2 replay: handed back\n${out}`)
+    expect(out).toBe(answer)
     expect(out).toContain('125만 4천 원')
-    expect(table).toContain('못 찾았어요')
-    expect(table).not.toContain('출시일은 못 찾았어요')
+    expect(out).not.toContain('못 찾았어요')
   })
 })
 
 describe('H2 (stack16: the November turn was rewritten back to December)', () => {
   const history = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 매출 합계는 2,916,000원이에요.' }]
-  it('the check\'s ask carries 11월 as the later word; a November draft is not rewritten', async () => {
-    const meant = askNow('아 그거 말고 11월 걸로', history), prompts: string[] = []
-    const quick = async (prompt: string): Promise<string> => {
-      prompts.push(prompt)
-      const asked = /The person asked: (.*)/.exec(prompt)![1]!, later = /changed it: \\"([^\\]*)\\"/.exec(asked)?.[1] ?? asked
-      const month = /(\d+)월/.exec(later)?.[1] ?? /(\d+)월/.exec(asked)![1]!, draft = /Message: (.*)/.exec(prompt)![1]!
-      return /(\d+)월/.exec(draft)![1] === month ? '{"problems":[]}' : JSON.stringify({ problems: [{ kind: 'contradicts', quote: draft, why: '다른 달' }] })
-    }
+  it('the turn\'s ask carries 11월 as the later word; a November draft is posted as written, with no check to rewrite it', async () => {
+    const meant = askNow('아니 12월 대신 11월 치로', history)
     const draft = '11월 매출 합계는 2,764,000원이에요.'
-    const out = await checkedDesk({ ask: meant, draft, source: 'month,amount\n11,2764000\n12,2916000', fromSource: true, quick, since: Date.now() })
+    const out = await posted(draft, meant)
     console.log(`H2 replay: meaning = ${meant}\nanswer = ${out}`)
-    expect(meant).toContain('"아 그거 말고 11월 걸로"')
+    expect(meant).toContain('"아니 12월 대신 11월 치로"')
     expect(meant).toContain('the later words hold')
     expect(out).toBe(draft)
-    expect(prompts).toHaveLength(1)
+    expect('checkedDesk' in desk).toBe(false)
   })
 })
 
 describe('C10 (stack16: "신기능 세 곳", no 노션·슬랙·리니어)', () => {
-  it('the stack16 record: the folded draft is refused and the repair (or the host fallback) names 노션, 슬랙, 리니어', async () => {
+  it('the stack16 record: the writer reads each job by its own subject under the rule that none is folded into a count, its text is the answer as written, and the fallback names 노션·슬랙·리니어', async () => {
     const paths = await initVault(await tmpVaultRoot('s17-c10'), { git: false })
     await createBot(paths, { name: '엔그램' })
     await staffTool(paths, () => undefined).run({ add: [{ name: '지민', role: '리서치 담당' }, { name: '서연', role: '카피 담당' }, { name: '도윤', role: '리서치 담당' }] }, { task: '' })
@@ -119,29 +114,37 @@ describe('C10 (stack16: "신기능 세 곳", no 노션·슬랙·리니어)', () 
       '다음 달 서울 IT 행사 일정 정리 → 3건 (지민, 2026-11-18)',
       '홍보 문구 3개 (지민한테 받아서) → 1. 12월 서울 IT 행사, 놓치지 마세요 (서연, 2026-11-18)',
     ], new Date('2026-11-18T02:00:00.000Z'))
-    const folded = '이번 주엔 도윤, 지민, 서연이 신기능 세 곳을 조사했는데 새로 나온 게 없었어요. 지민이 서울 IT 행사 일정을 정리했고, 서연이 그걸로 홍보 문구를 썼어요.'
     const bots = await loadBots(paths), now = new Date(2026, 10, 18, 15)
     const calls: string[] = []
-    const out = await teamSummary(paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: agreeing(async prompt => { calls.push(prompt); return prompt.includes('Judge meaning only') ? '{"problems":[]}' : folded }) })
-    console.log(`C10 replay (draft refused twice → host fallback):\n${out}`)
-    expect(calls[1]).toContain('노션 신기능')
+    const named = '이번 주엔 지민·서연·도윤이 노션·슬랙·리니어 신기능을 봤는데 새로 나온 게 없었어요.\n\n지민이 기술 모임 날짜를 모았고, 서연이 그걸로 알림 글을 썼어요.'
+    expect(await teamSummary(paths, { bots, message: '이번 주 팀원들 작업 간추려줘', now, write: async prompt => { calls.push(prompt); return named } })).toBe(named)
+    expect(calls).toHaveLength(1)
+    for (const name of ['노션 신기능', '슬랙 신기능', '리니어 신기능']) expect(calls[0]).toContain(name)
+    expect(calls[0]).toContain('never folded into a count ("세 곳", "여러 건")')
+    const out = (await teamSummary(paths, { bots, message: '이번 주 팀원들 작업 간추려줘', now, write: async () => '' }))!
+    console.log(`C10 replay (no writer text → host fallback):\n${out}`)
     for (const name of ['노션', '슬랙', '리니어']) expect(out).toContain(name)
     expect(out).not.toContain('세 곳')
   })
 })
 
 describe('C6 (stack16: "(서연, 지민이 찾은 서울 IT 행사 일정) 코엑스(링크) · 지디넷코리아(링크)")', () => {
-  it('the hand-off: no "(서연, …)" tag; the items, an attribution sentence and the giver\'s source line', async () => {
-    const block = (report: Record<string, unknown>): string => `\`\`\`report\n${JSON.stringify(report)}\n\`\`\``
-    const settled = (m: TeamMember, report: Record<string, unknown>): TeamMember => { const one = { ...m }, answer = block(report); settleMember(one, { answer, report: reportData(answer, one, [], true) ?? null }, new Date().toISOString(), true); return one }
+  it('the hand-off: no "(서연, …)" tag; the lead is handed 서연\'s three lines as written, 지민\'s finds with their pages, and the note that the last result is the deliverable', () => {
+    const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMember => { const one = { ...m }; settleMember(one, { answer, sources }, new Date().toISOString(), true); return one }
     const at = new Date().toISOString(), COEX = 'https://coex.example/softwave', ZDNET = 'https://zdnet.example/acc'
-    const jimin = settled({ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', topic: '서울 IT 행사 일정', botId: 'bot-m1', lookup: true, background: true, state: 'done', sessionKey: 's1', hiredAt: at, then: { botId: 'bot-m2', who: '서연', brief: '홍보 문구 3개 뽑기' } }, { facts: [{ text: '소프트웨이브 2026은 12월 2일부터 4일까지 코엑스에서 열려요.', url: COEX }, { text: 'ACC 2026이 12월에 서울에서 열려요.', url: ZDNET }] })
-    const seoyeon = settled({ id: 'm2', parentId: null, depth: 1, role: '서연', brief: handoffBrief('홍보 문구 3개 뽑기', '지민', jimin.result!, jimin.brief), botId: 'bot-m2', writer: true, background: true, state: 'done', sessionKey: 's2', hiredAt: at }, { items: ['12월 코엑스, 소프트웨이브에서 만나요', '서울 IT 행사, 한 달 미리 챙기세요', 'ACC 2026, 올해 마지막 기술 축제'] })
-    const out = await writtenReport({ ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', members: [jimin, seoyeon], write: agreeing(async () => JSON.stringify({ message: '서연이 문구를 써 봤어요.\n\n1. 12월 코엑스', kept: [] })) })
-    console.log(`C6 replay:\n${out}`)
-    expect(out).not.toMatch(/\(서연|\(지민/)
-    expect(out.split('\n')[0]).toBe('1. 12월 코엑스, 소프트웨이브에서 만나요')
-    expect(out).toMatch(/서연이 지민이 찾은 .*로 만든 거예요\./)
-    expect(out).toContain(COEX)
+    const jimin = settled({ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '12월 기술 모임 날짜 조사', topic: '기술 모임', botId: 'bot-m1', lookup: true, background: true, state: 'working', sessionKey: 's1', hiredAt: at, then: { botId: 'bot-m2', who: '서연', brief: '초대 글귀 세 줄 쓰기' } }, `소프트웨이브 2026은 12월 2일부터 4일까지 코엑스에서 열려요. ${COEX}\nACC 2026이 12월에 서울에서 열려요. ${ZDNET}`, [COEX, ZDNET])
+    const copy = ['12월 코엑스, 소프트웨이브에서 만나요', '연말 기술 모임, 한 달 미리 챙기세요', 'ACC 2026, 올해 마지막 기술 축제'].join('\n')
+    const brief = handoffBrief('초대 글귀 세 줄 쓰기', '지민', jimin.result!, jimin.brief)
+    const seoyeon = settled({ id: 'm2', parentId: null, depth: 1, role: '서연', brief, botId: 'bot-m2', writer: true, background: true, state: 'working', sessionKey: 's2', hiredAt: at }, copy)
+    const out = JSON.parse(handBacks([jimin, seoyeon])) as { reports: { who: string; result: string; sources?: string[] }[]; note: string }
+    console.log(`C6 replay:\n${JSON.stringify(out.reports, null, 1)}`)
+    expect(out.reports.map(one => one.who)).toEqual(['지민', '서연'])
+    expect(out.reports[1]!.result).toBe(copy)
+    expect(JSON.stringify(out.reports)).not.toMatch(/\(서연|\(지민/)
+    expect(out.reports[0]!.result).toContain(COEX)
+    expect(out.reports[0]!.sources).toEqual([COEX, ZDNET])
+    expect(brief).toContain(`Handed over by 지민 (their job: 12월 기술 모임 날짜 조사)`)
+    expect(brief).toContain(COEX)
+    expect(out.note).toContain('Where one agent handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one.')
   })
 })

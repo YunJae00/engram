@@ -1,6 +1,6 @@
 import type { AgentLoopOptions, AgentLoopStep, AgentTool } from './agent-loop.js'
 import { conversation, RELEVANCE_RULE } from './agent-history.js'
-import { namesSubject } from './search-template.js'
+import { saysSubject } from './search-template.js'
 import { isDesktopTool } from './desktop-tools.js'
 import { DOCUMENT_CHECK_RULE, officeReadEvidence } from './office-verification.js'
 import { CHOICE_RULE, COLLEAGUE_CORE_RULE, COLLEAGUE_RULE, FALLBACK_LADDER_RULE, FILE_JOB_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, TEAM_LEAD_RULE, VOICE_RULE } from './agent-voice.js'
@@ -226,7 +226,7 @@ export function stepPrompt(
       ? [`Suggested next move: ${suggested}`]
       : opening(steps) && history?.length
         ? ['Suggested next move: if the conversation above already holds the answer, call answer with it.']
-        : opening(steps) && !namesSubject(task)
+        : opening(steps) && !saysSubject(task)
             ? ['Suggested next move: the request names nothing to work on — ask what it refers to: call ask_person with {"question": "..."}']
             : opening(steps)
               ? [`Suggested next move: the notebook first — call search_memory with {"query": "${task.slice(0, 60)}"}`]
@@ -266,7 +266,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const desktopObserved = steps.some((step) => !step.seeded && (step.tool === 'read_desktop' || step.tool === 'look_desktop'))
   if (desktop && !desktopObserved && by('list_apps')) wanted.push(by(used('list_apps') ? 'open_app' : 'list_apps'), by('list_windows'))
   if (desktop) wanted.push(by('app_read'), by('app_text'), ...(used('app_read') ? [by('app_set'), by('app_press')] : []), by('read_desktop'), by('look_desktop'), ...(desktopObserved ? [by('desktop_action'), by('desktop_sequence')] : []), by('ask_person'))
-  if (steps.every((s) => s.seeded) && !conversed && !namesSubject(task)) wanted.push(by('ask_person'))
+  if (steps.every((s) => s.seeded) && !conversed && !saysSubject(task)) wanted.push(by('ask_person'))
   if (observed(/has anything to do with/)) wanted.push(by('ask_person'))
   if (used('open_page')) wanted.push(by('read_open_page'), by('open_page'))
   if (observed(/the blank is still empty/))

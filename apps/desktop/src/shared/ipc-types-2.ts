@@ -59,6 +59,7 @@ export type EngramEvent =
       channel: string
       text: string
       evidence?: import('core').TurnEvidence
+      files?: import('core').FileCard[]
 
       offer?: { kind: 'asked'; question: string; options: string[] }
     }

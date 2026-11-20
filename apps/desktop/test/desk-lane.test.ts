@@ -42,7 +42,7 @@ describe('desk lane', () => {
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
     expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
-    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,')
+    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
     expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   })
 })

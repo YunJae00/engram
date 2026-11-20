@@ -1,47 +1,39 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { checkedReport, mergedReport, reportCheck, reportData, writtenReport } from '../src/company-tools.js'
+import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import * as company from '../src/company-tools.js'
+import { handBacks, partOutcome } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { keptItems, settleMember } from '../src/team-hire-tools.js'
 
 const run = JSON.parse(readFileSync(new URL('./fixtures/c10b-stack9-team.json', import.meta.url), 'utf8')) as Record<'it' | 'notion' | 'slack' | 'linear', { brief: string; result: string; sources: string[] }>
-const NOV17 = new Date(2026, 10, 17, 12)
 const member = (over: Partial<TeamMember>): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '', state: 'done', sessionKey: 'k', hiredAt: '2026-11-17T08:46:21Z', lookup: true, botId: 'b1', ...over })
-const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
-
-const block = (report: object): string => '```report\n' + JSON.stringify(report) + '\n```'
-const withData = (m: TeamMember, report: object): TeamMember => ({ ...m, data: reportData(block(report), m, m.sources ?? [])! })
 const SEARCH = 'https://search.naver.com/search.naver?query=x'
-const partOf = (said: string, name: string): string => said.split('\n\n').find(part => part.split('\n')[0]!.includes(`(${name}`))!
+interface Back { reports: { who: string; part?: string; state: string; result: string; sources?: string[] }[]; note: string }
+const back = (members: TeamMember[]): Back => JSON.parse(handBacks(members)) as Back
 
-test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소프트웨이브 stays, and the lead says one (c11a: structure: the writer leaves it out, the host checks the links; c19a r2: a fact the teammate brought that the draft leaves out goes back as its own line)', () => {
+test('c10b fix 1 → k1: a teammate cut off at its time hands back its own answer and what it read; a list item whose only link is a search page is left out of its result; nothing after the lead\'s answer checks or drops a line', () => {
   const [answer, ...rows] = run.it.result.replace(/\n\(시간 한도에서 멈춤[^)]*\)$/, '').split('\n')
   const coex = answer!.match(/https:\/\/\S+/)![0]
-  const sujb = rows.join('\n').match(/https:\/\/sujb\.kr\S+/)![0]
   const jimin = member({ brief: run.it.brief, voice: '차분하고 또박또박' })
-  const report = block({ facts: [{ text: '소프트웨이브 2026(제11회 대한민국 소프트웨어 대전), 코엑스', date: '12월 2~4일', url: coex }, { text: '2026 카즈미 타테이시 트리오 내한공연, 강동아트센터 대극장', date: '12월 24일', url: sujb }] })
-  settleMember(jimin, { answer: report, read: rows.join('\n'), timedOut: true, sources: run.it.sources, report: reportData(report, jimin, run.it.sources) ?? null }, '2026-11-17T08:46:36Z', true)
-  expect(jimin.data?.facts).toHaveLength(2)
+  settleMember(jimin, { answer: answer!, read: rows.join('\n'), timedOut: true, sources: run.it.sources }, '2026-11-17T08:46:36Z', true)
+  expect(jimin.data).toBeUndefined()
+  expect(jimin.result!.startsWith(answer!)).toBe(true)
   expect(jimin.result).toContain('소프트웨이브 2026')
-  const message = (text: string, kept: string[]): string => JSON.stringify({ message: text, kept })
-  const draft = message(`다음 달 서울 IT 행사는 지민이 찾아보니 12월 2~4일 코엑스에서 열리는 소프트웨이브 2026이 제일 커요. [출처](${coex})`, ['f1'])
-  const checked = reportCheck(draft, [jimin]) as Exclude<ReturnType<typeof reportCheck>, { refused: string }>
-  expect(checkedReport(draft, [jimin])).toBeUndefined()
-  expect(checked.text).not.toMatch(/카즈미|공연|\[출처\]/)
-  expect(checked.text).toContain('소프트웨이브 2026')
-  expect(checked.text).toContain(`(${coex})`)
-  expect(checked.unlinked.map(f => f.url)).toEqual([sujb])
-  expect(checkedReport(message(`지민: 12월 2~4일 코엑스에서 소프트웨이브 2026이 열려요. [코엑스](${coex})`, ['f1']), [jimin])).toBeUndefined()
-  expect(checkedReport(message(`지민이 찾아보니 12월 2~4일 소프트웨이브 2026이 열려요. [코엑스](${coex}) 12월 24일엔 공연도 있어요. [공연](${sujb.replace(/\(/g, '%28').replace(/\)/g, '%29')})`, ['f1']), [jimin]) ?? '').not.toContain('](https://sujb.kr/')
+  expect(jimin.result).toMatch(/\n\(시간 한도에서 멈춤[^)]*\)$/)
+  const handed = back([jimin]).reports[0]!
+  expect(handed.result).toBe(jimin.result)
+  expect(handed.result).toContain(coex)
+  expect(handed.sources).toEqual(jimin.sources)
+  for (const gone of ['reportCheck', 'checkedReport', 'mergedReport', 'writtenReport', 'reportData']) expect(Object.keys(company)).not.toContain(gone)
   const listed = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(listed, { answer: '12월 2일 소프트웨이브 https://www.coex.co.kr/a\n12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(listed.result).toBe('12월 2일 소프트웨이브 https://www.coex.co.kr/a')
   const alone = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
-  settleMember(alone, { answer: '12월 24일 재즈 공연 https://example.com/a', report: reportData('12월 24일 재즈 공연 https://example.com/a', alone) ?? null }, 'now', true)
+  settleMember(alone, { answer: '12월 24일 재즈 공연 https://example.com/a' }, 'now', true)
   expect(alone.data).toBeUndefined()
-  const lone = mergedReport([{ ...alone, role: '지민' }])
-  expect(lone).not.toMatch(/재즈|공연|확실한 건/)
-  expect(lone).toBe('지민은 이번엔 못 찾았어요.')
+  expect(alone.result).toBe('12월 24일 재즈 공연 https://example.com/a')
+  expect(partOutcome(alone)).toBe('found')
   const searched = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(searched, { answer: '12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(searched.result).toContain('데브 밋업')
@@ -51,45 +43,34 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
 })
 
 const c3 = (): TeamMember[] => [
-  withData(member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief, result: run.notion.result, sources: run.notion.sources }), { nothing_in_period: { latest: { text: '"Agents, 효율은 높이고 비용은 낮추다" 업데이트가 나왔어요.', date: '2026년 10월 19일', url: 'https://www.notion.com/ko/releases' } } }),
-  withData(member({ id: 'b', role: '서연', topic: '슬랙', brief: run.slack.brief, result: run.slack.result, sources: run.slack.sources, botId: 'b2' }), { nothing_in_period: { latest: { text: '맥용 4.53.287 버전이 나왔는데 보안 개선 위주예요.', date: '2026년 11월 9일', url: 'https://slack.com/intl/ko-kr/release-notes/mac' } } }),
-  withData(member({ id: 'c', role: '도윤', topic: '리니어', brief: run.linear.brief, result: run.linear.result, sources: run.linear.sources, botId: 'b3' }), { nothing_in_period: { latest: { text: 'BYOK 기능이 나왔어요.', date: '11월 12일', url: 'https://linear.app/changelog' } } }),
+  member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief, result: run.notion.result, sources: run.notion.sources }),
+  member({ id: 'b', role: '서연', topic: '슬랙', brief: run.slack.brief, result: run.slack.result, sources: run.slack.sources, botId: 'b2' }),
+  member({ id: 'c', role: '도윤', topic: '리니어', brief: run.linear.brief, result: run.linear.result, sources: run.linear.sources, botId: 'b3' }),
 ]
-const ASK = '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜'
 
-test('c10b fix 2 and 3: nothing new this week is said, each line gives its latest day, and no English debris is left (c11a: structure)', async () => {
-  const said = mergedReport(c3()), [head, ...parts] = said.split('\n')
-  expect(head).toMatch(/^셋 다 이번엔 새로 나온 게 없/)
-  expect(said.match(/새로 나온 게 없/g)).toHaveLength(1)
-  expect(parts.map(part => /\((\S+)\):/.exec(part)?.[1])).toEqual(['지민', '서연', '도윤'])
+test('c10b fix 2 and 3 → k1: the three stored parts reach the lead in order, each with its own words, its latest day and its page; Korean lines and translated headlines are the writer\'s rule', () => {
+  const out = back(c3())
+  expect(out.reports.map(r => [r.who, r.part])).toEqual([['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']])
+  expect(out.reports.map(r => r.result)).toEqual([run.notion.result, run.slack.result, run.linear.result])
   for (const [i, day] of ['2026년 10월 19일', '2026년 11월 9일', '11월 12일'].entries()) {
-    expect(parts[i]).toContain(day)
-    expect(parts[i]).toMatch(/\]\(https:\/\/[^)]+\)$/)
+    expect(out.reports[i]!.result).toContain(day)
+    expect(out.reports[i]!.result).toMatch(/https:\/\/\S+$/)
+    expect(out.reports[i]!.sources).toEqual(c3()[i]!.sources)
   }
-  expect(said).not.toMatch(/확인해 보니|\(등\)|\(BYOK\)'|\(\s*\)|셋 다 찾아봤어요|출처/)
-  expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
-  const free = withData(member({ id: 'c', role: '도윤', topic: '리니어', brief: '리니어 신기능 조사해서 알려줘', sources: run.linear.sources }), { facts: [{ text: '11월 12일에 BYOK 기능이 나왔어요. 리니어 에이전트에 자체 API 키를 연결해서 쓸 수 있어요.', url: 'https://linear.app/changelog' }] })
-  const plain = mergedReport([c3()[0]!, free])
-  expect(plain).toContain('11월 12일에 BYOK 기능이 나왔어요.')
-  expect(plain).toContain('자체 API 키를 연결해서')
-  expect(plain).not.toMatch(/\(등\)|\(BYOK\)'|\(\s*\)|확인해 보니/)
-  expect(plain.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
-  expect(await writtenReport({ ask: ASK, members: c3(), now: NOV17, timeoutMs: 500, write: async () => '셋 다 찾아봤어요.' })).toBe(said)
-  const [, , doyun] = c3()
-  const fresh = withData(member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief }), { facts: [{ text: '노션은 11월 18일에 AI 회의록 기능을 냈어요.', url: 'https://www.notion.com/ko/releases' }] })
-  const mixed = mergedReport([fresh, doyun!])
-  expect(partOf(mixed, '도윤').replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없[^]*BYOK 기능이 나왔어요 \(11월 12일\)\./)
-  expect(partOf(mixed, '지민')).toContain('11월 18일')
+  expect(out.note).toContain('A headline or title a source wrote in another language is given in the person\'s language, not quoted in the original')
+  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names')
+  expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place')
 })
 
-test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an English run with the colon that led to it (c11a: structure)', () => {
-  const m = withData(member({ brief: '다음 달 서울 IT 행사 일정 정리' }), { facts: [{ text: '소프트웨이브, 클라우드 보안 발표', date: '12월 2일', url: 'https://www.coex.co.kr/a' }, { text: '데브 밋업', date: '12월 9일', url: 'https://www.meetup.com/b' }] })
-  const said = mergedReport([m])
-  expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
-  expect(said).toMatch(/^- 지민이 찾아보니 소프트웨이브.* \(12월 2일\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
-  expect(said).toMatch(/^- 데브 밋업 \(12월 9일\) \[[^\]]+\]\(https:\/\/www\.meetup\.com\/b\)$/m)
-  expect(said).not.toMatch(/:\s*·|""|\[출처\]/)
-  expect(checkedReport(JSON.stringify({ message: '지민이 찾아보니 12월 2일 소프트웨이브: software developers meet for cloud security talks [코엑스](https://www.coex.co.kr/a) 12월 9일 데브 밋업 [밋업](https://www.meetup.com/b)', kept: ['f1', 'f2'] }), [m])).toBeUndefined()
+test('c10b r1 (Codex) → k1: a lone teammate\'s list reaches the lead with both links and every word, and the lead is told to put each source right after what it backs', () => {
+  const result = '12월 6일 호밀빵 굽기 수업: sourdough starters for home bakers [동네빵집](https://bread.example.kr/class/6)\n12월 13일 케이크 장식 수업 [베이킹랩](https://lab.example.kr/cake/13)'
+  const m = member({ brief: '다음 달 동네 제빵 수업 일정 정리', result, sources: ['https://bread.example.kr/class/6', 'https://lab.example.kr/cake/13'] })
+  const out = back([m])
+  expect(out.reports).toHaveLength(1)
+  expect(out.reports[0]!.result).toBe(result)
+  expect(out.reports[0]!.result.match(/\]\(https:\/\//g)).toHaveLength(2)
+  expect(out.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
+  expect(out.note).toContain('A table only when the person asked to compare or for a table.')
 })
 
 test('c10b r2 (Codex): an item that runs over several lines goes or stays whole (c11a: dropped for a search-page-only link, not by kind)', () => {
@@ -101,14 +82,15 @@ test('c10b r2 (Codex): an item that runs over several lines goes or stays whole 
   expect(keptItems('다음 달 서울 IT 행사 일정 정리', `12월 2일 소프트웨이브 https://www.coex.co.kr/a\n12월 24일 재즈 공연\n강동아트센터 12월 24일 ${SEARCH}`)).toBe('12월 2일 소프트웨이브 https://www.coex.co.kr/a')
 })
 
-test('c10b r2 (Codex): a line for a part with nothing new in the time asked opens with that, whatever the teammate wrote first (c11a: structure)', () => {
-  expect(mergedReport(c3()).split(/(?<=[.!?])\s+/)[0]).toMatch(/새로 나온 게 없/)
-  const old = withData(member({ id: 'f', role: '하린', topic: '피그마', brief: '이번 주 피그마 새 기능 찾아줘' }), { note: '이번 주에는 발표가 없었어요.', nothing_in_period: { latest: { text: '자동 레이아웃 개선', date: '11월 3일', url: 'https://www.figma.com/release-notes' } } })
-  const other = withData(member({ id: 'g', role: '태오', topic: '캔바', brief: '이번 주 캔바 새 기능 찾아줘' }), { facts: [{ text: '캔바는 11월 18일에 AI 사진 편집을 냈어요.', url: 'https://www.canva.com/newsroom' }] })
-  const harin = partOf(mergedReport([old, other]), '하린')
-  expect(harin).toMatch(/^피그마\(하린\): 이번엔 새로 나온 게 없/)
-  expect(harin).toContain('11월 3일')
-  expect(harin).toContain('(https://www.figma.com/release-notes)')
+test('c10b r2 (Codex) → k1: a part with nothing new in the time asked is handed back in its own words, counted as that outcome from its state, and never shown as still working or finished with a find', () => {
+  const quiet = member({ id: 'f', role: '하린', topic: '산악회', brief: '이번 주 산악회 새 공지 찾아줘', empty: true, result: '이번 주엔 새 공지가 없었어요. 11월 3일 장비 점검 안내가 마지막이에요. https://club.example.kr/notice/3' })
+  const busy = member({ id: 'g', role: '태오', topic: '걷기 모임', brief: '이번 주 걷기 모임 새 공지 찾아줘', state: 'working' })
+  const empty = member({ id: 'h', role: '누리', topic: '자전거 모임', brief: '이번 주 자전거 모임 새 공지 찾아줘', data: { facts: [], nothing: {} }, result: '이번엔 새로 나온 게 없어요.' })
+  expect([quiet, busy, empty].map(partOutcome)).toEqual(['found', 'working', 'nothing-in-period'])
+  const out = back([quiet, busy, empty])
+  expect(out.reports.map(r => [r.part, r.who, r.state, r.result])).toEqual([['산악회', '하린', 'done', quiet.result], ['걷기 모임', '태오', 'working', ''], ['자전거 모임', '누리', 'done', empty.result]])
+  expect(out.reports[0]!.result).toContain('11월 3일')
+  expect(out.reports[0]!.result).toContain('https://club.example.kr/notice/3')
 })
 
 test('stack-10 (c10b r3 Codex #2): a field bullet under an item ("- 장소: …") goes or stays with it, and is no item of its own (c11a: dropped for a search-page-only link, not by kind)', () => {

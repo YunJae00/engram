@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, answerWhole, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, withFiles, linkedFiles, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 describe('answerHtml', () => {
   it('renders escaped paragraphs and numbered choices while keeping code escapes literal', () => {
@@ -161,14 +161,34 @@ describe('an answer as a few short messages', () => {
     expect(suggestedReplies('Please sign in or complete the check in the open page, then tell me when it is done.', 'ko')).toEqual(['좀 더 자세히 알려줘', '핵심만 요약해줘'])
     expect(suggestedReplies('Done.', 'en')).toEqual(['Tell me more', 'Summarize the key points'])
     expect(suggestedReplies('Done.\n```replies\nMore\nMore\n```')).toHaveLength(2)
-    expect(answerBubbles('~~~js\na\n---\nb\n~~~')).toEqual(['~~~js\na\n---\nb\n~~~'])
-    expect(answerBubbles('Done.\n---\nDetails.\n```replies\nMore\n---\n```')).toEqual(['Done.', 'Details.'])
+    expect(answerBubbles('~~~js\na\n\nb\n~~~')).toEqual(['~~~js\na\n\nb\n~~~'])
+    expect(answerBubbles('Done.\n\nDetails.\n```replies\nMore\n\n```')).toEqual(['Done.', 'Details.'])
   })
-  it('splits at a line of only --- outside code, and keeps an answer without one whole', () => {
-    expect(answerBubbles('Found 3 postings.\n---\n| Name | Due |\n|---|---|\n| A | 10/20 |\n---\nWant more?')).toEqual(['Found 3 postings.', '| Name | Due |\n|---|---|\n| A | 10/20 |', 'Want more?'])
-    expect(answerBubbles('```\na\n---\nb\n```')).toEqual(['```\na\n---\nb\n```'])
+  it('splits at a blank line outside code, and keeps an answer without one whole, dashes included', () => {
+    expect(answerBubbles('Found 3 ferries.\n\n| Boat | Leaves |\n|---|---|\n| Gull | 07:40 |\n\nThe last one is at dusk.')).toEqual(['Found 3 ferries.', '| Boat | Leaves |\n|---|---|\n| Gull | 07:40 |', 'The last one is at dusk.'])
+    expect(answerBubbles('```\na\n\n\nb\n```')).toEqual(['```\na\n\n\nb\n```'])
+    expect(answerBubbles('````md\n```\ninner\n\n```\n\nstill code\n````\n\nAfter.')).toEqual(['````md\n```\ninner\n\n```\n\nstill code\n````', 'After.'])
     expect(answerBubbles('Just one line.')).toEqual(['Just one line.'])
-    expect(answerBubbles('Done.\n---\n')).toEqual(['Done.'])
+    expect(answerBubbles('Tide table [1]\n---\nlow at noon')).toEqual(['Tide table [1]\n---\nlow at noon'])
+    expect(answerBubbles('Done.\n\n\n')).toEqual(['Done.'])
+    expect(answerBubbles('')).toEqual([])
+  })
+  it('keeps file cards with the last bubble, one card per file', () => {
+    const card = (name: string) => `[${name}](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-${name})`
+    const words = 'The tide chart is ready.\n\nLow water is marked in blue.'
+    const shown = withFiles({ text: words, files: [{ name: 'tides.xlsx', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.xlsx' }, { name: 'tides.pdf', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf' }] })
+    expect(shown).toBe(`${words}\n\n${card('tides.xlsx')}\n\n${card('tides.pdf')}`)
+    expect(withFiles({ text: words })).toBe(words)
+    expect(withFiles({ text: words, files: [] })).toBe(words)
+    const bubbles = answerBubbles(shown)
+    expect(bubbles).toEqual(['The tide chart is ready.', `Low water is marked in blue.\n\n${card('tides.xlsx')}\n\n${card('tides.pdf')}`])
+    expect(answerFiles(bubbles[0]!).files).toEqual([])
+    expect(answerFiles(bubbles[1]!)).toEqual({ text: 'Low water is marked in blue.\n\n', files: [{ id: '0a1b2c3d-1111-2222-3333-444455556666-tides.xlsx', name: 'tides.xlsx' }, { id: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf', name: 'tides.pdf' }] })
+    expect(answerBubbles(card('tides.pdf'))).toEqual([card('tides.pdf')])
+    const written = { role: 'assistant', text: `Here it is.\n\n${card('tides.pdf')}`, files: [{ name: 'tides.pdf', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf' }] }
+    expect(answerBubbles(withFiles(written)).flatMap(bubble => answerFiles(bubble).files)).toEqual([{ id: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf', name: 'tides.pdf' }])
+    expect(linkedFiles([written, { role: 'assistant', text: 'And the sheet.', files: [{ name: 'tides.xlsx', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.xlsx' }] }])).toBe('0a1b2c3d-1111-2222-3333-444455556666-tides.pdf\n0a1b2c3d-1111-2222-3333-444455556666-tides.xlsx')
+    expect(laterFiles([{ role: 'assistant', text: 'First pass.', files: [{ name: 'tides.pdf', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf' }] }, { role: 'assistant', text: 'Second pass.', files: [{ name: 'tides.pdf', href: '0a1b2c3d-1111-2222-3333-444455556666-tides.pdf' }] }])).toEqual(['0a1b2c3d-1111-2222-3333-444455556666-tides.pdf', ''])
   })
 })
 
@@ -201,11 +221,11 @@ it('opens the exact Accessibility settings link through the external window hand
 })
 
 describe('qa143 one answer, one bubble, one card', () => {
-  it('S14/S26 keeps a lead line and its details in one bubble, without the separator turning the lead into a heading', () => {
-    const whole = answerWhole('It is Gyeongbokgung.\n---\nBuilt in 1395.\n\n---\n\n```\na\n---\nb\n```\n```replies\nMore\n```')
-    expect(whole).toBe('It is Gyeongbokgung.\n\nBuilt in 1395.\n\n```\na\n---\nb\n```')
-    expect(answerHtml(whole)).not.toMatch(/<h2|<hr/)
-    expect(answerWhole('Just one line.')).toBe('Just one line.')
+  it('S14/S26 shows a lead line and its details as the blocks the model set apart, with code whole and no heading made of the lead', () => {
+    const bubbles = answerBubbles('It is Gyeongbokgung.\n\nBuilt in 1395.\n\n```\na\n\nb\n```\n```replies\nMore\n```')
+    expect(bubbles).toEqual(['It is Gyeongbokgung.', 'Built in 1395.', '```\na\n\nb\n```'])
+    expect(bubbles.map(bubble => answerHtml(bubble)).join('')).not.toMatch(/<h2|<hr/)
+    expect(answerBubbles('Just one line.')).toEqual(['Just one line.'])
   })
   it('S04 cards a file once per turn, under the last answer that links it', () => {
     const link = (id: string) => `[${id}](engram-artifact:${encodeURIComponent(id)})`

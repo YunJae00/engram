@@ -1,94 +1,102 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { citeMembers, keepDeclaredName, liveLinks, pageHead, sourceName, type TeamMember } from '../src/index.js'
+import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import * as core from '../src/index.js'
+import { employeesAnswer, handBacks, LOOKUP_RULE, MERGED_SHAPE, settleMember, sourceName, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 
-const oneTier = (cell: string, row: string): string => {
-  const helper: TeamMember = { id: 'h', parentId: null, depth: 1, role: row.split(' ').slice(0, 2).join(''), brief: row, sessionKey: 'h', hiredAt: '2026-11-17T00:00:00Z', state: 'released', lookup: true, sources: ['https://search.naver.com/search.naver?query=z'], result: `가격: ${cell}` }
-  const line = citeMembers(['| 제품 | 가격 | 출처 |', '|---|---|---|', `| ${row.split(' ').slice(0, 2).join(' ')} | ${cell} | 출처 |`].join('\n'), [helper], true).split('\n')[2]!
-  return line.slice(1, -1).split('|').map(one => one.trim())[1]!
+interface Handed { members: { role: string; state: string; result: string; sources?: string[] }[]; note: string }
+type Helper = Pick<TeamMember, 'role' | 'brief' | 'result' | 'sources'>
+const AT = '2026-11-17T00:00:00Z'
+async function hired(helpers: readonly Helper[], answered = false): Promise<Handed> {
+  const task = { id: 't', goal: '가격 비교', botId: 'lead', state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [] } as DelegatedTask
+  const host: TeamHost = {
+    self: null, load: async () => task, change: async work => work(task),
+    run: async ids => {
+      for (const m of task.team!.members.filter(one => ids.includes(one.id))) {
+        const from = helpers.find(one => one.role === m.role)!
+        if (answered) settleMember(m, { answer: from.result!, sources: from.sources ?? [] }, AT, true)
+        else Object.assign(m, { state: 'done', result: from.result, ...(from.sources ? { sources: from.sources } : {}) })
+      }
+    },
+    release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
+    live: () => false, tokensLeft: async () => 1_000_000, personSaid: () => '',
+  }
+  return JSON.parse(await teamHireTools(host)[0]!.run({ members: helpers.map(h => ({ role: h.role, brief: h.brief, lookup: true })) }, { task: '' })) as Handed
 }
 
 const r2 = JSON.parse(readFileSync(new URL('./fixtures/c10a-r2-helpers.json', import.meta.url), 'utf8')) as { members: TeamMember[] }
-const table = ['셋이 하나씩 맡아서 알아봤어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|',
-  '| 아이폰 18 | 미발표, 프로 기준 199만 원부터(256GB) | 일반형은 2027년 봄 예상 (프로는 이미 출시) | [네이버 블로그](https://blog.naver.com/automobile1004/224479601593) |',
-  '| 갤럭시 S27 | 미발표, 예상 기본형 999달러(약 134만 원)부터, 울트라 약 187만 원부터 | 미발표, 2027년 1~2월 언팩 예상 | [출처](https://www.mt.co.kr/tech/2026/10/20/2026101915464770051) |',
-  '| 픽셀 11 | 999유로부터(기본 모델) | 2026년 8월 12일 | [위키백과](https://ko.wikipedia.org/wiki/%ED%94%BD%EC%85%80_11_%ED%94%84%EB%A1%9C) |'].join('\n')
-const rows = (text: string): string[][] => text.split('\n').filter(line => /^\| (아이폰|갤럭시|픽셀)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
 
-test('c10a R2 (c12b: every value stays, labeled): the stored helpers through the merge keep each tier-labeled value and no link named 출처 on a known host (c11a: an unknown host by its host)', () => {
-  const out = citeMembers(table, r2.members, true), [iphone, galaxy, pixel] = rows(out)
-  expect(galaxy![1]).toBe('미발표, 예상 기본형 999달러(약 134만 원)부터, 울트라 약 187만 원부터')
-  expect(iphone![1]).toBe('미발표, 프로 기준 199만 원부터(256GB)')
-  expect(iphone![2]).toBe('일반형은 2027년 봄 예상 (프로는 이미 출시)')
-  expect(pixel![1]).toBe('999유로부터(기본 모델)')
-  expect(out).toContain('[머니투데이](https://www.mt.co.kr/tech/2026/10/20/2026101915464770051)')
-  expect(iphone!.at(-1)).toBe('[네이버 블로그](https://blog.naver.com/automobile1004/224479601593)')
-  expect(out).not.toMatch(/\[출처\]/)
-  expect([...out.matchAll(/\[ko\.vidabytes\.com\]\((https?:\/\/[^/)]+)/g)].map(found => found[1])).toEqual(['https://ko.vidabytes.com'])
+test('c10a R2 (c12b: every value stays, labeled) → k1: the stored helpers reach the lead with every word and page they reported, and the lead is told to keep each value and to name each page by its site', async () => {
+  const out = await hired(r2.members)
+  expect(out.members.map(m => m.result)).toEqual(r2.members.map(m => m.result))
+  expect(out.members.map(m => m.sources)).toEqual(r2.members.map(m => m.sources))
+  for (const figure of ['999달러', '187만원', '999유로', '199만 원']) expect(JSON.stringify(out.members)).toContain(figure)
+  expect(out.note).toContain(MERGED_SHAPE)
+  expect(MERGED_SHAPE).toContain('Every concrete value a member reported stays in its row, labeled as the member labeled it')
+  expect(out.note).toContain('[site name](address), with the address copied exactly from sources')
+  expect(out.note).toContain('never a site name alone')
+  expect(sourceName('https://www.mt.co.kr/tech/2026/10/20/2026101915464770051', true)).toBe('머니투데이')
+  expect(sourceName('https://ko.vidabytes.com/a', true)).toBe('ko.vidabytes.com')
 })
 
-test('c10a R2 (c12b): a cell naming any tier stays as the lead wrote it; a known outlet is named (c11a: an unknown site by its host)', () => {
-  expect(oneTier('프로 기준 199만 원부터', '아이폰 18 프로 아이폰 18 프로의 가격 조사')).toBe('프로 기준 199만 원부터')
-  expect(oneTier('프로 기준 199만 원부터', '아이폰 18 아이폰 18의 가격 조사')).toBe('프로 기준 199만 원부터')
-  expect(oneTier('미발표 (전작 아이폰 17 129만 원)', '아이폰 18')).toBe('미발표 (전작 아이폰 17 129만 원)')
-  expect(oneTier('미발표, 예상 999달러, S27+는 1199달러', '갤럭시 S27')).toBe('미발표, 예상 999달러, S27+는 1199달러')
-  expect(oneTier('140만 3,600원', '갤럭시 S27')).toBe('140만 3,600원')
+test('c10a R2 (c12b) → k1: a line naming any tier reaches the lead as the helper wrote it; a known outlet is named (c11a: an unknown site by its host)', async () => {
+  const lines = ['프로 기준 249만 원부터', '미발표 (전작 서피스 11 139만 원)', '미발표, 예상 1,099달러, 플러스는 1,299달러']
+  const helpers = lines.map((line, i) => ({ role: `노트북 ${i + 1}`, brief: `서피스 ${i + 12} 가격 조사`, result: `가격: ${line} — https://laptop.example.kr/p/${i}` }))
+  const out = await hired(helpers)
+  expect(out.members.map(m => m.result)).toEqual(helpers.map(h => h.result))
+  expect(MERGED_SHAPE).toContain('never dropped or turned into "미발표"')
   for (const [url, name] of [['https://news.mt.co.kr/mtview.php?no=1', '머니투데이'], ['https://www.asiae.co.kr/article/1', '아시아경제'], ['https://biz.chosun.com/it/1', '조선비즈'], ['https://www.chosun.com/economy/1', '조선일보'], ['https://www.yna.co.kr/view/1', '연합뉴스']] as const)
     expect(sourceName(url, true), url).toBe(name)
   expect(sourceName('https://unknown-site.example/a', true)).toBe('unknown-site.example')
 })
 
-test('c10a r2 (c12b: values of another model stay, labeled, and so does the page they came from): each row keeps its values and a page its teammate cited', () => {
-  const member = (role: string, brief: string, result: string): TeamMember => ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-17T00:00:00Z', state: 'released', lookup: true, sources: ['https://search.naver.com/search.naver?query=x'], result })
-  const watch = member('watch', '갤럭시 워치 9 가격', '가격: 워치 9 울트라 89만 원부터 — https://news.example.kr/watch9-ultra\n워치 9 기본형은 39만 원부터예요 — https://shop.example.kr/item/77')
-  const pad = member('pad', '아이패드 13 가격', '아이패드 13 맥스 모델이 149만 원이에요. — https://blog.example.kr/p/1')
-  const named = member('pro', '맥북 프로 15 가격', '맥북 프로 15는 299만 원부터 — https://www.example.com/macbook-pro-15')
-  const table = ['| 제품 | 가격 | 출처 |', '|---|---|---|', '| 갤럭시 워치 9 | 39만 원부터, 울트라 89만 원 | [출처](https://news.example.kr/watch9-ultra) |', '| 아이패드 13 | 맥스 149만 원 | [블로그](https://blog.example.kr/p/1) |', '| 맥북 프로 15 | 299만 원부터 | 출처 |'].join('\n')
-  const out = rows2(citeMembers(table, [watch, pad, named], true))
-  expect(out[0]).toEqual(['갤럭시 워치 9', '39만 원부터, 울트라 89만 원', expect.stringContaining('(https://news.example.kr/watch9-ultra)')])
-  expect(out[1]).toEqual(['아이패드 13', '맥스 149만 원', expect.stringContaining('(https://blog.example.kr/p/1)')])
-  expect(out[1]![2]).not.toContain('search.naver.com')
-  expect(out[2]![2]).toContain('https://www.example.com/macbook-pro-15')
-})
-const rows2 = (text: string): string[][] => text.split('\n').filter(line => /^\| (갤럭시|아이패드|맥북)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
-
-test('c10a r2: a site\'s declared name names its link; nothing declared, or no name-like declaration, stays 출처 (c11a: the host, never 출처)', async () => {
-  keepDeclaredName('https://www.gadgetnara.example/a/1', '<head><title>x</title><meta content="가젯나라" property="og:site_name"></head>')
-  keepDeclaredName('https://m.techpulse.example/p', "<meta name='application-name' content='TechPulse'>")
-  keepDeclaredName('https://longname.example/', '<meta property="og:site_name" content="2026 최고의 리뷰 사이트 모음 그리고 더">')
-  keepDeclaredName('https://home.example/', '<meta property="og:site_name" content="Home">')
-  expect(sourceName('https://gadgetnara.example/a/2', true)).toBe('가젯나라')
-  expect(sourceName('https://techpulse.example/p', true)).toBe('TechPulse')
-  expect(sourceName('https://longname.example/x', true)).toBe('longname.example')
-  expect(sourceName('https://home.example/x', true)).toBe('home.example')
-  const html = new Response('<html><head><meta property="og:site_name" content="폰리뷰랩"></head><body>' + 'x'.repeat(200_000) + '</body></html>')
-  const answer = '픽셀 12는 899달러부터예요. [출처](https://phonelab.example/pixel-12)'
-  const out = await liveLinks(answer, [], async url => { keepDeclaredName(url, await pageHead(html.body, 4_096)); return true }, true)
-  expect(out).toBe('픽셀 12는 899달러부터예요. [폰리뷰랩](https://phonelab.example/pixel-12)')
+test('c10a r2 (c12b: values of another model stay, labeled, and so does the page they came from) → k1: each helper\'s answer is its result, with every address it wrote and the pages it read', async () => {
+  const search = 'https://search.naver.com/search.naver?query=x'
+  const helpers: Helper[] = [
+    { role: '자전거', brief: '로드 자전거 에어 9 가격', result: '가격: 에어 9 카본 모델 389만 원부터 — https://news.example.kr/air9-carbon\n에어 9 알루미늄은 179만 원부터예요 — https://shop.example.kr/item/41', sources: [search, 'https://shop.example.kr/item/41'] },
+    { role: '텐트', brief: '돔 텐트 4 가격', result: '돔 텐트 4 대형 모델이 64만 원이에요. — https://blog.example.kr/tent/4', sources: [search] },
+  ]
+  const out = await hired(helpers, true)
+  expect(out.members.map(m => m.result)).toEqual(helpers.map(h => h.result))
+  for (const address of ['https://news.example.kr/air9-carbon', 'https://shop.example.kr/item/41', 'https://blog.example.kr/tent/4']) expect(JSON.stringify(out.members)).toContain(address)
+  expect(out.members[0]!.sources).toEqual(['https://shop.example.kr/item/41', search])
+  expect(LOOKUP_RULE).toContain('names what it belongs to')
 })
 
-test('c10a r3 (c12b: no page is dropped for being another model\'s): a source cell of several real links keeps each', () => {
+test('c10a r2 → k1: no page is fetched to rename a link after the answer: an unknown site is named by its host, and naming a source with its link is the writer\'s rule', () => {
+  for (const gone of ['keepDeclaredName', 'pageHead', 'liveLinks', 'liveCited', 'citeMembers']) expect(Object.keys(core)).not.toContain(gone)
+  expect(sourceName('https://breadmap.example/a/2', true)).toBe('breadmap.example')
+  expect(sourceName('https://m.trailnote.example/p', true)).toBe('m.trailnote.example')
+  expect(LOOKUP_RULE).toContain('a site whose name you do not know is named by its host as written in the address')
+  expect(COLLEAGUE_CORE_RULE).toContain('with the address copied exactly from what a tool returned')
+  expect(COLLEAGUE_CORE_RULE).toContain('never a site name without its link')
+})
+
+test('c10a r3 (c12b: no page is dropped for being another model\'s) → k1: a teammate who cited several pages hands back each of them, and the lead is told to link what each backs', () => {
   const member = (role: string, brief: string, result: string): TeamMember => ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-17T00:00:00Z', state: 'released', lookup: true, sources: ['https://search.naver.com/search.naver?query=y'], result })
-  const buds = member('buds', '갤럭시 버즈 5 가격', '버즈 5는 22만 원부터 — https://news.example.kr/buds5\n버즈 5 프로는 31만 원 — https://review.example.kr/buds-5-pro')
-  const ipad = member('ipad', '아이패드 에어 8 가격', '에어 8 울트라 모델 129만 원 — https://blog.example.kr/air8-a\n에어 8 맥스는 139만 원 — https://blog.example.kr/air8-b')
-  const table = ['| 제품 | 가격 | 출처 |', '|---|---|---|',
-    '| 갤럭시 버즈 5 | 22만 원부터 | [뉴스](https://news.example.kr/buds5) · [리뷰](https://review.example.kr/buds-5-pro) |',
-    '| 아이패드 에어 8 | 미발표 | [블로그](https://blog.example.kr/air8-a) · [블로그](https://blog.example.kr/air8-b) |'].join('\n')
-  const out = rows2(citeMembers(table, [buds, ipad], true))
-  expect(out[0]![2]).toContain('https://news.example.kr/buds5')
-  expect(out[0]![2]).toContain('buds-5-pro')
-  expect(out[1]![2]).toMatch(/air8-a[^]*air8-b/)
-  expect(out[1]![2]).not.toContain('https://search.naver.com/search.naver?query=y')
+  const oven = member('오븐', '미니 오븐 5 가격', '미니 오븐 5는 18만 원부터 — https://news.example.kr/oven5\n미니 오븐 5 스팀은 27만 원 — https://review.example.kr/oven-5-steam')
+  const mixer = member('반죽기', '반죽기 8 가격', '반죽기 8 대용량 모델 96만 원 — https://blog.example.kr/mixer8-a\n반죽기 8 가정용은 58만 원 — https://blog.example.kr/mixer8-b')
+  const out = JSON.parse(handBacks([oven, mixer])) as { reports: { who: string; result: string; sources: string[] }[]; note: string }
+  expect(out.reports.map(r => [r.who, r.result])).toEqual([['오븐', oven.result], ['반죽기', mixer.result]])
+  expect(out.reports[0]!.result).toMatch(/oven5[^]*oven-5-steam/)
+  expect(out.reports[1]!.result).toMatch(/mixer8-a[^]*mixer8-b/)
+  expect(out.reports.map(r => r.sources)).toEqual([oven.sources, mixer.sources])
+  expect(out.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result, never a site name alone')
 })
 
-test('stack-10 (c10a r3; c12b): a tier bracket and the price it labels stay in the cell, so the value says whose it is', () => {
-  expect(oneTier('199만 원부터 (프로 기준)', '아이폰 18')).toBe('199만 원부터 (프로 기준)')
-  expect(oneTier('미발표 (예상 89만 원대), 129만 원부터 (울트라 모델)', '갤럭시 탭 S12')).toBe('미발표 (예상 89만 원대), 129만 원부터 (울트라 모델)')
-  expect(oneTier('109만 원 (울트라는 159만 원)', '갤럭시 탭 S12')).toBe('109만 원 (울트라는 159만 원)')
-  expect(oneTier('49만 원 (맥스 기준) / 39만 원 (기본형)', '에어팟')).toBe('49만 원 (맥스 기준) / 39만 원 (기본형)')
-  expect(oneTier('129만 원 (프로 기준)', '맥북 프로')).toBe('129만 원 (프로 기준)')
+test('stack-10 (c10a r3; c12b) → k1: a tier bracket and the price it labels stay in the helper\'s line when its answer is settled, so the value says whose it is', () => {
+  for (const cell of ['249만 원부터 (프로 기준)', '미발표 (예상 74만 원대), 118만 원부터 (대형 모델)', '86만 원 (스팀은 127만 원)', '31만 원 (접이식 기준) / 22만 원 (기본형)', '143만 원 (카본 기준)']) {
+    const m: TeamMember = { id: 'h', parentId: null, depth: 1, role: '가격', brief: '캠핑 화로 3 가격 조사', sessionKey: 'h', hiredAt: AT, state: 'working', lookup: true }
+    settleMember(m, { answer: `가격: ${cell}`, sources: ['https://camp.example.kr/fire3'] }, AT, true)
+    expect(m.result).toBe(`가격: ${cell}`)
+    expect(m.said).toBe(`가격: ${cell}`)
+    expect(m.data).toBeUndefined()
+  }
 })
-test('stack-10 (c12b): a tier bracket that speaks about that tier stays beside the base figure', () => {
-  expect(oneTier('69만 원부터 (울트라는 아직 미정)', '갤럭시 워치 9')).toBe('69만 원부터 (울트라는 아직 미정)')
-  expect(oneTier('69만 원부터 (울트라 모델)', '갤럭시 워치 9')).toBe('69만 원부터 (울트라 모델)')
+test('stack-10 (c12b) → k1: a tier bracket that speaks about that tier stays beside the base figure in what the lead is handed', () => {
+  for (const cell of ['47만 원부터 (대형은 아직 미정)', '47만 원부터 (대형 모델)']) {
+    const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '보람', botId: 'bot-1', background: true, brief: '등산 배낭 9 가격 조사', sessionKey: 's', hiredAt: AT, state: 'done', lookup: true, result: `가격: ${cell}` }
+    const task = { id: 't', goal: 'g', botId: 'lead', state: 'waiting', turns: 1, createdAt: AT, updatedAt: AT, approvals: [], log: [], team: { members: [m], hires: 1, maxHires: 8, maxDepth: 3, big: false } } as DelegatedTask
+    expect((JSON.parse(employeesAnswer(task)!) as { reports: { result: string }[] }).reports[0]!.result).toBe(`가격: ${cell}`)
+  }
 })

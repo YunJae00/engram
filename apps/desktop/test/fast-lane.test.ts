@@ -1,10 +1,19 @@
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
-import { keepRead, runToolSession, type AgentTool } from 'core'
-import { fastLane, firstSearch, laneQuery, laneTidy, namesSubject, swappedAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { keepRead, runComet, runToolSession, skipWalls, type AgentTool, type Engine, type ToolSessionJob } from 'core'
+import * as laneModule from '../src/main/fast-lane.js'
+import { fastLane, firstSearch, laneQuery, swappedAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
-import { checked } from './checked-rows.js'
+
+async function turn(page: string, ask: string, draft: string) {
+  const quick = vi.fn(async () => '')
+  let out = '', told = ''
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page }
+  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; if (page) out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
+  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
+  return { out, told, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+}
 
 const LANE = [
   '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘',
@@ -54,8 +63,8 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain("const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [askedNow(), ...steered].join('\\n'), ...(writer ? { write: writer } : {}), ...(readPage ? { read: (url: string, within?: AbortSignal) => readPage.run({ url }, { task: askedNow(), ...(within ? { signal: within } : {}) }) } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined")
-  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,')
+  expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined')
+  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
@@ -96,16 +105,11 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길|알아볼)/) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` :")
-  expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
-  expect(ipc).toContain('answer = await liveCited(answer, [...read], async cited => citeOwn(await team.cited(channel, cited), [...read], korean), alive, korean)')
-  expect(ipc).toContain('const linkAlive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: \'omit\' })')
-  expect(ipc).toContain('const alive = (url: string, limit: AbortSignal): Promise<boolean> => linkVerdicts.has(url)')
-  expect(ipc).toContain('if (members) result.answer = await liveLinks(result.answer, loaded, alive, threadKorean(request.message, request.history ?? []), LINK_CHECK_MS, members.filter(member => member.sources?.length).length === 1 ? loaded : [])')
-  expect(ipc).toContain('return linkAnswers(response.status) })')
-  expect(ipc).not.toMatch(/401, 403, 429|await liveLinks\(result\.answer, \[\.\.\.read\]/)
+  expect(ipc).toContain("if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped")
+  expect(ipc).not.toMatch(/cutShortAnswer|liveCited|citeOwn|linkAlive|linkVerdicts|liveLinks|linkAnswers|team\.cited|401, 403, 429/)
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
-  expect(ipc.indexOf('team.cited(channel, cited)')).toBeGreaterThan(0)
-  expect(ipc.indexOf('team.cited(channel, cited)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
+  expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
+  expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
   expect(ipc).toContain('whole: quickQuestion(request.message) }')
 })
@@ -261,12 +265,13 @@ it('c7 L2: a slow first round whose search is refused still ends with an answer 
   } finally { vi.useRealTimers() }
 })
 
-it('c7 L2: an answer that is not a failure report is left alone; with nothing held the answer is one plain sentence that links the search page', async () => {
+it('c7 L2: an answer is posted as written, a failure report included; not reporting a failure is asked of the model in the lane note', async () => {
   const fine = '11월 16일 종가 기준 155.26달러예요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
   const linked = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
-  for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect(laneTidy(answer), answer).toBe(answer)
+  for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '엔비디아 주식 마감 가격은?', answer)).answer, answer).toBe(answer)
+  expect('laneTidy' in laneModule).toBe(false)
   expect(LANE_NOTE).toContain('never reports a failure of your own')
   expect(LANE_NOTE).toContain('never a line that it could not get them')
   const lane = readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')
@@ -282,7 +287,9 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect(now).toBe('애플 오늘 주가 알려줘')
   await search.run({ query: '애플 주가' }, { task: '', steps: [], read: '' } as never)
   expect(read.at(-1)).toContain('352.78')
-  expect(namesSubject('352.78달러예요.', now!)).toMatch(/^애플/)
+  expect((await firstSearch(now!, search)).opening).toContain('name what the answer is now about in its first sentence ("애플은 …")')
+  expect((await turn('', now!, '352.78달러예요.')).answer).toBe('352.78달러예요.')
+  expect('namesSubject' in laneModule).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('steered.push(...taken)')
   expect(ipc).not.toContain('laneSaid')
@@ -290,7 +297,7 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid]")
   expect(ipc).not.toContain('heldAnswer(')
-  expect(ipc.indexOf('answer = laneTidy(answer)')).toBeLessThan(ipc.indexOf('answer = await liveCited(answer'))
+  expect(ipc).not.toMatch(/laneTidy|namesSubject|liveCited/)
 })
 
 it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held results, and the answer is still written from them', async () => {
@@ -303,17 +310,19 @@ it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held resu
   for (const kept of ['아 원화로도 추가해', '답 좀 줘', '표로 정리해줘']) expect(swappedAsk('엔비디아 오늘 주가 알려줘', kept), kept).toBeUndefined()
 })
 
-it('c7 R3 (c13b): nothing after a numbered news list is cut; a short counted list is told to the model before it writes, never after', async () => {
+it('c7 R3: nothing after a numbered news list is cut by the host; a short counted list gets no host count line, before or after it is written', async () => {
   const list = '최근 투자 소식이에요.\n\n1. 홀리데이로보틱스, 시리즈A 1,550억 원 유치 — 2026년 7월 13일, [스마트투데이](https://a.example/1)\n2. 아크, 시리즈A 200억 원 유치 — 10월 14일, [비바100](https://b.example/2)'
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
   const tail = `${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.\n\n\`\`\`replies\n더 찾아줘\n\`\`\``
   expect(tail).toContain('5번 건은')
   const rows = ['results for "AI 스타트업 투자 유치" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', '- 홀리데이로보틱스, 시리즈A 1,550억 원 유치 — https://a.example/1 — x — 7월 13일', '- 아크, 시리즈A 200억 원 유치 — https://b.example/2 — x — 10월 14일'].join('\n')
-  const short = await checked(rows, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[]}')
-  expect(short.out).toContain('2 of these rows are from the period asked, for the 5 asked')
+  const short = await turn(rows, ask, `${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.`)
+  expect(short.out).toBe(rows)
+  expect(short.answer).toBe(`${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.`)
+  expect(short.told).toContain('nothing after the last item: no closing paragraph, no remark on an item')
   for (const one of ['엔비디아 오늘 주가 알려줘', '오늘 서울 날씨 어때?', '원달러 환율 지금 얼마야?']) {
-    const plain = await checked(rows, one, '{"keep":[1],"asked":null}')
-    expect(plain.prompts, one).toHaveLength(0)
+    const plain = await turn(rows, one, list)
+    expect(plain.judged, one).toBe(0)
     expect(plain.rows, one).toEqual(['https://a.example/1', 'https://b.example/2'])
     expect(plain.out, one).not.toContain('asked for')
   }
@@ -335,17 +344,21 @@ it('stack-7: a time said relative to today is taken out of search words the same
   expect(read('../../../packages/core/src/company-tools.ts')).toContain('words = withoutRelativeTime(words)')
 })
 
-it('stack-7 (c13b): a counted news ask with fewer fitting rows is told so before writing; a full list and an ask with no count are not', async () => {
+it('stack-7: a counted news ask with fewer rows, a full list and an ask with no count all get the rows as they came, and the list written is the list posted', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', now = new Date(2026, 10, 17, 9, 30)
   const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. — 11월 16일 [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. — 11월 14일 [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. — 11월 12일 [비바100](https://v.example/3)'
   const five = `${three}\n4. 넷째예요. — 11월 10일 [a](https://a.example/4)\n5. 다섯째예요. — 11월 9일 [b](https://b.example/5)`
   const page = (list: string): string => ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', ...list.split('\n').map(line => `- ${line.replace(/^\d\. /, '').replace(/ — (11월 \d+일) \[[^\]]*\]\((\S+)\)$/, ' — $2 — x — $1')}`)].join('\n')
-  const all = '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}', all3 = '{"keep":[1,2,3],"same":[],"listing":[],"outside":[]}'
-  expect((await checked(page(three), ask, all3)).out).toContain('3 of these rows are from the period asked, for the 5 asked')
-  expect((await checked(page(five), ask, all)).out).not.toContain('of these rows are from the period asked')
+  const fewer = await turn(page(three), ask, `다섯 건 중에 세 건만 나와 있어요.\n\n${three}`)
+  expect(fewer.out).toBe(page(three))
+  expect(fewer.answer).toBe(`다섯 건 중에 세 건만 나와 있어요.\n\n${three}`)
+  expect(fewer.told).toContain('when it is fewer the lead says in one plain clause how many there are, in your own words')
+  const full = await turn(page(five), ask, five)
+  expect(full.out).toBe(page(five))
+  expect(full.answer).toBe(five)
   expect(now.getMonth()).toBe(10)
-  const plain = await checked(page(three), '요즘 AI 뉴스 알려줘', '{"keep":[1,2,3],"asked":null}')
-  expect(plain.prompts).toHaveLength(0)
+  const plain = await turn(page(three), '요즘 AI 뉴스 알려줘', three)
+  expect(plain.judged).toBe(0)
   expect(plain.out).not.toContain('asked for')
-  expect((await checked(page(three), `${ask}\n아 그냥 3개만`, all3)).out).not.toContain('of these rows are from the period asked')
+  expect((await turn(page(three), `${ask}\n아 그냥 3개만`, three)).out).toBe(page(three))
 })

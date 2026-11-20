@@ -2,35 +2,39 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { checkedDesk, DESK_NOTE, reshapeAsk, reshapePrompt, withoutQuoted } from '../src/main/desk-lane.js'
+import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
+import { DESK_NOTE, fileGiven } from '../src/main/desk-lane.js'
+
+async function turn(draft: string, said: string, options: AgentLoopOptions = {}) {
+  const jobs: ToolSessionJob[] = [], voiced: string[] = []
+  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick: async (prompt: string) => { voiced.push(prompt); return '{"problems":[]}' } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: '/tmp/c16c-desk' as EngineCwd, tools: [] }, said, options)
+  return { posted: result.answer, calls: jobs.length, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
+}
+const deskTurn = (draft: string, said: string, file: { name: string; text: string }) => turn(draft, said, { attachmentContext: [DESK_NOTE, fileGiven(file)].join('\n\n') })
 
 const SOURCE = '# 킥오프 메모\n\n## 이야기한 것\n- 출시는 3월로 가자는 데 모두 동의했다.\n- 외주 디자이너 일정이 밀리면 출시가 늦어질 수 있다.\n\n## 합의\n1. 요구사항 문서 작성 — 담당: 이수진, 기한: 12월 5일\n2. 디자이너 계약 — 담당: 박준호, 기한: 12월 8일\n'
 const ASK = '프로젝트 킥오프 메모 정리해서 합의된 것, 리스크, 다음 단계로 나눠줘'
 const DRAFT = '합의된 것\n- 요구사항 문서 작성 — 이수진, 12월 5일\n- 디자이너 계약 — 박준호, 12월 8일\n\n다음 단계\n- 요구사항 문서 작성 — 이수진, 12월 5일'
 const FIXED = '합의된 것\n- 출시는 3월\n\n리스크\n- 디자이너 일정이 밀리면 출시가 늦어질 수 있어요\n\n다음 단계\n- 요구사항 문서 작성 — 이수진, 12월 5일\n- 디자이너 계약 — 박준호, 12월 8일'
-const missing = JSON.stringify({ problems: [{ kind: 'missing', quote: '리스크', why: '리스크 부분이 없어요' }] })
+const PARTS = 'When they name the parts of the answer (sections, columns, categories, a number of items), the answer has each of those parts as its own part, under the name they used'
 
 describe('a part the ask names and the answer lacks is "missing" (D1 class)', () => {
-  it('the check asks for it, the one rewrite is told to give every named part, and the rewrite with all three parts is shown', async () => {
-    const prompts: string[] = []
-    const said = [missing, JSON.stringify({ insert_after: { 3: ['', '리스크', '- 디자이너 일정이 밀리면 출시가 늦어질 수 있어요'] } }), '{"problems":[]}']
-    const logged: string[] = []
-    const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async (p: string) => { prompts.push(p); return said.shift() }, since: Date.now(), log: (o, k) => logged.push(`${o}:${k.join(',')}`) })
-    expect(out).toBe(DRAFT.replace('\n\n다음 단계', '\n\n리스크\n- 디자이너 일정이 밀리면 출시가 늦어질 수 있어요\n\n다음 단계'))
-    expect(prompts).toHaveLength(3)
-    expect(prompts[0]).toContain('"missing"')
-    expect(prompts[1]).toContain('add that part as its own part where it belongs')
-    expect(prompts[1]).toContain('"missing"')
-    for (const part of ['합의된 것', '리스크', '다음 단계']) expect(out).toContain(part)
-    expect(logged).toEqual(['repaired:missing'])
-    void FIXED
+  it('the turn is told to give every named part, and the answer the model writes with all three parts is posted as written', async () => {
+    const { posted, told, calls, voiced } = await deskTurn(FIXED, ASK, { name: 'kickoff.md', text: SOURCE })
+    expect(told).toContain(PARTS)
+    expect(told).toContain(SOURCE)
+    expect(posted).toBe(FIXED)
+    for (const part of ['합의된 것', '리스크', '다음 단계']) expect(posted).toContain(part)
+    expect(calls).toBe(1)
+    expect(voiced).toEqual([])
   })
-  it('a rewrite that fails leaves the draft as it was: a missing part is never a reason to withhold the answer', async () => {
-    const said = [missing, undefined]
-    expect(await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => said.shift(), since: Date.now() })).toBe(DRAFT)
-    const still = [missing, JSON.stringify({ insert_after: { 5: ['- 회의록 공유 — 다음 주'] } }), missing]
-    expect(await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => still.shift(), since: Date.now() })).toBe(`${DRAFT}\n- 회의록 공유 — 다음 주`)
-    expect(withoutQuoted('다음 단계\n- 다음 단계 일정 잡기', [{ kind: 'missing', quote: '다음 단계', why: '' }])).toBe('다음 단계\n- 다음 단계 일정 잡기')
+  it('a draft that lacks a part is posted as it was: nothing is added to it and it is never withheld', async () => {
+    const { posted, calls, voiced } = await deskTurn(DRAFT, ASK, { name: 'kickoff.md', text: SOURCE })
+    expect(posted).toBe(DRAFT)
+    expect(posted).not.toContain('리스크')
+    expect(calls).toBe(1)
+    expect(voiced).toEqual([])
   })
   it('the desk note gives the parts the ask names, filled by meaning over the source\'s headings', () => {
     expect(DESK_NOTE).toContain('When they name the parts of the answer')
@@ -44,18 +48,19 @@ describe('a reshape keeps the facts of the earlier ask (Q4 class)', () => {
   const was = 'I sincerely apologize for the delay in sending your package.'
   const say = (reply: string): string => JSON.stringify({ form: 'simpler', was, reply })
   const lost = 'I apologize for the delay.', kept = 'Sorry your package was sent late.'
-  it('the voice is told that simpler removes words, never a fact the ask put in', () => {
-    const prompt = reshapePrompt('더 간단히', LAST, EARLIER)
-    expect(prompt).toContain('Every fact the person had put in their ask (who, what, for what, when)')
-    expect(reshapePrompt('더 간단히', LAST)).not.toContain('Every fact the person had put in')
+  const thread = [{ role: 'user' as const, text: EARLIER }, { role: 'assistant' as const, text: LAST }]
+  it('the model is told that another form keeps every fact of the original ask, with that ask in view', async () => {
+    const { told } = await turn(say(kept), '더 간단히', { history: thread })
+    expect(told).toContain('with every fact and every constraint of the original ask kept, and nothing about what you changed')
+    expect(told).toContain(EARLIER)
+    expect(told).toContain(was)
   })
-  it('a reply without the parcel is "dropped" and rewritten; the check names facts in its "dropped" line', async () => {
-    const calls: string[] = []
-    const verdicts = [JSON.stringify({ problems: [{ kind: 'dropped', quote: lost, why: '택배가 빠졌어요' }] }), '{"problems":[]}']
-    const quick = async (p: string): Promise<string> => { calls.push(p); return p.includes('Judge meaning only') ? verdicts.shift()! : p.includes('You fix a message') ? JSON.stringify({ replace: { 1: kept } }) : say(lost) }
-    expect(await reshapeAsk('더 간단히', LAST, quick, EARLIER)).toBe(kept)
-    expect(calls[1]).toContain('a fact the earlier ask itself put in (who, what, for what, when)')
-    expect(calls).toHaveLength(4)
+  it('a reply without the parcel is posted as the model wrote it: no "dropped" check, no rewrite', async () => {
+    const { posted, calls, voiced } = await turn(lost, '더 간단히', { history: thread })
+    expect(posted).toBe(lost)
+    expect(posted).not.toBe(kept)
+    expect(calls).toBe(1)
+    expect(voiced).toEqual([])
   })
 })
 
@@ -65,17 +70,19 @@ describe('a one-line answer drawn from a named file is checked too (Codex r1 #1)
   const oneLine = '배포가 늦어진 건 테스트 서버가 하루 꺼져 있어서였어요.'
   const fixed = '원인: 테스트 서버가 하루 내내 꺼져 있었어요.\n대책: 오하늘 님이 매일 아침 서버 상태를 확인해요.'
   const lacks = JSON.stringify({ problems: [{ kind: 'missing', quote: '대책', why: '대책이 없어요' }] })
-  it('the check reads it, finds the named part missing, and the rewrite with both parts is shown', async () => {
-    const added = fixed.split('\n')[1]!
-    const said = [lacks, JSON.stringify({ insert_after: { 1: [added] } }), '{"problems":[]}'], prompts: string[] = []
-    const out = await checkedDesk({ ask, draft: oneLine, source: memo, fromSource: true, quick: async (p: string) => { prompts.push(p); return said.shift() }, since: Date.now() })
-    expect(out).toBe(`${oneLine}\n${added}`)
-    expect(prompts[0]).toContain('"missing"')
-    expect(prompts[1]).toContain('add that part as its own part where it belongs')
+  it('the model has the whole file and the rule on named parts, and its one line is posted as written', async () => {
+    const { posted, told, voiced } = await deskTurn(oneLine, ask, { name: 'workshop.md', text: memo })
+    expect(told).toContain(`<<<workshop.md\n${memo}\n>>>`)
+    expect(told).toContain(PARTS)
+    expect(posted).toBe(oneLine)
+    expect(voiced).toEqual([])
+    expect((await deskTurn(fixed, ask, { name: 'workshop.md', text: memo })).posted).toBe(fixed)
+    expect(lacks).toContain('missing')
   })
-  it('a one-line short-ask answer (no named source) is still delivered without a check', async () => {
+  it('a one-line short-ask answer (no named source) is delivered as written, with no voice call', async () => {
     const quick = vi.fn(async () => lacks)
-    expect(await checkedDesk({ ask: '하루는 몇 분이야?', draft: '하루는 1,440분이에요.', source: '', quick, since: Date.now() })).toBe('하루는 1,440분이에요.')
+    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async () => ({ answer: '아침 9시에 열어요.' }), quick } as unknown as Engine
+    expect((await runToolSession({ engine, workdir: '/tmp/c16c-desk' as EngineCwd, tools: [] }, '동네 도서관 문 여는 때가 언제야?', { short: true })).answer).toBe('아침 9시에 열어요.')
     expect(quick).not.toHaveBeenCalled()
   })
 })

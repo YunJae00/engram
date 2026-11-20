@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
+import { artifactHref, fileWorkTools, renameWithRetry, type FileCard, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory, ensureTaskFolder, freeName, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot, twinsFile } from './file-work.js'
 import { flog } from './flog.js'
@@ -196,9 +196,19 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   return found
 }
 
+export const withFiles = (text: string, files: readonly FileCard[] = []): string => [text, ...files.map(file => `[${file.name}](engram-artifact:${file.href})`)].join('\n\n')
 const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
-export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
+export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; files?: FileCard[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
   if (result.asked) return
+  const cards = result.files ??= []
+  const card = (link: string, stale: readonly string[] = []): void => {
+    const [, name, href] = /^\[(.*)\]\(engram-artifact:([^)\s]+)\)$/.exec(link) ?? []
+    if (!name || !href) return
+    const at = cards.findIndex(one => stale.includes(one.href))
+    for (let i = cards.length - 1; i >= 0; i--) if (stale.includes(cards[i]!.href)) cards.splice(i, 1)
+    if (!cards.some(one => one.href === href)) cards.splice(at < 0 ? cards.length : at, 0, { name, href })
+  }
+  const shown = (): string => withFiles(result.answer, cards)
   const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
   const twins = new Set(result.steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [resolve(cwd, path)] : [] } catch { return [] } }))
   const CONTENT = '\0content'
@@ -206,12 +216,12 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : step.tool === 'file_create_workbook' && typeof step.args['name'] === 'string' ? `name\0${step.args['name'].toLowerCase()}` : createHash('sha256').update(JSON.stringify(step.args)).digest('hex')}` : '' }
   const sourceOf = (step: TurnStep) => { const copy = step.tool === 'file_create_copy', from = copy && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : copy && typeof step.args['content'] === 'string' ? CONTENT : madeFrom(step); return twins.has(from) ? CONTENT : from }
   const receipts = new Map([...new Set(result.steps.map(sourceOf))].flatMap(source => latestResultOutputs(result.steps.map(step => sourceOf(step) === source ? step : { ...step, seeded: true }), [])).map(output => [output.path, output]))
-  const quoted = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)), name = id.replace(SAVED_ID, ''); return id && linkedIds(result.answer, name).some(href => href === artifactHref(id) || href === encodeURIComponent(id)) ? [`${name}\0${sourceOf(step)}`] : [] }))
+  const quoted = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)), name = id.replace(SAVED_ID, ''); return id && linkedIds(shown(), name).some(href => href === artifactHref(id) || href === encodeURIComponent(id)) ? [`${name}\0${sourceOf(step)}`] : [] }))
   for (const output of [...receipts.values()].sort((a, b) => a.after! - b.after!)) {
-    const id = basename(output.path), others = linkedIds(result.answer, output.name), step = result.steps[output.after!]!
+    const id = basename(output.path), others = linkedIds(shown(), output.name), step = result.steps[output.after!]!
     const own = others.find(href => href === artifactHref(id) || href === encodeURIComponent(id))
     const revisions = new Set(result.steps.filter(one => sourceOf(one) === sourceOf(step) && ownArtifact(one)).flatMap(one => [artifactHref(basename(ownArtifact(one))), encodeURIComponent(basename(ownArtifact(one)))]))
-    if (own && !others.slice(0, others.indexOf(own)).some(href => !revisions.has(href))) continue
+    if (own && (!cards.some(one => one.href === own) || !others.slice(0, others.indexOf(own)).some(href => !revisions.has(href)))) continue
     if (!own && quoted.has(`${output.name}\0${sourceOf(step)}`)) continue
     const taskOf = (one: TurnStep) => { try { const path = (JSON.parse(one.observation) as { taskPath?: unknown }).taskPath; return typeof path === 'string' ? resolve(cwd, path) : undefined } catch { return undefined } }
     const twin = taskOf(step)
@@ -220,7 +230,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       try {
-        const held = new Set([...Object.values(names).map(name => name.toLowerCase()), ...linkNames(result.answer)])
+        const held = new Set([...Object.values(names).map(name => name.toLowerCase()), ...linkNames(shown())])
         const name = freeName(output.name, free => held.has(free))
         const saved = await saveOutput(artifactDirectory(paths), name, await readFile(output.path))
         for (const earlier of result.steps) if (sourceOf(earlier) === sourceOf(step) && earlier.args['name'] === output.name && earlier.tool === step.tool) earlier.args = { ...earlier.args, name }
@@ -228,14 +238,14 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
         link = saved.markdownLink
       } catch (error) { flog('native-tools', `could not rename ${output.name}: ${error instanceof Error ? error.message : String(error)}`) }
     }
-    result.answer = own ? result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([^)\s]+)\)/g, (whole, href) => href === own ? link : whole) : `${result.answer}\n\n${link}`
+    card(link, own ? [own] : [])
   }
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
-  await recordOwnCopies(cwd, result.steps, names, result.answer)
+  await recordOwnCopies(cwd, result.steps, names, shown())
   const hashes = new Set((await readFile(twinsFile(paths, await realpath(cwd).catch(() => cwd)), 'utf8').catch(() => '')).split('\n').filter(Boolean).map(line => line.split('\0', 2).join('\0')))
-  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names, hashes)
+  const named = await mentionedOutputs(cwd, shown(), since, oversized, artifactDirectory(paths), names, hashes)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
   for (const path of named) {
     try {
@@ -245,14 +255,12 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
       const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }).catch(raw) : await raw()
       const made = JSON.parse(observation) as { markdownLink: string }
       result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation: JSON.stringify({ ...made, handedInFrom: real }) })
-      const link = made.markdownLink, stale = linkedIds(result.answer, name)
-      result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
+      card(made.markdownLink, linkedIds(shown(), name))
     } catch (error) {
       flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`)
-      result.answer = `${result.answer}\n\n⚠ ${basename(path)} could not be attached, so it stays in the task folder.`
     }
   }
-  for (const name of oversized) result.answer = `${result.answer}\n\n⚠ ${name} is larger than 50 MB, so it stays in the task folder and is not attached.`
+  for (const name of oversized) flog('native-tools', `${name} is larger than 50 MB, so it stays in the task folder`)
 }
 
 const consent = new Map<string, { allowed: boolean }>()

@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
 import { communityPost } from './search-template.js'
-import { datedText, logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
+import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 export const TEAM_TOKEN_RESERVE = 45_000
 const HIRE_MAX_PER_CALL = 4
@@ -44,7 +44,7 @@ export function skipWalls(tool: AgentTool): AgentTool {
   return { ...tool, run: async (args, context) => skip(await tool.run(args, context), args), ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); return { ...out, text: skip(out.text, args) } } } : {}) }
 }
 
-export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; sources?: string[]; read?: string; report?: MemberData | null }
+export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; sources?: string[]; read?: string }
 export interface MemberRedo { note: string; answered?: boolean }
 
 export interface TeamHost {
@@ -98,7 +98,6 @@ export function answeredLookup(answer: string, read: readonly string[] = []): bo
   return said.length >= 30 || /\d/.test(said) && said.length >= 4
 }
 const SOURCES_MAX = 3
-const cutTitle = (words: string, url: string): boolean => { const [title, found] = TITLES.get(url) ?? TITLES.get(plainAddress(url)) ?? [], name = words.trim(); return !!title && name.length >= 2 && title.includes(name) && sitePart(title, found) !== name }
 const TITLES = new Map<string, [title: string, found: string]>()
 export const keepTitle = (url: string, title: string, found = ''): void => { TITLES.delete(url); TITLES.set(url, [title, found]); if (TITLES.size > 400) TITLES.delete(TITLES.keys().next().value!) }
 const NAME_MAX = 12
@@ -121,79 +120,6 @@ export function keepSources(tool: AgentTool, seen: Set<string>): AgentTool {
 }
 const sourcesOf = (read: readonly string[]): string[] => [...new Set(read)].sort((a, b) => Number(SEARCH_PAGE.test(a)) - Number(SEARCH_PAGE.test(b))).slice(0, SOURCES_MAX)
 
-const TABLE_RULE = /^\s*\|[\s:|-]+\|\s*$/
-export function citeMembers(answer: string, members: readonly TeamMember[], korean = false): string {
-  if (!answer.trim()) return answer
-  const cited = members.filter(m => m.sources?.length && m.state !== 'failed')
-  const escaped = (url: string): string => url.replace(/\)/g, '%29').replace(/ /g, '%20')
-  const href = (m: TeamMember): string => escaped(m.sources![0]!)
-  const name = (m: TeamMember): string => m.botId ? m.role.replace(/[[\]|]/g, '').trim() : ''
-  const lines = answer.split('\n')
-  const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
-  let sourceColumn = false
-  const used = new Set<string>()
-  for (const [i, line] of lines.entries()) {
-    if (!/^\s*\|.*\|\s*$/.test(line) || TABLE_RULE.test(line)) continue
-    const cells = line.trim().slice(1, -1).split('|').map(cell => cell.trim())
-    if (TABLE_RULE.test(lines[i + 1] ?? '')) { sourceColumn = /출처|링크|source|link/i.test(cells.at(-1)!); continue }
-    const words = cells[0]!.replace(/[*_`]/g, '').split(/[\s(),/·]+/).filter(word => word.length >= 2)
-    const scored = members.map(m => ({ m, hits: words.filter(word => `${m.role} ${m.brief}`.includes(word)).length })).filter(one => one.hits).sort((x, y) => y.hits - x.hits)
-    if (!scored.length || scored[1]?.hits === scored[0]!.hits) continue
-    const own = scored[0]!.m
-    if (name(own) && !line.includes(name(own))) cells[0] = `${cells[0]}(${name(own)})`
-    if (!/https?:\/\//.test(line)) {
-      const last = cells.at(-1)!.replace(/[[\]]/g, ''), label = sourceColumn || cells.length === 1
-      const vague = label && (PLACE.test(last.trim()) || /^(?:블로그 글|커뮤니티 글|blog post|forum post)$/i.test(last.trim())), post = vague ? [...linked(own.result ?? '')].find(([url]) => communityPost(url)) : undefined
-      const bare = vague && !post ? (own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')).find(url => communityPost(url)) : undefined
-      const first = cited.includes(own) ? own.sources![0]! : undefined
-      const held = !post && !bare && (!first || SEARCH_PAGE.test(first) && !boxed(first)) ? figureSources(own.result ?? '', cells.slice(1)) : []
-      const words = (url: string, swapped = false): string => vague || !nameLike(last) || hostPiece(last, url) || cutTitle(last, url) || /(?:카페|블로그|포스트)$/.test(last.trim()) && communityPost(url) || swapped && /검색|search/i.test(last) ? '' : last.replace(/^[-–—\s]*$/, '')
-      const cite = (urls: readonly string[], lone?: string): string => { const names = urls.map(url => urls.length === 1 && lone || sourceName(url, korean)), same = new Set(names).size < names.length; return urls.map((url, at) => `[${same ? `${names[at]} ${at + 1}` : names[at]}](${escaped(url)})`).join(' · ') }
-      const page = named(own).find(url => !SEARCH_PAGE.test(url))
-      if (post) cells[cells.length - 1] = `[${post[1]}](${post[0]})`
-      else if (bare) cells[cells.length - 1] = `[${sourceName(bare, korean)}](${bare})`
-      else if (held.length) cells[cells.length - 1] = label ? cite(held, words(held[0]!, true)) : `${cells.at(-1)} ${cite(held)}`
-      else if (page && (!first || SEARCH_PAGE.test(first) && !boxed(first))) cells[cells.length - 1] = label ? cite([page], words(page, true)) : `${cells.at(-1)} ${cite([page])}`
-      else if (cited.includes(own)) cells[cells.length - 1] = label ? `[${words(own.sources![0]!) || sourceName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${sourceName(own.sources![0]!, korean)}](${href(own)})`
-      else if (vague) cells[cells.length - 1] = postWord(!/카페|caf/i.test(last), korean)
-    } else {
-      const own1 = /\[[^\]\n]*\]\((https?:\/\/[^)\s]+)\)\s*$/.exec(cells.at(-1)!), held = own1 && SEARCH_PAGE.test(own1[1]!) && !boxed(own1[1]!) ? figureSources(own.result ?? '', cells.slice(1, -1)) : []
-      if (held.length) cells[cells.length - 1] = held.map(url => `[${sourceName(url, korean)}](${escaped(url)})`).join(' · ')
-    }
-    if (sourceColumn) cells[cells.length - 1] = rowSource(cells, own, used, korean)
-    lines[i] = `| ${cells.join(' | ')} |`
-  }
-  const fixed = placeNamed(lines.join('\n'), members, korean, true)
-  const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)) && !named(m).some(url => fixed.includes(url)))
-  const rows = fixed.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !TABLE_RULE.test(line)).slice(1)
-  if (rows.length && rows.every(row => /\]\(https?:\/\//.test(row))) return fixed.replace(/\n+[ \t]*(?:\*\*)?(?:출처|Sources?)(?:\*\*)?[ \t]*[:：][^\n]*\s*$/i, '')
-  if (!missing.length) return fixed
-  return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${[...new Map(missing.map(m => [href(m), `[${sourceName(m.sources![0]!, korean)}](${href(m)})`])).values()].join(' · ')}`
-}
-const SECONDARY = /youtube\.com|youtu\.be|tv\.naver\.com|\/shorts\b|smartstore\.|shopping\.naver|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com/i
-const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return url } }
-function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean): string {
-  let cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
-  if (links.length > 1) {
-    const real = links.filter(link => (!SEARCH_PAGE.test(link[2]!) || boxed(link[2]!)))
-    if (real.length) { for (const link of real) used.add(hostOf(link[2]!)); return real.length === links.length ? cell : real.map(link => link[0]).join(' · ') }
-    links = links.slice(0, 1); cell = links[0]![0]
-  }
-  const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url))
-  const holds = new Set(figureSources(own.result ?? '', cells.slice(1, -1)))
-  const rank = (url: string): number => (holds.has(url) ? 0 : 8) + (communityPost(url) || SECONDARY.test(url) ? 4 : 0) + (used.has(hostOf(url)) ? 2 : 0)
-  const order = cited.map((url, at) => ({ url, at })).sort((a, b) => rank(a.url) - rank(b.url) || a.at - b.at).map(one => one.url), best = order[0]
-  const name = (url: string): string => `[${linked(own.result ?? '').get(url) ?? sourceName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
-  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now)
-  const each = order.filter(url => holds.has(url))
-  if (replace && each.length > 1) { for (const url of each) used.add(hostOf(url)); return each.map(name).join(' · ') }
-  const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) && rank(best) < rank(now)) ? best : now
-  if (!url) return cell
-  used.add(hostOf(url))
-  if (url === now) return /^\s*\[(?:출처|source)\]/i.test(cell) ? cell.replace(/\[(?:출처|source)\]/i, `[${sourceName(now, korean)}]`) : cell
-  return name(url)
-}
-const boxed = (url: string): boolean => { try { return BOXES.some(([words]) => words.test(new URL(url).searchParams.get('query') ?? '')) } catch { return false } }
 const VIDEO = /youtube\.com|youtu\.be|\/shorts\b|tv\.naver\.com/i
 function figureSources(result: string, cells: readonly string[]): string[] {
   const squeeze = (words: string): string => words.replace(/\s+/g, '')
@@ -210,14 +136,8 @@ function figureSources(result: string, cells: readonly string[]): string[] {
 const HOSTISH = /^(?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}\/?$/i
 const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)(?:\s+[\w.-]+)?$|^(?:티스토리|브런치|tistory|brunch)$/i
 const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
-const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title, url]) => nameLike(title!) && !hostPiece(title!, url!)).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim()]))
 const hostPiece = (words: string, url: string): boolean => { try { const name = words.trim().toLowerCase(); return /^[\w.-]+$/.test(name) && new URL(url).hostname.toLowerCase().includes(name) } catch { return false } }
 const givenName = (words: string, url: string): boolean => nameLike(words) && !hostPiece(words, url)
-export function placeNamed(text: string, members: readonly TeamMember[], korean = false, hosts = false): string {
-  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
-  const unnamed = (words: string, url: string): boolean => PLACE.test(words.trim()) || hosts && (HOSTISH.test(words.trim()) || /…|\.{3,}/.test(words) || hostPiece(words, url) || cutTitle(words, url))
-  return text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, words: string, url: string) => unnamed(words, url) ? `[${titles.get(url) ?? sourceName(url, korean)}](${url})` : whole)
-}
 export function sourceName(url: string, korean = false): string {
   const plain = siteName(url, korean)
   let host: string
@@ -237,24 +157,6 @@ export function siteOf(url: string, given: unknown, korean = true): string {
   return known === host && typeof given === 'string' && givenName(given, url) && !/^(?:출처|source|링크|link)$/i.test(given.trim()) ? given.trim() : known
 }
 const DECLARED = new Map<string, string>()
-export function keepDeclaredName(url: string, head: string): void {
-  let host: string
-  try { host = new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return }
-  const meta = (key: string): string | undefined => [...head.matchAll(/<meta\b[^>]*>/gi)].map(tag => tag[0]).filter(tag => new RegExp(`(?:property|name)\\s*=\\s*["']${key}["']`, 'i').test(tag)).map(tag => /content\s*=\s*(["'])([^"']*)\1/i.exec(tag)?.[2]).find(Boolean)
-  const name = (meta('og:site_name') ?? meta('application-name') ?? '').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim()
-  if (!name || !nameLike(name) || /\uFFFD|^(?:home|홈|index|untitled)$/i.test(name)) return
-  DECLARED.delete(host); DECLARED.set(host, name); if (DECLARED.size > 400) DECLARED.delete(DECLARED.keys().next().value!)
-}
-export async function pageHead(body: ReadableStream<Uint8Array> | null, max = 65_536): Promise<string> {
-  if (!body) return ''
-  const reader = body.getReader(), decoder = new TextDecoder()
-  let text = ''
-  try {
-    for (let bytes = 0; bytes < max && !/<\/head>/i.test(text);) { const { done, value } = await reader.read(); if (done) break; bytes += value.length; text += decoder.decode(value, { stream: true }) }
-  } finally { void reader.cancel().catch(() => undefined) }
-  return text
-}
-const declaredNamed = (text: string, korean: boolean): string => text.replace(/\[(출처|source)\]\((https?:\/\/[^)\s]+)\)/gi, (_whole, _word: string, url: string) => `[${sourceName(url, korean)}](${url})`)
 const PLATFORMS: [RegExp, string, string][] = [[/^(m\.)?cafe\.naver\.com$/, '네이버 카페', 'Naver Cafe'], [/^(m\.)?blog\.naver\.com$/, '네이버 블로그', 'Naver Blog'], [/^(m\.)?post\.naver\.com$/, '네이버 포스트', 'Naver Post'],
   [/^(m\.)?smartstore\.naver\.com$/, '스마트스토어', 'Smart Store'], [/(^|\.)tistory\.com$/, '티스토리', 'Tistory'], [/(^|\.)brunch\.co\.kr$/, '브런치', 'Brunch'], [/^(m\.)?cafe\.daum\.net$/, '다음 카페', 'Daum Cafe'], [/(^|\.)velog\.io$/, '벨로그', 'velog']]
 export const isSearchPage = (url: string): boolean => SEARCH_PAGE.test(url)
@@ -275,11 +177,8 @@ export function siteName(url: string, korean = false): string {
 }
 const BOXES: [RegExp, string, string][] = [[/날씨|기온|강수|미세\s?먼지|weather|forecast/i, '날씨', 'Weather'], [/주가|주식|시세|증시|stock|share price/i, '증권', 'Finance'], [/환율|exchange rate/i, '금융', 'Finance']]
 export const LINK_CHECK_MS = 1_500
-export const linkAnswers = (status: number): boolean => status >= 200 && status < 400
-export const localAddress = (url: string): boolean => { try { const host = new URL(url).hostname.toLowerCase(); return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.startsWith('[') || /^(127|10|0)\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(host) || !host.includes('.') } catch { return true } }
 const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
 const plainAddress = (url: string): string => { try { return decodeURI(url) } catch { return url } }
-const unloaded = (text: string, read: readonly string[]): string[] => { const loaded = new Set(read.map(plainAddress)); return [...new Set((text.match(ADDRESS) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')))].filter(url => !loaded.has(plainAddress(url))) }
 export async function deadOf(shown: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms: number): Promise<string[]> {
   if (!shown.length) return []
   const limit = new AbortController(), timer = setTimeout(() => limit.abort(), ms)
@@ -288,36 +187,6 @@ export async function deadOf(shown: readonly string[], alive: (url: string, sign
   clearTimeout(timer)
   limit.abort()
   return dead
-}
-const TABLE_ROW = /^\s*\|.*\|\s*$/
-const tidyCell = (line: string): string => line.replace(/\|[ \t]*(?:·[ \t]*)+/g, '| ').replace(/(?:[ \t]*·)+[ \t]*\|/g, ' |').replace(/·[ \t]*(?:·[ \t]*)+/g, '· ')
-function withoutDead(answer: string, dead: readonly string[], read: readonly string[], korean: boolean, named = true): string {
-  const own = sourcesOf(read)[0], literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  let out = answer
-  for (const url of dead) {
-    const swap = own && !plainAddress(out).includes(plainAddress(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
-    const link = new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), bare = new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g')
-    out = out.split('\n').map(line => {
-      const row = TABLE_ROW.test(line), done = line.replace(link, (_whole, name: string) => swap ? `[${sourceName(own!, korean)}](${swap})` : named && !row ? name : '').replace(bare, swap)
-      return row && done !== line ? tidyCell(done) : done
-    }).join('\n')
-  }
-  return out
-}
-export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS, swap: readonly string[] = read): Promise<string> {
-  return declaredNamed(withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), swap, korean), korean)
-}
-export async function liveCited(answer: string, read: readonly string[], cite: (answer: string) => Promise<string> | string, alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
-  const dead = await deadOf(unloaded(`${answer}\n${await cite(answer.replace(ADDRESS, ''))}`, read), alive, ms)
-  const row = /^\s*\|.*\|\s*$/, cells = (line: string): string[] => line.trim().slice(1, -1).split('|').map(cell => cell.trim())
-  const was = withoutDead(answer, dead, read, korean).split('\n'), bare = withoutDead(answer, dead, read, korean, false).split('\n')
-  const rows = (await cite(was.map((line, i) => row.test(line) ? bare[i]! : line).join('\n'))).split('\n').map((line, i) => {
-    const had = was[i]
-    if (had === undefined || !row.test(had) || !row.test(line)) return line
-    return dead.some(url => line.includes(url) && !had.includes(url)) || bare[i] !== had && !/https?:\/\//.test(cells(line).at(-1)!) ? `| ${[...cells(line).slice(0, -1), cells(had).at(-1)!].join(' | ')} |` : line
-  })
-  const out = declaredNamed(withoutDead(rows.join('\n'), dead, read, korean), korean)
-  return out.replace(/\n\n(출처|Sources): ([^\n]*)$/, (_whole, label: string, items: string) => { const kept = items.split(' · ').filter(item => /\]\(https?:\/\//.test(item)); return kept.length ? `\n\n${label}: ${kept.join(' · ')}` : '' })
 }
 export const NO_LIVE_SOURCE = '(no live source)'
 export async function withLiveSources(members: TeamMember[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms = LINK_CHECK_MS): Promise<boolean> {
@@ -344,17 +213,6 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
     if (fixed !== m.result || said !== m.said || sources?.length !== m.sources?.length) { changed = true; m.result = fixed; if (said !== undefined) m.said = said; if (sources?.length) m.sources = sources; else delete m.sources }
   }
   return changed
-}
-export function citeOwn(answer: string, read: readonly string[], korean = false): string {
-  const replies = /(?:\s*\n-{3,})?\s*```replies[^]*$/.exec(answer)?.[0]
-  if (replies) return citeOwn(answer.slice(0, -replies.length), read, korean) + replies
-  answer = placeNamed(answer, [], korean, true)
-  const lone = /^([^]*\S)\s*\n\s*(\[[^\]\n]+\]\(https?:\/\/[^)\n]+\))\s*$/.exec(answer)
-  if (lone && !/^\s*([|>#*+-]|\d+[.)]\s|```)/.test(lone[1]!.split('\n').at(-1)!)) return `${lone[1]} ${lone[2]}`
-  if (!answer.trim() || !read.length || /https?:\/\//.test(answer)) return answer
-  const url = sourcesOf(read)[0]!, link = `[${sourceName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
-  const text = answer.trimEnd(), last = text.split('\n').at(-1)!
-  return /^\s*([|>#*+-]|\d+[.)]\s|```)/.test(last) ? `${text}\n\n${link}` : `${text} ${link}`
 }
 export function keepRead(tool: AgentTool, into: string[]): AgentTool {
   const note = (args: Record<string, unknown>, out: string): void => {
@@ -406,12 +264,6 @@ export function keptItems(brief: string, text: string): string {
   const kept = items.filter(item => !(real && links(item).length > 0 && links(item).every(isSearchPage)))
   return (said(kept) ? kept : items).flat().join('\n')
 }
-export function dataText(data: MemberData): string {
-  const fact = (f: { text: string; url: string; date?: string }): string => `${datedText(f)} — ${f.url}`
-  if (data.items?.length) return data.items.map((item, i) => `${i + 1}. ${item}`).join('\n')
-  if (data.nothing) return ['이번엔 새로 나온 게 없어요.', ...(data.nothing.latest ? [`가장 최근: ${fact(data.nothing.latest)}`] : [])].join('\n')
-  return data.facts.map(fact).join('\n')
-}
 const wholeSentences = (text: string): string => {
   const ends = [...text.matchAll(/(?:[.!?。]|\]\([^)\s]+\)|https?:\/\/[^\s)\]>"'|]+)(?=\s|$)/g)].at(-1)
   return ends ? text.slice(0, ends.index + ends[0].length).trim() : ''
@@ -421,17 +273,6 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   const read = outcome.error || outcome.asked ? '' : (outcome.read ?? '').trim()
   const answer = outcome.timedOut && (PROGRESS_ONLY.test(said) || !!read && WALLED.test(said)) ? '' : said
   member.finishedAt = at
-  if (outcome.report !== undefined && !outcome.error && !outcome.asked) {
-    const sources = sourcesOf(outcome.sources ?? []), data = outcome.report
-    member.state = 'done'
-    if (sources.length) member.sources = sources
-    if (!data) { member.result = cut(said.replace(/```[a-z]*\s*\{[\s\S]*$/, '').trim(), MEMBER_RESULT_CHARS); return }
-    member.data = data
-    if (data.nothing) member.empty = true
-    member.result = cut(dataText(data), MEMBER_RESULT_CHARS)
-    if (member.lookup) member.review = { ok: true, note: AUTO_REVIEW }
-    return
-  }
   if (outcome.error || (!answer && !read)) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
   const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''
@@ -477,8 +318,6 @@ export function figurePages(answer: string, read: string): string {
 export const PRIOR_PRICE_NOTE = 'Your price has no figure. Results of a search for the previous model\'s launch price follow. Write your whole answer again, the same lines, with the price line now carrying that figure with its currency, labeled 전작 ("전작 출시가 115만 원"), and the address it came from; change nothing else, and write no word about searching again.'
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`
-
-export const cutShortAnswer = (answer: string): string => /^Not verified as complete\.\n\nThe tool-call or time limit was reached\.\n\nUnverified response:\n/.test(answer) ? answer.slice(answer.indexOf('Unverified response:\n') + 21).trim() : answer
 
 const OPTIONAL = /가능하면|가능하다면|가능한 경우|여유가? ?되면|시간이? ?되면|if possible|if time permits|if you have time|optionally|nice to have|as a bonus/i
 export function withoutExtras(brief: string, personSaid: string): string {
@@ -556,12 +395,6 @@ export function teamNote(team: TaskTeam | undefined): string {
 
 const askUp = (members: readonly TeamMember[]): string | undefined => { const asking = members.filter(m => m.state === 'waiting'); return asking.length ? formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), []) : undefined }
 const accepted = (m: TeamMember): boolean => m.state === 'done' && (!!m.lookup && !m.files?.length || m.review?.ok === true && m.review.note === AUTO_REVIEW)
-export function mergeReady(observation: string): boolean {
-  try {
-    const o = JSON.parse(observation) as { note?: unknown; members?: unknown }
-    return typeof o.note === 'string' && o.note.startsWith(ACCEPTED_NOTE) && Array.isArray(o.members) && o.members.length > 0 && o.members.every(m => (m as { accepted?: unknown } | null)?.accepted === true)
-  } catch { return false }
-}
 const measured = (brief: string, measure: string): string => measure ? `${brief}\n\nMeasure each compared point exactly this way, the same for every part: ${measure}. A value you can only find on another basis (another model or tier, unit or day) is given labeled with what it is.` : brief
 const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(m.sources?.length ? { sources: m.sources } : {}), ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''

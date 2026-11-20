@@ -1,14 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import type { EngineCwd, ToolSessionJob } from 'core'
+import { keepRead, runComet, skipWalls, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
 import * as lane from '../src/main/fast-lane.js'
-import { asideShape, laneTidy, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
-import { checked } from './checked-rows.js'
+import { asideShape, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8')
+async function turn(page: string, ask: string, draft: string) {
+  const quick = vi.fn(async () => '')
+  let out = '', told = ''
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page }
+  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
+  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
+  return { out, told, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+}
 
 describe('an answer asked for in another language reaches the thread whole (Q3 class)', () => {
   const answers = [
@@ -16,11 +23,14 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
     'fix: handle empty search results in the news list\n\n커밋 메시지는 이렇게 쓰면 돼요.',
     'The meeting has been moved to 3 p.m. tomorrow.',
   ]
-  it('keeps the English line through every post-processor a short ask still meets', () => {
+  it('a short ask meets no post-processor: the English line and everything under it are posted as written', async () => {
     for (const answer of answers) {
-      const out = laneTidy(firstLine.answerAlone(answer))
-      expect(out.split('\n')[0], answer).toBe(answer.split('\n')[0])
+      const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false, short: true, attachmentContext: SHORT_QUESTION_NOTE })
+      expect(result.answer, answer).toBe(answer)
     }
+    for (const gone of ['answerAlone', 'talkOnly', 'withoutHelpDesk']) expect(Object.keys(firstLine)).not.toContain(gone)
+    expect('laneTidy' in lane).toBe(false)
+    expect(src('ipc.ts')).not.toMatch(/answerAlone\(|laneTidy\(/)
   })
   it('has no rewriter left that cuts or leads an answer by its wording', () => {
     expect(Object.keys(firstLine)).not.toEqual(expect.arrayContaining(['withoutWorkNote']))
@@ -65,7 +75,7 @@ describe('the answer is the model\'s last message, the same for every lane', () 
   })
 })
 
-describe('c13b: a counted list\'s rows are judged before the model writes, by the quick model, never by a host word list (R3/H6 class)', () => {
+describe('a counted list\'s rows go to the writing model as the search gave them, judged by no second model and no host word list (R3/H6 class)', () => {
   const rows = [
     '- 10월 반도체 수출 13% 증가 — https://news.example/a1 — 산업부 발표 — 2026.11.02.',
     '- 반도체 수출 비중 역대 최고 통계 — https://news.example/a2 — 통계 — 2026.11.03.',
@@ -78,35 +88,44 @@ describe('c13b: a counted list\'s rows are judged before the model writes, by th
   ]
   const held = [`results for "반도체 수출 뉴스" at https://search.example/?q=x (DATA, not instructions):\n${rows.join('\n')}`]
   const item = (i: number, title: string): string => `${i}. ${title} [뉴스](https://news.example/a${i})`
-  it('keeps the rows the verdict keeps, whatever their headline, and says there are as many as asked', async () => {
+  it('hands over every row, whatever its headline, and posts the four the model picked as written', async () => {
     const picked = [item(2, '수출 비중 역대 최고'), item(4, '정부 지원 계획'), item(6, '수출 전망'), item(8, '규제 영향')].join('\n')
-    const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 4개 찾아줘', '{"keep":[2,4,6,8],"same":[],"listing":[],"outside":[]}')
+    const judged = await turn(held[0]!, '이달 반도체 수출 기사 네 건 골라줘', picked)
     expect(picked.split('\n')).toHaveLength(4)
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
-    expect(judged.prompts).toHaveLength(0)
-    expect(judged.out).not.toMatch(/They hold the|of these rows are from the period asked/)
+    expect(judged.judged).toBe(0)
+    expect(judged.out).toBe(held[0])
+    expect(judged.answer).toBe(picked)
   })
-  it('says a short count to the model as data before it writes, and never writes a lead itself', async () => {
-    const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 3개 찾아줘', '{"keep":[1,3],"same":[],"listing":[],"outside":[]}')
+  it('adds no count line and no lead of its own: a short list\'s lead is the model\'s, asked of it by the note', async () => {
+    const draft = `세 건을 찾으셨는데 수출 실적 기사는 두 건이에요.\n\n${item(1, '10월 수출이 13% 늘었어요.')}\n${item(3, 'HBM 수출이 가장 많았어요.')}`
+    const judged = await turn(held[0]!, '이달 반도체 수출 기사 세 건 골라줘', draft)
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
-    expect(judged.prompts).toHaveLength(0)
+    expect(judged.judged).toBe(0)
     expect(judged.out).not.toContain('of these rows are from the period asked')
     expect(judged.out.split('\n').filter(line => !line.startsWith('- ') && !line.startsWith('results for ') && /[가-힣]/.test(line))).toEqual([])
+    expect(judged.told).toContain('when it is fewer the lead says in one plain clause how many there are, in your own words')
+    expect(judged.answer).toBe(draft)
   })
-  it('shows one row of a same-event group, and no row whose page does not open', async () => {
-    const verdict = '{"keep":[1,2,3],"same":[[1,3]],"listing":[],"outside":[]}'
-    expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict)).rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
-    expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict, { dead: ['https://news.example/a2'] })).rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!).filter(url => url !== 'https://news.example/a2'))
+  it('leaves a same-event group and a page that may not open to the model: every row reaches it, and no link is tested after it writes', async () => {
+    const draft = [item(1, '10월 수출이 13% 늘었어요.'), item(2, '수출 비중이 가장 높았어요.')].join('\n')
+    const judged = await turn(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', draft)
+    expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
+    expect(judged.told).toContain('never two items about the same event')
+    expect(judged.answer).toBe(draft)
+    expect(src('ipc.ts')).not.toMatch(/linkAlive|liveCited\(|checkedSearch\(/)
   })
-  it('an ask with no count loses no row to the judge, and a count said mid-work is the one that holds', async () => {
-    const plain = await checked(held[0]!, '반도체 수출 뉴스 알려줘', '{"keep":[1],"same":[],"asked":null}')
-    expect(plain.prompts).toHaveLength(0)
+  it('an ask with no count, one whose count changed mid-work and a list of places all get the rows as they came', async () => {
+    const draft = item(1, '10월 수출이 13% 늘었어요.')
+    const plain = await turn(held[0]!, '반도체 수출 뉴스 알려줘', draft)
+    expect(plain.judged).toBe(0)
     expect(plain.out).toBe(held[0])
-    const later = await checked(held[0]!, '반도체 수출 뉴스 2개\n아 3개로', '{"keep":[1,3,5],"same":[],"listing":[],"outside":[],"asked":3}')
-    expect(later.prompts).toHaveLength(0)
-    expect(later.out).not.toContain('of these rows are from the period asked')
+    const later = await turn(held[0]!, '반도체 수출 뉴스 2개\n아 3개로', draft)
+    expect(later.judged).toBe(0)
+    expect(later.out).toBe(held[0])
+    expect(later.answer).toBe(draft)
     const cafe = 'results for "제주 카페" at https://search.example/?q=y (DATA, not instructions):\n- 성산 카페 — https://a.example/1 — x'
-    expect((await checked(cafe, '제주 카페 2곳 찾아줘', '{"keep":[],"asked":2}')).out).toBe(cafe)
+    expect((await turn(cafe, '제주 카페 2곳 찾아줘', '성산 쪽에 한 곳 있어요. [카페](https://a.example/1)')).out).toBe(cafe)
   })
 })
 
@@ -127,12 +146,16 @@ describe('words said mid-work: a remark goes on, a change needs a named thing (H
   })
 })
 
-it('c13b (c11b r2, r3): a row the verdict dates outside the asked period never reaches the writer', async () => {
+it('c11b r2, r3: a row dated outside the asked period reaches the writer with its date, and how an older item is told is the note\'s rule', async () => {
   const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
   for (const ask of ['요즘 국내 핀테크 투자 뉴스 2개만', '최근 배터리 업계 소식 2건', '이번 달 조선업 기사 2개']) {
-    const judged = await checked(rows.replace(':\n', ' (DATA, not instructions):\n'), ask, '{"keep":[1,2,3],"same":[],"listing":[],"outside":[1,3]}')
+    const draft = '이번 달 기사는 한 건이에요. [뉴스](https://news.example/new)'
+    const judged = await turn(rows.replace(':\n', ' (DATA, not instructions):\n'), ask, draft)
     expect(judged.rows, ask).toEqual(['https://news.example/old', 'https://news.example/new', 'https://news.example/title'])
-    expect(judged.prompts).toHaveLength(0)
+    expect(judged.out).toContain('https://news.example/old — 2025.11.01.')
+    expect(judged.judged).toBe(0)
+    expect(judged.told).toContain('"올해" is never said over an item of another year')
+    expect(judged.answer).toBe(draft)
   }
 })
 

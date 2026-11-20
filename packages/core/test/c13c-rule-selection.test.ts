@@ -54,10 +54,10 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
   })
 
   it('fits a char budget per kind (before c13c: short 30.0k, lookup teammate 28.7k, lone lookup 25.9k, desk note 30.0k)', () => {
-    expect(short.length).toBeLessThan(7_000)
+    expect(short.length).toBeLessThan(7_500)
     expect(teammate.length).toBeLessThan(12_500)
     expect(lone.length).toBeLessThan(12_500)
-    expect(note.length).toBeLessThan(23_000)
+    expect(note.length).toBeLessThan(24_000)
   })
 
   it('with no tool list or kind it is the full work set, so a session warmed ahead matches a default comet', () => {

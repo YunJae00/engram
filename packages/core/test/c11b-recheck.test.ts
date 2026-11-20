@@ -116,30 +116,23 @@ it('c12b r2: words said while the draft is judged or while its extra round runs 
   expect(r2.answer).toContain('3. 창원 항만')
 })
 
-it('c12b r3: words said while the host shapes the answer rewrite it, and only the rewrite, shaped again, is delivered', async () => {
-  const waiting: string[] = [], prompts: string[] = [], shaped: string[] = []
+it('c12b r3 → k1: words said while the answer is being written rewrite it, and the rewrite is delivered exactly as the model wrote it, with nothing put after it', async () => {
+  const waiting: string[] = [], prompts: string[] = []
+  const first = '1. 망원동 호두 식빵집 [m](https://m.example/1)', second = '1. 연남동 소금빵집 [y](https://y.example/1)\n\n줄이 길어서 오전에 가는 게 좋아요.'
   const engine = brain(async job => {
     prompts.push(job.prompt)
-    return { answer: prompts.length === 1 ? '1. 김포 맛집 [g](https://g.example/1)' : '1. 일산 맛집 [i](https://i.example/1)' }
+    if (prompts.length === 1) waiting.push('망원 말고 연남동 빵집으로 찾아줘')
+    return { answer: prompts.length === 1 ? first : second }
   })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '김포 맛집 하나 알려줘', {
-    lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
-    deliver: async answer => {
-      shaped.push(answer)
-      if (shaped.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('김포 말고 일산으로 찾아줘') }
-      return `${answer} (확인됨)`
-    },
-  })
-  expect(shaped).toEqual(['1. 김포 맛집 [g](https://g.example/1)', '1. 일산 맛집 [i](https://i.example/1)'])
-  expect(prompts[1]).toContain('김포 말고 일산으로 찾아줘')
-  expect(prompts[1]).not.toContain('(확인됨)')
-  expect(result.answer).toBe('1. 일산 맛집 [i](https://i.example/1) (확인됨)')
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '망원동 빵집 하나 알려줘', { lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0) })
+  expect(prompts).toHaveLength(2)
+  expect(prompts[1]).toContain('망원 말고 연남동 빵집으로 찾아줘')
+  expect(prompts[1]).toContain(first)
+  expect(result.answer).toBe(second)
+  expect(result.files).toEqual([])
   expect(waiting).toEqual([])
 
-  const once: string[] = []
-  const r2 = await runToolSession({ engine: brain(async () => ({ answer: '' })), workdir: WORKDIR, tools: [search] }, '파주 카페', {
-    lookup: true, takeSteer: () => [], deliver: async answer => { once.push(answer); return '파주 카페는 [p](https://p.example/1)' },
-  })
-  expect(once).toEqual([''])
-  expect(r2.answer).toBe('파주 카페는 [p](https://p.example/1)')
+  let runs = 0
+  const silent = await runToolSession({ engine: brain(async () => { runs++; return { answer: '' } }), workdir: WORKDIR, tools: [search] }, '합정 도서관 개관일', { lookup: true, takeSteer: () => [] })
+  expect([runs, silent.answer]).toEqual([1, ''])
 })

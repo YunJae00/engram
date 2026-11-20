@@ -57,7 +57,7 @@ it('writes a Word document the same way, without opening Word', async () => {
 })
 
 it('replaces this turn\'s own file when a second input is built under its name, and shows only the last', async () => {
-  const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
+  const { outputCards } = await import('../../../packages/core/src/agent-session-result.js')
   for (const [name, ext, input] of [['word_write', 'docx', (text: string) => ({ title: 'report', blocks: [{ kind: 'paragraph', text }], theme: THEME })], ['ppt_build', 'pptx', (text: string) => ({ slides: [{ title: text }], saveAs: 'report.pptx', theme: THEME })]] as const) {
     const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, `turn-${ext}`)).find(t => t.name === name)!
     const run = async (text: string) => { const args = input(text), observation = await tool.run(args, { task: '보고서' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { markdownLink: string; artifact: string; taskPath: string; path: string } } }
@@ -68,13 +68,12 @@ it('replaces this turn\'s own file when a second input is built under its name, 
     expect((await readdir(task)).filter(file => file.endsWith(`.${ext}`))).toEqual([`report.${ext}`])
     await expect(stat(sales.receipt.path)).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await readFile(costs.receipt.path)).equals(await readFile(costs.receipt.taskPath))).toBe(true)
-    const steps = [sales.step, costs.step] as unknown as Parameters<typeof outputLinks>[0]
-    for (const quoted of [sales, costs]) {
-      const answer = outputLinks(steps, `보고서: ${quoted.receipt.markdownLink}`)
-      expect(answer.split(costs.receipt.markdownLink).length - 1).toBe(1)
-      expect(answer).not.toContain(sales.receipt.artifact)
-    }
-    expect(outputLinks(steps, '다 만들었어요.').match(/engram-artifact:/g)).toHaveLength(1)
+    const steps = [sales.step, costs.step] as unknown as Parameters<typeof outputCards>[0]
+    const last = [{ name: `report.${ext}`, href: /\(engram-artifact:([^)]+)\)$/.exec(costs.receipt.markdownLink)![1]! }]
+    expect(sales.receipt.markdownLink).not.toContain(last[0]!.href)
+    expect(outputCards(steps, `보고서: ${sales.receipt.markdownLink}`)).toEqual(last)
+    expect(outputCards(steps, `보고서: ${costs.receipt.markdownLink}`)).toEqual([])
+    expect(outputCards(steps, '다 만들었어요.')).toEqual(last)
     const again = await run('sales')
     expect((await readFile(again.receipt.path)).equals(await readFile(again.receipt.taskPath))).toBe(true)
   }

@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { takesCompanyLane } from 'core'
-import { deskKind, deskLight, inKoreanWords, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
+import { runComet, takesCompanyLane, type Engine } from 'core'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import * as desk from '../src/main/desk-lane.js'
+import { deskKind, deskLight, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
 
 const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
 const team = { staff: ['지민', '서연', '도윤'], chief: true }
@@ -37,8 +39,12 @@ it('stack-8: light effort is for small changes only', () => {
   expect(deskKind('그 피피티 파일 지워줘')).not.toBe('deck')
 })
 
-it('stack-8 (c8c run D1): a Han shorthand in a note summary is said in Korean words; text with no Hangul is left alone', () => {
-  expect(inKoreanWords('신규 온보딩 화면 시안 확정 (B안 선호 의견 多)')).toBe('신규 온보딩 화면 시안 확정 (B안 선호 의견 많음)')
-  expect(inKoreanWords('多 and 少')).toBe('多 and 少')
-  expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = inKoreanWords(result.answer)")
+it('stack-8 (c8c run D1): a Han shorthand in a note summary is the model\'s to avoid by rule; what it writes is posted as written, shorthand or not', async () => {
+  for (const draft of ['신규 온보딩 화면 시안 확정 (B안 선호 의견 多)', '多 and 少']) {
+    const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '회의 메모 한 줄로 정리해줘', { guided: false, modelHint: 'smart' })
+    expect(result.answer).toBe(draft)
+  }
+  expect(COLLEAGUE_CORE_RULE).toContain('no Chinese-character shorthand (多, 約, 等)')
+  expect('inKoreanWords' in desk).toBe(false)
+  expect(ipc).not.toContain('inKoreanWords')
 })

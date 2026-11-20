@@ -18,10 +18,10 @@ interface TaskApproval {
 }
 
 export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
-export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string; instead?: string[] }
+interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string; instead?: string[] }
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 const DATE_PARTS = /(\d+)\s*(?:[~–-]\s*(\d+)\s*)?(년|월|일)|(?<!\d)(\d{1,4})[./-](\d{1,2})(?:[./-](\d{1,2}))?(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/giu
-export const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_PARTS)].flatMap(m => {
+const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_PARTS)].flatMap(m => {
   const n = (v: string): number => Number(v)
   if (m[3]) return [m[1], m[2]].filter(Boolean).map(v => `${m[3]}${n(v!)}`)
   if (m[7]) return [`월${MONTHS.indexOf(m[7].toLowerCase()) + 1}`, `일${n(m[8]!)}`]

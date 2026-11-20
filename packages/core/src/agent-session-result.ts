@@ -1,8 +1,8 @@
 import { basename, resolve } from 'node:path'
 import { parseReadBatch } from './browser-read-batch.js'
-import type { AgentLoopStep } from './agent-loop.js'
+import type { AgentLoopStep, FileCard } from './agent-loop.js'
 
-export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): string {
+export function outputCards(steps: AgentLoopStep[], answer: string, cwd = ''): FileCard[] {
   const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
   const COMPOSED = ['word_write', 'ppt_build']
   const twins = new Set(steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [resolve(cwd, path)] : [] } catch { return [] } }))
@@ -16,7 +16,7 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
   }
   const fresh = (step: AgentLoopStep): boolean => COMPOSED.includes(step.tool) || (step.tool === 'file_create_workbook' && ![step.args['source'], step.args['sourcePath'], step.args['path']].some(value => typeof value === 'string'))
   const edits = (step: AgentLoopStep): string | undefined => step.tool === 'file_edit_package' && typeof step.args['sourcePath'] === 'string' ? fileName(basename(step.args['sourcePath'])).toLowerCase() : undefined
-  let outputs: { link: string; id: string; name: string; source: string; composed: boolean; fresh: boolean; edits?: string | undefined; taskPath?: string | undefined }[] = []
+  const outputs: { link: string; id: string; name: string; source: string; composed: boolean; fresh: boolean; edits?: string | undefined; taskPath?: string | undefined }[] = []
   for (const step of steps) {
     if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', ...COMPOSED].includes(step.tool)) continue
     try {
@@ -29,17 +29,15 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
   const replaced = new Map(outputs.filter(output => output.fresh && last.get(output.name.toLowerCase())!.id !== output.id).map(output => [output.id, last.get(output.name.toLowerCase())!]))
   const onto = (edit: typeof outputs[number], output: typeof outputs[number]) => edit.taskPath && output.taskPath ? edit.taskPath === output.taskPath : edit.name.toLowerCase() === output.name.toLowerCase()
   outputs.forEach((output, at) => { const edit = outputs.slice(at + 1).filter(one => one.edits === output.name.toLowerCase() && onto(one, output)).at(-1); if (edit && (output.fresh || output.edits)) replaced.set(output.id, edit) })
-  const final = (id: string) => { let now = replaced.get(id); for (let hops = 0; now && replaced.has(now.id) && hops < 50; hops++) now = replaced.get(now.id); return now }
-  answer = answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g, (whole, id: string) => final(id)?.link ?? whole)
-  outputs = outputs.filter(output => !replaced.has(output.id))
+  const kept = outputs.filter(output => !replaced.has(output.id))
   const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
-  const chosen = outputs.filter(output => selected.has(output.id))
-  const links = new Map<string, string>()
-  for (const output of outputs) {
+  const chosen = kept.filter(output => selected.has(output.id))
+  const cards = new Map<string, FileCard>()
+  for (const output of kept) {
     if (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.composed || one.source === output.source))) continue
-    links.set(`${output.name}\0${output.source}`, output.link)
+    cards.set(`${output.name}\0${output.source}`, { name: output.link.slice(1, output.link.indexOf('](engram-artifact:')), href: output.id })
   }
-  return links.size ? `${answer}\n\n${[...new Set(links.values())].join('\n\n')}` : answer
+  return [...new Map([...cards.values()].map(card => [card.href, card])).values()]
 }
 
 const reportedCheck = (step: AgentLoopStep): boolean => {

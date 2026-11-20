@@ -1,42 +1,36 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createBot, createTask, inAskedPeriod, kindChecked, LATE_CEILING_MS, TEAM_ANSWER_MS, mergedReport, reportData, settleMember, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createBot, createTask, dateLine, handBacks, keptItems, LATE_CEILING_MS, LOOKUP_RULE, memberTask, partOutcome, TEAM_ANSWER_MS, settleMember, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamAsk } from '../src/main/fast-lane.js'
-import { checked } from './checked-rows.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const AT = '2026-11-18T03:00:00.000Z'
-const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const member = (id: string, role: string, brief: string, topic: string, over: Partial<TeamMember> = {}): TeamMember =>
   ({ id, parentId: null, depth: 1, role, brief, topic, botId: `bot-${id}`, lookup: true, background: true, state: 'working', sessionKey: `s-${id}`, hiredAt: AT, ...over })
-const settled = (m: TeamMember, report: unknown, sources: string[] = []): TeamMember => {
-  const answer = block(report)
-  settleMember(m, { answer, sources, report: reportData(answer, m, sources, true) ?? null }, AT, true)
+const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMember => {
+  settleMember(m, { answer, sources }, AT, true)
   return m
 }
 const src = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8')
+type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
+const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 
 describe('stack-12 merge: one item judge', () => {
-  it('the team kind check and the lone lookup verdict send one prompt, and each caller reads only its own fields', async () => {
-    const prompts: string[] = []
-    const answer = '{"keep":[1,3],"same":[[1,3]],"lists":[3],"names":{"1":"수원 재즈 공연"}}'
-    const write = async (prompt: string) => { prompts.push(prompt); return answer }
-    const facts = [{ text: '수원 재즈 공연이 12월 5일에 열려요.', url: 'https://a.example/1', site: 'a' }, { text: '수원 맛집 지도', url: 'https://b.example/2', site: 'b' }, { text: '수원 공연 일정 페이지예요.', url: 'https://c.example/3', site: 'c' }]
-    const team = await kindChecked({ facts }, '다음 달 수원 공연 일정', write)
-    const lone = await checked(['results for "수원 공연" at https://search.example/?q=s (DATA, not instructions):', ...facts.map(f => `- ${f.text} — ${f.url} — x`)].join('\n'), '수원 공연 3개 알려줘', prompt => write(prompt))
-    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^Give in "asked" |^When "asked" is a number|^When some point has no words in "holds", give in "open"/.test(line)).join('\n').replace(', "asked": <n or null>, "search": "<words>", "open": <n or null>', '')
-    expect(prompts).toHaveLength(1)
-    expect(instructions(prompts[0]!)).toContain('Judge each item by what it is')
-    expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://b.example/2', false, ''], ['https://c.example/3', true, '']])
-    expect(lone.rows).toEqual(['https://a.example/1', 'https://b.example/2', 'https://c.example/3'])
-    expect(lone.out).not.toContain('of these rows are from the period asked')
-    expect(src('../../../packages/core/src/company-tools.ts')).not.toMatch(/Keep every item that is the kind of thing/)
-    expect(src('../src/main/fast-lane.ts')).not.toMatch(/Judge each item by what it is/)
-    expect(src('../../../packages/core/src/item-check.ts').match(/Judge each item by what it is/g)).toHaveLength(1)
+  it('no item judge is left for the team or the lone lookup: what each item is, is the looking-up model\'s own call, and its lines reach the lead as written', () => {
+    for (const gone of ['kindChecked', 'checkedSearch', 'judgedItems', 'judgeTime']) expect(gone in core, gone).toBe(false)
+    expect(existsSync(new URL('../../../packages/core/src/item-check.ts', import.meta.url))).toBe(false)
+    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing|kindChecked|checkedSearch/)
+    expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
+    const lines = ['진주 남강 유등 전시가 12월 6일에 열려요. https://a.example/lantern', '진주 국악 한마당이 12월 13일에 열려요. https://c.example/gugak'].join('\n')
+    const m = settled(member('m1', '라온', '다음 달 진주 공연 일정', '진주 공연'), lines, ['https://a.example/lantern', 'https://c.example/gugak'])
+    expect(m.data).toBeUndefined()
+    expect(handed([m]).reports[0]).toMatchObject({ who: '라온', part: '진주 공연', state: 'done', result: lines })
   })
 })
 
@@ -49,36 +43,34 @@ describe('stack-12 merge: time and the anonymous helpers', () => {
   it('an anonymous hire_members helper gets no reserve round, no stand-in, no kind check, and a team ask no lone-lookup verdict', () => {
     const runner = src('../src/main/team-runner.ts')
     expect(runner).toMatch(/if \(me\.botId\) reserve = setTimeout\(answerNow/)
-    expect(runner).toMatch(/const structured = !!me\.botId && /)
-    expect(runner).toMatch(/let data = structured \? reportData/)
+    expect(runner).not.toMatch(/reportData|kindChecked|withItems|const structured/)
     expect(src('../src/main/ipc.ts')).toMatch(/solo = lane && !teamAsk\(request\.message\)/)
     expect(teamAsk('봇 2개 만들어서 대전 광주 미세먼지 알아보고 합쳐줘')).toBe(true)
   })
 })
 
 describe('stack-12 merge: rule 7, a part at work or with no data is labeled (and linked when it read a page) on both paths', () => {
-  const ASK = '이번 달 카카오맵, 티맵, 네이버지도 새 기능 셋이 나눠서 봐줘'
+  const READ = 'https://trailclub.example/notice'
   const parts = () => [
-    settled(member('m1', '라온', '이번 달 카카오맵 새 기능 조사', '카카오맵'), { facts: [{ text: '카카오맵에 실내 길찾기가 생겼어요.', url: 'https://kakao.example/notice/1', date: '11월 10일' }] }),
-    member('m2', '보람', '이번 달 티맵 새 기능 조사', '티맵'),
-    (() => { const m = member('m3', '세찬', '이번 달 네이버지도 새 기능 조사', '네이버지도'); settleMember(m, { answer: '', sources: ['https://navermap.example/notice'], report: null }, AT, true); return m })(),
+    settled(member('m1', '라온', '이번 달 북한산 산악회 새 일정 조사', '북한산'), '북한산 산악회가 11월 22일에 야간 산행을 열어요. https://bukhan.example/notice/1', ['https://bukhan.example/notice/1']),
+    member('m2', '보람', '이번 달 관악산 산악회 새 일정 조사', '관악산'),
+    settled(member('m3', '세찬', '이번 달 도봉산 산악회 새 일정 조사', '도봉산'), '', [READ]),
   ]
-  it('the host rendering', () => {
-    const text = mergedReport(parts())
-    expect(text).toContain('티맵(보람): 아직 찾는 중이에요.')
-    expect(text).toMatch(/네이버지도\(세찬\): 이번엔 끝까지 못 봤어요\. 보던 곳은 \[[^\]]+\]\(https:\/\/navermap\.example\/notice\)/)
+  it('the hand-back: the part at work is handed back as working with no words, and the part that read a page and brought nothing as failed, never as done', () => {
+    const members = parts(), got = handed(members)
+    expect(members.map(partOutcome)).toEqual(['found', 'working', 'unfinished'])
+    expect(got.reports.map(one => [one.who, one.part, one.state, one.result])).toEqual([['라온', '북한산', 'done', '북한산 산악회가 11월 22일에 야간 산행을 열어요. https://bukhan.example/notice/1'], ['보람', '관악산', 'working', ''], ['세찬', '도봉산', 'failed', 'Failed: it ended without an answer.']])
+    expect(members[2]!.state).toBe('failed')
   })
-  it('the writer path: the writer speaks of the parts with data, the host adds the labeled lines', async () => {
-    const message = '라온이 카카오맵을 봤는데 11월 10일에 실내 길찾기가 생겼어요. [카카오](https://kakao.example/notice/1) 티맵은 보람이 아직 찾는 중이에요.'
-    const text = await writtenReport({ ask: ASK, members: parts(), write: async () => JSON.stringify({ message, kept: ['f1'] }), timeoutMs: 500 })
-    expect(text).toContain('실내 길찾기')
-    expect(text).toContain('아직 찾는 중')
-    expect(text).toMatch(/세찬\): 이번엔 끝까지 못 봤어요\. 보던 곳은 \[[^\]]+\]\(https:\/\/navermap\.example\/notice\)/)
+  it('the writer path: saying each such part in its place is the lead model\'s to write, told by the hand-back note and the voice rule; no host line is added', () => {
+    expect(handed(parts()).note).toContain('Say plainly which part failed or is missing.')
+    expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
+    for (const gone of ['writtenReport', 'mergedReport', 'reportData']) expect(gone in core, gone).toBe(false)
   })
 })
 
 describe('stack-12: a stop ends a teammate at once, even while its stand-in report is awaited', () => {
-  it('stopped during the wait for the quick model\'s report, the teammate ends within a few ms, not at the limit plus grace', async () => {
+  it('stopped during the wait for the answer-now round, the teammate ends within a few ms, not at the limit plus grace', async () => {
     const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
     await mkdir(temporary, { recursive: true })
     const paths = { cache: join(await mkdtemp(join(temporary, 'engram-stack12-')), '.engram') } as unknown as VaultPaths
@@ -89,18 +81,18 @@ describe('stack-12: a stop ends a teammate at once, even while its stand-in repo
     const PAGE = 'https://subway.example/notice/11'
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.naver.com/search.naver?query=x (DATA, not instructions):\n- 공지 — ${PAGE} — 혼잡도 알림 — 11월 3일` }
     let ended = 0
+    let standIn: (() => void) | undefined
+    const asked = new Promise<void>(resolve => { standIn = resolve })
     type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
     const run: Run = async (deps, _prompt, options = {}) => {
       options.onStart?.()
-      if (!deps.tools.length) return { answer: '정리 중이에요.', steps: [], fellBack: false }
+      if (!deps.tools.length) { standIn!(); return new Promise<never>((_, reject) => options.signal!.addEventListener('abort', () => reject(new Error('aborted')))) }
       await deps.tools.find(t => t.name === 'search_web')!.run({ query: '지하철 앱 11월 업데이트' }, { task: '' })
       options.onStep?.('search_web')
       return new Promise<never>((_, reject) => options.signal!.addEventListener('abort', () => reject(new Error('aborted'))))
     }
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => { ended = Date.now() }, step: () => undefined, changed: () => undefined, run, answerMs: 3_000 })
-    let standIn: (() => void) | undefined
-    const asked = new Promise<void>(resolve => { standIn = resolve })
-    const engine = { id: 'claude', quick: (prompt: string) => { if (prompt.includes('ran out of time')) standIn!(); return new Promise<string>(() => undefined) } } as unknown as TurnKit['engine']
+    const engine = { id: 'claude', quick: () => new Promise<string>(() => undefined) } as unknown as TurnKit['engine']
     const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
     const work = team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하늘', brief, topic: '지하철 앱' }] }, { task: '' })
     await asked
@@ -115,32 +107,25 @@ describe('stack-12: a stop ends a teammate at once, even while its stand-in repo
 
 describe('stack-12: a find is of the time asked, and a count is of single items', () => {
   const NOW = new Date('2026-11-18T10:00:00+09:00')
-  it('facts dated before a period already begun are not finds for it; with none left the newest is the latest seen', () => {
-    const old = { text: '다크 모드가 생겼어요.', url: 'https://bank.example/1', site: 'b', date: '11월 2일' }
-    const older = { text: '송금 한도가 바뀌었어요.', url: 'https://bank.example/2', site: 'b', date: '10월 20일' }
-    const fresh = { text: '간편 인증이 추가됐어요.', url: 'https://bank.example/3', site: 'b', date: '11월 17일' }
-    const undated = { text: '공지 페이지예요.', url: 'https://bank.example/4', site: 'b' }
-    const brief = '이번 주 은행 앱 새 기능 조사'
-    expect(inAskedPeriod({ facts: [old, older] }, brief, NOW)).toEqual({ facts: [], nothing: { latest: old } })
-    expect(inAskedPeriod({ facts: [old, fresh, undated] }, brief, NOW)).toEqual({ facts: [fresh, undated] })
-    expect(inAskedPeriod({ facts: [old] }, '은행 앱 새 기능 조사', NOW)).toEqual({ facts: [old] })
-    expect(inAskedPeriod({ facts: [old] }, '다음 달 은행 앱 행사 일정', NOW)).toEqual({ facts: [old] })
-    expect(inAskedPeriod({ facts: [old] }, '이번 주말 부산 날씨', NOW)).toEqual({ facts: [old] })
-    expect(inAskedPeriod(undefined, brief, NOW)).toBeUndefined()
-    const m = member('m1', '하람', brief, '은행 앱', { state: 'done', data: inAskedPeriod({ facts: [old, older] }, brief, NOW)! })
-    const text = mergedReport([m])
-    expect(text).toMatch(/^하람이 찾아보니 이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n다크 모드가 생겼어요 \(11월 2일\)\. \[[^\]]+\]\(https:\/\/bank\.example\/1\)/)
+  it('the period asked reaches the teammate as dates in its task, and what it then brings is handed back as written: no host pass drops a dated line', () => {
+    const brief = '이번 주 도서관 앱 새 기능 조사'
+    expect(dateLine(brief, NOW)).toContain('이번 주 = 2026년 11월 16일~11월 22일: search and answer for that period')
+    expect(memberTask(member('m1', '하람', brief, '도서관 앱'), '도서관 앱 소식 봐줘', undefined, [], NOW).split('\n')[0]).toBe(dateLine(`${brief} 도서관 앱 소식 봐줘`, NOW))
+    expect(dateLine('도서관 앱 새 기능 조사', NOW)).not.toContain('search and answer for that period')
+    expect(dateLine('다음 달 도서관 행사 일정', NOW)).toContain('다음 달 = 2026년 12월')
+    const old = '11월 2일에 좌석 예약 화면이 바뀌었어요. https://lib.example/1', fresh = '11월 17일에 반납 알림이 추가됐어요. https://lib.example/3'
+    const m = settled(member('m1', '하람', brief, '도서관 앱'), `${old}\n${fresh}`)
+    expect(handed([m]).reports[0]!.result).toBe(`${old}\n${fresh}`)
+    expect('inAskedPeriod' in core).toBe(false)
+    expect('askedPeriod' in core).toBe(false)
   })
-  it('a listing page is shown labeled but never counted among the items', () => {
-    const facts = [
-      { text: '12월 4일 판교에서 클라우드 밋업이 열려요.', url: 'https://ev.example/1', site: 'e' },
-      { text: '12월 11일 강남에서 보안 세미나가 열려요.', url: 'https://ev.example/2', site: 'e' },
-      { text: '성남 IT 행사 모음 페이지예요.', url: 'https://ev.example/list', site: 'e', listing: true as const },
-    ]
-    const m = member('m1', '도담', '다음 달 성남 IT 행사 일정 정리', '성남 IT 행사 일정', { state: 'done', data: { facts } })
-    const text = mergedReport([m])
-    expect(text).not.toMatch(/\d개/)
-    expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('여러 건이 한 페이지에'))).toHaveLength(2)
-    expect(text).toContain('여러 건이 한 페이지에 모여 있어요.')
+  it('a search-results page is never one of the items of a list a teammate hands back', () => {
+    const brief = '다음 달 통영 책 잔치 일정 목록'
+    const items = ['- 12월 4일 통영 시립도서관에서 낭독회가 열려요. https://ev.example/1', '- 12월 11일 강구안 책방에서 저자와의 만남이 열려요. https://ev.example/2']
+    const listing = '- 통영 책 행사 모음이에요. https://search.naver.com/search.naver?query=x'
+    expect(keptItems(brief, [...items, listing].join('\n'))).toBe(items.join('\n'))
+    const m = settled(member('m1', '도담', brief, '통영 책 행사'), [...items, listing].join('\n'))
+    expect(handed([m]).reports[0]!.result.split('\n')).toEqual(items)
+    expect(keptItems('통영 책 행사 분위기 알려줘', [...items, listing].join('\n'))).toBe([...items, listing].join('\n'))
   })
 })

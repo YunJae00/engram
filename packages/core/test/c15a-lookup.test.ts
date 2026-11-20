@@ -1,95 +1,97 @@
 import { describe, expect, it } from 'vitest'
-import { checkedSearch, judgedItems } from '../src/item-check.js'
-import { kindChecked } from '../src/company-tools.js'
-import type { AgentTool } from '../src/agent-loop.js'
+import { navigationTools } from '../src/comet-navigation-tools.js'
+import type { CometToolDeps } from '../src/comet-tools.js'
+import { askedCount as partCount, handBacks } from '../src/company-tools.js'
+import type { TeamMember } from '../src/delegated-tasks.js'
+import { askedCount, searchResults, withoutRepeats } from '../src/search-template.js'
+import { ANSWER_FROM_THIS, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, settleMember, sourceName, timeBoxed } from '../src/team-hire-tools.js'
 
-const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
-const row = (n: number, title: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — x — 11월 ${n}일`
-function search(outs: string[]): AgentTool & { queries: string[] } {
-  const queries: string[] = []
-  return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
+type Row = { title: string; url: string; says: string }
+const row = (n: number, title: string, host = `daily-${n}.example`): Row => ({ title, url: `https://${host}/${n}`, says: `전통시장 소식 ${n}` })
+const page = (rows: Row[]) => ({ text: rows.map(one => `${one.title}\n${one.says}\n`).join('\n'), links: rows.map(one => ({ text: one.title, url: one.url })) })
+function finder(rows: Row[], fetchPage: (url: string, signal?: AbortSignal) => Promise<unknown> = async url => ({ url, title: '', ...page(rows) })) {
+  const fetched: string[] = []
+  const tool = navigationTools({ courier: { fetchPage: (url: string, signal?: AbortSignal) => { fetched.push(url); return fetchPage(url, signal) } }, guided: false, searchTemplate: async () => 'https://find.example/?q={q}' } as unknown as CometToolDeps).find(one => one.name === 'search_web')!
+  return { fetched, tool }
 }
-const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
-const ASK = '요즘 국내 바이오 기업 인수 소식 4곳만'
+const addresses = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
+const ASK = '전통시장 야시장 개장 뉴스 4개만'
+const four = [row(1, '서문 전통시장 야시장 개장'), row(2, '남부 전통시장 야시장 개장 확정'), row(3, '전통시장 야시장 개장 붐, 상인들 기대'), row(4, '전통시장 야시장 개장 검토 중인 곳들')]
 
-describe('c15a: a counted lookup shows only sure items and asks for other words while time is left', () => {
-  it('2 sure + 2 unsure rows for 4 asked: no further search and no judge call; all 4 rows go to the reader', async () => {
-    const s = search([
-      page('바이오 기업 인수', [row(1, '셀젠, 진단기업 메디랩 인수'), row(2, '바이오원, 항체 벤처 합병'), row(3, '바이오 업계 M&A 활발'), row(4, '제약사 인수 검토설')]),
-      page('제약 바이오 지분 인수 계약', [row(5, '한올팜, 세포치료 기업 지분 60% 인수'), row(6, '지엔티, CDMO 업체 인수 완료')]),
-    ])
-    const prompts: string[] = []
-    const verdicts = ['{"keep":[1,2],"unsure":[3,4],"asked":4,"search":""}', '{"keep":[1,2],"unsure":[3,4],"asked":4,"search":"제약 바이오 지분 인수 계약"}', '{"keep":[1,2,5,6],"unsure":[3,4],"asked":4,"search":""}']
-    const out = await checkedSearch(s, { ask: () => ASK, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => 0 }).run({ query: '바이오 기업 인수' }, { task: ASK })
-    expect(s.queries).toEqual(['바이오 기업 인수'])
-    expect(prompts).toEqual([])
-    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4'])
-    expect(out).not.toMatch(/of these rows are from the period asked/)
+describe('c15a: a counted lookup hands on every row; which ones count is the reader\'s call', () => {
+  it('2 plain rows and 2 that only touch the topic, for 4 asked: all 4 are results, none dropped as a repeat of another', () => {
+    const { text, links } = page(four)
+    const listed = searchResults(links, text, ASK, 'https://find.example/?q=x', 16)
+    expect(listed.map(one => one.url).sort()).toEqual(four.map(one => one.url).sort())
+    expect(listed.map(one => one.snippet).sort()).toEqual(four.map(one => one.says).sort())
+    expect(withoutRepeats(listed, ASK)).toHaveLength(4)
   })
 
-  it('4 rows for 4 asked: no shortfall line, the unsure rows kept', async () => {
-    const s = search([page('바이오 기업 인수', [row(1, '셀젠, 진단기업 메디랩 인수'), row(2, '바이오원, 항체 벤처 합병'), row(3, '바이오 업계 M&A 활발'), row(4, '제약사 인수 검토설')])])
-    const out = await checkedSearch(s, { ask: () => ASK, write: async () => '{"keep":[1,2],"unsure":[3,4],"asked":4,"search":""}', since: 0, now: () => 0 }).run({ query: '바이오 기업 인수' }, { task: ASK })
-    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4'])
-    expect(out).not.toMatch(/of these rows are from the period asked|may not be quite/)
+  it('4 rows for 4 asked: the search writes its count line once and no line about a shortfall or an older period', async () => {
+    const { tool, fetched } = finder(four)
+    const out = await tool.run({ query: ASK }, { task: ASK })
+    expect(fetched).toHaveLength(1)
+    expect(addresses(out)).toHaveLength(4)
+    expect(out.split('They asked for 4')).toHaveLength(2)
+    expect(out).not.toMatch(/are from the last|None is from the last|came back empty/)
   })
 
-  it('more rows than asked ("책 2권", "맛집 5곳"): every row is shown with no count line; judgedItems still reads "asked" by meaning', async () => {
-    for (const [ask, n] of [['올겨울 읽을 만한 경제 책 2권 추천', 2], ['성수동 브런치 맛집 5곳 알려줘', 5]] as const) {
-      const rows = Array.from({ length: n + 1 }, (_, i) => row(i + 1, `항목 ${i + 1}`))
-      const keep = Array.from({ length: n }, (_, i) => i + 2)
-      const out = await checkedSearch(search([page('q', rows)]), { ask: () => ask, write: async () => JSON.stringify({ keep, unsure: [1], asked: n, search: '' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
-      expect(urls(out), ask).toHaveLength(n + 1)
-      expect(out, ask).not.toMatch(/of these rows are from the period asked/)
+  it('more rows than asked: every row is shown; the search counts only news-style counters, and a teammate\'s part counts 2 to 10 of its own', async () => {
+    for (const [ask, n] of [['주말 야시장 먹거리 뉴스 2개', 2], ['야시장 축제 뉴스 5건 알려줘', 5]] as const) {
+      const rows = Array.from({ length: n + 1 }, (_, i) => row(i + 1, `야시장 먹거리 축제 뉴스 ${i + 1}탄`))
+      const out = await finder(rows).tool.run({ query: ask }, { task: ask })
+      expect(addresses(out), ask).toHaveLength(n + 1)
+      expect(out, ask).toContain(`They asked for ${n}: list the ${n} rows`)
     }
-    const items = [{ text: 'a' }, { text: 'b' }]
-    expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":3}', 1000, { tried: [] }))?.asked).toBe(3)
-    expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":null}', 1000, { tried: [] }))?.asked).toBeNull()
-    expect((await judgedItems('x', items, async () => '{"keep":[1]}', 1000, { tried: [] }))).not.toHaveProperty('asked')
+    expect(askedCount('여행 에세이 2권 추천')).toBeUndefined()
+    expect(askedCount('전주 국밥집 5곳 알려줘')).toBeUndefined()
+    expect(partCount('홍보 문구 세 줄 써줘')).toBe(3)
+    expect(partCount('야시장 소식 12개')).toBe(0)
+    expect(partCount('야시장 일정 알려줘')).toBe(0)
   })
 
-  it('second-hand: the lookup keeps the search order (the reader picks); a teammate\'s facts are still ranked first-hand first by kindChecked', async () => {
-    const rows = [row(1, '하늘폰 X 출시일 정리 - 위키', 'wiki.example'), row(2, '하늘전자, 하늘폰 X 12월 5일 출시', 'news.example')]
-    const out = await checkedSearch(search([page('하늘폰 X 출시일', rows)]), { ask: () => '하늘폰 X 출시일 알려줘', write: async () => '{"keep":[1,2],"secondhand":[1],"asked":null}', since: 0, now: () => 0 }).run({ query: '하늘폰 X 출시일' }, { task: '' })
-    expect(urls(out)).toEqual(['https://wiki.example/1', 'https://news.example/2'])
-    const data = await kindChecked({ facts: [{ text: '하늘폰 X는 12월 5일 출시 (카페 글)', url: 'https://cafe.example/9', site: '카페' }, { text: '하늘전자, 하늘폰 X 12월 5일 출시', url: 'https://news.example/2', site: '뉴스' }] }, '하늘폰 X 출시일', async () => '{"keep":[1,2],"secondhand":[1]}', 1000)
-    expect(data?.facts.map(f => f.url)).toEqual(['https://news.example/2', 'https://cafe.example/9'])
+  it('second-hand rows: a blog or café post is listed after the other results, and such a page is named by its platform', () => {
+    const rows = [row(1, '별빛폰 출시일 정리한 글', 'blog.naver.com'), row(2, '별빛전자, 별빛폰 출시일 3월 9일 확정', 'maker.example'), row(3, '별빛폰 출시일 떴네요', 'cafe.naver.com')]
+    const { text, links } = page(rows)
+    const listed = searchResults(links, text, '별빛폰 출시일', 'https://find.example/?q=x')
+    expect(listed[0]!.url).toBe('https://maker.example/2')
+    expect(listed.slice(1).map(one => one.url).sort()).toEqual(['https://blog.naver.com/1', 'https://cafe.naver.com/3'])
+    expect(sourceName('https://blog.naver.com/1', true)).toBe('네이버 블로그')
+    expect(sourceName('https://cafe.naver.com/3', true)).toBe('네이버 카페')
   })
 
-  it('a later round: a first-hand fact the judge groups with a second-hand one in other words is added beside it, first-hand first; nothing is dropped (c19a r3 #1)', async () => {
-    const { withItems } = await import('../src/company-tools.js')
-    const blog = { text: '블로그: 별빛 도서관 개관은 3월 2일이래요', url: 'https://blog.example/7', site: '블로그' }
-    const city = { text: '별빛구청, 별빛 도서관 3월 2일 개관', url: 'https://city.example/news/3', site: '구청' }
-    const other = { text: '달빛 도서관 리모델링 4월 재개관', url: 'https://city.example/news/4', site: '구청' }
-    const out = await kindChecked({ facts: [city, other] }, '구립 도서관 개관 소식', async () => '{"keep":[1,2,3],"same":[[1,2]],"secondhand":[1]}', 1000, [blog])
-    expect(out?.facts.map(f => f.url)).toEqual([city.url, other.url])
-    const merged = withItems({ facts: [blog] }, out, true)
-    expect(merged.facts.map(f => f.url)).toEqual([blog.url, city.url, other.url])
-    expect(merged.facts.some(f => 'instead' in f)).toBe(false)
-    const back = await kindChecked({ facts: [blog] }, '구립 도서관 개관 소식', async () => '{"keep":[1,2],"same":[[1,2]],"secondhand":[2]}', 1000, [city])
-    expect(back?.facts.map(f => f.url)).toEqual([blog.url])
+  it('a first-hand fact and a second-hand one about the same thing are both handed back, in the order the teammate gave them, with the pages it read', () => {
+    const blog = { text: '달맞이 수영장이 5월 3일에 다시 연대요.', url: 'https://blog.example/7', site: '블로그' }
+    const city = { text: '달맞이 수영장은 5월 3일에 재개장해요.', url: 'https://city.example/news/3', site: '구청' }
+    const other = { text: '해맞이 체육관은 6월에 공사를 마쳐요.', url: 'https://city.example/news/4', site: '구청' }
+    const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '이든', brief: '구립 체육시설 재개장 소식', botId: 'bot-m1', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
+    settleMember(m, { answer: [blog, city, other].map(f => `${f.text} — ${f.url}`).join('\n'), sources: [blog.url, city.url, other.url] }, new Date().toISOString(), true)
+    const { reports } = JSON.parse(handBacks([m])) as { reports: { result: string; sources: string[] }[] }
+    expect(reports[0]!.result.split('\n').map(line => line.split(' — ')[1])).toEqual([blog.url, city.url, other.url])
+    expect(reports[0]!.sources).toEqual([blog.url, city.url, other.url])
+    for (const fact of [blog, city, other]) expect(reports[0]!.result).toContain(fact.text)
   })
 
-  it('"멈춰" during the judge retry halts at once; no further search starts', async () => {
+  it('"멈춰" while a search is loading ends it at once; no further search starts', async () => {
     const stop = new AbortController()
-    const s = search([page('q', [row(1, '셀젠, 메디랩 인수')]), page('more', [row(2, '바이오원 합병')])])
-    let calls = 0
-    const write = async (): Promise<string | undefined> => {
-      calls++
-      if (calls === 1) return '{"keep":[1],"asked":4,"search":""}'
-      setTimeout(() => stop.abort(), 50)
-      return new Promise<string | undefined>(() => undefined)
-    }
+    const { tool, fetched } = finder(four, (_url, signal) => new Promise((_resolve, reject) => { signal?.addEventListener('abort', () => reject(new Error('stopped')), { once: true }); setTimeout(() => stop.abort(), 50) }))
     const started = Date.now()
-    const out = await checkedSearch(s, { ask: () => ASK, write, since: 0, now: () => 0 }).run({ query: 'q' }, { task: ASK, signal: stop.signal })
+    await expect(tool.run({ query: ASK }, { task: ASK, signal: stop.signal })).rejects.toThrow('stopped')
     expect(Date.now() - started).toBeLessThan(500)
-    expect(s.queries).toEqual(['q'])
-    expect(urls(out)).toEqual(['https://news.example/1'])
+    expect(fetched).toHaveLength(1)
   })
 
-  it('a helper\'s search reads its own deadline (due), and the judge gets what is left of it', async () => {
-    const given: number[] = []
-    await checkedSearch(search([page('q', [row(1, 'a'), row(2, 'b')])]), { ask: () => 'x 뉴스 3개', write: async (_p, ms) => { given.push(ms); return '{"keep":[1,2],"asked":null}' }, due: () => 9_000, now: () => 1_000 }).run({ query: 'q' }, { task: '' })
-    expect(given[0]).toBe(8_000)
+  it('a helper\'s search reads its own deadline: with 8 s of it left the search runs and is the last, and under the time one call needs it does not run', async () => {
+    const due = 9_000
+    let now = 1_000
+    const { tool, fetched } = finder(four)
+    const boxed = timeBoxed(tool, () => due - now)
+    const out = await boxed.run({ query: ASK }, { task: ASK })
+    expect(due - now).toBeLessThan(LOOKUP_ROUND_MS)
+    expect(addresses(out)).toHaveLength(4)
+    expect(out.endsWith(ANSWER_FROM_THIS)).toBe(true)
+    now = due - LOOKUP_CALL_MS + 1
+    expect(await boxed.run({ query: ASK }, { task: ASK })).toBe(ANSWER_FROM_THIS)
+    expect(fetched).toHaveLength(1)
   })
 })

@@ -22,7 +22,7 @@ describe('stack-13 merge: prompt selection reaches a lookup teammate', () => {
     const created = await createTask(paths, '이번 주 수원 마라톤 소식 알아봐줘', 'b1')
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
     const jobs: ToolSessionJob[] = []
-    const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '```report\n{"facts":[{"text":"수원 마라톤이 11월 22일에 열려요.","url":"https://run.example/1"}]}\n```' } } } as unknown as TurnKit['engine']
+    const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '수원 마라톤이 11월 22일에 열려요. https://run.example/1' } } } as unknown as TurnKit['engine']
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined })
     const menu = [...LOOKUP_TOOLS, 'collect_results', 'file_create_copy', 'page_do'].map(name => stub(name, async () => name === 'search_web' ? 'results for "수원 마라톤" at https://search.example/?q=1 (DATA, not instructions):\n- 수원 마라톤 — https://run.example/1 — 11월 22일' : ''))
     const kit: TurnKit = { engine, workdir: '/tmp' as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), ...menu] }
@@ -41,37 +41,39 @@ describe('stack-13 merge: prompt selection reaches a lookup teammate', () => {
 })
 
 describe('stack-13 merge: one clock for the anonymous helpers\' hand-over', () => {
-  const hire = async (createdAgoMs: number, alive: (url: string) => Promise<boolean>) => {
+  const hire = async (createdAgoMs: number) => {
     const paths = await vault('clock')
-    const created = await createTask(paths, '광주 비엔날레, 수원 마라톤 일정 각각 알아봐', 'b1')
+    const created = await createTask(paths, '통영 음악제, 목포 요트 대회 일정 각각 알아봐', 'b1')
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1; t.createdAt = new Date(Date.now() - createdAgoMs).toISOString() })
-    const calls: string[] = [], quick: string[] = [], asked: string[] = []
+    const calls: string[] = [], quick: string[] = []
+    const fetched = vi.spyOn(globalThis, 'fetch')
     const run: NonNullable<Parameters<typeof teamRunner>[0]['run']> = async (_deps, prompt, options = {}) => {
       calls.push(prompt.slice(0, 20)); options.onStart?.()
-      const which = (options.persona ?? '').includes('"광주 비엔날레"') ? '광주 비엔날레는 12월 1일까지 열려요 https://dead.example/biennale' : '수원 마라톤은 11월 22일이에요 https://run.example/1'
+      const which = (options.persona ?? '').includes('"통영 음악제"') ? '통영 음악제는 4월 5일까지 열려요 https://gone.example/festival' : '목포 요트 대회는 5월 17일이에요 https://sail.example/1'
       return { answer: which, steps: [], fellBack: false }
     }
     const engine = { id: 'claude', quick: async (prompt: string) => { quick.push(prompt); return undefined } } as unknown as TurnKit['engine']
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
-    const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit), alive: async url => { asked.push(url); return alive(url) } }
+    const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => team.tools(lane, kit) }
     const began = Date.now()
-    const raw = await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '광주 비엔날레', brief: '광주 비엔날레 일정', lookup: true }, { role: '수원 마라톤', brief: '수원 마라톤 일정', lookup: true }] }, { task: '' })
-    const out = JSON.parse(raw)
+    const raw = await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '통영 음악제', brief: '통영 음악제 일정', lookup: true }, { role: '목포 요트 대회', brief: '목포 요트 대회 일정', lookup: true }] }, { task: '' })
+    const out = JSON.parse(raw), asked = fetched.mock.calls.length
+    fetched.mockRestore()
     return { out, took: Date.now() - began, calls, quick, asked }
   }
 
-  it('with time left, a dead cited page is caught at hand-over; the path adds no model round and no quick call (R1/T1)', async () => {
-    const r = await hire(0, async url => !url.includes('dead.example'))
-    expect(r.asked).toEqual(expect.arrayContaining(['https://dead.example/biennale']))
-    expect(r.out.members[0].result).toContain('(no live source)')
+  it('with time left, a helper\'s cited page is handed over as the helper wrote it: the host asks no address, adds no model round and no quick call', async () => {
+    const r = await hire(0)
+    expect(r.asked).toBe(0)
+    expect(r.out.members[0].result).toBe('통영 음악제는 4월 5일까지 열려요 https://gone.example/festival')
     expect(r.calls).toHaveLength(2)
     expect(r.quick).toEqual([])
   })
 
-  it('the hand-over link check reads the task\'s deadline: past it, a page that never answers holds nothing up', async () => {
-    const r = await hire(TEAM_ANSWER_MS, () => new Promise<boolean>(() => undefined))
+  it('past the task\'s deadline the hand-over is just as quick, with the same words and the same two model runs', async () => {
+    const r = await hire(TEAM_ANSWER_MS)
     expect(r.took).toBeLessThan(500)
-    expect(r.out.members[0].result).toContain('https://dead.example/biennale')
+    expect(r.out.members[0].result).toContain('https://gone.example/festival')
     expect(r.calls).toHaveLength(2)
   })
 })

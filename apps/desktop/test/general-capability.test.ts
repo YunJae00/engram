@@ -2,19 +2,23 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, truncate, utimes, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
-import { CHECK_SCRATCH, continuationPrompt, vaultPaths, type DelegatedTask, type TurnStep, type VaultPaths } from 'core'
+import { CHECK_SCRATCH, continuationPrompt, vaultPaths, type DelegatedTask, type FileCard, type TurnStep, type VaultPaths } from 'core'
 
 const state = vi.hoisted(() => ({ home: '' }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => `${state.home}/${name}` }, dialog: { showMessageBox: vi.fn() }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: {}, nativeImage: {}, BrowserWindow: class {}, session: {} }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
 import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile, twinsFile } from '../src/main/file-work.js'
-import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
+import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, withFiles, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
 import { checkResult, latestResultOutputs } from '../src/main/result-check.js'
 import { freshResultReadback } from '../src/main/task-result-state.js'
 
 let root: string, paths: VaultPaths
 const quiet = { onStep: vi.fn(), audit: vi.fn() }
 const context = { task: 'Make a file.' }
+type Shown = { answer: string; files?: FileCard[] }
+const cards = (result: Shown): FileCard[] => result.files ?? []
+const shown = (result: Shown): string => withFiles(result.answer, cards(result))
+const saved = (card: FileCard): Promise<string> => readFile(join(artifactDirectory(paths), decodeURIComponent(card.href)), 'utf8')
 beforeEach(async () => {
   await mkdir('tmp', { recursive: true })
   root = await mkdtemp(resolve('tmp/general-'))
@@ -137,16 +141,19 @@ it('adds a card for every saved output, and hands in raw files only from a finis
   await writeFile(join(cwd, 'plot.py'), 'print(1)\n')
   cut.answer = 'Made it and plot.py.'
   await deliverOutputs(paths, cwd, cut, 0, 'ask')
-  expect(cut.answer).toMatch(/\[spend\.xlsx\]\(engram-artifact:[^)]+spend\.xlsx\)/)
-  expect(cut.answer).not.toContain('plot.py]')
+  expect(cut.answer).toBe('Made it and plot.py.')
+  expect(cards(cut)).toEqual([{ name: 'spend.xlsx', href: expect.stringMatching(/spend\.xlsx$/) }])
   expect(cut.steps).toHaveLength(1)
   const done = { answer: 'Made it and plot.py.', steps: [...steps] }
   await deliverOutputs(paths, cwd, done, 0, 'ask')
-  expect(done.answer).toMatch(/\[plot\.py\]\(engram-artifact:[^)]+plot\.py\)/)
+  expect(done.answer).toBe('Made it and plot.py.')
+  expect(cards(done)).toEqual([{ name: 'spend.xlsx', href: cards(cut)[0]!.href }, { name: 'plot.py', href: expect.stringMatching(/plot\.py$/) }])
   expect(done.steps).toHaveLength(2)
   const asked = { answer: 'Which month? plot.py', steps: [...steps], asked: true }
   await deliverOutputs(paths, cwd, asked, 0, 'ask')
   expect(asked.answer).toBe('Which month? plot.py')
+  expect(asked).not.toHaveProperty('files')
+  expect(asked.steps).toHaveLength(1)
 })
 
 it('does not hand over a file this turn made and then edited', async () => {
@@ -203,23 +210,27 @@ it('hands in a revised task file again and points the answer at the new copy', a
   const same = { answer, steps: [made] }
   await deliverOutputs(paths, cwd, same, 0, 'ask')
   expect(same.answer).toBe(answer)
+  expect(cards(same)).toEqual([])
   expect(same.steps).toEqual([made])
   await writeFile(join(cwd, 'report.py'), 'print(2)\n')
   const revised = { answer, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask')
   expect(revised.steps).toHaveLength(1)
-  expect(revised.answer).not.toContain(draft.markdownLink)
-  const id = /\(engram-artifact:([^)]+)\)/.exec(revised.answer)![1]!
-  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(id)), 'utf8')).toBe('print(2)\n')
+  expect(revised.answer).toBe(answer)
+  expect(cards(revised).map(card => card.name)).toEqual(['report.py'])
+  expect(draft.markdownLink).not.toContain(cards(revised)[0]!.href)
+  expect(await saved(cards(revised)[0]!)).toBe('print(2)\n')
   await truncate(join(cwd, 'report.py'), OUTPUT_BYTES + 1)
   const huge = { answer, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, huge, 0, 'ask')
-  expect(huge.answer).toContain('report.py is larger than 50 MB')
+  expect(huge.answer).toBe(answer)
+  expect(cards(huge)).toEqual([])
+  expect(huge.steps).toEqual([])
 })
 
 const passed = (requirement: string): TurnStep => ({ tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ status: 'pass', basis: 'Compared.', requirement }], grounding: { status: 'pass', basis: 'Compared.' } } }) })
-const judged = async (result: { answer: string; steps: TurnStep[] }) => {
-  const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
+const judged = async (result: Shown & { steps: TurnStep[] }) => {
+  const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: shown(result) }]))
   return { outputs: outputs.map(output => output.name).sort(), check: checkResult(result.steps, outputs, []) }
 }
 
@@ -235,8 +246,9 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const made: TurnStep = { tool: 'Bash', args: { command: "printf 'print(0)\\n' > check_merge.py" }, observation: '' }
   const byCommand = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, made, ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, byCommand, 0, 'ask')
-  expect(byCommand.answer).toMatch(/\[check_merge\.py\]\(engram-artifact:/)
-  expect(byCommand.answer).toContain(link)
+  expect(byCommand.answer).toBe(`Compared with check_merge.py: 0 mismatches.\n\n${link}`)
+  expect(cards(byCommand).map(card => card.name)).toEqual(['check_merge.py'])
+  const linked = shown(byCommand)
   expect(byCommand.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'check_merge.py' } })
   const before = await judged(byCommand)
   expect(before.outputs).toEqual(['check_merge.py', 'merged.md'])
@@ -244,12 +256,13 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect(before.check).toMatchObject({ accepted: false, verified: false, readbacks: [{ name: 'check_merge.py', path: handedIn }] })
   expect(before.check.issues).toHaveLength(1)
   expect(before.check.issues[0]).toContain('Reread every final part of check_merge.py')
-  const later = cometFileTools(paths, 'bot-x', (await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])).map(output => output.path), [cwd])
+  const later = cometFileTools(paths, 'bot-x', (await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: linked }])).map(output => output.path), [cwd])
   const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await later.find(tool => tool.name === 'file_read')!.run({ path }, context) })
-  const followUp = { answer: byCommand.answer, steps: [await reopen(artifact), await reopen(handedIn), passed('Leads merged')] }
+  const followUp = { answer: linked, steps: [await reopen(artifact), await reopen(handedIn), passed('Leads merged')] }
   await deliverOutputs(paths, cwd, followUp, Date.now() + 60_000, 'ask')
   expect(followUp.steps).toHaveLength(3)
-  expect(followUp.answer).toBe(byCommand.answer)
+  expect(followUp.answer).toBe(linked)
+  expect(cards(followUp)).toEqual([])
   const second = await judged(followUp)
   expect(second.outputs).toEqual(['check_merge.py', 'merged.md'])
   expect(second.check).toEqual({ accepted: true, verified: true, issues: [] })
@@ -257,7 +270,7 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const both: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: ['Leads merged', 'No duplicate leads'].map(requirement => ({ status: 'pass', basis: 'Compared.', requirement })), grounding: { status: 'pass', basis: 'Compared.' } } }) }
   const held = async (report: TurnStep, reads = [artifact, handedIn]) => {
     const steps = [...await Promise.all(reads.map(reopen)), report]
-    return checkResult(steps, latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])), [], false)
+    return checkResult(steps, latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: linked }])), [], false)
   }
   const dropped = await held(passed('Leads merged'))
   expect(dropped).toEqual({ accepted: true, verified: true, issues: [] })
@@ -268,12 +281,12 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const failing: TurnStep = { ...both, observation: both.observation.replace('"status":"pass","basis":"Compared.","requirement":"No duplicate leads"', '"status":"unknown","basis":"Not compared.","requirement":"No duplicate leads"') }
   expect(await held(failing)).toMatchObject({ verified: false, issues: ['No duplicate leads: unknown — Not compared.'] })
   expect(await held(both)).toEqual({ accepted: true, verified: true, issues: [] })
-  expect((await judged({ answer: byCommand.answer, steps: [await reopen(artifact), passed('Leads merged')] })).check.issues.join(' ')).toContain('Reread every final part of check_merge.py')
+  expect((await judged({ answer: linked, steps: [await reopen(artifact), passed('Leads merged')] })).check.issues.join(' ')).toContain('Reread every final part of check_merge.py')
   const wrote: TurnStep = { tool: 'Write', args: { file_path: join(cwd, 'check_merge.py'), content: 'print(0)\n' }, observation: 'Native action completed.' }
   const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
-  expect(checked.answer).toMatch(/\[check_merge\.py\]\(engram-artifact:/)
-  expect(checked.answer).toContain(link)
+  expect(checked.answer).toBe(`Compared with check_merge.py: 0 mismatches.\n\n${link}`)
+  expect(cards(checked).map(card => card.name)).toEqual(['check_merge.py'])
   expect(checked.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'check_merge.py' } })
   const { outputs, check } = await judged(checked)
   expect(outputs).toEqual(['check_merge.py', 'merged.md'])
@@ -291,7 +304,7 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect(drifted).toMatchObject({ accepted: false, verified: false })
   expect(drifted.issues.join(' ')).toContain('Reread every final part of check_merge.py')
   const reread: TurnStep = { tool: 'file_read', args: { path: join(cwd, 'check_merge.py') }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: join(cwd, 'check_merge.py') }, context) }
-  const seen = { answer: changed.answer.replace(/\n\n\[check_merge\.py\][^\n]*/, ''), steps: [read, wrote, patched, reread, passed('Leads merged')] }
+  const seen = { answer: changed.answer, steps: [read, wrote, patched, reread, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, seen, 0, 'ask')
   expect((await judged(seen)).check).toMatchObject({ accepted: true, verified: true, issues: [] })
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
@@ -348,14 +361,17 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   await writeFile(join(cwd, 'merged.md'), '# merged\n')
   const first = { answer: 'Saved merged.md.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
-  const link = /\[merged\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
+  expect(first.answer).toBe('Saved merged.md.')
+  expect(cards(first).map(card => card.name)).toEqual(['merged.md'])
+  const link = withFiles('', cards(first)).trim()
   for (const name of ['check_merge.py', 'diff.md', join('deep', 'counts.csv')]) await writeFile(join(cwd, CHECK_SCRATCH, name), 'x\n')
   const ran: TurnStep = { tool: 'Bash', args: { command: `python3 ${CHECK_SCRATCH}/check_merge.py` }, observation: '0 mismatches' }
   const steps = [ran, passed('Leads merged')]
   const checked = { answer: `Compared the merged file with the sources: 0 mismatches.\n\n${link}`, steps: [...steps] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
   expect(checked.steps).toEqual(steps)
-  expect(checked.answer).not.toMatch(/\[(check_merge\.py|diff\.md|counts\.csv)\]/)
+  expect(checked.answer).toBe(`Compared the merged file with the sources: 0 mismatches.\n\n${link}`)
+  expect(cards(checked)).toEqual([])
   expect((await judged(checked)).outputs).toEqual(['merged.md'])
   expect(await mentionedOutputs(cwd, checked.answer, 0, [], artifactDirectory(paths), { 'merged.md': 'merged.md' })).toEqual([])
   const prompt = continuationPrompt({ goal: 'Merge the leads.', result: 'Saved merged.md.' } as DelegatedTask, 'verify')
@@ -364,7 +380,8 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   await writeFile(join(cwd, CHECK_SCRATCH, 'report.md'), '# audit\n')
   const named = { answer: `Wrote ${CHECK_SCRATCH}/report.md.\n\n${link}`, steps: [passed('Report written')] }
   await deliverOutputs(paths, cwd, named, 0, 'ask')
-  expect(named.answer).toMatch(/\[report\.md\]\(engram-artifact:/)
+  expect(named.answer).toBe(`Wrote ${CHECK_SCRATCH}/report.md.\n\n${link}`)
+  expect(cards(named).map(card => card.name)).toEqual(['report.md'])
   expect(named.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'report.md' } })
   const { outputs, check } = await judged(named)
   expect(outputs).toEqual(['merged.md', 'report.md'])
@@ -379,9 +396,9 @@ it('two named files with the same name in different folders are both handed in, 
   }
   const result = { answer: 'Wrote one/report.md and two/report.md.', steps: [passed('Reports written')] }
   await deliverOutputs(paths, cwd, result, 0, 'ask')
-  const links = [...result.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
-  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
-  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# one\n', '# two\n'])
+  expect(result.answer).toBe('Wrote one/report.md and two/report.md.')
+  expect(cards(result).map(card => card.name)).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['# one\n', '# two\n'])
   const { outputs, check } = await judged(result)
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
@@ -403,30 +420,33 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
   expect(both.outputs).toEqual(['report-2.md', 'report.md'])
   expect(both.check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(both.check.issues.join(' ')).toContain('Reread every final part of report-2.md')
-  const one = linkOf(first.answer, 'report.md'), two = linkOf(first.answer, 'report-2.md')
+  expect(first.answer).toBe('Wrote one/report.md and two/report.md.')
+  expect(cards(first).map(card => card.name)).toEqual(['report.md', 'report-2.md'])
+  const one = linkOf(shown(first), 'report.md'), two = linkOf(shown(first), 'report-2.md')
   const later = Date.now() + 5_000, since = later - 1_000, touch = (folder: string) => utimes(join(cwd, folder, 'report.md'), later / 1000, later / 1000)
   await touch('two')
   const quoted = { answer: `Both reports stand: one/report.md and two/report.md.\n\n${one}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, quoted, since, 'ask')
   expect(quoted.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'two', 'report.md')]])
-  expect(quoted.answer).toContain(one)
-  expect(quoted.answer).toContain(two)
+  expect(quoted.answer).toBe(`Both reports stand: one/report.md and two/report.md.\n\n${one}`)
+  expect(withFiles('', cards(quoted)).trim()).toBe(two)
   await writeFile(join(cwd, 'two', 'report.md'), '# two v2\n')
   await touch('two')
   const revised = { answer: `Corrected two/report.md; one/report.md is unchanged.\n\n${one}\n\n${two}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, revised, since, 'ask')
   expect(revised.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'two', 'report.md')]])
-  expect(revised.answer).toContain(one)
-  expect(revised.answer).not.toContain(two)
+  expect(revised.answer).toBe(`Corrected two/report.md; one/report.md is unchanged.\n\n${one}\n\n${two}`)
   expect(await content(revised.answer, 'report.md')).toBe('# same\n')
-  expect(await content(revised.answer, 'report-2.md')).toBe('# two v2\n')
-  expect([...revised.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(2)
+  expect(cards(revised).map(card => card.name)).toEqual(['report-2.md'])
+  expect(two).not.toContain(cards(revised)[0]!.href)
+  expect(await saved(cards(revised)[0]!)).toBe('# two v2\n')
   await writeFile(join(cwd, 'two', 'report.md'), '# two v3\n')
   await touch('two')
   const other = { answer: `Corrected two/report.md again.\n\n${one}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, other, since, 'ask')
-  expect(other.answer).toContain(one)
-  expect(await content(other.answer, 'report-2.md')).toBe('# two v3\n')
+  expect(other.answer).toBe(`Corrected two/report.md again.\n\n${one}`)
+  expect(cards(other).map(card => card.name)).toEqual(['report-2.md'])
+  expect(await saved(cards(other)[0]!)).toBe('# two v3\n')
 })
 
 it('a link the answer already carries is not replaced by a same-name file from another folder', async () => {
@@ -455,8 +475,8 @@ it('a top-level file made on its own is handed in beside the same-byte copy of a
   expect(own.taskPath).toBe(join(await realpath(cwd), 'report.md'))
   const result = { answer: `Wrote report.md and subfolder/report.md.\n\n${own.markdownLink}`, steps: [step, passed('Report written')] }
   await deliverOutputs(paths, cwd, result, 0, 'ask')
-  expect(result.answer).toContain(own.markdownLink)
-  expect(result.answer).toMatch(/\[report-2\.md\]\(engram-artifact:/)
+  expect(result.answer).toBe(`Wrote report.md and subfolder/report.md.\n\n${own.markdownLink}`)
+  expect(cards(result).map(card => card.name)).toEqual(['report-2.md'])
   expect(result.steps.slice(2).map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'report.md')]])
   const after = await judged(result)
   expect(after.outputs).toEqual(['report-2.md', 'report.md'])
@@ -467,7 +487,8 @@ it('a top-level file made on its own is handed in beside the same-byte copy of a
   const twin = { answer: `Wrote notes.md.\n\n${(JSON.parse(placed.observation) as { markdownLink: string }).markdownLink}`, steps: [placed] }
   await deliverOutputs(paths, cwd, twin, 0, 'ask')
   expect(twin.steps).toEqual([placed])
-  expect([...twin.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+  expect(twin.answer).toBe(`Wrote notes.md.\n\n${(JSON.parse(placed.observation) as { markdownLink: string }).markdownLink}`)
+  expect(cards(twin)).toEqual([])
 })
 
 it('a new copy under a name the answer still links from an older artifact gets its own link, and both are checked', async () => {
@@ -479,8 +500,9 @@ it('a new copy under a name the answer still links from an older artifact gets i
   const args = { name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }
   const result = { answer: `Saved the report.\n\n${older.markdownLink}`, steps: [{ tool: 'file_create_copy', args, observation: await copy.run(args, context) }, passed('Report saved')] as TurnStep[] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  expect(result.answer).toContain(older.markdownLink)
-  const links = [...result.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(result.answer).toBe(`Saved the report.\n\n${older.markdownLink}`)
+  expect(cards(result).map(card => card.name)).toEqual(['report-2.md'])
+  const links = [...shown(result).matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
   expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# older report\n', '# from a/x\n'])
   expect(result.steps[0]).toMatchObject({ tool: 'file_create_copy', args: { name: 'report-2.md', fromPath: join(cwd, 'a', 'x.md') } })
@@ -488,9 +510,10 @@ it('a new copy under a name the answer still links from an older artifact gets i
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
-  const own = { answer: result.answer, steps: [...result.steps] }
+  const own = { answer: shown(result), steps: [...result.steps] }
   await deliverOutputs(paths, cwd, own, Date.now() + 60_000, 'ask')
-  expect(own.answer).toBe(result.answer)
+  expect(own.answer).toBe(shown(result))
+  expect(cards(own)).toEqual([])
 })
 
 it('two sources copied under one name in one turn, neither linked, each get their own name and link, and both are checked', async () => {
@@ -501,21 +524,23 @@ it('two sources copied under one name in one turn, neither linked, each get thei
   const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
   const result = { answer: 'Saved both reports.', steps: [await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), passed('Reports saved')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(result.answer).toBe('Saved both reports.')
+  const links = [...shown(result).matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
-  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x\n', '# from b/y\n'])
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['# from a/x\n', '# from b/y\n'])
   expect(result.steps.map(step => step.args['name'])).toEqual(['report.md', 'report-2.md', 'report-2.md', undefined])
   const { outputs, check } = await judged(result)
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
   for (const match of links) expect(check.issues.join(' ')).toContain(`Reread every final part of ${match[1]} (${join(artifactDirectory(paths), decodeURIComponent(match[2]!))})`)
-  const again = { answer: result.answer, steps: [...result.steps] }
+  const again = { answer: shown(result), steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
-  expect(again.answer).toBe(result.answer)
+  expect(again.answer).toBe(shown(result))
+  expect(cards(again)).toEqual([])
 })
 it('two inputs under one name that core attached are named apart, and reading the last one is not the readback of the first', async () => {
-  const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
+  const { outputCards } = await import('../../../packages/core/src/agent-session-result.js')
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(join(cwd, 'a'), { recursive: true }); await mkdir(join(cwd, 'b'), { recursive: true })
   await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n'); await writeFile(join(cwd, 'b', 'y.md'), '# from b/y\n')
@@ -528,64 +553,72 @@ it('two inputs under one name that core attached are named apart, and reading th
   const reader = cometFileTools(paths, 'bot-x', [pathOf(first), pathOf(second)], [cwd]).find(tool => tool.name === 'file_read')!
   const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await reader.run({ path }, context) })
   const creates = [draft, first, second]
-  const attached = outputLinks(creates as unknown as Parameters<typeof outputLinks>[0], 'Saved both reports.', cwd)
-  expect([...attached.matchAll(/\[([^\]]+)\]\(engram-artifact:/g)].map(match => match[1])).toEqual(['report.md', 'report.md'])
+  const seeded = outputCards(creates as unknown as Parameters<typeof outputCards>[0], 'Saved both reports.', cwd)
+  expect(seeded.map(card => card.name)).toEqual(['report.md', 'report.md'])
+  const attached = withFiles('Saved both reports.', seeded)
   const gate = async (steps: TurnStep[], answer: string) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer)), [])
   expect((await checkedOutputs(artifactDirectory(paths), attached)).map(output => output.path)).toEqual([pathOf(first), pathOf(second)])
   const lastOnly = await gate([...creates, await reopen(pathOf(second)), passed('Reports saved')], attached)
   expect(lastOnly).toMatchObject({ accepted: false, verified: false })
   expect(lastOnly.issues).toEqual([expect.stringContaining(`Reread every final part of report.md (${pathOf(first)})`)])
   expect(await gate([...creates, await reopen(pathOf(first)), await reopen(pathOf(second)), passed('Reports saved')], attached)).toEqual({ accepted: true, verified: true, issues: [] })
-  const result = { answer: attached, steps: [...creates, await reopen(pathOf(second)), passed('Reports saved')] }
+  const result = { answer: 'Saved both reports.', files: [...seeded], steps: [...creates, await reopen(pathOf(second)), passed('Reports saved')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
-  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
-  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x, fixed\n', '# from b/y\n'])
+  expect(result.answer).toBe('Saved both reports.')
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['# from a/x, fixed\n', '# from b/y\n'])
+  expect(cards(result).map(card => card.name)).toEqual(['report.md', 'report-2.md'])
   expect(result.steps.slice(0, 3).map(step => step.args['name'])).toEqual(['report.md', 'report.md', 'report-2.md'])
-  const delivered = await gate(result.steps, result.answer)
+  const delivered = await gate(result.steps, shown(result))
   expect(delivered).toMatchObject({ accepted: false, verified: false })
   expect(delivered.issues.join(' ')).toContain(`Reread every final part of report.md (${pathOf(first)})`)
-  const again = { answer: result.answer, steps: [...result.steps] }
+  const again = { answer: shown(result), steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
-  expect(again.answer).toBe(result.answer)
+  expect(again.answer).toBe(shown(result))
+  expect(cards(again)).toEqual([])
 })
 it('two files rendered under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const rendered = async (text: string): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', source: `${text}.md` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
   const result = { answer: 'Rendered both reports.', steps: [await rendered('first'), await rendered('second'), passed('Reports rendered')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(result.answer).toBe('Rendered both reports.')
+  const links = [...shown(result).matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
-  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['%PDF-first', '%PDF-second'])
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['%PDF-first', '%PDF-second'])
   expect(result.steps.map(step => step.args['name'])).toEqual(['report.pdf', 'report-2.pdf', undefined])
   const steps = result.steps
-  const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
+  const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: shown(result) }]))
   expect(outputs.map(output => [output.name, output.path]).sort()).toEqual(links.map(match => [match[1], join(artifactDirectory(paths), decodeURIComponent(match[2]!))]).sort())
-  const again = { answer: result.answer, steps: [...result.steps] }
+  const again = { answer: shown(result), steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
-  expect(again.answer).toBe(result.answer)
+  expect(again.answer).toBe(shown(result))
+  expect(cards(again)).toEqual([])
   const twice = { answer: 'Rendered.', steps: [await rendered('same'), await rendered('same')] }
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
-  expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+  expect(twice.answer).toBe('Rendered.')
+  expect(cards(twice).map(card => card.name)).toEqual(['report.pdf'])
 })
 it('two packages edited under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const edited = async (text: string): Promise<TurnStep> => ({ tool: 'file_edit_package', args: { name: 'report.docx', path: `${text}.docx` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.docx', Buffer.from(`PK-${text}`)), completeReadback: true }) })
   const result = { answer: 'Edited both reports.', steps: [await edited('first'), await edited('second'), passed('Reports edited')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(result.answer).toBe('Edited both reports.')
+  const links = [...shown(result).matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.docx', 'report-2.docx'])
-  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['PK-first', 'PK-second'])
+  expect(await Promise.all(cards(result).map(saved))).toEqual(['PK-first', 'PK-second'])
   expect(result.steps.map(step => step.args['name'])).toEqual(['report.docx', 'report-2.docx', undefined])
   const steps = result.steps
-  const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
+  const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: shown(result) }]))
   expect(outputs.map(output => [output.name, output.path]).sort()).toEqual(links.map(match => [match[1], join(artifactDirectory(paths), decodeURIComponent(match[2]!))]).sort())
-  const again = { answer: result.answer, steps: [...result.steps] }
+  const again = { answer: shown(result), steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
-  expect(again.answer).toBe(result.answer)
+  expect(again.answer).toBe(shown(result))
+  expect(cards(again)).toEqual([])
   const twice = { answer: 'Edited.', steps: [await edited('same'), await edited('same')] }
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
-  expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+  expect(twice.answer).toBe('Edited.')
+  expect(cards(twice).map(card => card.name)).toEqual(['report.docx'])
 })
 it('a report re-rendered and re-copied in one turn is handed over once per name, at the version the answer quotes', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
@@ -604,17 +637,19 @@ it('a report re-rendered and re-copied in one turn is handed over once per name,
   const quoted = result.answer
   await deliverOutputs(paths, cwd, result, 0, 'ask')
   expect(result.answer).toBe(quoted)
+  expect(cards(result)).toEqual([])
   expect(result.steps).toHaveLength(steps.length + 1)
   const bare = { answer: 'Done.', steps: [await rendered('w1'), await rendered('w2'), passed('Report made')] }
   await deliverOutputs(paths, cwd, bare, Date.now() + 60_000, 'ask')
-  const links = [...bare.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
-  expect(links.map(match => match[1])).toEqual(['report.pdf'])
-  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('%PDF-w2')
+  expect(bare.answer).toBe('Done.')
+  expect(cards(bare).map(card => card.name)).toEqual(['report.pdf'])
+  expect(await saved(cards(bare)[0]!)).toBe('%PDF-w2')
   const earlier = [await rendered('x1'), await rendered('x2')]
   const kept = { answer: `Done.\n\n${link(earlier[0]!)}`, steps: [...earlier, passed('Report made')] }
   const asQuoted = kept.answer
   await deliverOutputs(paths, cwd, kept, Date.now() + 60_000, 'ask')
   expect(kept.answer).toBe(asQuoted)
+  expect(cards(kept)).toEqual([])
 })
 it('a second file made from another input under a linked name is still handed over', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
@@ -626,17 +661,21 @@ it('a second file made from another input under a linked name is still handed ov
     const steps = [await rendered('sales', first!), await rendered('costs', second!)]
     const result = { answer: `Both reports are ready.\n\n${link(steps[1]!)}`, steps: [...steps, passed('Reports rendered')] }
     await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-    expect(named(result.answer).map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
-    expect(await bytes(result.answer)).toEqual(['%PDF-costs', '%PDF-sales'])
+    expect(result.answer).toBe(`Both reports are ready.\n\n${link(steps[1]!)}`)
+    expect(cards(result).map(card => card.name)).toEqual(['report-2.pdf'])
+    expect(named(shown(result)).map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
+    expect(await bytes(shown(result))).toEqual(['%PDF-costs', '%PDF-sales'])
     const bare = { answer: 'Both reports are ready.', steps: [await rendered('sales', first!), await rendered('costs', second!), passed('Reports rendered')] }
     await deliverOutputs(paths, cwd, bare, Date.now() + 60_000, 'ask')
-    expect(named(bare.answer).map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
-    expect(await bytes(bare.answer)).toEqual(['%PDF-sales', '%PDF-costs'])
+    expect(bare.answer).toBe('Both reports are ready.')
+    expect(cards(bare).map(card => card.name)).toEqual(['report.pdf', 'report-2.pdf'])
+    expect(await Promise.all(cards(bare).map(saved))).toEqual(['%PDF-sales', '%PDF-costs'])
   }
   const again = { answer: 'Done.', steps: [await rendered('a1', { markdown: '# Sales' }), await rendered('a2', { markdown: '# Sales' }), passed('Report made')] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
-  expect(named(again.answer).map(match => match[1])).toEqual(['report.pdf'])
-  expect(await bytes(again.answer)).toEqual(['%PDF-a2'])
+  expect(again.answer).toBe('Done.')
+  expect(cards(again).map(card => card.name)).toEqual(['report.pdf'])
+  expect(await Promise.all(cards(again).map(saved))).toEqual(['%PDF-a2'])
 })
 it('a content copy revised in the same turn is linked once, at its last revision', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
@@ -644,9 +683,9 @@ it('a content copy revised in the same turn is linked once, at its last revision
   const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
   const result = { answer: 'Saved.', steps: [await made({ name: 'notes.md', content: '# draft\n' }), await made({ name: 'notes.md', content: '# final\n' })] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
-  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
-  expect(links.map(match => match[1])).toEqual(['notes.md'])
-  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('# final\n')
+  expect(result.answer).toBe('Saved.')
+  expect(cards(result).map(card => card.name)).toEqual(['notes.md'])
+  expect(await saved(cards(result)[0]!)).toBe('# final\n')
 })
 
 it('a new top-level file never takes over a link the comet made from another source: it gets its own name and link, and both are checked', async () => {
@@ -660,12 +699,14 @@ it('a new top-level file never takes over a link the comet made from another sou
   await deliverOutputs(paths, cwd, first, 0, 'ask')
   expect(first.steps).toHaveLength(1)
   expect(first.answer).toBe(`Saved a/x.md as the report.\n\n${own.markdownLink}`)
+  expect(cards(first)).toEqual([])
   await writeFile(join(cwd, 'report.md'), '# another report\n')
   const later = { answer: `Wrote report.md.\n\n${own.markdownLink}`, steps: [passed('Report written')] }
   await deliverOutputs(paths, cwd, later, 0, 'ask')
   expect(later.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'report-2.md', fromPath: join(cwd, 'report.md') } })
-  expect(later.answer).toContain(own.markdownLink)
-  const links = [...later.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(later.answer).toBe(`Wrote report.md.\n\n${own.markdownLink}`)
+  expect(cards(later).map(card => card.name)).toEqual(['report-2.md'])
+  const links = [...shown(later).matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
   expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x\n', '# another report\n'])
   const { outputs, check } = await judged(later)
@@ -676,15 +717,17 @@ it('a new top-level file never takes over a link the comet made from another sou
   const revised = { answer: `Corrected a/x.md.\n\n${own.markdownLink}\n\n${links[1]![0]}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask')
   expect(revised.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report.md', join(cwd, 'a', 'x.md')]])
-  expect(revised.answer).not.toContain(own.markdownLink)
-  expect(revised.answer).toContain(links[1]![0])
+  expect(revised.answer).toBe(`Corrected a/x.md.\n\n${own.markdownLink}\n\n${links[1]![0]}`)
+  expect(cards(revised).map(card => card.name)).toEqual(['report.md'])
+  expect(own.markdownLink).not.toContain(cards(revised)[0]!.href)
+  expect(await saved(cards(revised)[0]!)).toBe('# from a/x, v2\n')
   const loose = JSON.parse(await copy.run({ name: 'notes.md', content: '# notes\n' }, context)) as { markdownLink: string }
   await writeFile(join(cwd, 'notes.md'), '# other notes\n')
   const unknown = { answer: `Wrote notes.md.\n\n${loose.markdownLink}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, unknown, 0, 'ask')
-  expect(unknown.answer).toContain(loose.markdownLink)
+  expect(unknown.answer).toBe(`Wrote notes.md.\n\n${loose.markdownLink}`)
   expect(unknown.steps.map(step => step.args.name)).toEqual(['notes-2.md'])
-  expect(unknown.answer).toMatch(/\[notes-2\.md\]\(engram-artifact:/)
+  expect(cards(unknown).map(card => card.name)).toEqual(['notes-2.md'])
 })
 
 it('a check turn hands in a requested script it first wrote next to a linked workbook, and it enters the result check', async () => {
@@ -696,7 +739,8 @@ it('a check turn hands in a requested script it first wrote next to a linked wor
   const ran: TurnStep = { tool: 'Bash', args: { command: 'python3 audit.py' }, observation: 'audited' }
   const result = { answer: `Wrote audit.py, the automation you asked for, and ran it.\n\n${book.markdownLink}`, steps: [ran, passed('Automation script written')] }
   await deliverOutputs(paths, cwd, result, 0, 'Check the result.\n\nThe delegated task, verbatim:\nAudit the workbook and give me a script that repeats it.')
-  expect(result.answer).toMatch(/\[audit\.py\]\(engram-artifact:/)
+  expect(result.answer).toBe(`Wrote audit.py, the automation you asked for, and ran it.\n\n${book.markdownLink}`)
+  expect(cards(result).map(card => card.name)).toEqual(['audit.py'])
   expect((await judged(result)).outputs).toEqual(['audit.csv', 'audit.py'])
 })
 
@@ -709,13 +753,15 @@ it('a command that only mentions a script changes nothing: handed in when the an
   for (const steps of [[passed('Script written')], [echo, passed('Script written')]]) {
     const named = { answer: 'Wrote summary.md and audit.py.', steps: [...steps] }
     await deliverOutputs(paths, cwd, named, 0, 'ask')
-    expect(named.answer).toMatch(/\[audit\.py\]\(engram-artifact:/)
+    expect(named.answer).toBe('Wrote summary.md and audit.py.')
+    expect(cards(named).map(card => card.name).sort()).toEqual(['audit.py', 'summary.md'])
     const { outputs, check } = await judged(named)
     expect(outputs).toEqual(['audit.py', 'summary.md'])
     expect(check.issues.join(' ')).toContain('Reread every final part of summary.md')
     const unnamed = { answer: 'Wrote summary.md.', steps: [...steps] }
     await deliverOutputs(paths, cwd, unnamed, 0, 'ask')
-    expect(unnamed.answer).not.toContain('audit.py')
+    expect(unnamed.answer).toBe('Wrote summary.md.')
+    expect(cards(unnamed).map(card => card.name)).toEqual(['summary.md'])
     expect((await judged(unnamed)).outputs).toEqual(['summary.md'])
   }
 })
@@ -726,16 +772,21 @@ it('the host hand-in of a file revised in a check turn is not a change after the
   await writeFile(join(cwd, 'report.md'), '# v1\n')
   const first = { answer: 'Saved report.md.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
-  const link = /\[report\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
+  expect(first.answer).toBe('Saved report.md.')
+  expect(cards(first).map(card => card.name)).toEqual(['report.md'])
+  const link = withFiles('', cards(first)).trim()
   await writeFile(join(cwd, 'report.md'), '# v2\n')
   const tools = cometFileTools(paths, 'bot-x', [], [cwd])
   const read: TurnStep = { tool: 'file_read', args: { path: join(cwd, 'report.md') }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: join(cwd, 'report.md') }, context) }
   const finding = { status: 'pass', basis: 'Read the corrected file.' }
   const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report corrected' }], grounding: finding } }) }
-  const judge = async (result: { answer: string; steps: TurnStep[] }) => checkResult(result.steps, latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }])), [])
+  const judge = async (result: Shown & { steps: TurnStep[] }) => checkResult(result.steps, latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: shown(result) }])), [])
   const revised = { answer: `Corrected report.md.\n\n${link}`, steps: [read, report] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask')
   expect(revised.steps.at(-1)!.tool).toBe('file_create_copy')
+  expect(revised.answer).toBe(`Corrected report.md.\n\n${link}`)
+  expect(cards(revised).map(card => card.name)).toEqual(['report.md'])
+  expect(await saved(cards(revised)[0]!)).toBe('# v2\n')
   expect(await judge(revised)).toMatchObject({ accepted: true, verified: true, issues: [] })
   expect(freshResultReadback(revised.steps)).toBe(true)
   await writeFile(join(cwd, 'report.md'), '# v3\n')
@@ -753,9 +804,12 @@ it('attaches a named file core will not read back, and says so when nothing can 
   await writeFile(join(cwd, 'sales.csv'), `a,b\n${'1,2\n'.repeat(2_200_000)}`)
   const result = { answer: 'Saved sales.csv.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, result, 0, 'ask')
-  expect(result.answer).toMatch(/\[sales\.csv\]\(engram-artifact:[^)]+sales\.csv\)/)
+  expect(result.answer).toBe('Saved sales.csv.')
+  expect(cards(result)).toEqual([{ name: 'sales.csv', href: expect.stringMatching(/sales\.csv$/) }])
   await writeFile(join(cwd, 'bad.png'), 'not a picture')
   const broken = { answer: 'Saved bad.png.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, broken, 0, 'ask')
-  expect(broken.answer).toContain('bad.png could not be attached')
+  expect(broken.answer).toBe('Saved bad.png.')
+  expect(cards(broken)).toEqual([])
+  expect(broken.steps).toEqual([])
 })

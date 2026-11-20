@@ -2,14 +2,15 @@ import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendBotTurn, initVault, readBotTranscript } from 'core'
+import { appendBotTurn, initVault, readBotTranscript, sessionRules } from 'core'
 
 const bus = vi.hoisted(() => ({ sent: [] as { type: string; reset?: boolean; drop?: boolean; text?: string }[] }))
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: string }) => { bus.sent.push(event) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { answerAlone, beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import * as firstLine from '../src/main/first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
@@ -134,17 +135,17 @@ describe('the first line is a waiting line, not part of the answer', () => {
     const store = createCometThreads()
     store.begin('1', ask().message)
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '바로 써 볼게요.\n\n' })
-    const answer = answerAlone('회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요.\n\nI apologize for being late to the meeting.')
-    expect(answer).toBe('I apologize for being late to the meeting.')
+    const answer = '이렇게 쓰면 돼요. I apologize for being late to the meeting.'
     store.handleEvent({ type: 'chat:done', channel: 'bot-1', text: answer })
-    expect(store.thread('1').messages.map(message => message.text)).toEqual([ask().message, 'I apologize for being late to the meeting.'])
+    expect(store.thread('1').messages.map(message => message.text)).toEqual([ask().message, answer])
     expect(hide).not.toHaveBeenCalled()
-    expect(answerAlone('바로 써 볼게요.\n---\nI apologize for being late.\n\n```replies\n더 짧게\n```')).toBe('I apologize for being late.\n\n```replies\n더 짧게\n```')
-    for (const kept of ['I apologize for being late.', '이렇게 쓰면 돼요.\n\nI apologize for being late.', '내일 아침에 다시 알려 드릴게요.', '기억해 둘게요.\n\n```replies\n고마워\n```', '세 가지 골라 봤어요.\n\n1. 해안도로 드라이브\n2. 카페\n3. 미술관'])
-      expect(answerAlone(kept), kept).toBe(kept)
-    expect(source('ipc.ts')).toContain('if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)')
+    for (const gone of ['answerAlone', 'talkOnly', 'withoutHelpDesk', 'dropWorkingNotes', 'withTheirWords']) expect(Object.keys(firstLine), gone).not.toContain(gone)
+    expect(source('ipc.ts')).not.toContain('answerAlone')
+    expect(source('ipc.ts')).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
+    const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, kind: 'short', tools: [] })
+    expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')
+    expect(rules).toContain('never a line of dashes to split messages')
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
-    expect(answerAlone('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')).toBe('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')
     expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
     expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
     expect(source('ipc.ts')).not.toContain('withoutWorkNote')
@@ -377,7 +378,7 @@ describe('desk tool menus', () => {
     for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,')
+    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {
