@@ -273,7 +273,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(personas[0]).toContain('지난주에 줌 요금제를 조사했다')
     expect(personas[0]).toContain('each fact with the address of the result it came from')
     expect(personas[0]).toContain('Your temperament: "차분하고 또박또박"')
-    expect(personas[0]).not.toContain('```report')
+    expect(personas[0]).toContain('```report')
     expect(personas[0]).not.toContain('in every sentence you write')
     expect(personas[0]).not.toContain('말투:')
     const line = (await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text

@@ -699,7 +699,7 @@ test('three short lines a writer made come back as their three lines, and the wr
   settleMember(m, { answer: lines }, 'now', true)
   expect(handed([m]).reports[0]!.result.split('\n')).toEqual(lines.split('\n'))
   expect(WRITER_RULE).toContain('exactly as many as the job asks')
-  expect(WRITER_RULE).toContain('one piece per line')
+  expect(WRITER_RULE).toContain('one entry per piece')
   for (const [brief, n] of [['홍보 문구 3개 뽑기', 3], ['장점 3가지 정리', 3], ['소개 글 세 줄 쓰기', 3], ['후보 두 개 고르기', 2], ['문구 한 줄 쓰기', 0], ['12월 행사 일정 정리', 0], ['노션 신기능 조사', 0]] as const) expect(askedCount(brief), brief).toBe(n)
 })
 

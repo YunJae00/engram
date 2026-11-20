@@ -65,7 +65,7 @@ test('a handoff that makes copy: the copy\'s brief holds the find as written, an
   expect(copy.result).toBe(raw)
   expect(copy.data).toBeUndefined()
   expect(back(handBacks([giver, copy])).reports.map(r => r.result)).toEqual([find, raw])
-  expect(WRITER_RULE).toContain('each the final text only')
+  expect(WRITER_RULE).toContain('each final text only')
   expect(WRITER_RULE).toContain('no draft, no alternative, no remark about it, no number in front')
   expect(WRITER_RULE).toContain('uses at least one of its facts as it is')
 })
@@ -101,19 +101,19 @@ test('no writer stands in for the lead: a part still at work is handed back as w
   expect(employeesAnswer(job([]))).toBeUndefined()
 })
 
-test('persona: a temperament with no fixed ending, never "in every sentence", none in a writer\'s deliverable prompt, and no report format asked of anyone', async () => {
+test('persona: a temperament with no fixed ending, never "in every sentence", none in a writer\'s deliverable prompt, and the report block is asked of a lookup and a writer only', async () => {
   const paths = await initVault(await tmpVaultRoot('c11a-team'), { git: false })
   await createBot(paths, { name: '엔그램' })
   const bot = await createBot(paths, { name: '지아', purpose: '글 담당' })
   await updateBot(paths, bot.id, { label: '글 담당' })
-  const plain = await employeeNote(paths, bot.id, NOW), writer = await employeeNote(paths, bot.id, NOW, 'writer')
-  for (const note of [plain, writer, WRITER_RULE]) {
-    expect(note).not.toMatch(/in every sentence|더라고요|…네요|확인해 보니/)
-    expect(note).not.toMatch(/```report|"facts"|"items"|JSON/)
-  }
+  const plain = await employeeNote(paths, bot.id, NOW), writer = await employeeNote(paths, bot.id, NOW, 'writer'), lookup = await employeeNote(paths, bot.id, NOW, 'lookup')
+  for (const note of [plain, writer, lookup, WRITER_RULE]) expect(note).not.toMatch(/in every sentence|더라고요|…네요|확인해 보니/)
+  for (const note of [plain, writer]) expect(note).not.toMatch(/```report|"facts"|"items"|JSON/)
+  expect(lookup).toContain('```report, holding JSON and nothing before or after it: {"facts":[')
+  expect(WRITER_RULE).toContain('```report, holding JSON and nothing before or after it: {"items":[')
   expect(plain).toMatch(/temperament/)
   expect(writer).not.toMatch(/temperament/)
-  expect(WRITER_RULE).toContain('one piece per line, exactly as many as the job asks')
+  expect(WRITER_RULE).toContain('one entry per piece, exactly as many as the job asks')
 })
 
 test('a teammate\'s answer is its result whatever its shape: prose, numbered lines or a fenced block are all kept as written and none becomes data', () => {

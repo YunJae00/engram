@@ -102,7 +102,7 @@ test('a writer\'s answer that opens on a sentence about the work, before the ite
   expect(jun!.result).toBe(narrated)
   expect(back(handBacks([haeun!, jun!])).reports[1]!.result).toBe(narrated)
   expect(handedFrom(jun!.brief)).toMatchObject({ from: '하은', result: FIND })
-  expect(WRITER_RULE).toContain('each the final text only')
+  expect(WRITER_RULE).toContain('each final text only')
 })
 
 test('copy that names nobody it was made from still reaches the lead with whose it is and whose find it came from as data; naming each of them is the lead\'s rule', () => {

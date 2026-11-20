@@ -6,7 +6,7 @@ import { answerOnly } from './result-check.js'
 import { withFiles } from './native-tools.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, handedData, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
@@ -114,7 +114,7 @@ export function teamRunner(deps: {
       const { me, helpers } = member
       role = me.role; roles.set(key, role)
       if (me.background) charged = false
-      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
+      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : me.lookup ? 'lookup' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
@@ -207,7 +207,7 @@ export function teamRunner(deps: {
       })
       if (answering && !control.signal.aborted) {
         draft = ''
-        try { outcome = { answer: (await turn(`${ANSWER_NOW} What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } }
+        try { outcome = { answer: (await turn(`${ANSWER_NOW} Write it as the report block your rules describe. What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } }
       }
       clearTimeout(reserve)
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
@@ -215,12 +215,13 @@ export function teamRunner(deps: {
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       clearTimeout(hardStop)
       reading.delete(key)
+      const report = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked ? handedData(outcome.answer, me, [...sources], isKorean(goal)) : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
-          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}) }, now(), isKorean(goal))
+          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report ? { report } : {}) }, now(), isKorean(goal))
           if (me.lookup && !me.botId) m.shown = [...new Set([...sources, ...kept.flatMap(text => text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? [])])]
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
             for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'shown'] as const) delete m[field]

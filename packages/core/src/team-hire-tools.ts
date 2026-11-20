@@ -270,6 +270,30 @@ function dataText(data: MemberData): string {
   if (data.nothing) return ['이번엔 새로 나온 게 없어요.', ...(data.nothing.latest ? [`가장 최근: ${fact(data.nothing.latest)}`] : [])].join('\n')
   return data.facts.map(fact).join('\n')
 }
+export function handedData(answer: string, member: Pick<TeamMember, 'writer'>, sources: readonly string[] = [], korean = true): MemberData | undefined {
+  const block = [...answer.matchAll(/```[a-z]*\s*(\{[\s\S]*?\})\s*```/g)].at(-1)?.[1] ?? answer.slice(answer.indexOf('{'), answer.lastIndexOf('}') + 1)
+  let raw: unknown
+  try { raw = JSON.parse(block) } catch { return undefined }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const o = raw as Record<string, unknown>, word = (v: unknown): string => typeof v === 'string' ? v.trim() : ''
+  const extra = word(o['note']) ? { note: word(o['note']) } : {}
+  if (member.writer) {
+    const items = (Array.isArray(o['items']) ? o['items'] : []).map(word).filter(Boolean)
+    return items.length ? { facts: [], items, ...extra } : undefined
+  }
+  const page = sources.find(url => !isSearchPage(url)) ?? sources[0]
+  const fact = (v: unknown): MemberData['facts'] => {
+    if (!v || typeof v !== 'object') return []
+    const f = v as Record<string, unknown>, text = word(f['text']), url = /^https?:\/\//.test(word(f['url'])) ? word(f['url']) : page, date = word(f['date'])
+    return text && url ? [{ text, url, site: siteOf(url, f['site'], korean), ...(date ? { date } : {}) }] : []
+  }
+  const facts = (Array.isArray(o['facts']) ? o['facts'] : []).flatMap(fact)
+  if (facts.length) return { facts, ...extra }
+  const period = o['nothing_in_period']
+  if (!period || typeof period !== 'object') return undefined
+  const given = (period as Record<string, unknown>)['latest'], [latest] = fact(given), name = latest && word((given as Record<string, unknown>)['name'])
+  return { facts: [], nothing: latest ? { latest: { ...latest, ...(name ? { name } : {}) } } : {}, ...extra }
+}
 const wholeSentences = (text: string): string => {
   const ends = [...text.matchAll(/(?:[.!?。]|\]\([^)\s]+\)|https?:\/\/[^\s)\]>"'|]+)(?=\s|$)/g)].at(-1)
   return ends ? text.slice(0, ends.index + ends[0].length).trim() : ''

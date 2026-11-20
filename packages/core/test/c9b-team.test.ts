@@ -85,7 +85,7 @@ test('c9 fix 2 → k1: a writer\'s answer is kept whole, its own closing line in
   expect(park.result).toBe(answer)
   expect(park.data).toBeUndefined()
   expect(back(handBacks([park])).reports[0]!.result).toBe(answer)
-  expect(WRITER_RULE).toContain('Your whole answer is the finished deliverable and nothing else')
+  expect(WRITER_RULE).toContain('items: the finished deliverable')
   expect(WRITER_RULE).toContain('no draft, no alternative, no remark about it')
 })
 
