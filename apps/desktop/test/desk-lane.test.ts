@@ -120,7 +120,7 @@ describe('document and tidy answers', () => {
     expect(DESK_NOTE).toContain('a decision (결정사항) is what the meeting settled - a choice, a direction or a commitment - and an action item (할 일) is who does what by when')
     expect(DESK_NOTE).toContain('Each thing goes under one of them, never both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
-    expect(DESK_NOTE).toContain('"PDF 6개, 이미지 4개, 문서 3개예요."')
+    expect(DESK_NOTE).toContain('the whole answer is two short sentences')
     expect(DESK_NOTE).toContain('what was done and how it was grouped')
     expect(DESK_NOTE).toContain('how many files went into each folder')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them')
