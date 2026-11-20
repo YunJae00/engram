@@ -17,6 +17,7 @@ import { artifactDirectory, cometFileTools, placeInTask, saveOutput, taskOutputs
 import { fixSlideTitle } from '../src/main/desk-lane.js'
 import { deliverOutputs, withFiles } from '../src/main/native-tools.js'
 import { outputCards } from '../../../packages/core/src/agent-session-result.js'
+import { answerFiles } from '../src/renderer/src/markdown.js'
 
 const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 const THEME = { field: '#1F2937', accent: '#7C3AED', fonts: { title: 'Pretendard', body: 'Pretendard' } }
@@ -147,6 +148,24 @@ describe('an edit is saved to the file it read', () => {
     await deliverOutputs(paths(), task, one, 0, 'x')
     expect(one.answer).toBe(`고쳤어요. ${fix.receipt.markdownLink}`)
     expect(one.files).toEqual([])
+  })
+
+  it('a reply that links the first build of a file later edited in the same turn shows the edited file alone, and the reply is stored as written', async () => {
+    const tools = turnTools('t1')
+    const run = async (name: string, args: Record<string, unknown>) => { const observation = await tools.find(tool => tool.name === name)!.run(args, { task: 'x' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { path: string; taskPath: string; artifact: string; sha256: string; markdownLink: string } } }
+    const deck = await run('ppt_build', { slides: SLIDES, saveAs: '봄 소풍 계획.pptx', theme: THEME })
+    const seen = await run('file_read_package', { path: deck.receipt.path, outline: true })
+    const fix = await run('file_edit_package', { sourcePath: deck.receipt.path, expectedSha256: seen.receipt.sha256, name: '봄 소풍 계획.pptx', edits: [{ slide: 2, with: '도시락 준비' }] })
+    expect(fix.receipt.artifact).not.toBe(deck.receipt.artifact)
+    const steps = [deck.step, seen.step, fix.step]
+    const answer = `둘째 장을 고쳤어요. ${deck.receipt.markdownLink}`
+    const result = { answer, steps, files: outputCards(steps, answer, task) }
+    await deliverOutputs(paths(), task, result, 0, 'x')
+    expect(result.answer).toBe(answer)
+    expect(result.files).toEqual([{ name: '봄 소풍 계획.pptx', href: encodeURIComponent(fix.receipt.artifact), replaces: [encodeURIComponent(deck.receipt.artifact)] }])
+    expect(answerFiles(withFiles(result.answer, result.files)).files).toEqual([{ id: fix.receipt.artifact, name: '봄 소풍 계획.pptx' }])
+    expect(await saved('.pptx')).toEqual([fix.receipt.artifact])
+    expect(await files('.pptx')).toEqual(['봄 소풍 계획.pptx'])
   })
 
   it('a new build never overwrites a same-name file an earlier turn made', async () => {

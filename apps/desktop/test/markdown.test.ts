@@ -186,6 +186,19 @@ describe('an answer as a few short messages', () => {
     expect(answerHtml(lines)).toContain('Low tide is at noon.<br>The pier opens an hour before.')
   })
 
+  it('shows one card for a file the reply links by an earlier save, and leaves the stored reply as written', () => {
+    const old = '0a1b2c3d-1111-2222-3333-444455556666-ferries.docx', now = '9f8e7d6c-1111-2222-3333-444455556666-ferries.docx'
+    const text = `The ferry timetable is in [ferries.docx](engram-artifact:${old}).\n\n[ferries.docx](engram-artifact:${old})`
+    const message = { role: 'assistant', text, files: [{ name: 'ferries.docx', href: now, replaces: [old] }] }
+    const shown = withFiles(message)
+    expect(message.text).toBe(text)
+    expect(shown).not.toContain(old)
+    expect(answerBubbles(shown).flatMap(bubble => answerFiles(bubble).files)).toEqual([{ id: now, name: 'ferries.docx' }])
+    expect(linkedFiles([message])).toBe(now)
+    expect(answerHtml(answerFiles(shown).text)).toContain(`href="engram-artifact:${now}"`)
+    expect(withFiles({ text, files: [{ name: 'ferries.docx', href: now }] })).toContain(old)
+  })
+
   it('keeps file cards with the last bubble, one card per file', () => {
     const card = (name: string) => `[${name}](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-${name})`
     const words = 'The tide chart is ready.\n\nLow water is marked in blue.'

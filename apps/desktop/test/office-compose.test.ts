@@ -71,7 +71,7 @@ it('replaces this turn\'s own file when a second input is built under its name, 
     const steps = [sales.step, costs.step] as unknown as Parameters<typeof outputCards>[0]
     const last = [{ name: `report.${ext}`, href: /\(engram-artifact:([^)]+)\)$/.exec(costs.receipt.markdownLink)![1]! }]
     expect(sales.receipt.markdownLink).not.toContain(last[0]!.href)
-    expect(outputCards(steps, `보고서: ${sales.receipt.markdownLink}`)).toEqual(last)
+    expect(outputCards(steps, `보고서: ${sales.receipt.markdownLink}`)).toEqual([{ ...last[0]!, replaces: [/\(engram-artifact:([^)]+)\)$/.exec(sales.receipt.markdownLink)![1]!] }])
     expect(outputCards(steps, `보고서: ${costs.receipt.markdownLink}`)).toEqual([])
     expect(outputCards(steps, '다 만들었어요.')).toEqual(last)
     const again = await run('sales')

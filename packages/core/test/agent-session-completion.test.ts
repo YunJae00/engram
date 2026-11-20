@@ -278,6 +278,21 @@ it('shows only the edited file when this turn builds a file and then edits it', 
   expect(cardLinks([build, edit('/task/other.pptx', b.replace('[deck', '[other').replace('-deck', '-other'))], '끝', '/task')).toContain(a)
 })
 
+it('a card for a file that replaced one the reply links names the link it replaces, so the reply needs no edit to show one file', () => {
+  const made = (id: number) => `[menu.docx](engram-artifact:aaaaaaaa-bbbb-cccc-dddd-00000000000${id}-menu.docx)`
+  const href = (id: number) => `aaaaaaaa-bbbb-cccc-dddd-00000000000${id}-menu.docx`
+  const write = { tool: 'word_write', args: {}, observation: JSON.stringify({ markdownLink: made(1) }) }
+  const edit = (path: string, id: number) => ({ tool: 'file_edit_package', args: { sourcePath: path }, observation: JSON.stringify({ markdownLink: made(id) }) })
+  const cards = (steps: unknown[], answer: string) => outputCards(steps as Parameters<typeof outputCards>[0], answer, '/kitchen')
+  const once = [write, edit('/kitchen/menu.docx', 2)]
+  expect(cards(once, `The lunch menu is ready: ${made(1)}`)).toEqual([{ name: 'menu.docx', href: href(2), replaces: [href(1)] }])
+  expect(cards(once, `First draft ${made(1)}, then the fixed one ${made(2)}.`)).toEqual([{ name: 'menu.docx', href: href(2), replaces: [href(1)] }])
+  expect(cards(once, `The lunch menu is ready: ${made(2)}`)).toEqual([])
+  expect(cards(once, 'The lunch menu is ready.')).toEqual([{ name: 'menu.docx', href: href(2) }])
+  const twice = [write, edit('menu.docx', 2), edit(`/saved/${href(2)}`, 3)]
+  expect(cards(twice, `Soup ${made(1)} and salad ${made(2)} pages are fixed.`)).toEqual([{ name: 'menu.docx', href: href(3), replaces: [href(1), href(2)] }])
+})
+
 it('attaches only the last copy of one source when the answer links nothing, and still both of two sources', () => {
   const copy = (id: number, args: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ tool: 'file_create_copy', args: { name: 'report.md', ...args }, observation: JSON.stringify({ markdownLink: `[report.md](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.md)`, ...extra }) })
   const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink

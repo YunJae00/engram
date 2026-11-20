@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
 import { communityPost } from './search-template.js'
-import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
+import { datedText, logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 export const TEAM_TOKEN_RESERVE = 45_000
 const HIRE_MAX_PER_CALL = 4
@@ -44,7 +44,7 @@ export function skipWalls(tool: AgentTool): AgentTool {
   return { ...tool, run: async (args, context) => skip(await tool.run(args, context), args), ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); return { ...out, text: skip(out.text, args) } } } : {}) }
 }
 
-export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; sources?: string[]; read?: string }
+export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; sources?: string[]; read?: string; report?: MemberData | null }
 export interface MemberRedo { note: string; answered?: boolean }
 
 export interface TeamHost {
@@ -264,6 +264,12 @@ export function keptItems(brief: string, text: string): string {
   const kept = items.filter(item => !(real && links(item).length > 0 && links(item).every(isSearchPage)))
   return (said(kept) ? kept : items).flat().join('\n')
 }
+function dataText(data: MemberData): string {
+  const fact = (f: { text: string; url: string; date?: string }): string => `${datedText(f)} — ${f.url}`
+  if (data.items?.length) return data.items.map((item, i) => `${i + 1}. ${item}`).join('\n')
+  if (data.nothing) return ['이번엔 새로 나온 게 없어요.', ...(data.nothing.latest ? [`가장 최근: ${fact(data.nothing.latest)}`] : [])].join('\n')
+  return data.facts.map(fact).join('\n')
+}
 const wholeSentences = (text: string): string => {
   const ends = [...text.matchAll(/(?:[.!?。]|\]\([^)\s]+\)|https?:\/\/[^\s)\]>"'|]+)(?=\s|$)/g)].at(-1)
   return ends ? text.slice(0, ends.index + ends[0].length).trim() : ''
@@ -273,6 +279,17 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   const read = outcome.error || outcome.asked ? '' : (outcome.read ?? '').trim()
   const answer = outcome.timedOut && (PROGRESS_ONLY.test(said) || !!read && WALLED.test(said)) ? '' : said
   member.finishedAt = at
+  if (outcome.report !== undefined && !outcome.error && !outcome.asked) {
+    const sources = sourcesOf(outcome.sources ?? []), data = outcome.report
+    member.state = 'done'
+    if (sources.length) member.sources = sources
+    if (!data) { member.result = cut(said.replace(/```[a-z]*\s*\{[\s\S]*$/, '').trim(), MEMBER_RESULT_CHARS); return }
+    member.data = data
+    if (data.nothing) member.empty = true
+    member.result = cut(dataText(data), MEMBER_RESULT_CHARS)
+    if (member.lookup) member.review = { ok: true, note: AUTO_REVIEW }
+    return
+  }
   if (outcome.error || (!answer && !read)) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
   const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''

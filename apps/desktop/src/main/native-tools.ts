@@ -5,6 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, type FileCard, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
+import { withCards } from '../shared/file-cards.js'
 import { artifactDirectory, ensureTaskFolder, freeName, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot, twinsFile } from './file-work.js'
 import { flog } from './flog.js'
 import { latestResultOutputs } from './result-check.js'
@@ -196,7 +197,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   return found
 }
 
-export const withFiles = (text: string, files: readonly FileCard[] = []): string => [text, ...files.map(file => `[${file.name}](engram-artifact:${file.href})`)].join('\n\n')
+export const withFiles = withCards
 const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; files?: FileCard[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
   if (result.asked) return
@@ -205,8 +206,9 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
     const [, name, href] = /^\[(.*)\]\(engram-artifact:([^)\s]+)\)$/.exec(link) ?? []
     if (!name || !href) return
     const at = cards.findIndex(one => stale.includes(one.href))
+    const replaces = cards.flatMap(one => stale.includes(one.href) ? one.replaces ?? [] : [])
     for (let i = cards.length - 1; i >= 0; i--) if (stale.includes(cards[i]!.href)) cards.splice(i, 1)
-    if (!cards.some(one => one.href === href)) cards.splice(at < 0 ? cards.length : at, 0, { name, href })
+    if (!cards.some(one => one.href === href)) cards.splice(at < 0 ? cards.length : at, 0, { name, href, ...(replaces.length ? { replaces } : {}) })
   }
   const shown = (): string => withFiles(result.answer, cards)
   const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)

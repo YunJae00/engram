@@ -90,7 +90,7 @@ export interface AgentLoopStep {
   seeded?: boolean
 }
 
-export interface FileCard { name: string; href: string }
+export interface FileCard { name: string; href: string; replaces?: string[] }
 
 export interface AgentLoopResult {
   tokensUsed?: number

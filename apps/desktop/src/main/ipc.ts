@@ -2466,7 +2466,7 @@ export function registerIpc(ctx: VaultContext): void {
           check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths), { guide: await workGuide(paths), request: turn?.verification?.goal ?? request.message }), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
           const named = new Set([...linked().matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')] } catch { return [] } }))
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs
-          if (!result.asked && check.accepted) result.files = delivered.map(output => ({ name: output.name, href: artifactHref(output.path.split(/[\\/]/).at(-1)!) }))
+          if (!result.asked && check.accepted) result.files = delivered.map(output => { const href = artifactHref(output.path.split(/[\\/]/).at(-1)!), replaces = result.files?.find(one => one.href === href)?.replaces; return { name: output.name, href, ...(replaces ? { replaces } : {}) } })
         }
         const note = parsePendingCall(result.pending)?.tool !== 'run_procedure' ? ''
           : isKorean(request.message) ? '\n\n아직 실행하지는 않았어요. 실행하려면 여기서 다시 말씀해 주세요.'

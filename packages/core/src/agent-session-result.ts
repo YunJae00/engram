@@ -30,12 +30,15 @@ export function outputCards(steps: AgentLoopStep[], answer: string, cwd = ''): F
   const onto = (edit: typeof outputs[number], output: typeof outputs[number]) => edit.taskPath && output.taskPath ? edit.taskPath === output.taskPath : edit.name.toLowerCase() === output.name.toLowerCase()
   outputs.forEach((output, at) => { const edit = outputs.slice(at + 1).filter(one => one.edits === output.name.toLowerCase() && onto(one, output)).at(-1); if (edit && (output.fresh || output.edits)) replaced.set(output.id, edit) })
   const kept = outputs.filter(output => !replaced.has(output.id))
-  const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
+  const final = (id: string) => { let now = replaced.get(id); for (let hops = 0; now && replaced.has(now.id) && hops < 50; hops++) now = replaced.get(now.id); return now }
+  const linked = [...new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))]
+  const selected = new Set(linked.map(id => final(id)?.id ?? id))
   const chosen = kept.filter(output => selected.has(output.id))
   const cards = new Map<string, FileCard>()
   for (const output of kept) {
-    if (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.composed || one.source === output.source))) continue
-    cards.set(`${output.name}\0${output.source}`, { name: output.link.slice(1, output.link.indexOf('](engram-artifact:')), href: output.id })
+    const replaces = linked.filter(id => final(id)?.id === output.id)
+    if (!replaces.length && (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.composed || one.source === output.source)))) continue
+    cards.set(`${output.name}\0${output.source}`, { name: output.link.slice(1, output.link.indexOf('](engram-artifact:')), href: output.id, ...(replaces.length ? { replaces } : {}) })
   }
   return [...new Map([...cards.values()].map(card => [card.href, card])).values()]
 }

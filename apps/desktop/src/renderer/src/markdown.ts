@@ -1,5 +1,7 @@
 import { marked, type Tokens } from 'marked'
 import { t } from './i18n.js'
+import type { FileCard } from 'core'
+import { withCards } from '../../shared/file-cards.js'
 import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 function dedent(text: string): string {
@@ -90,8 +92,8 @@ export function answerBubbles(text: string): string[] {
   }, [])
 }
 
-type Filed = { text: string; files?: readonly { name: string; href: string }[] }
-export const withFiles = (message: Filed): string => message.files?.length ? [message.text, ...message.files.map(file => `[${file.name}](engram-artifact:${file.href})`)].join('\n\n') : message.text
+type Filed = { text: string; files?: readonly FileCard[] }
+export const withFiles = (message: Filed): string => withCards(message.text, message.files)
 
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
