@@ -155,7 +155,7 @@ for (const length of ['long', 'short'] as const) test(`Office activity card arri
     await page.getByTestId(`bot-${bot.id}`).click()
     const lane = `bot-${bot.id}`
     const thread = page.getByTestId('bots-thread')
-    await expect(thread.locator('.bubble-msg')).toHaveCount(length === 'long' ? 28 : 2)
+    await expect(thread.locator('.bubble-msg')).toHaveCount(length === 'long' ? 42 : 3)
     const settle = () => page.evaluate(async () => {
       await Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => undefined)))
       await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))

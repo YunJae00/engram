@@ -178,7 +178,7 @@ test('saved multiline questions render real paragraphs once and retain literal c
   await page.reload()
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
-  const answer = page.getByTestId('bots-thread').locator('.bubble-msg.assistant').last()
+  const answer = page.getByTestId('bots-thread').locator('.bubble-msg.assistant')
   await expect(answer.locator('ol li')).toHaveText(['Draft the items', 'Enter actual hours'])
   await expect(answer.locator('pre code')).toHaveText(String.raw`const marker = '\n\n'`)
   await expect(page.getByText('Your answer is needed', { exact: true })).toHaveCount(0)
