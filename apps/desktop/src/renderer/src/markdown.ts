@@ -1,7 +1,7 @@
 import { marked, type Tokens } from 'marked'
 import { t } from './i18n.js'
 import type { FileCard } from 'core'
-import { withCards } from '../../shared/file-cards.js'
+import { replacedLinks, withCards } from '../../shared/file-cards.js'
 import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 function dedent(text: string): string {
@@ -94,6 +94,7 @@ export function answerBubbles(text: string): string[] {
 
 type Filed = { text: string; files?: readonly FileCard[] }
 export const withFiles = (message: Filed): string => withCards(message.text, message.files)
+export const staleLinks = (message: Filed): string => replacedLinks(message.files).join('\n')
 
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
@@ -119,10 +120,12 @@ function cardsHtml(token: Tokens.Table, inline: (tokens: Tokens.TableCell['token
 const FILE_LINK = /\[[^\]]*\]\((engram-artifact:[^)\s]+)\)/g
 const FILE_LINE = /^\s*(?:[-*]\s+)?(\[[^\]]*\]\(engram-artifact:[^)\s]+\))\s*$/
 export interface AnswerFile { id: string; name: string }
-export function answerFiles(text: string): { text: string; files: AnswerFile[] } {
+export function answerFiles(text: string, stale = ''): { text: string; files: AnswerFile[] } {
   const files: AnswerFile[] = []
   const links = new Set<string>()
+  const old = stale.split('\n')
   for (const match of text.matchAll(FILE_LINK)) {
+    if (old.includes(match[1]!.slice('engram-artifact:'.length))) continue
     try {
       const id = decodeURIComponent(match[1]!.slice('engram-artifact:'.length))
       links.add(match[0])
@@ -132,7 +135,7 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }
 
-const filesOf = (message: Filed & { role: string }): string[] => { const text = withFiles(message); return message.role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : [] }
+const filesOf = (message: Filed & { role: string }): string[] => { const text = withFiles(message); return message.role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text), staleLinks(message)).files.map(file => file.id) : [] }
 export const linkedFiles = (messages: readonly (Filed & { role: string })[]): string => messages.flatMap(filesOf).join('\n')
 
 export function laterFiles(messages: readonly (Filed & { role: string })[]): string[] {

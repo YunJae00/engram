@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, withFiles, linkedFiles, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, withFiles, staleLinks, linkedFiles, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 describe('answerHtml', () => {
   it('renders escaped paragraphs and numbered choices while keeping code escapes literal', () => {
@@ -186,17 +186,31 @@ describe('an answer as a few short messages', () => {
     expect(answerHtml(lines)).toContain('Low tide is at noon.<br>The pier opens an hour before.')
   })
 
-  it('shows one card for a file the reply links by an earlier save, and leaves the stored reply as written', () => {
+  it('shows one card for a file the reply links by an earlier save, and the reply reads as written with its own link', () => {
     const old = '0a1b2c3d-1111-2222-3333-444455556666-ferries.docx', now = '9f8e7d6c-1111-2222-3333-444455556666-ferries.docx'
     const text = `The ferry timetable is in [ferries.docx](engram-artifact:${old}).\n\n[ferries.docx](engram-artifact:${old})`
     const message = { role: 'assistant', text, files: [{ name: 'ferries.docx', href: now, replaces: [old] }] }
     const shown = withFiles(message)
     expect(message.text).toBe(text)
-    expect(shown).not.toContain(old)
-    expect(answerBubbles(shown).flatMap(bubble => answerFiles(bubble).files)).toEqual([{ id: now, name: 'ferries.docx' }])
+    expect(shown).toBe(`${text}\n\n[ferries.docx](engram-artifact:${now})`)
+    expect(staleLinks(message)).toBe(old)
+    const drawn = answerBubbles(shown).map(bubble => answerFiles(bubble, staleLinks(message)))
+    expect(drawn.flatMap(bubble => bubble.files)).toEqual([{ id: now, name: 'ferries.docx' }])
+    expect(drawn.map(bubble => bubble.text).join('\n\n')).toContain(text)
     expect(linkedFiles([message])).toBe(now)
-    expect(answerHtml(answerFiles(shown).text)).toContain(`href="engram-artifact:${now}"`)
-    expect(withFiles({ text, files: [{ name: 'ferries.docx', href: now }] })).toContain(old)
+    expect(answerHtml(drawn[0]!.text)).toContain(`href="engram-artifact:${old}"`)
+    expect(answerHtml(drawn[0]!.text)).not.toContain(now)
+  })
+
+  it('draws no card for a note the reply links after it was rewritten twice, and changes no address in the reply', () => {
+    const id = (n: number) => `1234abcd-0000-4000-8000-00000000000${n}-pruning notes.md`, link = (n: number) => `[pruning notes.md](engram-artifact:${encodeURIComponent(id(n))})`
+    const text = `Roses first: ${link(1)}\nThen the plum tree: ${link(2)}\n\n| tree | month |\n|---|---|\n| plum | February |`
+    const message = { role: 'assistant', text, files: [{ name: 'pruning notes.md', href: encodeURIComponent(id(3)), replaces: [encodeURIComponent(id(1)), encodeURIComponent(id(2))] }] }
+    const drawn = answerBubbles(withFiles(message)).map(bubble => answerFiles(bubble, staleLinks(message)))
+    expect(drawn.map(bubble => bubble.text).join('\n\n').trimEnd()).toBe(text)
+    expect(drawn.flatMap(bubble => bubble.files)).toEqual([{ id: id(3), name: 'pruning notes.md' }])
+    expect(answerFiles(withFiles(message)).files.map(file => file.id)).toEqual([id(1), id(2), id(3)])
+    expect(staleLinks({ text })).toBe('')
   })
 
   it('keeps file cards with the last bubble, one card per file', () => {

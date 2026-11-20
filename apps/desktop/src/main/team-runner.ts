@@ -6,7 +6,7 @@ import { answerOnly } from './result-check.js'
 import { withFiles } from './native-tools.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, handedData, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, checkedSearch, setJudgeLog, handedData, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
@@ -57,6 +57,7 @@ export function teamRunner(deps: {
   const answerMs = deps.answerMs ?? TEAM_ANSWER_MS, scale = answerMs / TEAM_ANSWER_MS
   const taskDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + answerMs, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + MIN_PART_MS * scale))
   const reading = new Map<string, Set<string>>()
+  setJudgeLog(line => flog('item-judge', line))
   setReportLog(line => flog('team-report', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
@@ -151,13 +152,21 @@ export function teamRunner(deps: {
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
       const left = (): number => (due - Date.now()) / scale
+      const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      let opener: AgentTool | undefined
+      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {
+        ask: () => me.brief, ...(quick ? { write: quick } : {}), due: () => due - reserveMs,
+        ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
+      }) : tool
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
         const menu = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name)))
-        const boxed = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left)
+        const open = menu.find(tool => tool.name === 'open_page')
+        if (open) opener = keepRead(keepSources(skipWalls(open), sources), kept)
+        const boxed = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left)
         tools = menu.map(tool => screenGuard(me.lookup ? boxed(tool) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined

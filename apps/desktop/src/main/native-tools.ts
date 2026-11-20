@@ -5,7 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, type FileCard, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
-import { withCards } from '../shared/file-cards.js'
+import { replacedLinks, withCards } from '../shared/file-cards.js'
 import { artifactDirectory, ensureTaskFolder, freeName, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot, twinsFile } from './file-work.js'
 import { flog } from './flog.js'
 import { latestResultOutputs } from './result-check.js'
@@ -197,7 +197,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   return found
 }
 
-export const withFiles = withCards
+export const withFiles = (text: string, files: readonly FileCard[] = []): string => withCards(files.reduce((now, file) => replacedLinks([file]).reduce((kept, old) => kept.replaceAll(`](engram-artifact:${old})`, `](engram-artifact:${file.href})`), now), text), files)
 const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; files?: FileCard[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
   if (result.asked) return

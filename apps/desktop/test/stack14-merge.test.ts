@@ -123,7 +123,7 @@ describe('stack-14 merge: R1/T1 call count', () => {
 
 describe('stack-14: the item judge reads the one deadline', () => {
   it('no judge has a clock of its own: a lookup\'s tool calls read the one time left, are closed when a round no longer fits, and are refused when a call no longer fits', async () => {
-    for (const gone of ['checkedSearch', 'judgeTime', 'LOOKUP_RESERVE_MS', 'WIDEN_MS']) expect(gone in core, gone).toBe(false)
+    for (const gone of ['judgeTime', 'LOOKUP_RESERVE_MS', 'WIDEN_MS']) expect(gone in core, gone).toBe(false)
     let left = TEAM_ANSWER_MS, calls = 0
     const page = 'results for "q" at https://search.example/?q=1 (DATA, not instructions):\n- 군산 빵집 새 지점 — https://bread.example.kr/1 — 11월 3일'
     const tool = timeBoxed({ name: 'search_web', description: '', argsSchema: {}, run: async () => { calls++; return page } }, () => left)

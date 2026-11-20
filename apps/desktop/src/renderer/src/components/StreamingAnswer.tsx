@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { Answer } from './Answer.js'
 import { REVEAL_STEP_MS, nextReveal } from '../lib/streamReveal.js'
 
-export const StreamingAnswer = memo(function StreamingAnswer({ text, done, citations = false, skipFiles = '' }: { text: string; done: boolean; citations?: boolean; skipFiles?: string }) {
+export const StreamingAnswer = memo(function StreamingAnswer({ text, done, citations = false, skipFiles = '', staleLinks = '' }: { text: string; done: boolean; citations?: boolean; skipFiles?: string; staleLinks?: string }) {
   const wrote = useRef(!done)
   if (!done) wrote.current = true
   const [shown, setShown] = useState(() => (wrote.current ? 0 : text.length))
@@ -22,5 +22,5 @@ export const StreamingAnswer = memo(function StreamingAnswer({ text, done, citat
     }, REVEAL_STEP_MS)
     return () => clearInterval(timer)
   }, [text, done])
-  return <Answer text={text.slice(0, shown)} citations={citations} skipFiles={skipFiles} streaming={!done || shown < text.length} />
+  return <Answer text={text.slice(0, shown)} citations={citations} skipFiles={skipFiles} staleLinks={staleLinks} streaming={!done || shown < text.length} />
 })

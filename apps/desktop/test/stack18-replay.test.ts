@@ -35,7 +35,7 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
   }
   const CITIES = Object.keys(CITY)
   const WEATHER = (city: string): string => `https://weather.example/${encodeURIComponent(city)}`
-  it('T1: four helpers each say their city in their own words: all four reach the lead with their values, the host opens no page and judges nothing, and no "못 찾았어요" is made for them', async () => {
+  it('T1: four helpers each say their city in their own words: all four reach the lead with their values, each search opens its top rows for the teammate as at base, nothing is judged, and no "못 찾았어요" is made for them', async () => {
     const paths = await vault(), ask = '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘 (대구도 추가)'
     const created = await createTask(paths, ask, 'b1')
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1; t.team = { members: [], hires: 0, maxHires: 8, maxDepth: 3, big: true, approvedAt: new Date().toISOString() } })
@@ -62,7 +62,8 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
     const text = await hire.run({ members: CITIES.map(at => ({ role: `${at} 날씨 조사`, topic: at, brief: `${at} 오늘 날씨`, lookup: true })) }, { task: '' })
     const members = (await listTasks(paths))[0]!.team!.members.filter(m => m.lookup)
     console.log(`T1 replay: opened ${opened.length}\n${text}`)
-    expect(opened).toEqual([])
+    for (const at of CITIES) expect(opened).toContain(WEATHER(at))
+    expect(opened).toHaveLength(2 * CITIES.length)
     expect(quick).toEqual([])
     for (const at of CITIES) expect(members.find(one => one.topic === at)!.result).toBe(`${CITY[at]!.said}. [${at} 날씨](${WEATHER(at)})`)
     expect((JSON.parse(text) as { members: { result: string }[] }).members.map(m => m.result)).toEqual(CITIES.map(at => `${CITY[at]!.said}. [${at} 날씨](${WEATHER(at)})`))

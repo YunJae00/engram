@@ -5,9 +5,9 @@ import { Copy, Check } from 'lucide-react'
 import { answerSites, SiteIcon } from './SiteIcon.js'
 import { t } from '../i18n.js'
 
-export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false, skipFiles = '' }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean; skipFiles?: string }) {
+export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false, skipFiles = '', staleLinks = '' }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean; skipFiles?: string; staleLinks?: string }) {
   const text = answerText(rawText)
-  const { text: body, files: linked } = answerFiles(text)
+  const { text: body, files: linked } = answerFiles(text, staleLinks)
   const files = skipFiles ? linked.filter(file => !skipFiles.split('\n').includes(file.id)) : linked
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)

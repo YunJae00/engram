@@ -61,6 +61,7 @@ const KOREAN_TODAY = [
   'packages/core/src/delegated-tasks.ts',
   'packages/core/src/document-tools.ts',
   'packages/core/src/import.ts',
+  'packages/core/src/item-check.ts',
   'packages/core/src/jobs/librarian.ts',
   'packages/core/src/office-theme.ts',
   'packages/core/src/parsers.ts',

@@ -1,5 +1,5 @@
 import type { CometMessage } from './cometThreads.js'
-import { answerFiles, withFiles } from '../markdown.js'
+import { answerFiles, staleLinks, withFiles } from '../markdown.js'
 
 type BotFile = { kind: 'attachment' | 'answer'; id: string; name: string }
 
@@ -15,7 +15,7 @@ function turnFiles(m: CometMessage): BotFile[] {
       if (typeof id === 'string' && ATTACHMENT_ID.test(id)) out.push({ kind: 'attachment', id, name: id.slice(37) })
     }
   } else if (m.role === 'assistant' && typeof m.text === 'string') {
-    for (const file of answerFiles(withFiles(m)).files) out.push({ kind: 'answer', id: file.id, name: file.name })
+    for (const file of answerFiles(withFiles(m), staleLinks(m)).files) out.push({ kind: 'answer', id: file.id, name: file.name })
   }
   return out
 }

@@ -17,14 +17,16 @@ const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMem
   return m
 }
 const src = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8')
-const CHECK_FILES: string[] = []
+const CHECK_FILES: string[] = ['item-check.ts']
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 
 describe('stack-12 merge: one item judge', () => {
-  it('no item judge is left for the team or the lone lookup: what each item is, is the looking-up model\'s own call, and its lines reach the lead as written', () => {
+  it('no item judge reads a draft or a hand-back: the one check file left is the teammate\'s own search, wired only in the team runner, and a teammate\'s lines reach the lead as written', () => {
     expect(readdirSync(new URL('../../../packages/core/src/', import.meta.url)).filter(file => /check/.test(file)).sort()).toEqual(CHECK_FILES)
     for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing/)
+    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toContain('checkedSearch')
+    expect(src('../src/main/team-runner.ts')).toContain("tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {")
     expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
     const lines = ['진주 남강 유등 전시가 12월 6일에 열려요. https://a.example/lantern', '진주 국악 한마당이 12월 13일에 열려요. https://c.example/gugak'].join('\n')
     const m = settled(member('m1', '라온', '다음 달 진주 공연 일정', '진주 공연'), lines, ['https://a.example/lantern', 'https://c.example/gugak'])
