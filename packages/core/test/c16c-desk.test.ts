@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { runComet } from '../src/agent-session.js'
 import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
-import * as core from '../src/index.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 async function turn(ask: string, draft: string): Promise<{ answer: string; jobs: ToolSessionJob[] }> {
@@ -26,7 +25,6 @@ describe('a draft that leaves out a part the ask names is not judged by the host
     expect(jobs[0]!.prompt).toContain(ask)
     expect(jobs[0]!.system).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
     expect(jobs[0]!.system).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
-    for (const gone of ['checkPrompt', 'readProblems', 'checkedWrite', 'repairedWrite']) expect(core).not.toHaveProperty(gone)
   })
 })
 describe('one closing offer after the work is the writer\'s to keep; a menu before the work is ruled out in the prompt', () => {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import * as core from '../src/index.js'
 import type { AgentTool } from '../src/agent-loop.js'
 import { searchResults, withoutRepeats } from '../src/search-template.js'
 import { keepRead, LOOKUP_RULE } from '../src/team-hire-tools.js'
@@ -26,7 +25,6 @@ describe('no judge stands between a search and the member that asked for it', ()
     expect(out).toBe(RESULTS)
     expect(read).toHaveLength(1)
     for (const page of ['https://city.example/library', 'https://blog.naver.com/reader/77']) expect(read[0]).toContain(page)
-    for (const gone of ['judgedItems', 'checkedSearch', 'firstHand', 'kindChecked', 'withItems']) expect(core).not.toHaveProperty(gone)
   })
   it('a search that says nothing readable, fails or never ends is the tool\'s own outcome: nothing is kept and no verdict is waited for', async () => {
     const read: string[] = []

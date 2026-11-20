@@ -3,7 +3,6 @@ import { runComet } from '../src/agent-session.js'
 import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
 import { MockEngine } from '../src/engine/mock.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
-import * as core from '../src/index.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 async function session(ask: string, draft: string): Promise<{ answer: string; jobs: ToolSessionJob[] }> {
@@ -53,7 +52,6 @@ test('item 1: a real code block between prose lines is delivered with the prose 
   expect(jobs).toHaveLength(1)
   expect(FILE_JOB_RULE).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
   expect(jobs[0]!.system).toContain(FILE_JOB_RULE)
-  for (const gone of ['spliced', 'withoutSentences', 'messageUnits']) expect(core).not.toHaveProperty(gone)
 })
 
 test('item 2 (register): a plain-form sentence is delivered as the model wrote it; the -요 form is asked for in the prompt, not made by the host', async () => {
@@ -62,7 +60,6 @@ test('item 2 (register): a plain-form sentence is delivered as the model wrote i
   expect(answer).toBe(draft)
   expect(jobs).toHaveLength(1)
   expect(jobs[0]!.system).toContain('Register: in Korean keep the polite-casual -요 form through the whole reply ("확인했어요", "바꿔 둘게요"); never switch to -습니다 or to 반말')
-  for (const gone of ['nounPhrase', 'repairedWrite', 'tidied', 'wellFormed']) expect(core).not.toHaveProperty(gone)
 })
 
 test('item 2 (register): no repair runs, so no new sentence can be written into the draft and no line of it is taken out', async () => {

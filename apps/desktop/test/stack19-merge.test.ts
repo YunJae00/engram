@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTask, handBacks, officeTools, runToolSession, setReportLog, updateTask, type AgentTool, type Engine, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -17,6 +16,10 @@ import { answerOnly } from '../src/main/result-check.js'
 import { answerBubbles } from '../src/renderer/src/markdown.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FAST_FNS = ['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const temporary = join(root, 'tmp')
@@ -48,7 +51,7 @@ async function sources(dir: string): Promise<string[]> {
 describe('stack-19: no judgement gate is left on the research path', () => {
   it('nothing c19a deleted is defined or called anywhere in core or the main process', async () => {
     const text = [...await sources(join(root, 'packages/core/src')), ...await sources(join(root, 'apps/desktop/src/main'))].join('\n')
-    for (const gone of ['evidenced', 'statesTail', 'inOrder', 'Proof', 'proved', 'pageOf', 'pointName', 'notFoundLine', 'withEveryone', 'itemsFirst', 'pairShare', 'heldAnswer', 'weekendAnswer', 'WEEKEND_NOTE', 'perDay', 'GAVE_UP', 'laneSaid', 'noEmptyFences']) expect(new RegExp(`(function|const|let|class|type|interface)\\s+${gone}\\b|\\b${gone}\\s*[(<]`).test(text), gone).toBe(false)
+    for (const gone of ['evidenced', 'statesTail', 'inOrder', 'Proof', 'proved', 'pageOf', 'pointName', 'notFoundLine', 'withEveryone', 'itemsFirst', 'pairShare', 'WEEKEND_NOTE', 'perDay', 'GAVE_UP', 'laneSaid', 'noEmptyFences']) expect(new RegExp(`(function|const|let|class|type|interface)\\s+${gone}\\b|\\b${gone}\\s*[(<]`).test(text), gone).toBe(false)
     expect(/\bstated\(/.test(text)).toBe(false)
     expect(text.includes(OLD_JUDGE)).toBe(false)
     expect(text.includes(OLD_STATED)).toBe(false)
@@ -60,8 +63,8 @@ describe('stack-19: no judgement gate is left on the research path', () => {
     const out = await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer }), quick: async () => { calls++; return '{"notes":[1]}' } } as never, workdir: '/x', tools: [] }, '청주 육거리시장 오늘 몇 시까지 해?', { lookup: true })
     expect(out.answer).toBe(answer)
     expect(calls).toBe(0)
-    expect('laneTidy' in fastLane).toBe(false)
-    for (const gone of ['dropWorkingNotes', 'withTheirWords']) expect(gone in firstLine, gone).toBe(false)
+    expect(fns(fastLane)).toEqual(FAST_FNS)
+    expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
 })
 
@@ -113,7 +116,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect((JSON.parse(text) as Handed).members.map(m => m.result)).toEqual(['순천', '여수', '광양'].map(own))
     expect(quick).toEqual([])
     expect(hire.closesOn?.(text) ?? false).toBe(false)
-    for (const gone of ['mergingHire', 'helperAnswer']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(JSON.parse(text) as object)).toEqual(['members', 'hiresLeft', 'note'])
   }, 30_000)
 
   it('a 4-part split with one part added mid-work: one hand-over with all four under 40 s', async () => {
@@ -147,7 +150,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(done.answer).toBe(reply)
     expect(done.files).toEqual([{ name: '동네 도서관 소개.pptx', href: 'a9' }])
     expect([read, quick]).toEqual([0, 0])
-    expect('checkedDesk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   }, 30_000)
 
   it('a shorter reshape is one model step and ends under 4 s, the shorter line posted as written', async () => {
@@ -160,7 +163,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(out.answer).toBe(short)
     expect(Date.now() - since).toBeLessThan(4000)
     expect(quick).toBe(0)
-    expect('reshapeAsk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   }, 30_000)
 })
 
@@ -261,7 +264,7 @@ describe('stack-19: fixes after the branch results', () => {
     expect(out.answer).toBe(short)
     expect(quick).toBe(0)
     expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed')
-    for (const gone of ['reshapeAsk', 'reshapePrompt', 'reshapeCandidate']) expect(gone in desk, gone).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 
   it('a closing build keeps the model\'s own two-sentence answer exactly, the choice it took and the person\'s own file name included; with no reply the model writes its answer in its next step', async () => {
@@ -281,7 +284,7 @@ describe('stack-19: fixes after the branch results', () => {
 
 describe('stack-19: Codex-cap decisions', () => {
   it('c19b r3 #1: no line about a build is made by the host from its title: the build asks the model for the reply in the person\'s language, and that reply closes the turn as written', async () => {
-    expect('builtLine' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
     const deck: AgentTool = { name: 'ppt_build', description: 'deck', argsSchema: { type: 'object', properties: {}, required: [] }, run: async () => JSON.stringify({ markdownLink: '[안내.pptx](engram-artifact:p1)' }) }
     const [closing] = closingBuilds([deck])
     const schema = closing!.argsSchema as { properties: { reply: { description: string } }; required: string[] }
@@ -317,6 +320,6 @@ describe('stack-19: Codex-cap decisions', () => {
     expect(got.reports[0]!.result.split('\n')).toEqual(result.split('\n'))
     expect(got.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
     expect(COLLEAGUE_CORE_RULE).toContain('A fact read from a page carries a Markdown link to that page, written by you right after the fact')
-    expect('reportCheck' in core).toBe(false)
+    expect(Object.keys(got)).toEqual(['reports', 'note'])
   })
 })

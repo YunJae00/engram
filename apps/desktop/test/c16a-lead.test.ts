@@ -229,7 +229,7 @@ describe('c16a r2: review findings', () => {
   })
 
   it('#2: no host writer is left to give a due to: the written-report layer is gone from core and from the runner', () => {
-    for (const gone of ['reportDue', 'writtenReport', 'mergedReport', 'helperAnswer', 'mergingHire', 'reportData', 'kindChecked', 'checkedReport', 'teamAnswer']) expect(Object.keys(core)).not.toContain(gone)
+    expect(Object.keys(core).filter(key => /report|merg|helper|written/i.test(key)).sort()).toEqual(['MERGED_SHAPE', 'REPORT_WRITER_MS', 'helpersTool', 'hybridMerge', 'mergeBySubject', 'mergeInto', 'mergeMemory', 'mergeWorkspace', 'pageReport', 'setReportLog'])
     expect(core.TEAM_ANSWER_MS).toBe(28_000)
     expect(Object.keys(core)).toContain('handBacks')
   })

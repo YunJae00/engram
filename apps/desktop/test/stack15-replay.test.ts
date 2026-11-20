@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, handBacks, keepRead, keepSources, listTasks, loadBots, RELEVANCE_RULE, runToolSession, setReportLog, skipWalls, staffTool, teamSummary, timeBoxed, updateTask, vaultPaths, type AgentTool, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
@@ -35,7 +34,7 @@ describe('C3 replay', () => {
     console.log(`[replay C3] posted:\n${shown}`)
     expect(shown).toBe(draft)
     expect(shown).not.toContain('도윤')
-    for (const gone of ['writtenReport', 'mergedReport']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(got)).toEqual(['reports', 'note'])
   })
 })
 
@@ -116,7 +115,6 @@ describe('R3 replay', () => {
     expect(queries).toEqual(['로봇 청소기 신제품 출시'])
     expect([...seen]).toEqual(['https://search.example/?q=1'])
     for (const url of ['https://biz.chosun.example/1', 'https://esci.example/5']) expect(kept.join('\n')).toContain(url)
-    expect('checkedSearch' in core).toBe(false)
   })
 })
 

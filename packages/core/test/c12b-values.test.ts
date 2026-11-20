@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import * as core from '../src/index.js'
+import * as hire from '../src/team-hire-tools.js'
 import { LOOKUP_RULE, memberPersona, MERGED_SHAPE, NO_LIVE_SOURCE, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 
 const helper = (role: string, brief: string, result: string, sources: string[] = ['https://search.naver.com/search.naver?query=x']): TeamMember =>
@@ -55,5 +55,5 @@ it('c12b → k1: a page that no longer opens is marked in the helper\'s result b
   expect(out.members[1]!.result).toContain('https://toast.example/7')
   expect(out.members[1]!.sources).toEqual(['https://toast.example/7'])
   expect(out.note).toContain('A value marked "(no live source)" lost the page it was read on')
-  for (const gone of ['liveLinks', 'liveCited', 'citeMembers']) expect(Object.keys(core)).not.toContain(gone)
+  expect(Object.entries(hire).filter(([name, value]) => typeof value === 'function' && /link|cite|live|declared|page/i.test(name)).map(([name]) => name).sort()).toEqual(['figurePages', 'isSearchPage', 'withLiveSources'])
 })

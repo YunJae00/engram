@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ANSWER_FROM_THIS, handBacks, keepRead, keepSources, LOOKUP_ROUND_MS, LOOKUP_RULE, runToolSession, skipWalls, timeBoxed, type AgentTool, type TeamMember } from 'core'
-import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -9,6 +8,8 @@ import { DESK_NOTE } from '../src/main/desk-lane.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 import { openRuleLines } from 'core/src/agent-prompt'
 
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const looking = (search: AgentTool, left = 28_000): { tool: AgentTool; seen: Set<string>; kept: string[] } => { const seen = new Set<string>(), kept: string[] = []; return { tool: timeBoxed(keepRead(keepSources(skipWalls(search), seen), kept), () => left), seen, kept } }
 const at = new Date().toISOString()
@@ -33,7 +34,7 @@ describe('stack-16 replays', () => {
     console.log(`R1 posted:\n${out}`)
     expect(out).toBe(draft)
     expect(tableRows(out)).toHaveLength(3)
-    for (const gone of ['helperAnswer', 'mergedReport']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(got)).toEqual(['reports', 'note'])
   })
 
   it('R3: stack15\'s first round (4 fits and 1 other) reaches the looking-up model as five rows in the search\'s order: no judge drops or holds a row, and the host runs no round of its own', async () => {
@@ -48,7 +49,6 @@ describe('stack-16 replays', () => {
     console.log(`R3 rows: ${kept.join(' ')}`)
     expect(kept).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4', 'https://news.example/5'])
     expect(outs).toHaveLength(3)
-    expect('checkedSearch' in core).toBe(false)
   })
 
   it('L2: news rows about the company, none with the price → the rows are handed over as they are and searching once more is the model\'s rule; with no round left the result itself says to answer now', async () => {
@@ -90,7 +90,7 @@ describe('stack-16 replays', () => {
     expect(await posted(draft, '회의 메모에서 정해진 것과 맡은 일만 추려줘')).toBe(draft)
     expect(DESK_NOTE).toContain('A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file')
     expect(COLLEAGUE_CORE_RULE).toContain('A decision or item is listed once, never again under a second heading.')
-    for (const gone of ['checkedDesk', 'withoutSameDecisions', 'onlyAsked']) expect(gone in desk, gone).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 
   it('Q4: the Q3/Q4 pair → the keep-facts line for a reshaped reply is in the rules every turn\'s prompt carries', () => {
@@ -98,6 +98,6 @@ describe('stack-16 replays', () => {
     console.log(`Q4 reshape line: ${line}`)
     expect(COLLEAGUE_CORE_RULE).toContain(line)
     for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind }).join('\n'), kind).toContain(line)
-    expect('reshapePrompt' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })

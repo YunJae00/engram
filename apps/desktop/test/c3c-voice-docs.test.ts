@@ -10,6 +10,9 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: stri
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as firstLine from '../src/main/first-line.js'
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
@@ -139,8 +142,8 @@ describe('the first line is a waiting line, not part of the answer', () => {
     store.handleEvent({ type: 'chat:done', channel: 'bot-1', text: answer })
     expect(store.thread('1').messages.map(message => message.text)).toEqual([ask().message, answer])
     expect(hide).not.toHaveBeenCalled()
-    for (const gone of ['answerAlone', 'talkOnly', 'withoutHelpDesk', 'dropWorkingNotes', 'withTheirWords']) expect(Object.keys(firstLine), gone).not.toContain(gone)
-    expect(source('ipc.ts')).not.toContain('answerAlone')
+    expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
     expect(source('ipc.ts')).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
     const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, kind: 'short', tools: [] })
     expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')

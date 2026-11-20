@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createTask, handBacks, runToolSession, setReportLog, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -42,7 +41,7 @@ describe('stack-18: kept facts reach the sentence fallback (c18a keep → c18b h
     expect(got.reports.map(one => one.sources)).toEqual([[WEATHER.춘천, 'https://search.example/?q=%EC%B6%98%EC%B2%9C'], [WEATHER.원주]])
     expect(got.reports.map(one => one.state)).toEqual(['done', 'done'])
     expect(JSON.stringify(got.reports)).not.toMatch(/\|/)
-    expect('helperAnswer' in core).toBe(false)
+    expect(Object.keys(got)).toEqual(['reports', 'note'])
   })
 })
 
@@ -80,7 +79,8 @@ describe('stack-18: repair vs evidence on a team report (c18b scoped repair × c
     expect(shown.answer.split('\n')).toContain(OTHER)
     expect(shown.answer).toContain(EVIDENCED)
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
-    for (const gone of ['writtenReport', 'checkedWrite', 'repairedWrite']) expect(gone in core, gone).toBe(false)
+    const from = ipc.indexOf('await lookup.run(')
+    expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })
 })
 

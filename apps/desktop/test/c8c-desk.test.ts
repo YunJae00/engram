@@ -11,6 +11,8 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as deskLane from '../src/main/desk-lane.js'
+const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 import { DESK_NOTE, deskKind, deskLight, fixSlideTitle, keptFix, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
@@ -183,7 +185,7 @@ describe('an offer is the next step, never the same content in another shape (H4
     expect([...offer].length).toBeLessThanOrEqual(60)
     const own = `${answer}\n\n${offer}`
     expect((await turn(own)).posted).toBe(own)
-    expect(Object.keys(deskLane)).not.toContain('withOffer')
+    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
     for (const text of [DESK_NOTE, posted]) expect(text).not.toMatch(/표로 묶어|표로도 정리|워드 파일로도|in a table|Word file/)
   })
   it('dated lines, bare figures and a thread that already had an offer are all posted as written; the once-a-thread rule and the earlier reply are the model\'s to read', async () => {

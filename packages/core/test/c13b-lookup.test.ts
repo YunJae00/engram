@@ -4,7 +4,6 @@ import { runComet } from '../src/agent-session.js'
 import { handBacks } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
-import * as core from '../src/index.js'
 import { ANSWER_FROM_THIS, keepRead, keepSources, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, LOOKUP_RULE, memberPersona, NO_LIVE_SOURCE, skipWalls, teamHireTools, timeBoxed, withLiveSources, type TeamHost } from '../src/team-hire-tools.js'
 
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):`, 'Results, each as title — its own address — what it says — its date.', 'They asked for 4: list the 4 rows that are what they asked for.', ...rows, '', '이 페이지의 다른 글자들: 바이오 벤처투자 역대 최대, 정부 바이오 육성 계획'].join('\n')
@@ -158,8 +157,7 @@ describe('c13b r2: no verdict stands between the rows and the writer', () => {
     for (const row of rows) expect(seen.got[0]).toContain(row)
     expect(seen.got[0]).not.toMatch(/None of the|Only \d+ of/)
   })
-  it('the judge is gone from the package, and what the helper read is kept row for row for its hand-back', async () => {
-    for (const gone of ['judgedItems', 'checkedSearch', 'firstHand', 'judgeTime']) expect(core).not.toHaveProperty(gone)
+  it('what the helper read is kept row for row for its hand-back, with the results page as its source', async () => {
     const seen = await looked('수원 전시 두 군데 골라줘', [search([out])], [{ tool: 'search_web', args: { query: '수원 전시' } }], 'x')
     expect(seen.kept).toEqual(['수원 미디어아트 전시: 전시, 12월 2일 https://h.example/1\n수원 사진전: 전시, 12월 3일 https://i.example/2'])
     expect(seen.sources).toEqual(['https://search.example/q'])

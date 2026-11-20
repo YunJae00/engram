@@ -8,7 +8,6 @@ import type { TeamMember } from '../src/delegated-tasks.js'
 import { deckChecked, officeTools } from '../src/office-tools.js'
 import { MockEngine } from '../src/engine/mock.js'
 import { engineCwd, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from '../src/engine/types.js'
-import * as core from '../src/index.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -51,7 +50,6 @@ test('no line of the draft is rewritten on the step path either: one model step,
   expect(answer).toBe(MEETING)
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toMatch(/^JOB: COMET-STEP/m)
-  for (const gone of ['spliced', 'messageUnits', 'quotedUnits']) expect(core).not.toHaveProperty(gone)
 })
 
 test('register: a copied 한다체 line stays as the model wrote it, and the turn that wrote it was told the -요 form', async () => {
@@ -69,14 +67,12 @@ test('a sentence that claims more than was found is not taken out: the whole dra
   expect(answer).toBe(draft)
   expect(jobs).toHaveLength(1)
   expect(jobs[0]!.system).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
-  expect(core).not.toHaveProperty('withoutSentences')
 })
 
 test('nothing withholds the draft: with or without tools on the turn, and on either path, it is delivered as written', async () => {
   expect((await lead('a', '초안이에요.')).answer).toBe('초안이에요.')
   expect((await lead('a', '초안이에요.', handBacks([]))).answer).toBe('초안이에요.')
   expect((await stepped('a', '초안이에요.')).answer).toBe('초안이에요.')
-  expect(core).not.toHaveProperty('repairedWrite')
 })
 
 const part = (id: string, role: string, brief: string, rest: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: '', ...rest })
@@ -103,7 +99,6 @@ test('the lead sentence stays where the writer put it, before the items; no host
   expect(answer.split('\n')[0]).toBe('하늘이 민지가 찾은 겨울 마켓으로 문구 두 개를 썼어요.')
   expect(answer.indexOf('하늘이 민지가')).toBeLessThan(answer.indexOf(ITEMS[0]!))
   expect(answer.split('\n').slice(2)).toEqual([`1. ${ITEMS[0]}`, `2. ${ITEMS[1]}`])
-  for (const gone of ['mergedReport', 'writtenReport']) expect(core).not.toHaveProperty(gone)
 })
 
 test('a sentence the teammate never reported is not cut from the draft; the lead was handed only what the teammate said, and told not to cite what it did not read', async () => {
@@ -177,7 +172,6 @@ test('how a date and a figure are said is a rule for the writer; a draft with a 
   const draft = '출시일은 2026.08.12.'
   expect((await stepped('출시일 알려줘', draft)).answer).toBe(draft)
   expect(COLLEAGUE_CORE_RULE).toContain('A figure is written the way a person says it: a whole number has no ".0", and a day is said with its date in plain words, never in brackets.')
-  for (const gone of ['koreanDates', 'valueOf']) expect(core).not.toHaveProperty(gone)
 })
 
 test('a deck build result lists what was checked: the slide count, every title and the audit result', () => {
@@ -212,7 +206,6 @@ test('r2: an English product name in a Korean draft is left alone, and so is eve
   const draft = 'Galaxy Tab S Ultra Max 가격이에요.\n\n할 일\n- 공지 발송'
   expect((await lead('태블릿 가격 알려줘', draft)).answer).toBe(draft)
   expect((await stepped('태블릿 가격 알려줘', draft)).answer).toBe(draft)
-  expect(core).not.toHaveProperty('foreignRun')
 })
 
 const library = (id: string, role: string, text: string, url: string): TeamMember => part(id, role, '도서관 운영시간 조사', { result: `${text} ${url}`, sources: [url] })

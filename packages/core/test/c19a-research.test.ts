@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import * as core from '../src/index.js'
 import type { AgentTool } from '../src/agent-loop.js'
 import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
 import { employeesAnswer, handBacks } from '../src/company-tools.js'
@@ -22,7 +21,6 @@ test('1. four helpers each citing a page they were shown: four values and four l
   expect(back.reports).toHaveLength(4)
   expect(back.reports.map(r => r.result)).toEqual(topics.map(([topic, said], i) => `${said} [${topic}](${page(`p${i}`)})`))
   expect(JSON.stringify(back.reports)).not.toContain('못 찾았어요')
-  for (const gone of ['helperAnswer', 'judgedItems', 'checkedSearch']) expect(core).not.toHaveProperty(gone)
 })
 
 test('2. a part added mid-work is in the hand-back with the others and is named in "added": nothing is dropped', () => {
@@ -89,14 +87,12 @@ test('r2 #1: no kind check stands between a teammate and the lead: every line th
   const lines = [`밀밭 빵집이 3월 4일에 열어요. ${page('a')}`, `호두 과자점이 3월 9일에 열어요. ${page('b')}`, `빵 굽기 통계가 나왔어요. ${page('c')}`]
   const one = settled('m1', '새 빵집', lines.join('\n'), [page('a')])
   expect(handed([one]).reports[0]!.result.split('\n')).toEqual(lines)
-  for (const gone of ['kindChecked', 'withItems', 'reportData']) expect(core).not.toHaveProperty(gone)
 })
 
 test('r2 #2: a teammate with three finds on three pages hands back all three with their links, whatever a draft later keeps', () => {
   const lines = ['a', 'b', 'c'].map(name => `- ${name} 구간 소식이에요. [공지](${page(name)})`)
   const back = handed([settled('m1', '둘레길', lines.join('\n'), [page('a')])])
   for (const name of ['a', 'b', 'c']) expect(back.reports[0]!.result).toContain(`](${page(name)})`)
-  expect(core).not.toHaveProperty('reportCheck')
 })
 
 test('r2 #3: in a merged hand-back every find sits under its own teammate\'s name, and the note has the lead name each one', () => {
@@ -121,7 +117,6 @@ test('r2 #5: a helper whose only citation is a page it was never shown keeps its
   const [back] = handed([one]).reports
   expect(back!.result).toBe(said)
   expect(back!.result).not.toContain(page('blog'))
-  expect(core).not.toHaveProperty('helperParts')
 })
 
 test('r3 #1: two different events stay two rows of a search, and only the same event found twice is one', () => {

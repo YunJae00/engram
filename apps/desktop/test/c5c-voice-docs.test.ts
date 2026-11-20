@@ -12,6 +12,10 @@ import * as deskLane from '../src/main/desk-lane.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { cleanLine, firstLinePrompt, smallTalkPrompt, toldPrompt } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
@@ -150,8 +154,8 @@ describe('small talk never sounds like a help desk (Q1)', () => {
   it('describes the pattern in the prompts, not one string, and the main model\'s small talk is posted as it wrote it', async () => {
     for (const text of [smallTalkPrompt('안녕', true), SMALL_TALK_NOTE, COLLEAGUE_RULE]) { expect(text).toMatch(/help in any wording/); expect(text).toContain('뭘 도와드릴까요') }
     expect(smallTalkPrompt('안녕', true)).toContain('안녕하세요! 좋은 아침이에요.')
-    expect(source('ipc.ts')).not.toMatch(/talkOnly|withoutHelpDesk/)
-    for (const gone of ['talkOnly', 'withoutHelpDesk', 'answerAlone']) expect(Object.keys(firstLine), gone).not.toContain(gone)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+    expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     for (const said of ['뭘 도와드릴까요?', '안녕하세요! 뭘 도와드릴까요?', '안녕하세요! 좋은 아침이에요.', 'How can I help you today?']) {
       const { posted, told, voiced } = await turn(said, '안녕', smallTalk)
       expect(posted, said).toBe(said)
@@ -215,7 +219,7 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     expect(told).toContain(`("${offer}")`)
     expect([...offer].length).toBeLessThanOrEqual(60)
     for (const own of [`${answer}\n\n${offer}`, '- 38%\n- 12명', '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', `${answer}\n\n${offer}\n\n\`\`\`replies\n표로\n\`\`\``]) expect((await turn(own, ask, desk)).posted, own).toBe(own)
-    expect(Object.keys(deskLane)).not.toContain('withOffer')
+    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
   })
   it('an answer that offers, and one in a thread that already had an offer, are both posted as written; the model sees the earlier reply and the once-only rule', async () => {
     for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect((await turn(`${answer}\n\n${closing}`, ask, desk)).posted).toBe(`${answer}\n\n${closing}`)
@@ -228,7 +232,7 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     for (const other of ['엔비디아 오늘 주가 알려줘', '1년은 몇 초야?', '안녕', '고마워 수고했어', 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'fixtures/sales.csv에서 12월 매출 합계 알려줘',
       '빵집 세 군데에 하나씩 물어봐', '챙길 것 세 가지만 골라줘', '등산 모임 회칙을 문서 파일에 담아줘']) expect((await turn(answer, other)).posted, other).toBe(answer)
     expect((await turn(answer, '연락선 첫 배가 언제 떠?')).told).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
-    expect(source('ipc.ts')).not.toContain('withOffer')
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
   })
 })
 

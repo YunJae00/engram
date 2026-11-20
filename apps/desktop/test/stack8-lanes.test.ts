@@ -45,6 +45,6 @@ it('stack-8 (c8c run D1): a Han shorthand in a note summary is the model\'s to a
     expect(result.answer).toBe(draft)
   }
   expect(COLLEAGUE_CORE_RULE).toContain('no Chinese-character shorthand (多, 約, 等)')
-  expect('inKoreanWords' in desk).toBe(false)
-  expect(ipc).not.toContain('inKoreanWords')
+  expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
+  expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })

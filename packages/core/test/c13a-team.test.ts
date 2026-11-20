@@ -44,7 +44,7 @@ test('the lead is given who did each part and where it stands as data: a finishe
 })
 
 test('rule 7\'s "still looking" and the rule-12 words are the writer\'s rules now: no check refuses a written answer, and the voice rule names every word', () => {
-  for (const gone of ['reportCheck', 'checkedReport', 'reportPrompt', 'kindChecked', 'inAskedPeriod', 'mergedReport']) expect(Object.keys(company)).not.toContain(gone)
+  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['answersItself', 'employeesAnswer', 'setReportLog'])
   expect(COLLEAGUE_CORE_RULE).toContain('Do not call yourself or anyone on the team an 에이전트, and never speak of 세션, 턴, 토큰, 프롬프트, 런타임 or 컨텍스트')
   expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
   expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')

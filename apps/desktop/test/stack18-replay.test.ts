@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createTask, handBacks, handoffBrief, keepRead, keepSources, listTasks, runToolSession, settleMember, skipWalls, timeBoxed, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -11,6 +10,8 @@ import * as desk from '../src/main/desk-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const looking = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), new Set<string>()), []), () => 28_000)
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
@@ -67,7 +68,6 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
     expect((JSON.parse(text) as { members: { result: string }[] }).members.map(m => m.result)).toEqual(CITIES.map(at => `${CITY[at]!.said}. [${at} 날씨](${WEATHER(at)})`))
     for (const value of ['7.2도', '18도', '16.1도', '9.4도']) expect(text).toContain(value)
     expect(members.every(m => m.data === undefined)).toBe(true)
-    expect('helperParts' in core).toBe(false)
   }, 45_000)
 })
 
@@ -80,7 +80,6 @@ describe('L1 (stack17: "오늘 서울 날씨 어때?" took 4 judge rounds, point
     expect(s.queries).toEqual(['q'])
     expect(urls(out)[0]).toBe('https://weather.example/seoul')
     expect(out).toContain('- 서울 7.2° — https://weather.example/seoul — 구름많음, 체감 4.9° — 11월 18일')
-    expect('checkedSearch' in core).toBe(false)
   })
 })
 
@@ -123,8 +122,7 @@ describe('D1 (stack17: desk-check rewritten kinds=["asks"]; no 할 일 part, the
     for (const task of TASKS) expect(SOURCE).toContain(task)
     expect(COLLEAGUE_CORE_RULE).toContain('in Korean keep the polite-casual -요 form through the whole reply')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished')
-    expect('checkedDesk' in desk).toBe(false)
-    expect('messageUnits' in core).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })
 
@@ -143,6 +141,6 @@ describe('C6 (stack17: writer=fallback:items-first>items-first; "서연이 지�
     expect(JSON.stringify(out.reports)).not.toMatch(/만든 거예요/)
     for (const url of [COEX, ZDNET, NCLOUD]) expect(out.reports[0]!.result).toContain(url)
     expect(COLLEAGUE_CORE_RULE).toContain('tell it the way a team would - who found or made what and who took it from there, in a natural sentence')
-    expect('writtenReport' in core).toBe(false)
+    expect(Object.keys(out)).toEqual(['reports', 'note'])
   })
 })

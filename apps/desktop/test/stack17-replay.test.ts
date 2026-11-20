@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, handBacks, handoffBrief, initVault, keepRead, keepSources, loadBots, LOOKUP_RULE, pointQueries, recordFacts, runToolSession, settleMember, skipWalls, staffTool, TEAM_MEMORY, teamSummary, timeBoxed, type AgentTool, type TeamMember } from 'core'
-import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -9,6 +8,8 @@ import * as desk from '../src/main/desk-lane.js'
 import { LANE_NOTE } from '../src/main/fast-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const looking = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), new Set<string>()), []), () => 28_000)
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
@@ -68,7 +69,6 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
     expect(out).not.toContain('of these rows are from the period asked')
     expect(out).not.toContain(kind)
     expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them')
-    expect('checkedSearch' in core).toBe(false)
   })
 })
 
@@ -98,7 +98,7 @@ describe('H2 (stack16: the November turn was rewritten back to December)', () =>
     expect(meant).toContain('"아니 12월 대신 11월 치로"')
     expect(meant).toContain('the later words hold')
     expect(out).toBe(draft)
-    expect('checkedDesk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })
 

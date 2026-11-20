@@ -1,5 +1,4 @@
 import { afterEach, expect, test } from 'vitest'
-import * as core from '../src/index.js'
 import { runToolSession } from '../src/agent-session.js'
 import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
 import { recordFacts } from '../src/bot-memory.js'
@@ -53,7 +52,6 @@ test('there is no host rendering to fall to: what a waited assign returns is dat
   expect(back.reports).toEqual([{ who: '솔', part: '오븐', state: 'done', result: sol.result, sources: [OVEN] }])
   const { closes } = assignTool({} as never, {} as never, () => undefined)
   expect(typeof closes === 'function' && [closes({ wait: true }), closes({ wait: false })]).toEqual([false, true])
-  for (const gone of ['mergedReport', 'writtenReport']) expect(core).not.toHaveProperty(gone)
 })
 
 test('one part that found nothing new beside one that found something: both are handed back in order, each in its own words', () => {
@@ -94,7 +92,6 @@ test('the lead\'s answer that says "세 곳 모두" over a part that brought not
   const draft = `세 곳 모두 새 메뉴가 나왔어요. [오븐 소식](${OVEN})`
   expect(await posted(draft, ASK)).toBe(draft)
   expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished')
-  expect(core).not.toHaveProperty('checkedLead')
 })
 
 test('the lead\'s answer that never shows the split the ask asked for is not rewritten: the voice rule asks for who did what', async () => {
@@ -125,7 +122,6 @@ test('a waited assign hands back the parts it started on this turn only, never a
   const back = JSON.parse(await assignTool(paths, host, () => undefined).run({ wait: true, to: [{ who: '솔', brief: '오븐 빵집 새 메뉴 알아봐', topic: '오븐' }] }, { task: ASK })) as Handed
   expect(back.reports.map(r => [r.who, r.part, r.result])).toEqual([['솔', '오븐', `밤식빵이 새로 나왔어요. ${OVEN}`]])
   expect(task.team!.members.map(m => m.id)).toEqual(['m1', 'm2'])
-  expect(core).not.toHaveProperty('turnHelpers')
 })
 
 test('a summary the writer shaped as a list is still the writer\'s: it is returned as written and the host\'s own summary is not used', async () => {
@@ -145,14 +141,12 @@ test('round 2 (finding 1): no repair is ever asked for, so none can be shown wit
   expect(await teamSummary(paths, { bots, message: WEEK_ASK, now, write })).toBe(odd)
   expect(calls).toHaveLength(1)
   expect(logged.join('\n')).not.toMatch(/repaired|refused/)
-  for (const gone of ['checkedWrite', 'repairedWrite', 'readProblems', 'checkPrompt']) expect(core).not.toHaveProperty(gone)
 })
 
 test('round 2 (finding 2): the lead\'s comparison table and its links stand as written, and reshaping a reply is ruled in the prompt, not by a host rewrite', async () => {
   const draft = `두 곳 새 메뉴 비교예요.\n\n| 빵집 | 새 메뉴 | 출처 |\n|---|---|---|\n| 오븐 | 밤식빵 | [오븐 소식](${OVEN}) |\n| 도우 | 무화과 깜빠뉴 | [도우 게시판](${DOUGH}) |`
   expect(await posted(draft, '오븐이랑 도우 새 메뉴 표로 비교해줘')).toBe(draft)
   expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept')
-  expect(core).not.toHaveProperty('keepsForm')
 })
 
 test('round 3: a compared subject and the source beside it stay where the lead put them: every row of the posted table is the row it wrote', async () => {

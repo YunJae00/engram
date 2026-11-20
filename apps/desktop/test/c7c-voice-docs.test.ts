@@ -7,6 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import { DESK_NOTE, DESK_TOOLS } from '../src/main/desk-lane.js'
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
@@ -76,7 +77,7 @@ describe('decisions and tasks are said once (D1)', () => {
 
   it('no correction is called on a desk note answer: the chat turn posts it, and the repeat check stays with the quick voice', () => {
     const ipc = source('ipc.ts')
-    for (const gone of ['answerAlone', 'shareReady', 'withoutSameDecisions', 'onlyAsked']) expect(ipc, gone).not.toContain(gone)
+    expect(answerSetInTurn(ipc)).toBe(1)
     expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,'))
     const first = source('first-line.ts')
     expect(first.slice(first.indexOf('export const laneLine'), first.indexOf('const FILE_WORK ='))).not.toContain('saidBefore')

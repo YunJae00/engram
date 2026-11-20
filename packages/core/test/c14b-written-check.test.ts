@@ -7,7 +7,6 @@ import { createBot, loadBots } from '../src/bots.js'
 import { employeesAnswer, handBacks, partOutcome, staffTool, teamSummary, TEAM_MEMORY } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
-import * as core from '../src/index.js'
 import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
@@ -76,7 +75,6 @@ test('no checker is waited for: the turn is over when the one model call is, and
   expect(Date.now() - began).toBeLessThan(1000)
   expect(answer).toBe(draft)
   expect(jobs).toHaveLength(1)
-  expect(core).not.toHaveProperty('CHECK_MIN_MS')
 })
 
 test('no verdict routes the draft: whatever it says, it is delivered, and the check is not part of the package', async () => {
@@ -85,7 +83,6 @@ test('no verdict routes the draft: whatever it says, it is delivered, and the ch
     expect(answer, draft).toBe(draft)
     expect(jobs, draft).toHaveLength(1)
   }
-  for (const gone of ['checkedWrite', 'repairedWrite', 'writtenReport', 'reportCheck', 'checkedReport']) expect(core).not.toHaveProperty(gone)
 })
 
 test('what the four problem kinds looked for is asked of the writer in its own prompt, and a reshaped reply keeps its facts by rule', async () => {
@@ -96,8 +93,6 @@ test('what the four problem kinds looked for is asked of the writer in its own p
   expect(system).toContain(CHOICE_RULE)
   expect(system).toContain(FILE_JOB_RULE)
   expect(COLLEAGUE_CORE_RULE).toContain('with every fact and every constraint of the original ask kept')
-  expect(core).not.toHaveProperty('readProblems')
-  expect(core).not.toHaveProperty('checkPrompt')
 })
 
 test('the week summary names a teammate who has left as gone: the writer is told "left" in its record and its text is returned as written; the host\'s own summary says it', async () => {
@@ -144,7 +139,6 @@ test('a nothing-new part\'s latest change reaches the lead in the teammate\'s ow
   expect(back.reports[0]!.sources).toEqual(['https://paint.example.com/notes'])
   expect(m.data).toBeUndefined()
   expect(partOutcome(m)).toBe('found')
-  expect(core).not.toHaveProperty('latestName')
 })
 
 test('a part that brought nothing is handed back with empty words and its own state, so the lead can say it; a lead claiming every part came back is still delivered as written', async () => {

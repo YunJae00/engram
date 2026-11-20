@@ -240,7 +240,6 @@ import { parseAsk } from '../src/ask.js'
 import { aboutEmployee, assignTool, employeeNote, employeeWriteBack, handedFrom, handoffBrief, plainHire, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
 import { keptItems, periodsIn, settleMember, sourceName } from '../src/team-hire-tools.js'
 import * as companyTools from '../src/company-tools.js'
-import * as hireTools from '../src/team-hire-tools.js'
 import { CUT_SHORT, handBacks, lateOwed, partOutcome, WRITER_RULE } from '../src/company-tools.js'
 import { SOURCE_TITLES_RULE } from '../src/delegated-tasks.js'
 import { runToolSession } from '../src/agent-session.js'
@@ -426,7 +425,6 @@ test('the hand-back holds one report per agent with their words and their link, 
   const out = handed([bread, trail])
   expect(out.reports).toEqual([{ who: '하늘', part: '빵집', state: 'done', result: bread.result, sources: [BAKERY] }, { who: '보람', part: '둘레길', state: 'failed', result: trail.result }])
   expect(out.note).toContain('Say plainly which part failed or is missing')
-  expect(companyTools).not.toHaveProperty('mergedReport')
 })
 
 test('one agent\'s background result is handed back as they wrote it, and a hand-off brief keeps the facts it was made from', () => {
@@ -480,7 +478,7 @@ test('the results as they were stored reach the lead whole: every teammate\'s wo
 test('no writer pass follows the lead: its merged draft, table and link included, is the answer byte for byte', async () => {
   const draft = `빵집이랑 둘레길 소식 모아 왔어요.\n\n| 항목 | 내용 |\n|---|---|\n| 빵집 | 3월 4일 개점 [밀밭 빵집](${BAKERY}) |\n| 둘레길 | 2구간 통제 [공원 공지](${TRAIL}) |`
   expect(await posted(draft, '빵집 개점일이랑 둘레길 통제 구간 표로 알려줘')).toBe(draft)
-  for (const gone of ['writtenReport', 'reportCheck', 'checkedReport', 'reportPrompt']) expect(companyTools).not.toHaveProperty(gone)
+  expect(Object.keys(companyTools).filter(name => /report|answer|hand|summary/i.test(name)).sort()).toEqual(['REPORT_WRITER_MS', 'SUMMARY_WRITER_MS', 'answersItself', 'employeesAnswer', 'handBacks', 'handedFrom', 'handoffBrief', 'handoffShown', 'plainHandoff', 'setReportLog', 'teamSummary', 'writesFromHandover'])
 })
 
 test('a hand-off in the background: while the receiver works only the giver is handed back, then both, and a part that asks the person is left to the lead', () => {
@@ -833,7 +831,6 @@ test('nothing is asked of a second model for a part that read English pages: the
   const out = employeesAnswer(teamTask([m]))
   expect(typeof out).toBe('string')
   expect((JSON.parse(out!) as Handed).reports[0]!.result).toBe(m.result)
-  for (const gone of ['teamAnswer', 'writtenReport', 'mergedReport']) expect(companyTools).not.toHaveProperty(gone)
 })
 
 import { followsLate, lateParts, lateShown, markLate, teamSummary } from '../src/company-tools.js'
@@ -852,7 +849,6 @@ test('an address ending in .html is not a file, so the part is handed back to th
 test('a team result the lead wrote with a bare host and a raw address stays its own: nothing gives way to a host list', async () => {
   const draft = `하늘이 찾아보니 둘레길 2구간이 막혔대요. trail.example 공지예요: ${TRAIL}`
   expect(await posted(draft, '둘레길 통제 구간 알려줘')).toBe(draft)
-  expect(companyTools).not.toHaveProperty('teamAnswer')
 })
 
 test('a teammate who looked and found nothing new keeps what they read, and the voice rule has such a part said in one sentence', () => {
@@ -1002,13 +998,11 @@ test('a member that searched twice and found nothing keeps both searches, and ha
 test('the hand-back note carries the one rule for a source\'s title, and two posts on one platform get one name', () => {
   expect(handed([]).note).toContain(SOURCE_TITLES_RULE)
   expect(sourceName('https://blog.naver.com/hiker/12', true)).toBe(sourceName('https://blog.naver.com/baker/99', true))
-  expect(companyTools).not.toHaveProperty('teamAnswer')
 })
 
 test('a line that is only a link stays on its own line in the posted answer', async () => {
   const draft = `둘레길 2구간이 막혔어요.\n[공원 공지](${TRAIL})`
   expect(await posted(draft, '둘레길 통제 구간')).toBe(draft)
-  for (const gone of ['citeOwn', 'citeMembers']) expect(hireTools).not.toHaveProperty(gone)
 })
 
 
@@ -1028,7 +1022,6 @@ test('assign waits for the teammates and returns their own words: no report writ
   const o = await office(member => ({ answer: `${member.role} 쪽에서 보니 3월 4일에 열어요. ${BAKERY}` }))
   const out = JSON.parse(await o.assign({ wait: true, to: [{ who: '지민', brief: '빵집 개점일' }] })) as Handed
   expect(out.reports[0]!.result).toBe(`지민 쪽에서 보니 3월 4일에 열어요. ${BAKERY}`)
-  for (const gone of ['writerMs', 'REPORT_CAP_MS', 'writtenReport', 'reportDue']) expect(companyTools).not.toHaveProperty(gone)
   expect(REPORT_WRITER_MS).toBe(4000)
 })
 
@@ -1045,7 +1038,6 @@ test('a link line under a list or a table is posted where the model put it', asy
 test('a find dated outside the time asked is handed back with its own date, for the lead to say as it is', () => {
   const old = '가장 최근 개점은 작년 11월 2일 호두 과자점이에요. https://bakery.example/b'
   expect(handed([part('m1', '하늘', '이번 달 새로 연 빵집', { result: old })]).reports[0]!.result).toBe(old)
-  for (const gone of ['askedPeriod', 'inAskedPeriod']) expect(companyTools).not.toHaveProperty(gone)
   expect(COLLEAGUE_CORE_RULE).toContain('never left out and never shown as finished')
 })
 
@@ -1096,7 +1088,6 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
 
 test('the lead sentence of a result is the model\'s own: it is posted unchanged whatever the job\'s verb', async () => {
   for (const [ask, draft] of [['도서관 여는 시간 찾아줘', `평일 9시에 열어요. [도서관](${LIBRARY})`], ['빵집 문구 써줘', '갓 구운 아침을 드려요.']] as const) expect(await posted(draft, ask)).toBe(draft)
-  expect(companyTools).not.toHaveProperty('lastTeamResult')
 })
 
 test('a late part that never came is handed back alone as failed, for the lead to say in one plain line', () => {

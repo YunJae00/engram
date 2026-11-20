@@ -19,6 +19,9 @@ type Report = { who: string; part?: string; state: string; result: string; sourc
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 const posted = async (draft: string, ask: string): Promise<string> => answerOnly((await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer)
 const ipc = (): string => readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+const ipcTurn = (): string => { const all = ipc(), from = all.indexOf('await lookup.run('); return all.slice(from, all.indexOf('answerDelivered = true', from)) }
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
 
 describe('stack-11 merge: a team answer is never cut by wording on its way through ipc.ts', () => {
   const ASK = '밀밭제과랑 호두당 이번 달 새 빵 찾아줘. 다온이랑 시우한테 나눠서'
@@ -40,7 +43,8 @@ describe('stack-11 merge: a team answer is never cut by wording on its way throu
     expect(await posted(draft, ASK)).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it')
-    for (const gone of ['writtenReport', 'checkedReport', 'teamAnswer', 'liveLinks']) { expect(gone in core, gone).toBe(false); expect(ipc()).not.toContain(`${gone}(`) }
+    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
+    expect(Object.keys(JSON.parse(handBacks([mil(), hodu()])) as object)).toEqual(['reports', 'note'])
     expect(job([mil(), hodu()], ASK).team!.members.every(m => m.data === undefined)).toBe(true)
   })
 })
@@ -88,7 +92,7 @@ describe('stack-11: Codex-cap findings', () => {
     expect(handed([m]).reports[0]).toMatchObject({ result: `수목원 야간 개장이 있어요. ${night}`, sources: [night] })
     expect(COLLEAGUE_CORE_RULE).toContain('Nothing technical is ever shown: no tool or function names, ids')
     expect(COLLEAGUE_CORE_RULE).toContain('never a site name without its link')
-    expect('mergedReport' in core).toBe(false)
+    expect(Object.keys(JSON.parse(handBacks([m])) as object)).toEqual(['reports', 'note'])
   })
 
   it('c11b r3 #1: on a lookup, words said before a call never stand in as the answer; the host writes it from the held rows', async () => {
@@ -114,8 +118,8 @@ describe('stack-11: Codex-cap findings', () => {
     expect(handed([m]).reports[0]!.result).toContain(live)
     const answer = `이번 달엔 한 건만 확인됐어요.\n\n1. 욕지도 막배가 저녁 6시로 늦춰졌어요. [항만 공지](${live})`
     expect(await posted(answer, '이번 달 여객선 시간표 소식 2개만')).toBe(answer)
-    expect('liveCited' in core).toBe(false)
-    expect(ipc()).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>|liveCited|linkAlive/)
+    expect(ipc()).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>/)
+    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
   })
 })
 
@@ -128,11 +132,10 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
     const code = '이렇게 조회하면 돼요.\n\n```sql\nSELECT pier FROM sailings WHERE leaves > \'06:00\';\n```'
     expect(await posted(code, '6시 이후 배 조회 쿼리')).toBe(code)
     expect(COLLEAGUE_CORE_RULE).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
-    expect('withTheirWords' in firstLine).toBe(false)
-    expect('THEIR_WORDS_MS' in firstLine).toBe(false)
+    expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
   it('ipc runs no pass over the answer before delivery: the files are attached to the answer the model wrote', () => {
-    expect(ipc()).not.toMatch(/withTheirWords|THEIR_WORDS_MS/)
+    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
     expect(ipc()).toMatch(/const answered = answerOnly\(result\.answer\)/)
     expect(ipc()).toMatch(/const linked = \(\): string => withFiles\(result\.answer, result\.files\)/)
   })
@@ -147,8 +150,8 @@ describe('stack-11: working notes and date ranges', () => {
     const script = '스크립트예요.\n```sh\necho sorting all the returned books now\n```'
     expect(await posted(script, '반납 도서 정리 스크립트')).toBe(script)
     expect(COLLEAGUE_CORE_RULE).toContain('no opening line about what you are about to do, no account of your steps and no notes to yourself')
-    expect('dropWorkingNotes' in firstLine).toBe(false)
-    expect(ipc()).not.toContain('dropWorkingNotes')
+    expect(fns(firstLine)).toEqual(FIRST_FNS)
+    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
   })
   it('a day range is a date, read as its last day', async () => {
     const { resultDay } = await import('core')
@@ -176,6 +179,5 @@ describe('stack-11: one deliverable line from a writer teammate', () => {
       expect(got.reports[0]!.sources).toEqual([tide])
       expect(got.note).toContain('Where one agent handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one.')
     }
-    expect('checkedReport' in core).toBe(false)
   })
 })

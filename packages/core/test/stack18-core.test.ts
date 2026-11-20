@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import * as core from '../src/index.js'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runToolSession } from '../src/agent-session.js'
 import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
@@ -55,7 +54,6 @@ test('c18b D1 cause: nothing repairs or removes a sentence, so a fenced block an
   expect(await posted(draft, '산악회 봄 산행 정리해줘')).toBe(draft)
   const code = '이렇게 쓰면 돼요.\n```\nSELECT 1\n```\n지도도 드릴까요?'
   expect(await posted(code, '쿼리 예시 보여줘')).toBe(code)
-  for (const gone of ['messageUnits', 'spliced', 'withoutSentences', 'checkedWrite', 'repairedWrite']) expect(core).not.toHaveProperty(gone)
 })
 
 const looker = (id: string, said: string, url: string): TeamMember => { const one = part(id, `${id} 조사`, `${id} 알려줘`, { topic: id, state: 'working', botId: undefined }); settleMember(one, { answer: said, sources: [url] }, 'now', true); return one }
@@ -66,7 +64,6 @@ test('c18a r3 #1: no blind meaning read runs and the host relabels nothing: "3% 
   const back = JSON.parse(handBacks([water, lake])) as Handed
   expect(back.reports.map(r => r.result)).toEqual(['약수터 입장료는 지난달보다 3% 올랐어요. [공원](https://park.example/fee)', '산정호수 둘레는 3.2킬로미터예요. [군청](https://county.example/lake)'])
   expect(JSON.stringify(back.reports)).not.toContain('못 찾았어요')
-  for (const gone of ['helperAnswer', 'helperParts', 'mergingHire']) expect(core).not.toHaveProperty(gone)
 })
 
 test('c18a r3 #1: the reviewer\'s case needs no model at all: the helper\'s own sentence and its page are in the hand-back as settled', () => {

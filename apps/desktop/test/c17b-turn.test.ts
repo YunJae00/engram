@@ -38,7 +38,8 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(silent.closesOn!(await silent.run({ name: '입고-2분기.xlsx', more: false }, { task: '' }))).toBe(false)
   })
   it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
-    for (const gone of ['checkedDesk', 'reshapePrompt', 'reshapeAsk', 'onlyAsked', 'shareReady', 'withOffer', 'withoutSameDecisions', 'tidyCounts']) { expect(Object.keys(desk)).not.toContain(gone); expect(ipc).not.toContain(`${gone}(`) }
+    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
+    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(askNow(message, earlier)).toContain(HOLDS)
     expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
     expect(ipc).toMatch(/attachmentContext: \[[^\]]*changedNote[^\]]*\]/)

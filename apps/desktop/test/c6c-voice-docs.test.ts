@@ -7,6 +7,9 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import * as deskLane from '../src/main/desk-lane.js'
+const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { DESK_NOTE, deskKind } from '../src/main/desk-lane.js'
 import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
@@ -127,7 +130,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
     expect(DESK_NOTE).toContain('move every file in ONE file_move call')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
     expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
-    expect(source('ipc.ts')).not.toContain('tidyCounts')
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
   })
 
   it('posts the stored F1 answer as the model wrote it, file names and all, and a short list of counts the same way', async () => {
@@ -139,7 +142,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
     const short = await deskTurn(counts, F1_ASK)
     expect(short.posted).toBe(counts)
     expect(short.posted.split('\n').filter(line => /^- /.test(line))).toHaveLength(5)
-    expect(Object.keys(deskLane)).not.toContain('tidyCounts')
+    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
   })
 
   it('leaves names they asked for, the odd file out, and an answer already in shape', async () => {
@@ -195,7 +198,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     }
     const blocked = '## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```'
     expect((await deskTurn(blocked, '산악회 메모 한눈에 들어오게 다듬어줘')).posted).toBe(blocked)
-    for (const gone of ['shareReady', 'withoutSameDecisions']) expect(Object.keys(deskLane), gone).not.toContain(gone)
+    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
   })
 
   it('leaves the shape alone when the ask is not open-form or names a part (D1, H4)', async () => {
@@ -211,7 +214,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect(DESK_NOTE).toContain('at most about eight short lines: who does what by when, then what is still open, then the next meeting')
     expect(DESK_NOTE).toContain('something not settled yet goes under 미결, never under 결정사항')
     const ipc = source('ipc.ts')
-    for (const fix of ['withoutSameDecisions', 'shareReady', 'withOffer']) expect(ipc, fix).not.toContain(fix)
+    expect(answerSetInTurn(ipc)).toBe(1)
     expect(ipc.split('\n').filter(line => /result\.answer = /.test(line)).map(line => line.trim())).toEqual([expect.stringContaining('result.answer = answered }')])
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
@@ -238,16 +241,14 @@ it('stack-6: "할 일만" is asked of the model as that part only; a reply with 
   expect((await deskTurn(marked, ask)).posted).toBe(marked)
   expect((await deskTurn(tasks.join('\n'), ask)).posted).toBe(tasks.join('\n'))
   expect((await deskTurn(shown, '산악회 메모 돌려 보기 편하게 다듬어줘')).posted).toBe(shown)
-  expect(source('ipc.ts')).not.toContain('onlyAsked')
+  expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
 })
 
 it('stack-6: the repeat check is the quick voice\'s only, and no block correction is left in the chat turn or the desk lane', () => {
   const first = source('first-line.ts'), ipc = source('ipc.ts')
   expect(first.slice(first.indexOf('export function firstLineNow'))).not.toContain('saidBefore')
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
-  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked', 'tidyCounts']) {
-    expect(ipc.split('\n').filter(line => line.includes(`${fix}(`))).toEqual([])
-    expect(Object.keys(deskLane), fix).not.toContain(fix)
-  }
+  expect(answerSetInTurn(ipc)).toBe(1)
+  expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
   expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
 })

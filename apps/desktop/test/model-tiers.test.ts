@@ -369,7 +369,8 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).toMatch(/: !company \|\| turn\?\.report \? undefined\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)\n\s*const handedBack = employeesAnswer\(reporting\)/)
     expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
     expect(source('ipc.ts')).toMatch(/const summing = !direct && !!company && chief && !turn\?\.report && isTeamWorkAsk\(request\.message\) && \(request\.scheduled === true \|\| !isDutyAsk\(request\.message\)\)\n\s*if \(summing\) firstLineNow\(/)
-    expect(source('ipc.ts')).not.toMatch(/teamAnswer\(|lastTeamResult|REPORT_WRITER_MS|liveLinks\(/)
+    expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)
+    expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await lookup.run('), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
 
   it('an ask the host answers itself is decided before the first line and shows none', async () => {
@@ -628,7 +629,7 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).not.toContain('koreanLead(')
-    expect(ipc).not.toMatch(/withOffer\(|result\.answer = (?!answered)/)
+    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
 })

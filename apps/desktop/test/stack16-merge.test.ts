@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, employeeWriteBack, handBacks, loadBots, MERGED_SHAPE, runToolSession, settleMember, teamSummary, withLiveSources, setReportLog, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -51,6 +50,8 @@ async function lane(tag: string, ask: string, opts: { searchMs?: number; modelMs
   return { paths, hire, models, quick, searches, since: Date.now() }
 }
 const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`, topic: town, brief: `${town} 이번 주말 서핑 파도 높이`, lookup: true }))
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const SPLIT = '강릉 속초 양양 토요일 서핑 파도 견줘줘'
 
 describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
@@ -62,7 +63,7 @@ describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
     expect(out.members.map(m => m.accepted)).toEqual([true, true])
     expect(out.note).toContain(MERGED_SHAPE)
     expect(quick).toEqual([])
-    for (const gone of ['kindChecked', 'reportPrompt', 'mergedReport', 'latestName']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(out)).toEqual(['members', 'hiresLeft', 'note'])
   })
 })
 
@@ -74,7 +75,7 @@ describe('stack-16: missing on the team path (c16c inside c16a)', () => {
     expect(out.members[2]!.result).toBe(`고성 이번 주말 파도 1m 안팎: 예보, 11월 20일 ${PAGE['고성']}`)
     expect(models.sort()).toEqual(['강릉', '고성', '속초'])
     expect(quick).toEqual([])
-    expect('helperAnswer' in core).toBe(false)
+    expect(Object.keys(out)).toEqual(['members', 'hiresLeft', 'note'])
   })
 })
 
@@ -140,7 +141,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     await expect(closing!.run({ title: '회고 메모', reply: '원인이랑 대책으로 나눠 워드로 만들었어요.', more: false }, { task: '', signal: stop.signal })).rejects.toThrow('stopped')
     expect(Date.now() - began).toBeLessThan(3000)
     expect(closing!.closesOn?.('')).toBe(false)
-    expect('checkedDesk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })
 
@@ -169,13 +170,12 @@ describe('stack-16: the person reads only a helper\'s own words', () => {
     expect(m.said ?? '').toBe('')
     expect(m.result).toBe('통영 케이블카 요금 안내: 공식, 2026.11.01 https://tongyeong.example/fare\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
     expect((JSON.parse(handBacks([m])) as { reports: { result: string; sources?: string[] }[] }).reports[0]).toMatchObject({ result: m.result, sources: ['https://tongyeong.example/fare'] })
-    expect('helperParts' in core).toBe(false)
   })
 })
 
 describe('stack-16: a listing page taken apart keeps the person\'s language', () => {
   it('no items round is left; the reply rule itself asks for the person\'s language whatever the page\'s (an English conference page, a Korean thread)', () => {
-    expect('itemsPrompt' in core).toBe(false)
+    expect(WORK_REPLY_RULE).toContain('each fact from it is followed by a Markdown link to that page')
     expect(WORK_REPLY_RULE).toContain('in the language the person wrote in')
   })
 })

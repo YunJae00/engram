@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
-import * as core from '../src/index.js'
+import * as hire from '../src/team-hire-tools.js'
 import { employeesAnswer, handBacks, LOOKUP_RULE, MERGED_SHAPE, settleMember, sourceName, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 
 interface Handed { members: { role: string; state: string; result: string; sources?: string[] }[]; note: string }
@@ -64,7 +64,7 @@ test('c10a r2 (c12b: values of another model stay, labeled, and so does the page
 })
 
 test('c10a r2 → k1: no page is fetched to rename a link after the answer: an unknown site is named by its host, and naming a source with its link is the writer\'s rule', () => {
-  for (const gone of ['keepDeclaredName', 'pageHead', 'liveLinks', 'liveCited', 'citeMembers']) expect(Object.keys(core)).not.toContain(gone)
+  expect(Object.entries(hire).filter(([name, value]) => typeof value === 'function' && /link|cite|live|declared|page/i.test(name)).map(([name]) => name).sort()).toEqual(['figurePages', 'isSearchPage', 'withLiveSources'])
   expect(sourceName('https://breadmap.example/a/2', true)).toBe('breadmap.example')
   expect(sourceName('https://m.trailnote.example/p', true)).toBe('m.trailnote.example')
   expect(LOOKUP_RULE).toContain('a site whose name you do not know is named by its host as written in the address')

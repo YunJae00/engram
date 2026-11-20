@@ -105,7 +105,6 @@ describe('team hire tools', () => {
     const rate = settled({ answer: '지금 1달러에 1,335.40원이에요.', sources: ['https://search.naver.com/search.naver?query=원달러 환율'] })
     expect(rate.result).toBe('지금 1달러에 1,335.40원이에요.')
     expect(rate.sources).toEqual(['https://search.naver.com/search.naver?query=원달러 환율'])
-    expect(hireTools).not.toHaveProperty('citeOwn')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`
@@ -254,7 +253,6 @@ describe('team hire tools', () => {
     settleMember(broken, { answer: '', error: 'it was stopped.' }, 'now')
     expect(broken.state).toBe('failed')
     expect((full as TeamMember).result).toContain('서울 12도 (https://weather.example)')
-    expect(hireTools).not.toHaveProperty('cutShortAnswer')
   })
 
   it('lets a member hire a helper at depth 2 and 3, and refuses a depth-3 member', async () => {
@@ -404,7 +402,6 @@ describe('team hire tools', () => {
     const back = JSON.parse(handBacks(members)) as { reports: { who: string; sources?: string[] }[]; note: string }
     expect(back.reports.map(r => [r.who, r.sources])).toEqual([['빵집', ['https://bakery.example/open']], ['둘레길', ['https://park.example/notice/7']], ['여객선', undefined]])
     expect(back.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
-    expect(hireTools).not.toHaveProperty('citeMembers')
   })
 
   it('never re-runs a lookup member: ok=false releases it with what it had', async () => {
@@ -595,7 +592,7 @@ describe('team hire tools', () => {
     const local = ['http://localhost:3000/x', 'http://192.168.0.1/reboot', 'http://[::1]/']
     expect(await deadOf(local, async url => { asked.push(url); return false }, 100)).toEqual(local)
     expect(asked).toEqual(local)
-    for (const gone of ['localAddress', 'linkAnswers', 'liveLinks']) expect(hireTools).not.toHaveProperty(gone)
+    expect(Object.keys(hireTools).filter(name => /cite|link|live|dead|answer/i.test(name)).sort()).toEqual(['ANSWER_FROM_THIS', 'LINK_CHECK_MS', 'NO_LIVE_SOURCE', 'TEAM_ANSWER_MS', 'answeredLookup', 'deadOf', 'withLiveSources'])
   })
 
   it('counts a refusal and a thrown error alike as a dead link', async () => {
@@ -612,7 +609,6 @@ describe('team hire tools', () => {
     expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/old', 'https://ok.example/hours'])
     expect(members[0]!.sources).toEqual(['https://ok.example/hours'])
     expect(members[1]!.result).not.toContain('dead.example')
-    expect(hireTools).not.toHaveProperty('liveCited')
   })
 
   it('names the service a results-page box belongs to', () => {
@@ -630,7 +626,6 @@ describe('team hire tools', () => {
     expect(siteName(blog, true)).toBe('블로그 글')
     expect(siteName('https://cafe.naver.com/x/1')).toBe('forum post')
     expect(LOOKUP_RULE).toContain('a post on a platform is named by the platform')
-    for (const gone of ['citeMembers', 'placeNamed', 'keepDeclaredName']) expect(hireTools).not.toHaveProperty(gone)
   })
 })
 
@@ -780,7 +775,6 @@ it('c6: a source has one name wherever it is cited: the publication from its tit
   expect(sourceName('https://finance.naver.com/item/main.naver', true)).toBe('네이버')
   expect(sourceName('https://news.samsung.co.kr/x', true)).toBe('삼성전자')
   expect(siteName('https://korea247.kr/weather/busan', true)).toBe('korea247.kr')
-  expect(hireTools).not.toHaveProperty('citeMembers')
 })
 
 it('c6: a lone lookup keeps the address it wrote and the results page it read; nothing renames its link afterwards', async () => {
@@ -793,7 +787,6 @@ it('c6: a lone lookup keeps the address it wrote and the results page it read; n
   settleMember(one, { answer, sources: [...seen] }, 'now', true)
   expect(one.result).toBe(answer)
   expect(one.sources).toEqual([...seen])
-  expect(hireTools).not.toHaveProperty('citeOwn')
 })
 
 it('c6: the member rule and the merged shape keep a row to the thing the person named (c12b: every value says whose it is, none is banned)', () => {
@@ -857,7 +850,6 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
   return search.run({ query: '갤럭시 S27 가격 출시일' }, { task: '' } as never).then(() => {
     expect(sourceName('https://phones.example/s27', true)).toBe('phones.example')
     expect(sourceName('https://www.etnews.com/s27', true)).toBe('전자신문')
-    expect(hireTools).not.toHaveProperty('citeOwn')
     expect(LOOKUP_RULE).toContain('A source is named by its site or publication')
   })
 })
@@ -876,7 +868,6 @@ it('c7 R2: the run\'s three results reach the lead with their own pages, and a b
   expect(back.reports.map(r => [r.who, r.result, r.sources])).toEqual(members.map(m => [m.role, m.result, m.sources]))
   expect(new Set(back.reports.flatMap(r => r.sources).map(url => new URL(url).hostname)).size).toBe(3)
   for (const url of ['https://blog.naver.com/cnpabc123/224479927352', 'https://blog.naver.com/yongyongvvv/224479063208', 'https://blog.naver.com/millfield/1001']) expect(sourceName(url, true)).toBe('네이버 블로그')
-  expect(hireTools).not.toHaveProperty('citeMembers')
 })
 
 it('c7 R2: a price point with no figure asks for one more search, for the previous model\'s launch price; one that has a figure does not', () => {

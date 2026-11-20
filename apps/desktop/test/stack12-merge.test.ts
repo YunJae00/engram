@@ -1,10 +1,9 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, dateLine, handBacks, keptItems, LATE_CEILING_MS, LOOKUP_RULE, memberTask, partOutcome, TEAM_ANSWER_MS, settleMember, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamAsk } from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
@@ -18,14 +17,14 @@ const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMem
   return m
 }
 const src = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8')
+const CHECK_FILES: string[] = []
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 
 describe('stack-12 merge: one item judge', () => {
   it('no item judge is left for the team or the lone lookup: what each item is, is the looking-up model\'s own call, and its lines reach the lead as written', () => {
-    for (const gone of ['kindChecked', 'checkedSearch', 'judgedItems', 'judgeTime']) expect(gone in core, gone).toBe(false)
-    expect(existsSync(new URL('../../../packages/core/src/item-check.ts', import.meta.url))).toBe(false)
-    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing|kindChecked|checkedSearch/)
+    expect(readdirSync(new URL('../../../packages/core/src/', import.meta.url)).filter(file => /check/.test(file)).sort()).toEqual(CHECK_FILES)
+    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing/)
     expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
     const lines = ['진주 남강 유등 전시가 12월 6일에 열려요. https://a.example/lantern', '진주 국악 한마당이 12월 13일에 열려요. https://c.example/gugak'].join('\n')
     const m = settled(member('m1', '라온', '다음 달 진주 공연 일정', '진주 공연'), lines, ['https://a.example/lantern', 'https://c.example/gugak'])
@@ -43,7 +42,8 @@ describe('stack-12 merge: time and the anonymous helpers', () => {
   it('an anonymous hire_members helper gets no reserve round, no stand-in, no kind check, and a team ask no lone-lookup verdict', () => {
     const runner = src('../src/main/team-runner.ts')
     expect(runner).toMatch(/if \(me\.botId\) reserve = setTimeout\(answerNow/)
-    expect(runner).not.toMatch(/reportData|kindChecked|withItems|const structured/)
+    expect(runner).not.toMatch(/const structured/)
+    expect(runner).toContain('settleMember(m, { ...outcome, ')
     expect(src('../src/main/ipc.ts')).toMatch(/solo = lane && !teamAsk\(request\.message\)/)
     expect(teamAsk('봇 2개 만들어서 대전 광주 미세먼지 알아보고 합쳐줘')).toBe(true)
   })
@@ -65,7 +65,7 @@ describe('stack-12 merge: rule 7, a part at work or with no data is labeled (and
   it('the writer path: saying each such part in its place is the lead model\'s to write, told by the hand-back note and the voice rule; no host line is added', () => {
     expect(handed(parts()).note).toContain('Say plainly which part failed or is missing.')
     expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
-    for (const gone of ['writtenReport', 'mergedReport', 'reportData']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(JSON.parse(handBacks(parts())) as object)).toEqual(['reports', 'note'])
   })
 })
 
@@ -116,8 +116,6 @@ describe('stack-12: a find is of the time asked, and a count is of single items'
     const old = '11월 2일에 좌석 예약 화면이 바뀌었어요. https://lib.example/1', fresh = '11월 17일에 반납 알림이 추가됐어요. https://lib.example/3'
     const m = settled(member('m1', '하람', brief, '도서관 앱'), `${old}\n${fresh}`)
     expect(handed([m]).reports[0]!.result).toBe(`${old}\n${fresh}`)
-    expect('inAskedPeriod' in core).toBe(false)
-    expect('askedPeriod' in core).toBe(false)
   })
   it('a search-results page is never one of the items of a list a teammate hands back', () => {
     const brief = '다음 달 통영 책 잔치 일정 목록'

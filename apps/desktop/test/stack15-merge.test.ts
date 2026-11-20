@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, employeesAnswer, handBacks, officeTools, partOutcome, runToolSession, settleMember, TEAM_ANSWER_MS, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
@@ -44,7 +43,7 @@ describe('stack-15 merge: one clock', () => {
     expect(Date.now() - T0).toBe(TEAM_ANSWER_MS)
     expect(vi.getTimerCount()).toBe(0)
     expect((JSON.parse(out!) as { reports: Report[] }).reports.map(one => one.result)).toEqual([`여수 바다는 오늘 물결이 1미터로 잔잔해요. ${YEOSU}`, `통영 바다는 오늘 풍랑주의보가 있어요. ${TONGYEONG}`])
-    for (const gone of ['kindChecked', 'judgeTime', 'ITEM_CHECK_MS', 'writtenReport']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(JSON.parse(out!) as object)).toEqual(['reports', 'note'])
   })
 })
 
@@ -65,7 +64,7 @@ describe('stack-15 merge: the repair keeps rule 7', () => {
     expect(out).toBe(draft)
     expect(out).not.toContain('거제')
     expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
-    expect('mergedReport' in core).toBe(false)
+    expect(Object.keys(JSON.parse(handBacks(members())) as object)).toEqual(['reports', 'note'])
   })
 })
 
@@ -120,7 +119,6 @@ describe('stack-15 merge: stop', () => {
     const at = Date.now()
     expect(await posted('여수는 잔잔해요.', '여수 바다 날씨', () => new Promise<string>(() => undefined))).toBe('여수는 잔잔해요.')
     expect(Date.now() - at).toBeLessThan(500)
-    expect('checkedLead' in core).toBe(false)
   })
   it('"멈춰" during a deck build ends the tool at once', async () => {
     const ctl = new AbortController()

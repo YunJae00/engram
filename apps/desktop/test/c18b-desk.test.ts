@@ -4,6 +4,8 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import * as deskLane from '../src/main/desk-lane.js'
+const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 
 const SOURCE = [
   '# 영업팀 11월 월간 회의', '',
@@ -57,7 +59,7 @@ describe('r2: where a line belongs is said in the rules, and the host moves no l
     for (const task of TASKS) expect(posted.split(task)).toHaveLength(2)
   })
   it('the mover and the checker are gone from the desk lane, and an empty heading is the model\'s to leave out', () => {
-    for (const gone of ['withPart', 'checkedDesk', 'withoutQuoted', 'onceEach', 'structured']) expect(Object.keys(deskLane), gone).not.toContain(gone)
+    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
     expect(deskLane.DESK_NOTE).toContain('a heading with nothing of its own is left out')
     expect(deskLane.DESK_NOTE).toContain('fills each with what belongs there by meaning, even when the source labels it otherwise or puts it under another heading')
   })

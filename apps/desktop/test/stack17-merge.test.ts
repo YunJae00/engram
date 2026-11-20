@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBot, employeesAnswer, handBacks, initVault, loadBots, partOutcome, recordFacts, runToolSession, setReportLog, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, teamSummary, type AgentTool, type DelegatedTask, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
-import * as core from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -20,6 +19,8 @@ const tick = (ms = 0): Promise<void> => new Promise(resolve => setTimeout(resolv
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-17: a correction after a lookup reaches the item judge as its meaning (c17b askNow × c17a points)', () => {
@@ -34,17 +35,17 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
     const draft = '춘천은 내일 흐리고 낮 최고 8도예요. [날씨 예보](https://weather.example/chuncheon)'
     expect(await posted(draft, meant)).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
-    expect('checkedSearch' in core).toBe(false)
   })
   it('in the turn, the meaning reaches the model as a note of the turn; no judge, page read, helpers\' writer or lead check reads it after the answer, and the rounds keep the plain words', () => {
     expect(ipc).toContain('const meant = askNow(request.message, savedHistory)')
     expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
     expect(ipc).toContain('const lookup = swapRounds(request.message, signal)')
-    for (const gone of ['askedNow', 'checkedSearch(', 'helperAnswer(', 'namesSubject(', 'checkedLead(']) expect(ipc, gone).not.toContain(gone)
+    const from = ipc.indexOf('await lookup.run(')
+    expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })
 })
 
-describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenReport data → c17c fallback)', () => {
+describe('stack-17: evidence reaches the writer (c17a proof → c16a hand-back → c17c)', () => {
   const at = new Date().toISOString()
   const helper = (id: string, town: string, brief: string, answer: string, sources: string[]): TeamMember => {
     const m: TeamMember = { id, parentId: null, depth: 1, role: `${town} 조사`, topic: town, brief, lookup: true, state: 'working', sessionKey: `s${id}`, hiredAt: at }
@@ -60,7 +61,7 @@ describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenRepo
     expect(got.reports.map(one => one.sources)).toEqual([['https://pool.example/mokdong'], ['https://pool.example/jamsil']])
     expect(parts().map(partOutcome)).toEqual(['found', 'found'])
     expect(JSON.stringify(got.reports)).not.toContain('못 찾았어요')
-    for (const gone of ['reportPrompt', 'mergedReport', 'helperParts']) expect(gone in core, gone).toBe(false)
+    expect(Object.keys(JSON.parse(handBacks(parts())) as object)).toEqual(['reports', 'note'])
   })
   it('one helper alone: what is handed back is its sentence and its page, with no row, label or name tag made by the host', () => {
     const [one] = parts()
@@ -153,7 +154,7 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     expect(out.note).toContain('who did what in natural sentences that name each agent')
     expect(vi.getTimerCount()).toBe(0)
     expect(Date.now() - T0).toBeLessThan(35_000)
-    expect('writtenReport' in core).toBe(false)
+    expect(Object.keys(out)).toEqual(['reports', 'note'])
   })
 })
 
@@ -219,6 +220,6 @@ describe('stack-17: the words before a reply in another form keep the 해요체 
     expect(COLLEAGUE_CORE_RULE).toContain('which you hand over unchanged after a few warm Korean words')
     const reply = '이렇게 쓰면 돼요.\n\nThank you for waiting while we reprint the hiking club roster.'
     expect(await posted(reply, '명단 다시 뽑는 동안 기다려줘서 고맙다는 영어 문장')).toBe(reply)
-    expect('withTheirWords' in firstLine).toBe(false)
+    expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
 })

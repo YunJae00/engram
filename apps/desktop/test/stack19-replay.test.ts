@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { handBacks, keepRead, keepSources, partOutcome, runToolSession, skipWalls, timeBoxed, type AgentTool, type TeamMember } from 'core'
-import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import * as desk from '../src/main/desk-lane.js'
 import { answerBubbles, answerReplies } from '../src/renderer/src/markdown.js'
 
+const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
+const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[], added: string[] = []): { added?: string[]; reports: Report[]; note: string } => JSON.parse(handBacks(members, added)) as { added?: string[]; reports: Report[]; note: string }
 const lead = async (draft: string, ask: string): Promise<{ answer: string; quick: number }> => {
@@ -52,7 +53,7 @@ describe('stack-19 replay R2 shape: three found helpers, the writer late', () =>
     expect(out.reports.map(one => one.part)).toEqual(['아이폰 18', '갤럭시 S27', '픽셀 11'])
     for (const [i, text, url] of [[0, '125만 원', S.iphone], [1, '120만 원대', S.galaxy], [2, '799달러', S.pixel]] as const) { expect(out.reports[i]!.result).toContain(text); expect(out.reports[i]!.result).toContain(url); expect(out.reports[i]!.sources).toEqual([url]) }
     expect(JSON.stringify(out.reports)).not.toContain('못 찾았어요')
-    expect('helperAnswer' in core).toBe(false)
+    expect(Object.keys(out)).toEqual(['reports', 'note'])
   })
 })
 
@@ -98,7 +99,7 @@ describe('stack-19 replay H2/H3: a repaired desk answer keeps its replies block,
     expect(out.answer).toContain(block)
     expect(answerReplies(out.answer)).toEqual(replies)
     expect(answerBubbles(out.answer)).toEqual([line])
-    expect('checkedDesk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })
 
@@ -106,6 +107,6 @@ describe('stack-19 replay Q4: the short draft goes out in two quick calls', () =
   it('"바로 앞 답 절반 길이로" after the meeting apology line: the shorter line is the model\'s one step and goes out as written, with no quick call at all', async () => {
     const out = await lead('Sorry I was late to the meeting.', '바로 앞 답 절반 길이로')
     expect(out).toEqual({ answer: 'Sorry I was late to the meeting.', quick: 0 })
-    expect('reshapeAsk' in desk).toBe(false)
+    expect(fns(desk)).toEqual(DESK_FNS)
   })
 })
