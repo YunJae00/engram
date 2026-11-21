@@ -197,6 +197,81 @@ describe('instant first line', () => {
     expect(idle.quick).not.toHaveBeenCalled()
   })
 
+  describe('a turn asked for a whole answer also gets the voice\'s own first line', () => {
+    const QUESTION = '마라톤 풀코스는 몇 미터야?'
+    const HOST = '호스트가 고른 줄이에요.'
+    const byPrompt = (whole: () => Promise<string>, line: () => Promise<string>) => voice(async () => 'unused').quick.mockImplementation(((prompt: string) => prompt.includes('You write the assistant\'s first line') ? line() : whole()) as never)
+    const run = (quick: ReturnType<typeof byPrompt>, patch: Partial<FirstLineAsk> = {}, more: { told?: boolean; said?: () => Promise<readonly string[]> } = {}) => {
+      const show = vi.fn()
+      beginFirstLine({ ...ask({ message: QUESTION, ...patch }), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, whole: !more.told, fallback: HOST, ...more })
+      firstLineReady('bot-1')
+      return { show, reply: smallTalkAnswer('bot-1') }
+    }
+
+    it('shows the voice line unchanged when the voice declines the whole answer, and never the host line', async () => {
+      for (const whole of [async () => 'NONE', later('42,195미터예요.', 4000), async () => { throw new Error('down') }]) {
+        endFirstLine('bot-1')
+        const quick = byPrompt(whole, later('코스 기록부터 찾아볼게요.', 400))
+        const { show, reply } = run(quick)
+        await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+        expect(await reply).toBeUndefined()
+        expect(show).toHaveBeenCalledExactlyOnceWith('코스 기록부터 찾아볼게요.')
+        expect(quick.mock.calls.map(call => (call as unknown[])[0])).toEqual(expect.arrayContaining([quickAnswerPrompt(QUESTION, true), firstLinePrompt(QUESTION, true)]))
+        expect(firstLineNote('bot-1')).toContain('"코스 기록부터 찾아볼게요."')
+      }
+      endFirstLine('bot-1')
+      const told = run(byPrompt(async () => 'NONE', later('일정표부터 맞춰 볼게요.', 300)), { message: '다음 달에 이사해요' }, { told: true })
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(await told.reply).toBeUndefined()
+      expect(told.show).toHaveBeenCalledExactlyOnceWith('일정표부터 맞춰 볼게요.')
+    })
+
+    it('lets a whole answer in time be the reply, and the late first line changes nothing', async () => {
+      const quick = byPrompt(later('42,195미터예요.', 300), later('코스 기록부터 찾아볼게요.', 900))
+      const { show, reply } = run(quick)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(await reply).toBe('42,195미터예요.')
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(show).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+      expect(firstLineCarried('bot-1')).toBeUndefined()
+    })
+
+    it('posts a line that ends like the earlier ones, or names no split on a split ask, exactly as written', async () => {
+      const said = async () => ['가계부부터 열어 볼게요.', '영수증부터 모아 볼게요.']
+      const repeat = run(byPrompt(async () => 'NONE', later('통장 내역부터 모아 볼게요.', 200)), { message: '이번 달 카드값 얼마 나왔는지 정리해줘' }, { said })
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(repeat.show).toHaveBeenCalledExactlyOnceWith('통장 내역부터 모아 볼게요.')
+      endFirstLine('bot-1')
+      const split = vi.fn(later('후보지 목록부터 뽑을게요.', 200))
+      const show = vi.fn()
+      beginFirstLine({ ...ask({ message: '캠핑장 네 곳 후기는 한 곳씩 나눠서 검색시켜' }), engine: async () => ({ id: 'claude' as const, quick: split }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, fallback: HOST })
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(show).toHaveBeenCalledExactlyOnceWith('후보지 목록부터 뽑을게요.')
+    })
+
+    it('still puts the host line up at the fallback time when the voice gives nothing for either call', async () => {
+      const { show, reply } = run(byPrompt(later('42,195미터예요.', 5000), later('코스 기록부터 찾아볼게요.', 5000)))
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS - 1)
+      expect(show).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await reply).toBeUndefined()
+      expect(show).toHaveBeenCalledExactlyOnceWith(HOST)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(show).toHaveBeenCalledOnce()
+    })
+
+    it('shows the voice its earlier lines and keeps NONE for small talk only', () => {
+      const prompt = firstLinePrompt('이 사진 배경 지워줄 수 있어?', true, ['파일부터 열어 볼게요.'])
+      expect(prompt).toContain('Your first lines earlier in this conversation: "파일부터 열어 볼게요."')
+      expect(prompt).toContain('Only if the request is small talk, a greeting or thanks, reply with exactly NONE.')
+      expect(prompt).toContain('A question or an unclear request gets its first step like any other request.')
+      expect(prompt).not.toContain('one sentence fully answers')
+      expect(prompt).not.toContain('cannot tell')
+    })
+  })
+
   it('never holds the main turn: the note is read without waiting and the turn races the line', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const firstSaid = firstLineNote(channel)')
@@ -539,6 +614,19 @@ describe('instant first line', () => {
     const fresh = await voiceOf()
     expect(fresh).not.toBe(stuck)
     expect(await engine.quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })).toBe('fixture line')
+  })
+
+  it('opens two quick voices ahead, so a turn\'s two quick calls both land on a warm one', async () => {
+    const engine = new ClaudeEngine('profile-two')
+    const lane = (one: number): Promise<{ closed: boolean }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
+    const trim = vi.spyOn(SessionPool.prototype, 'trim')
+    await engine.warmQuick(WORKDIR)
+    trimWarm()
+    const lanes = Math.min(2, Math.max(1, workerPool.target))
+    expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1 - lanes)
+    const first = await lane(lanes - 1)
+    expect(first.closed).toBe(false)
+    expect(await lane(lanes - 1)).toBe(first)
   })
 
   it('keeps one voice per Claude account, so a switch never answers from the old one', async () => {

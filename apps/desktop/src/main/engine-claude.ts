@@ -127,7 +127,7 @@ export class ClaudeEngine implements CloudEngine {
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
 
-  async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
+  async warmQuick(workdir: string): Promise<void> { await Promise.all(Array.from({ length: Math.min(WARM_LANES, quickLanes()) }, (_, lane) => this.voiceFor(workdir, lane))) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('first-line', chosenModel('fast'), 'fast')
@@ -147,7 +147,7 @@ export class ClaudeEngine implements CloudEngine {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
-    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
+    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
     const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
     const voice = voices[lane]
     if (!voice || voice.closed || voice.spent || voiceKeys[lane] !== key) { voice?.close(); voices[lane] = new VoiceSession(spec); voiceKeys[lane] = key }
@@ -299,7 +299,7 @@ export function closeClaudeSessions(): void {
   sessions.closeAll()
   for (const voice of voices) voice?.close()
 }
-const QUICK_LANES = 3, EXTRA_VOICE_IDLE_MS = 2 * 60_000
+const QUICK_LANES = 3, WARM_LANES = 2, EXTRA_VOICE_IDLE_MS = 2 * 60_000
 const quickLanes = (): number => Math.max(1, Math.min(QUICK_LANES, workerPool.target))
 const voices: (VoiceSession | undefined)[] = []
 const voiceKeys: string[] = []

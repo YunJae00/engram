@@ -43,7 +43,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(saidBefore('슬라이드 순서부터 잡을게요.', [])).toBe(false)
   })
 
-  it('shows the voice the last two lines, and takes the host line when the voice repeats the ending', async () => {
+  it('shows the voice the last two lines, and posts its line as written even when it repeats the ending', async () => {
     const first = await run(DOCS[0]!, '회의록 내용부터 정리할게요.', [])
     expect(first.line).toBe('회의록 내용부터 정리할게요.')
     expect(first.prompt).not.toContain('earlier in this conversation')
@@ -51,8 +51,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(second.prompt).toContain('Your first lines earlier in this conversation: "회의록 내용부터 정리할게요."')
     expect(second.prompt).toContain('Do not reuse their ending or their sentence frame')
     expect(second.shown).toBe(1)
-    expect(second.line).not.toBe('3분기 실적 내용부터 정리할게요.')
-    expect(saidBefore(second.line!, [first.line!])).toBe(false)
+    expect(second.line).toBe('3분기 실적 내용부터 정리할게요.')
     expect((await run(DOCS[2]!, '월별로 먼저 더해 볼게요.', [first.line!, second.line!])).line).toBe('월별로 먼저 더해 볼게요.')
     expect(firstLinePrompt('x 정리해줘', true, ['하나 볼게요.', '둘 볼게요.', '셋 볼게요.'])).not.toContain('하나 볼게요.')
   })
@@ -86,21 +85,24 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     for (const ask of [...DOCS, '엔비디아 오늘 주가 알려줘', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '클로드, GPT, 제미나이 비교해줘. 각각 따로 조사시켜']) for (const said of [[], [fallbackLine(ask, true, [])]]) expect([...fallbackLine(ask, true, said)].length, ask).toBeLessThanOrEqual(ACK_MAX)
   })
 
-  it('keeps the budget and asks the voice once', () => {
+  it('keeps the budget and asks the voice once on a turn that only needs a first line', async () => {
     const file = source('first-line.ts')
     expect(file).toContain('export const FIRST_LINE_BUDGET_MS = 1500')
-    expect(file.match(/engine\.quick\(/g)).toHaveLength(1)
+    const quick = vi.fn(async () => '목차부터 세워 볼게요.')
+    beginFirstLine({ channel: 'bot-1', message: '여름 워크숍 안내문 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: vi.fn() })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(quick).toHaveBeenCalledOnce()
     expect(source('ipc.ts')).toContain("said: async () => (request.botId ? await readBotTranscript(paths, request.botId, 12) : request.history ?? []).filter(one => one.role === 'assistant' && one.progress && !one.error")
   })
 
-  it('a split ask is acknowledged as a split (T3)', async () => {
+  it('a split ask is told to the voice as a split, and the voice line is posted as written (T3)', async () => {
     const T3 = '아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜'
     expect(firstLinePrompt(T3, true)).toContain('the line says the split in their words ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")')
     for (const ask of [T3, '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '이번 주 경쟁사 3곳 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜']) {
       expect(splitAsk(ask), ask).toBe(true)
       expect(fallbackLine(ask, true), ask).toMatch(/나눠/)
       expect(laneLine(ask, true), ask).toMatch(/나눠/)
-      expect((await run(ask, '각 모델 정보부터 조사할게요.', [])).line, ask).toMatch(/나눠/)
+      expect((await run(ask, '가격표부터 훑어볼게요.', [])).line, ask).toBe('가격표부터 훑어볼게요.')
       expect((await run(ask, '셋이 나눠서 알아볼게요.', [])).line).toBe('셋이 나눠서 알아볼게요.')
     }
     expect(fallbackLine(T3, true)).toBe(laneFirstLine(T3, true))
