@@ -622,11 +622,25 @@ describe('instant first line', () => {
     const trim = vi.spyOn(SessionPool.prototype, 'trim')
     await engine.warmQuick(WORKDIR)
     trimWarm()
-    const lanes = Math.min(2, Math.max(1, workerPool.target))
-    expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1 - lanes)
-    const first = await lane(lanes - 1)
-    expect(first.closed).toBe(false)
-    expect(await lane(lanes - 1)).toBe(first)
+    expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1 - 2)
+    const second = await lane(1)
+    expect(second.closed).toBe(false)
+    expect(await lane(1)).toBe(second)
+  })
+
+  it('gives a turn\'s two quick calls a voice each even when memory is short', async () => {
+    const engine = new ClaudeEngine('profile-short')
+    const lane = (one: number): Promise<{ ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
+    const target = workerPool.target
+    workerPool.target = 1
+    try {
+      await engine.warmQuick(WORKDIR)
+      const asked: number[] = []
+      for (const one of [0, 1]) (await lane(one)).ask = async () => { asked.push(one); return `lane ${one}` }
+      const answers = await Promise.all(['수영장 운영 시간 알려줘', '수영장 근처 주차장도'].map(prompt => engine.quick(prompt, { workdir: WORKDIR, timeoutMs: 1000 })))
+      expect(new Set(answers)).toEqual(new Set(['lane 0', 'lane 1']))
+      expect(asked.sort()).toEqual([0, 1])
+    } finally { workerPool.target = target }
   })
 
   it('keeps one voice per Claude account, so a switch never answers from the old one', async () => {

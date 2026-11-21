@@ -127,7 +127,7 @@ export class ClaudeEngine implements CloudEngine {
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
 
-  async warmQuick(workdir: string): Promise<void> { await Promise.all(Array.from({ length: Math.min(WARM_LANES, quickLanes()) }, (_, lane) => this.voiceFor(workdir, lane))) }
+  async warmQuick(workdir: string): Promise<void> { await Promise.all(Array.from({ length: WARM_LANES }, (_, lane) => this.voiceFor(workdir, lane))) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('first-line', chosenModel('fast'), 'fast')
@@ -300,7 +300,7 @@ export function closeClaudeSessions(): void {
   for (const voice of voices) voice?.close()
 }
 const QUICK_LANES = 3, WARM_LANES = 2, EXTRA_VOICE_IDLE_MS = 2 * 60_000
-const quickLanes = (): number => Math.max(1, Math.min(QUICK_LANES, workerPool.target))
+const quickLanes = (): number => Math.max(WARM_LANES, Math.min(QUICK_LANES, workerPool.target))
 const voices: (VoiceSession | undefined)[] = []
 const voiceKeys: string[] = []
 
