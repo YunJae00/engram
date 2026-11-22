@@ -210,7 +210,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(greeting('네 좋아')).toBe(false)
   })
 
-  it('answers something the person only told with one line from the quick voice, with the conversation in view, unless its own first line names a step', async () => {
+  it('answers something the person only told with one line from the quick voice, with the conversation in view, and shows its own first line only when that reply is declined', async () => {
     const said = '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어'
     const told = (reply: string, line: string) => (prompt: string) => prompt.includes('it asks for nothing') ? reply : line
     const { show, quick } = start(told('부모님이랑 제주 가시는군요, 좋으시겠어요.', 'NONE'), { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
@@ -227,7 +227,13 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(await none).toBeUndefined()
     expect(declined.show).toHaveBeenCalledExactlyOnceWith(fallbackLine(said, true))
     endFirstLine('bot-1')
-    const work = start(told('사진 많이 찍으셨겠네요.', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
+    const kept = start(told('사진 많이 찍으셨겠네요.', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
+    const both = smallTalkAnswer('bot-1')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await both).toBe('사진 많이 찍으셨겠네요.')
+    expect(kept.show).not.toHaveBeenCalled()
+    endFirstLine('bot-1')
+    const work = start(told('NONE', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
     const dropped = smallTalkAnswer('bot-1')
     await vi.advanceTimersByTimeAsync(500)
     expect(await dropped).toBeUndefined()

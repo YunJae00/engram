@@ -251,8 +251,14 @@ describe('instant first line', () => {
       expect(show).toHaveBeenCalledExactlyOnceWith('후보지 목록부터 뽑을게요.')
     })
 
-    it('keeps a told reply only when the voice names no step, and still sends it when the line is late', async () => {
-      const step = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
+    it('sends a told reply that arrives in time even when the voice also names a step, and shows the step only when the reply is declined', async () => {
+      const first = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
+      await vi.advanceTimersByTimeAsync(300)
+      expect(await first.reply).toBe('새 집 기대되시겠어요.')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(first.show).not.toHaveBeenCalled()
+      endFirstLine('bot-1')
+      const step = run(byPrompt(later('NONE', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
       await vi.advanceTimersByTimeAsync(500)
       expect(await step.reply).toBeUndefined()
       expect(step.show).toHaveBeenCalledExactlyOnceWith('평수별 매물부터 볼게요.')

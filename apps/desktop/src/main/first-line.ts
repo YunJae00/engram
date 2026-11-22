@@ -134,12 +134,10 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
   let settled = false
   let said: readonly string[] = []
   let voiced: string | undefined
-  let reply: string | undefined
   const answered = (text: string): void => { turn.open = false; log({ channel: ask.channel, outcome: 'answered', ms: Date.now() - started }); answer(text) }
   const settle = (reason: string): void => {
     if (!turn.open || settled) return answer()
     settled = true
-    if (reply && !voiced) return answered(reply)
     answer()
     if (voiced) { turn.line = voiced; return reveal(ask.channel, turn, started) }
     if (skip || !ask.fallback) return close('silent', reason)
@@ -165,14 +163,13 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     if (talk) {
       const context = !skip && ask.told ? await ask.context?.().catch(() => '') : ''
       if (!turn.open || settled) return
-      reply = cleanLine(await quick(skip ? smallTalkPrompt(ask.message, ask.korean) : ask.told ? toldPrompt(ask.message, ask.korean, context) : quickAnswerPrompt(ask.message, ask.korean), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS }).catch(() => ''))
+      const reply = cleanLine(await quick(skip ? smallTalkPrompt(ask.message, ask.korean) : ask.told ? toldPrompt(ask.message, ask.korean, context) : quickAnswerPrompt(ask.message, ask.korean), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS }).catch(() => ''))
       if (!turn.open || settled) return
-      if (!ask.told) { if (reply) return answered(reply); answer() }
+      if (reply) return answered(reply)
+      answer()
     }
     await acked
     if (!turn.open || settled) return
-    if (reply && !voiced) return answered(reply)
-    answer()
     if (!voiced) return settle('none')
     turn.line = voiced
     reveal(ask.channel, turn, started)
