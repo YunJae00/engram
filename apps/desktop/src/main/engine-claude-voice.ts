@@ -3,7 +3,6 @@ import { textOf } from './engine-claude.js'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
-const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
 interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; idleMs?: number }
@@ -12,7 +11,7 @@ export class VoiceSession {
   private inbox: SdkUserMessage[] = []
   private wake: (() => void) | undefined
   private waiting: { resolve(text: string): void; reject(error: Error): void } | undefined
-  private turns = 0
+  private asked = false
   private late = 0
   private idle: NodeJS.Timeout | undefined
   private readonly abort = new AbortController()
@@ -54,12 +53,12 @@ export class VoiceSession {
     this.rest()
   }
 
-  get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && this.turns < TURNS_MAX }
-  get spent(): boolean { return this.turns >= TURNS_MAX && !this.waiting && this.late === 0 }
+  get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && !this.asked }
+  get spent(): boolean { return this.asked && !this.waiting && this.late === 0 }
 
   ask(text: string, timeoutMs: number): Promise<string> {
     if (!this.ready) return Promise.reject(new Error('The voice is busy.'))
-    this.turns++
+    this.asked = true
     this.rest()
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; this.late++; reject(new Error('The voice took too long.')) } }, timeoutMs)

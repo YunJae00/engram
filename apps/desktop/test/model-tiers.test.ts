@@ -616,6 +616,18 @@ describe('instant first line', () => {
     expect(await engine.quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })).toBe('fixture line')
   })
 
+  it('opens a fresh voice ahead once one has answered, so no quick call reads an earlier one', async () => {
+    const engine = new ClaudeEngine('profile-once')
+    const voiceOf = (): Promise<{ closed: boolean; spent: boolean; ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string): Promise<never> }).voiceFor(WORKDIR)
+    const used = await voiceOf()
+    used.ask = async () => { used.spent = true; return '빵집 영업시간부터 볼게요.' }
+    expect(await engine.quick('동네 빵집 영업시간 정리해줘', { workdir: WORKDIR, timeoutMs: 1000 })).toBe('빵집 영업시간부터 볼게요.')
+    await vi.waitFor(() => expect(used.closed).toBe(true))
+    const next = await voiceOf()
+    expect(next).not.toBe(used)
+    expect(next.closed).toBe(false)
+  })
+
   it('opens two quick voices ahead, so a turn\'s two quick calls both land on a warm one', async () => {
     const engine = new ClaudeEngine('profile-two')
     const lane = (one: number): Promise<{ closed: boolean }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
