@@ -134,7 +134,6 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
   let settled = false
   let said: readonly string[] = []
   let voiced: string | undefined
-  let declined = false
   let reply: string | undefined
   const answered = (text: string): void => { turn.open = false; log({ channel: ask.channel, outcome: 'answered', ms: Date.now() - started }); answer(text) }
   const settle = (reason: string): void => {
@@ -143,7 +142,7 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     if (reply && !voiced) return answered(reply)
     answer()
     if (voiced) { turn.line = voiced; return reveal(ask.channel, turn, started) }
-    if (skip || declined || !ask.fallback) return close('silent', reason)
+    if (skip || !ask.fallback) return close('silent', reason)
     turn.line = typeof ask.fallback === 'function' ? ask.fallback(said) : ask.fallback
     turn.canned = true
     log({ channel: ask.channel, outcome: 'fallback', reason, ms: Date.now() - started })
@@ -161,9 +160,7 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     const acked = skip ? Promise.resolve() : (async () => {
       said = await ask.said?.().catch(() => []) ?? []
       if (!turn.open || settled) return
-      const raw = await quick(firstLinePrompt(ask.message, ask.korean, said), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
-      voiced = cleanLine(raw, ACK_MAX)
-      declined = NONE.test(raw.trim())
+      voiced = cleanLine(await quick(firstLinePrompt(ask.message, ask.korean, said), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS }), ACK_MAX)
     })().catch(() => undefined)
     if (talk) {
       const context = !skip && ask.told ? await ask.context?.().catch(() => '') : ''
@@ -176,7 +173,7 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     if (!turn.open || settled) return
     if (reply && !voiced) return answered(reply)
     answer()
-    if (!voiced) return settle(declined ? 'declined' : 'none')
+    if (!voiced) return settle('none')
     turn.line = voiced
     reveal(ask.channel, turn, started)
   })().catch(() => settle('error')).finally(() => clearTimeout(timer))

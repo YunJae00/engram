@@ -355,7 +355,7 @@ describe('instant first line', () => {
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
   })
 
-  it('opens the turn with the host\'s own line when the small model gives no line, fails or is late, never when it says NONE, and never holds a whole reply past that', async () => {
+  it('opens the turn with the host\'s own line when the small model says NONE, gives no line, fails or is late on a work turn, and never holds a whole reply past that', async () => {
     const start = (engine: unknown, patch: Partial<FirstLineAsk> = {}, more: { whole?: boolean } = {}) => {
       const show = vi.fn(), message = patch.message ?? '내 이름은 권윤재고 지민호랑 같이 일해. 기억해'
       beginFirstLine({ ...ask({ ...patch, message }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, fallback: fallbackLine(message, patch.korean ?? true), ...more })
@@ -395,12 +395,14 @@ describe('instant first line', () => {
       expect(show).toHaveBeenCalledOnce()
     }
     endFirstLine('bot-1')
-    show = start(voice(later('NONE', 600)))
+    show = start(voice(later('NONE', 600)), { message: '거실 조명 색 온도 비교해서 하나 골라줘' })
     const quiet = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(600)
     expect(await quiet).toBeUndefined()
-    expect(show).not.toHaveBeenCalled()
-    expect(firstLineNote('bot-1')).toBe('')
+    expect(show).toHaveBeenCalledExactlyOnceWith('바로 골라 볼게요.')
+    expect(firstLineNote('bot-1')).toContain('바로 골라 볼게요.')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).toHaveBeenCalledOnce()
     endFirstLine('bot-1')
     show = start(voice(later('NONE', 600)))
     firstLineSpoke('bot-1')

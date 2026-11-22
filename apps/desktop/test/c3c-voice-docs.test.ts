@@ -225,7 +225,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     const none = smallTalkAnswer('bot-1')
     await vi.advanceTimersByTimeAsync(2000)
     expect(await none).toBeUndefined()
-    expect(declined.show).not.toHaveBeenCalled()
+    expect(declined.show).toHaveBeenCalledExactlyOnceWith(fallbackLine(said, true))
     endFirstLine('bot-1')
     const work = start(told('사진 많이 찍으셨겠네요.', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
     const dropped = smallTalkAnswer('bot-1')
