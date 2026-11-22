@@ -251,6 +251,19 @@ describe('instant first line', () => {
       expect(show).toHaveBeenCalledExactlyOnceWith('후보지 목록부터 뽑을게요.')
     })
 
+    it('keeps a told reply only when the voice names no step, and still sends it when the line is late', async () => {
+      const step = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
+      await vi.advanceTimersByTimeAsync(500)
+      expect(await step.reply).toBeUndefined()
+      expect(step.show).toHaveBeenCalledExactlyOnceWith('평수별 매물부터 볼게요.')
+      endFirstLine('bot-1')
+      const late = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 5000)), { message: '나 다음 달에 이사 가' }, { told: true })
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(await late.reply).toBe('새 집 기대되시겠어요.')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(late.show).not.toHaveBeenCalled()
+    })
+
     it('still puts the host line up at the fallback time when the voice gives nothing for either call', async () => {
       const { show, reply } = run(byPrompt(later('42,195미터예요.', 5000), later('코스 기록부터 찾아볼게요.', 5000)))
       await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS - 1)
@@ -265,8 +278,8 @@ describe('instant first line', () => {
     it('shows the voice its earlier lines and keeps NONE for small talk only', () => {
       const prompt = firstLinePrompt('이 사진 배경 지워줄 수 있어?', true, ['파일부터 열어 볼게요.'])
       expect(prompt).toContain('Your first lines earlier in this conversation: "파일부터 열어 볼게요."')
-      expect(prompt).toContain('Only if the request is small talk, a greeting or thanks, reply with exactly NONE.')
-      expect(prompt).toContain('A question or an unclear request gets its first step like any other request.')
+      expect(prompt).toContain('Only if the request is small talk (a greeting, thanks, or something the person just tells you that asks for nothing) reply with exactly NONE.')
+      expect(prompt).toContain('A question, a short ask that leaves its verb out, or an unclear request gets its first step like any other request.')
       expect(prompt).not.toContain('one sentence fully answers')
       expect(prompt).not.toContain('cannot tell')
     })
@@ -342,14 +355,14 @@ describe('instant first line', () => {
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
   })
 
-  it('opens the turn with the host\'s own line when the small model says NONE, fails or is late, and never holds a whole reply past that', async () => {
+  it('opens the turn with the host\'s own line when the small model gives no line, fails or is late, never when it says NONE, and never holds a whole reply past that', async () => {
     const start = (engine: unknown, patch: Partial<FirstLineAsk> = {}, more: { whole?: boolean } = {}) => {
       const show = vi.fn(), message = patch.message ?? '내 이름은 권윤재고 지민호랑 같이 일해. 기억해'
       beginFirstLine({ ...ask({ ...patch, message }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, fallback: fallbackLine(message, patch.korean ?? true), ...more })
       firstLineReady('bot-1')
       return show
     }
-    let show = start(voice(later('NONE', 600)))
+    let show = start(voice(later('', 600)))
     await vi.advanceTimersByTimeAsync(600)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
     expect(firstLineNote('bot-1')).toContain('바로 적어 둘게요.')
@@ -371,7 +384,7 @@ describe('instant first line', () => {
     show = start(voice(later('회의록부터 읽어볼게요.', 900)))
     await vi.advanceTimersByTimeAsync(3000)
     expect(show).toHaveBeenCalledExactlyOnceWith('회의록부터 읽어볼게요.')
-    for (const [reply, ms, at] of [['NONE', 600, 600], ['1년은 31,536,000초예요.', 1400, FIRST_LINE_FALLBACK_MS]] as const) {
+    for (const [reply, ms, at] of [['', 600, 600], ['1년은 31,536,000초예요.', 1400, FIRST_LINE_FALLBACK_MS]] as const) {
       endFirstLine('bot-1')
       show = start(voice(later(reply, ms)), { message: '1년은 몇 초야?' }, { whole: true })
       const whole = smallTalkAnswer('bot-1')
@@ -381,6 +394,13 @@ describe('instant first line', () => {
       await vi.advanceTimersByTimeAsync(3000)
       expect(show).toHaveBeenCalledOnce()
     }
+    endFirstLine('bot-1')
+    show = start(voice(later('NONE', 600)))
+    const quiet = smallTalkAnswer('bot-1')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(await quiet).toBeUndefined()
+    expect(show).not.toHaveBeenCalled()
+    expect(firstLineNote('bot-1')).toBe('')
     endFirstLine('bot-1')
     show = start(voice(later('NONE', 600)))
     firstLineSpoke('bot-1')

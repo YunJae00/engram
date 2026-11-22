@@ -58,7 +58,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
   it('three document asks the voice has no line for give three different endings', async () => {
     const said: string[] = []
-    for (const ask of DOCS) said.push((await run(ask, 'NONE', [...said])).line!)
+    for (const ask of DOCS) said.push((await run(ask, '', [...said])).line!)
     expect(new Set(said.map(tail)).size).toBe(3)
     const again: string[] = []
     for (let at = 0; at < 3; at++) again.push(fallbackLine('이 글 요약해줘', true, [...again]))

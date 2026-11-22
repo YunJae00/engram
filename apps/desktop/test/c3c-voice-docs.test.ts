@@ -29,8 +29,8 @@ const WORKDIR = { kind: 'vault' as const, path: 'C:/vault' } as never
 describe('the first line is a waiting line, not part of the answer', () => {
   const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, ...patch })
   const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
-  const start = (reply: string, patch: Partial<FirstLineAsk> = {}, more: { told?: boolean; context?: () => Promise<string> } = {}) => {
-    const show = vi.fn(), hide = vi.fn(), quick = vi.fn(later(reply, 500)), message = ask(patch).message
+  const start = (reply: string | ((prompt: string) => string), patch: Partial<FirstLineAsk> = {}, more: { told?: boolean; context?: () => Promise<string> } = {}) => {
+    const show = vi.fn(), hide = vi.fn(), quick = vi.fn((prompt: string) => later(typeof reply === 'string' ? reply : reply(prompt), 500)()), message = ask(patch).message
     beginFirstLine({ ...ask(patch), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide, fallback: fallbackLine(message, true), ...more })
     firstLineReady('bot-1')
     return { show, hide, quick }
@@ -38,8 +38,8 @@ describe('the first line is a waiting line, not part of the answer', () => {
   beforeEach(() => { vi.useFakeTimers(); endFirstLine('bot-1'); bus.sent.length = 0 })
   afterEach(() => { endFirstLine('bot-1'); vi.useRealTimers() })
 
-  it('NONE and no tool call: the waiting line is taken down when the answer is shown, once', async () => {
-    const { show, hide } = start('NONE')
+  it('a voice with no line and no tool call: the waiting line is taken down when the answer is shown, once', async () => {
+    const { show, hide } = start('')
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 써 볼게요.')
     expect(firstLineWaiting('bot-1')).toBe(true)
@@ -82,13 +82,13 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(aside).not.toContain('heldRounds')
   })
 
-  it('NONE and a tool call: the waiting line is not frozen into a bubble, in the thread or on disk', async () => {
+  it('a voice with no line and a tool call: the waiting line is not frozen into a bubble, in the thread or on disk', async () => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-')), paths = await initVault(root, { git: false })
     try {
       const progress = conversationProgress(paths), channel = 'bot-1'
       turnGoals.set(channel, '내 이름은 권윤재고 지민호랑 같이 일해. 기억해')
       await appendBotTurn(paths, '1', { role: 'user', text: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', at: 'start' })
-      start('NONE', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
+      start('', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
       await vi.advanceTimersByTimeAsync(500)
       progress.observe({ type: 'chat:token', channel, text: '바로 적어 둘게요.\n\n' })
       progress.observe({ type: 'comet:step', channel, line: 'keep_in_mind: 지민호' } as never)
@@ -132,7 +132,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
   })
 
   it('a short ask answered with no tool call leaves no line above the answer, still shows a waiting line at once, and a turn with a tool keeps its line', async () => {
-    const { show, hide } = start('NONE')
+    const { show, hide } = start('')
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 써 볼게요.')
     const store = createCometThreads()
@@ -169,7 +169,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
   })
 
   it('tells the model that its next words are the answer, whichever line is up', async () => {
-    start('NONE')
+    start('')
     expect(firstLineNote('bot-1')).toContain('Write nothing before your first tool call and nothing between tool calls')
     await vi.advanceTimersByTimeAsync(500)
     expect(firstLineNote('bot-1')).toContain('"바로 써 볼게요."')
@@ -195,7 +195,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
       expect([...fallbackLine(message, true)].length).toBeLessThanOrEqual(60)
       expect(fallbackLine(message, false), message).not.toMatch(/^On it|[가-힣]/)
     }
-    const { show } = start('NONE', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
+    const { show } = start('', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
   })
@@ -210,9 +210,10 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(greeting('네 좋아')).toBe(false)
   })
 
-  it('answers something the person only told with one line from the quick voice, with the conversation in view', async () => {
+  it('answers something the person only told with one line from the quick voice, with the conversation in view, unless its own first line names a step', async () => {
     const said = '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어'
-    const { show, quick } = start('부모님이랑 제주 가시는군요, 좋으시겠어요.', { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
+    const told = (reply: string, line: string) => (prompt: string) => prompt.includes('it asks for nothing') ? reply : line
+    const { show, quick } = start(told('부모님이랑 제주 가시는군요, 좋으시겠어요.', 'NONE'), { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
     const reply = smallTalkAnswer('bot-1')
     await vi.advanceTimersByTimeAsync(500)
     expect(await reply).toBe('부모님이랑 제주 가시는군요, 좋으시겠어요.')
@@ -222,9 +223,15 @@ describe('the first line is a waiting line, not part of the answer', () => {
     endFirstLine('bot-1')
     const declined = start('NONE', { message: said }, { told: true })
     const none = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(2000)
     expect(await none).toBeUndefined()
-    expect(declined.show).toHaveBeenCalledOnce()
+    expect(declined.show).not.toHaveBeenCalled()
+    endFirstLine('bot-1')
+    const work = start(told('사진 많이 찍으셨겠네요.', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
+    const dropped = smallTalkAnswer('bot-1')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(await dropped).toBeUndefined()
+    expect(work.show).toHaveBeenCalledExactlyOnceWith('사진 날짜부터 맞춰 볼게요.')
     expect(toldPrompt(said, true)).toContain('reply with exactly NONE')
     expect(toldPrompt(said, true)).toContain('do not say you saved or noted anything')
     const ipc = source('ipc.ts')
