@@ -86,9 +86,9 @@ describe('the first line is a waiting line, not part of the answer', () => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-')), paths = await initVault(root, { git: false })
     try {
       const progress = conversationProgress(paths), channel = 'bot-1'
-      turnGoals.set(channel, '내 이름은 권윤재고 지민호랑 같이 일해. 기억해')
-      await appendBotTurn(paths, '1', { role: 'user', text: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', at: 'start' })
-      start('', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
+      turnGoals.set(channel, '우리 강아지 이름은 콩떡이야. 기억해')
+      await appendBotTurn(paths, '1', { role: 'user', text: '우리 강아지 이름은 콩떡이야. 기억해', at: 'start' })
+      start('', { message: '우리 강아지 이름은 콩떡이야. 기억해' })
       await vi.advanceTimersByTimeAsync(500)
       progress.observe({ type: 'chat:token', channel, text: '바로 적어 둘게요.\n\n' })
       progress.observe({ type: 'comet:step', channel, line: 'keep_in_mind: 지민호' } as never)
@@ -96,7 +96,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
       progress.observe({ type: 'chat:done', channel, text: '기억해 둘게요.' })
       await progress.flush(channel)
       vi.useRealTimers()
-      expect((await readBotTranscript(paths, '1')).map(turn => turn.text)).toEqual(['내 이름은 권윤재고 지민호랑 같이 일해. 기억해'])
+      expect((await readBotTranscript(paths, '1')).map(turn => turn.text)).toEqual(['우리 강아지 이름은 콩떡이야. 기억해'])
       expect(source('ipc.ts')).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
     } finally { turnGoals.delete('bot-1'); await rm(root, { recursive: true, force: true }) }
   })
@@ -195,7 +195,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
       expect([...fallbackLine(message, true)].length).toBeLessThanOrEqual(60)
       expect(fallbackLine(message, false), message).not.toMatch(/^On it|[가-힣]/)
     }
-    const { show } = start('', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
+    const { show } = start('', { message: '우리 강아지 이름은 콩떡이야. 기억해' })
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
   })
