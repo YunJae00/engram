@@ -201,6 +201,26 @@ test('the prompt note lists the team and gives a named agent\'s memory and finis
   for (const text of [note, own]) expect(text).not.toMatch(/CEO|chief of staff|employee|company|staff|promot|department|job title/i)
 })
 
+test('s1a round 2: the lane note carries what each teammate is doing right now from live tasks, so a question about one busy teammate is answered from their current job', async () => {
+  const { paths, run } = await company()
+  await run({ add: [{ name: '하늘', role: '숙소 담당' }, { name: '보람', role: '통역 담당' }, { name: '다온', role: '가계부 담당' }] })
+  const bots = await loadBots(paths), id = (name: string): string => bots.find(bot => bot.name === name)!.id
+  const tasks = [
+    task({ id: 'a', botId: id('하늘'), state: 'running', goal: '부산 캠핑장 세 곳 비교' }),
+    task({ id: 'b', botId: id('하늘'), state: 'done', goal: '도서관 신착 도서 목록 정리' }),
+    task({ id: 'c', botId: id('다온'), state: 'running', team: { members: [member({ botId: id('보람'), state: 'working', title: '셔틀 시간표 번역' })], hires: 1, maxHires: 3, maxDepth: 1, big: false } }),
+  ]
+  for (const ask of ['하늘이 요새 바빠?', '하늘 지금 손에 잡은 거 있어?', '하늘한테 뭐 시켰더라']) {
+    const note = await companyNote(paths, { bots, message: ask, chief: true, tasks })
+    expect(note, ask).toContain('Right now: working on 부산 캠핑장 세 곳 비교')
+    expect(note, ask).toContain('도서관 신착 도서 목록 정리')
+    expect(note, ask).toContain('Right now: working on 셔틀 시간표 번역')
+  }
+  const quiet = await companyNote(paths, { bots, message: '다온은 쉬고 있어?', chief: true, tasks: [] })
+  expect(quiet).toContain('- 다온 — 가계부 담당')
+  expect(quiet.match(/Right now: no work in hand/g)).toHaveLength(3)
+})
+
 test('a regular time or a question about what the team did takes the lane by its own matcher; work on files does not', () => {
   for (const ask of ['매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘', '매주 월요일 아침 9시에 AI 뉴스 3개 정리해줘', '평일마다 오후 6시에 지민 업무 정리해서 알려줘', '내 일정 뭐 있어?', '일정 뭐 있어', '정기 보고 뭐 있어?'])
     expect(isDutyAsk(ask), ask).toBe(true)

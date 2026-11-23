@@ -232,19 +232,20 @@ export function companyStatus(bots: readonly Bot[], tasks: readonly DelegatedTas
   const first = statusSaid(bots, tasks, now, false)
   return first === previous.trim() ? statusSaid(bots, tasks, now, true) : first
 }
+function liveWork(bot: Bot, tasks: readonly DelegatedTask[]): { name: string; working?: string | undefined; waiting?: string | undefined; last?: { at: string; what: string; unfinished: boolean } | undefined } {
+  const own = tasks.filter(task => task.botId === bot.id)
+  const parts = tasks.flatMap(task => (task.team?.members ?? []).filter(member => member.botId === bot.id).map(member => ({ member, open: task.state === 'running' || task.state === 'waiting', at: member.finishedAt ?? task.updatedAt })))
+  const part = (state: (member: TeamMember) => boolean): string | undefined => { const hit = parts.find(one => one.open && state(one.member)); return hit && jobOf(hit.member) }
+  const goal = (...states: string[]): string | undefined => { const hit = own.find(task => states.includes(task.state)); return hit && jobTitle(hit.goal) }
+  const working = goal('running', 'queued') ?? part(member => BUSY.includes(member.state))
+  const waiting = working ? undefined : goal('waiting') ?? part(member => member.state === 'waiting')
+  const last = [...own.filter(task => task.state === 'done').map(task => ({ at: task.updatedAt, what: jobTitle(task.goal), unfinished: false })), ...parts.filter(one => one.member.state === 'done' || one.member.state === 'released').map(one => ({ at: one.at, what: jobOf(one.member), unfinished: !!one.member.unfinished }))].sort((a, b) => b.at.localeCompare(a.at))[0]
+  return { name: bot.name.trim(), working, waiting, last }
+}
 function statusSaid(bots: readonly Bot[], tasks: readonly DelegatedTask[], now: number, again: boolean): string {
   const staff = employees(bots)
   if (!staff.length) return '아직 팀원이 없어요. "지민 추가해줘. 리서치 담당이야"처럼 말하면 바로 추가할게요.'
-  const team = staff.map(bot => {
-    const own = tasks.filter(task => task.botId === bot.id)
-    const parts = tasks.flatMap(task => (task.team?.members ?? []).filter(member => member.botId === bot.id).map(member => ({ member, open: task.state === 'running' || task.state === 'waiting', at: member.finishedAt ?? task.updatedAt })))
-    const part = (state: (member: TeamMember) => boolean): string | undefined => { const hit = parts.find(one => one.open && state(one.member)); return hit && jobOf(hit.member) }
-    const goal = (...states: string[]): string | undefined => { const hit = own.find(task => states.includes(task.state)); return hit && jobTitle(hit.goal) }
-    const working = goal('running', 'queued') ?? part(member => BUSY.includes(member.state))
-    const waiting = working ? undefined : goal('waiting') ?? part(member => member.state === 'waiting')
-    const last = [...own.filter(task => task.state === 'done').map(task => ({ at: task.updatedAt, what: jobTitle(task.goal), unfinished: false })), ...parts.filter(one => one.member.state === 'done' || one.member.state === 'released').map(one => ({ at: one.at, what: jobOf(one.member), unfinished: !!one.member.unfinished }))].sort((a, b) => b.at.localeCompare(a.at))[0]
-    return { name: bot.name.trim(), working, waiting, last }
-  })
+  const team = staff.map(bot => liveWork(bot, tasks))
   const who = (names: readonly string[]): string => josa(listed(names), '은', '는')
   const idle = team.filter(one => !one.working && !one.waiting), names = idle.map(one => one.name)
   if (idle.length < team.length) {
@@ -445,7 +446,8 @@ export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot
     : 'The person works with a team of agents by chat; each agent below is a bot of its own. Answer questions about who someone is or what they do from these lines with no tool call, short and natural, in the person\'s language.']
   lines.push(staff.length ? 'Team now:' : 'Team now: nobody yet.')
   for (const bot of staff) {
-    lines.push(`- ${bot.name} — ${bot.label!.trim()}. How they work: ${clip(workOf(bot.purpose) || bot.label!, 300)}`)
+    const live = liveWork(bot, input.tasks ?? [])
+    lines.push(`- ${bot.name} — ${bot.label!.trim()}. How they work: ${clip(workOf(bot.purpose) || bot.label!, 300)}. Right now: ${live.working ? `working on ${live.working}` : live.waiting ? `waiting for an answer on ${live.waiting}` : 'no work in hand'}.`)
     if (!input.message.includes(bot.name.trim())) continue
     const memory = renderMemory(await loadBotMemory(paths, bot.id), input.now)
     const recent = (input.tasks ?? []).filter(task => task.botId === bot.id && task.state === 'done').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5)
