@@ -25,7 +25,7 @@ test('c10b fix 1 → k1: a teammate cut off at its time hands back its own answe
   expect(handed.result).toBe(jimin.result)
   expect(handed.result).toContain(coex)
   expect(handed.sources).toEqual(jimin.sources)
-  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['answersItself', 'employeesAnswer', 'setReportLog'])
+  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['employeesAnswer'])
   const listed = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(listed, { answer: '12월 2일 소프트웨이브 https://www.coex.co.kr/a\n12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(listed.result).toBe('12월 2일 소프트웨이브 https://www.coex.co.kr/a')

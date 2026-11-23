@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createTask, handBacks, runToolSession, setReportLog, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createTask, handBacks, runToolSession, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -22,7 +22,7 @@ const lead = async (draft: string, ask: string): Promise<{ answer: string; quick
   const out = await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }), quick: async () => { quick++; return '' } } as never, workdir: '/x', tools: [] }, ask, {})
   return { answer: out.answer, quick }
 }
-afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
+afterEach(() => { vi.useRealTimers() })
 
 const at = new Date().toISOString()
 const looker = (id: string, topic: string, rest: Partial<TeamMember>): TeamMember => ({ id, parentId: null, depth: 1, role: `${topic} 조사`, topic, brief: `${topic} 알아봐`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: `s-${id}`, hiredAt: at, result: 'x', ...rest })

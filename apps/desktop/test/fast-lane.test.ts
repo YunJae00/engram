@@ -295,7 +295,7 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('steered.push(...taken)')
   expect(ipc).not.toContain('laneSaid')
-  expect(ipc).toContain("let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
+  expect(ipc).toContain("let searched = solo && routed === request.message && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid]")
   expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])

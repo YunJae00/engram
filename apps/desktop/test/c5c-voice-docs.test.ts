@@ -132,9 +132,9 @@ describe('a kept fact is corrected by the host (M2)', () => {
   })
   it('is made before the model is asked, and remember turns that reach the model do not think long', () => {
     const ipc = source('ipc.ts')
-    expect(ipc).toContain("const fix = !handed && kind === 'keep' ? keptFix(request.message, remembered) : undefined")
+    expect(ipc).toContain("const fix = kind === 'keep' ? keptFix(request.message, remembered) : undefined")
     expect(ipc).toContain("scope: personMemory.facts.some(fact => fact.text === fix.old) ? 'everyone' : 'this bot'")
-    expect(ipc).toMatch(/: fixed \? \{ answer: fixed, steps: \[\{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations\.' \}\], fellBack: false \}\n/)
+    expect(ipc).toMatch(/= fixed \? \{ answer: fixed, steps: \[\{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations\.' \}\], fellBack: false \}\n/)
     expect(ipc).toContain("...(deskLight(kind, routed, { given: !!given,")
     expect(deskLight('keep', '내 생일은 3월 2일이야. 기억해', {})).toBe(true)
     expect(core('agent-session.ts')).toContain("...(options.lookup || options.light ? { effort: 'low' as const } : {}),")

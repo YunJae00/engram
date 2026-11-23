@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as core from 'core'
-import { createBot, createTask, employeeNote, employeesAnswer, handBacks, listTasks, memberPersona, partOutcome, setReportLog, settleMember, TAKEN_OFF, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createBot, createTask, employeeNote, employeesAnswer, handBacks, listTasks, memberPersona, partOutcome, settleMember, TAKEN_OFF, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
@@ -16,7 +16,7 @@ const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporar
 const PAGE: Record<string, string> = { 도쿄: 'https://fx.example.jp/tokyo', 오사카: 'https://fx.example.jp/osaka', 후쿠오카: 'https://fx.example.jp/fukuoka', 오키나와: 'https://fx.example.jp/okinawa' }
 const SAID = (city: string): string => `${city}은 엔화 약세로 원화 환산 경비가 작년보다 10% 줄었어요. [${city} 환율 소식](${PAGE[city]})`
 const three = (role = (city: string): string => city) => ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: role(city), topic: city, brief: `${city} 환율 영향`, lookup: true }))
-afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
+afterEach(() => { vi.useRealTimers() })
 
 async function lane(tag: string, ask: string, opts: { steer?: number; delay?: number; hang?: boolean } = {}) {
   const paths = await vault(tag)
@@ -229,7 +229,7 @@ describe('c16a r2: review findings', () => {
   })
 
   it('#2: no host writer is left to give a due to: the written-report layer is gone from core and from the runner', () => {
-    expect(Object.keys(core).filter(key => /report|merg|helper|written/i.test(key)).sort()).toEqual(['MERGED_SHAPE', 'REPORT_WRITER_MS', 'helpersTool', 'hybridMerge', 'mergeBySubject', 'mergeInto', 'mergeMemory', 'mergeWorkspace', 'pageReport', 'setReportLog'])
+    expect(Object.keys(core).filter(key => /report|merg|helper|written/i.test(key)).sort()).toEqual(['MERGED_SHAPE', 'REPORT_WRITER_MS', 'helpersTool', 'hybridMerge', 'mergeBySubject', 'mergeInto', 'mergeMemory', 'mergeWorkspace', 'pageReport'])
     expect(core.TEAM_ANSWER_MS).toBe(28_000)
     expect(Object.keys(core)).toContain('handBacks')
   })

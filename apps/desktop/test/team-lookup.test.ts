@@ -288,5 +288,5 @@ it('stack-7: a teammate hired in a turn whose own first search already ran the s
   expect(ipc).toContain('if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? \'\' }); else laneSearches.delete(channel)')
   expect(ipc).toContain('if (!searched) laneSearches.delete(channel)')
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(')
+  expect(ipc).toContain('let searched = solo && routed === request.message && !fixed ? await searchFor(')
 })

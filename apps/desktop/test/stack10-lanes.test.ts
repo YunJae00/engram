@@ -15,7 +15,7 @@ const posted = async (ask: string, draft: string, quick = vi.fn(async () => ''),
 describe('stack-10: the c10c desk paths and the c10a lane paths never share a turn', () => {
   it('the desk folder sort needs a desk kind, which needs no lane; the lane has no tidy and no shaping step left to run anywhere', () => {
     expect(ipc).toMatch(/const kind = !company && !lane && deskLane\(/)
-    expect(ipc).toMatch(/const sorted = !handed && kind === 'tidy'/)
+    expect(ipc).toMatch(/const sorted = kind === 'tidy'/)
     expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
     expect(ipc.split('sortByKind(').length - 1).toBe(1)

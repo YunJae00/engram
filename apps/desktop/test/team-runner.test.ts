@@ -399,12 +399,14 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, '').split(' → ')[0])).toEqual(['피그마 새 기능 조사', '광고 문구를 3개 뽑기 (지민한테 받아서)']))
   })
 
+  const trelloJira = { wait: false, to: ['트렐로', '지라'].map((topic, i) => ({ who: ['지민', '서연'][i]!, brief: `이번 주 ${topic} 새 기능 좀 찾아봐줘`, topic })) }
+
   it('words said while a split works change it: a part added joins the one set of hand-backs, a part swapped is stopped and hands nothing back', async () => {
-    const { plainSplit, plainSteer, steerSplit, listTasks } = await import('core')
+    const { plainSteer, steerSplit, listTasks } = await import('core')
     let go!: () => void
     const gate = new Promise<void>(resolve => { go = resolve })
     const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found(`${/이번 주 (\S+) 신기능/.exec(turn.prompt)?.[1]} 새 기능이 나왔어요.`, `https://tools.example/${turn.role === '지민' ? 'a' : 'b'}`))) }))
-    expect(await w.assign(plainSplit('이번 주 트렐로, 지라 새 기능 좀 찾아봐줘! 지민, 서연한테 나눠서 맡겨', ['지민', '서연'])!)).toBe('지민, 서연한테 나눠 맡겼어요.')
+    expect(await w.assign(trelloJira)).toBe('지민, 서연한테 나눠 맡겼어요.')
     await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
     await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
     await w.team.turnEnded('bot-b1')
@@ -425,11 +427,11 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
   })
 
   it('at the cap the result step gets what is back and the slow part as still working, and that part\'s hand-back alone when it lands', async () => {
-    const { plainSplit, lateShown } = await import('core')
+    const { lateShown } = await import('core')
     let go!: () => void
     const gate = new Promise<void>(resolve => { go = resolve })
     const w = await staffed(turn => turn.role === '지민' ? Promise.resolve(found('트렐로가 달력 보기를 냈어요.', 'https://tools.example/a')) : new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found('지라가 자동 요약을 냈어요.', 'https://tools.example/b'))) }), { answerMs: 60 })
-    await w.assign(plainSplit('이번 주 트렐로, 지라 새 기능 좀 찾아봐줘! 지민, 서연한테 나눠서 맡겨', ['지민', '서연'])!)
+    await w.assign(trelloJira)
     await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
     await w.team.turnEnded('bot-b1')
     await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))

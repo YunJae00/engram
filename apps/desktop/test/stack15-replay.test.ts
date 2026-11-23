@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createBot, createTask, handBacks, keepRead, keepSources, listTasks, loadBots, RELEVANCE_RULE, runToolSession, setReportLog, skipWalls, staffTool, teamSummary, timeBoxed, updateTask, vaultPaths, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { companyNote, createBot, createTask, handBacks, keepRead, keepSources, listTasks, loadBots, RELEVANCE_RULE, runToolSession, skipWalls, staffTool, timeBoxed, updateTask, vaultPaths, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
@@ -13,8 +13,6 @@ type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const RUN = '/Users/kwon-yunjae/engram-orch/tmp/grokbar/runs/stack14-63bdfb8a'
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const scratch = async (tag: string): Promise<string> => { await mkdir(temporary, { recursive: true }); return mkdtemp(join(temporary, `engram-stack15-${tag}-`)) }
-const logs: string[] = []
-setReportLog(line => logs.push(line))
 
 describe('C3 replay', () => {
   const said = {
@@ -39,7 +37,7 @@ describe('C3 replay', () => {
 })
 
 describe('C10 replay', () => {
-  it('stack14\'s record with 서연 left: the writer is told who left and its summary is the answer as written; with no writer text the fallback ends a sentence between every person', async () => {
+  it('stack14\'s record with 서연 left: the lane note keeps 서연 in the record and off the team, and the lane model\'s answer is posted as written', async () => {
     if (!existsSync(join(RUN, 'vault'))) return console.log('[replay C10] stack14 vault missing: skipped')
     const root = await scratch('c10')
     await cp(join(RUN, 'vault'), root, { recursive: true })
@@ -47,21 +45,12 @@ describe('C10 replay', () => {
     await staffTool(paths, () => undefined).run({ remove: ['서연'] }, { task: '' })
     const tasks = JSON.parse(await readFile(join(root, 'workspace/.engram/tasks.json'), 'utf8')).tasks
     const now = new Date('2026-11-18T05:00:00+09:00'), message = '이번 주 팀이 한 일 요약해'
-    const prompts: string[] = []
+    const [team, record] = (await companyNote(paths, { bots: await loadBots(paths), tasks, message, chief: true, now })).split('The team\'s record') as [string, string]
+    console.log(`[replay C10] record: ${record.slice(0, 600)}`)
+    expect(record).toMatch(/\(서연, /)
+    expect(team).not.toMatch(/- 서연 —/)
     const written = '이번 주엔 지민이랑 도윤이 경쟁사 소식을 봤어요.\n\n서연은 슬랙 쪽을 보고 나서 팀을 떠났어요.'
-    const summary = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: async prompt => { prompts.push(prompt); return written } })
-    console.log(`[replay C10] written (${logs.at(-1)}): ${summary}`)
-    expect(summary).toBe(written)
-    expect(logs.at(-1)).toMatch(/^summary=written/)
-    expect(prompts).toHaveLength(1)
-    const record = JSON.parse(prompts[0]!.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; left?: boolean }[]
-    expect(record.filter(job => job.who === '서연').every(job => job.left === true)).toBe(true)
-    expect(record.some(job => job.who === '서연')).toBe(true)
-    expect(prompts[0]).toContain('a job with "left" true was done by someone who has since left the team: say that once')
-    const fallback = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: async () => '' })
-    console.log(`[replay C10] fallback (${logs.at(-1)}): ${fallback}`)
-    expect(logs.at(-1)).toMatch(/^summary=empty/)
-    expect(fallback).not.toMatch(/요 [가-힣]+[은는이가] /)
+    expect((await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: written }) } as never, workdir: '/x', tools: [] }, message, {})).answer).toBe(written)
   })
 })
 

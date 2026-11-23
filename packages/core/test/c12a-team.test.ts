@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { createBot } from '../src/bots.js'
-import { askedCount, employeeWriteBack, handBacks, handoffBrief, partOutcome, teamRecord, teamSummary, topicOf } from '../src/company-tools.js'
+import { askedCount, companyNote, employeeWriteBack, handBacks, handoffBrief, partOutcome, teamRecord, topicOf } from '../src/company-tools.js'
 import { datedText, type TeamMember } from '../src/delegated-tasks.js'
 import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
@@ -70,7 +70,7 @@ test('B3: a page that lists many, written beside the single items, stays in the 
   expect(m.review).toEqual({ ok: true, note: 'auto: sourced lookup' })
 })
 
-test('B4: the record line holds the job and one short clause; the summary prompt carries the job lines only', async () => {
+test('B4: the record line holds the job and one short clause; the note the team lane writes from carries the job lines only', async () => {
   const paths = await initVault(await tmpVaultRoot('c12a-record'))
   const bot = await createBot(paths, { name: '서아' })
   const data = { facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://a.example/1', site: 'a', name: '둔산동 보드게임 모임' }, { text: '12월 20일 유성에서 모임이 열려요.', url: 'https://a.example/2', site: 'a' }, { text: 'c', url: 'https://a.example/3', site: 'a' }, { text: 'd', url: 'https://a.example/4', site: 'a' }] }
@@ -78,10 +78,10 @@ test('B4: the record line holds the job and one short clause; the summary prompt
   await employeeWriteBack(paths, { botId: bot.id, brief: '인스타 문구 2개 써줘', result: '1. 가\n2. 나', title: '인스타 문구 2개 쓰기', data: { facts: [], items: ['가', '나'] } }, NOW)
   const lines = (await teamRecord(paths)).facts.map(f => f.text)
   expect(lines).toEqual([`다음 달 대전 보드게임 모임 일정 → 둔산동 보드게임 모임 등 4개 찾았어요 (서아, 2026-11-18)`, `인스타 문구 2개 쓰기 → 2개 써 왔어요 (서아, 2026-11-18)`])
-  const asked: string[] = []
-  await teamSummary(paths, { bots: [bot], message: '이번 주에 팀이 뭐 했어?', write: async prompt => { asked.push(prompt); return '' }, now: NOW })
-  expect(asked[0]).toContain('never with details of what was found')
-  expect(asked[0]).not.toMatch(/12월 6일|유성/)
+  const note = await companyNote(paths, { bots: [bot], message: '요번 주 팀원들 뭐 했는지 말해 줘', chief: true, now: NOW })
+  expect(note).toContain('다음 달 대전 보드게임 모임 일정 → 둔산동 보드게임 모임 등 4개 찾았어요 (서아, 11월 18일)')
+  expect(note).toContain('2개 써 왔어요 (서아, 11월 18일)')
+  expect(note).not.toMatch(/12월 6일|유성/)
 })
 
 test('A1 contract: a teammate cut off while it had only said what it was about to do hands back what it read, with the page, marked as read and as stopped at its time', () => {

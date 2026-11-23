@@ -39,24 +39,6 @@ function keptLine(schedule: Schedule, what: string): string {
   return `${when}에 ${asked} 드릴게요.`
 }
 
-const PLAIN_REPEAT = /^(매주\s*([월화수목금토일])요일(?:\s*마다)?|매일|평일\s*마다|주말\s*마다)\s*(아침|오전|낮|오후|저녁|밤)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분|(반))?\s*(?:에|마다)?\s+(.+)$/u
-const ASKS_FOR = /(줘요?|주세요|줄래요?|해|해요)[.!~\s]*$/u
-const NOT_PLAIN = /지금|먼저|매주|매일|마다|\d\s*시|보내|올려|전송|게시|공유/u
-export function plainSchedule(message: string): { action: 'add'; what: string; time: string; days: number[] } | undefined {
-  const line = message.trim(), said = line.length <= 200 && !line.includes('\n') ? PLAIN_REPEAT.exec(line) : null
-  if (!said) return undefined
-  const [, repeat, day, part, hours, minutes, half, what] = said as unknown as [string, string, string | undefined, string | undefined, string, string | undefined, string | undefined, string]
-  const n = Number(hours), minute = half ? 30 : Number(minutes ?? 0)
-  const hour = part === '아침' || part === '오전' ? (n === 12 ? 0 : n <= 11 ? n : -1)
-    : part === '낮' ? (n === 12 ? 12 : n <= 5 ? n + 12 : -1)
-    : part === '밤' ? (n === 12 ? 0 : n <= 4 ? n : n <= 11 ? n + 12 : -1)
-    : part ? (n <= 11 ? n + 12 : n === 12 ? 12 : -1)
-    : n >= 7 && n <= 23 ? n : -1
-  if (hour < 0 || n < 1 || minute > 59 || !ASKS_FOR.test(what) || NOT_PLAIN.test(what)) return undefined
-  const days = day ? [DAY_KO.indexOf(day)] : repeat.startsWith('평일') ? [1, 2, 3, 4, 5] : repeat.startsWith('주말') ? [0, 6] : [0, 1, 2, 3, 4, 5, 6]
-  return { action: 'add', what: what.trim(), time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, days }
-}
-
 function described(task: BotTask, korean = false): Record<string, string> {
   return { id: task.id, what: task.goal, when: task.schedule ? (korean ? scheduleWordsKo : scheduleWords)(task.schedule) : 'not scheduled', ...(task.watch ? { onlyWhenNew: task.watch.tool } : {}), ...(task.lastRunAt ? { lastRun: task.lastRunAt } : {}) }
 }

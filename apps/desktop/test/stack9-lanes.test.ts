@@ -10,7 +10,7 @@ const ipc = source('ipc.ts'), runner = source('team-runner.ts')
 it('stack-9: a replacement aborts only a solo lookup', async () => {
   expect(ipc).toContain("const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')")
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('if (solo && !handed && !fixed) laneChanges.set(channel, said => {')
+  expect(ipc).toContain('if (solo && !fixed) laneChanges.set(channel, said => {')
   expect(ipc.match(/laneChanges\.set\(/g)).toHaveLength(1)
   for (const ask of ['봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜']) expect(teamAsk(ask), ask).toBe(true)
   expect(swappedAsk('서울 날씨 알려줘', '아 대구도 추가해')).toBeUndefined()

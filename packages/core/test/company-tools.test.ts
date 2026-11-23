@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { loadBotMemory, recordFacts } from '../src/bot-memory.js'
 import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript } from '../src/bots.js'
-import { answersItself, writesFromHandover, employeesAnswer, isPartsAsk, jobTitle, teamName, companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, plainHandoff, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane, teamRecord, TEAM_MEMORY } from '../src/company-tools.js'
+import { employees, writesFromHandover, employeesAnswer, isPartsAsk, jobTitle, teamName, companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane, teamRecord, TEAM_MEMORY } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { changeSidebarLayout, readSidebarLayout } from '../src/sidebar-layout.js'
 import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
@@ -148,17 +148,14 @@ test('picking or making things is never adding an agent: that needs a word for o
     expect(isCompanyAsk(ask, ['김대리', '박사원'], true), ask).toBe(true)
 })
 
-test('a plain hand-off to one agent on the team is the assign call itself; anything more is left to the model', () => {
-  const staff = ['지민', '서연']
-  expect(plainHandoff('이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리', staff)).toEqual({ wait: false, to: [{ who: '지민', brief: '다음 달 서울 IT 행사 일정 정리' }] })
-  expect(plainHandoff('서연에게 시켜 줘： 경쟁사 가격 조사', staff)?.to).toEqual([{ who: '서연', brief: '경쟁사 가격 조사' }])
-  for (const ask of [
-    '이거 도윤한테 맡겨: 행사 일정 정리',
-    '지민한테 맡겨', '지민한테 행사 일정 정리 맡겨',
-    '지민한테 맡겨: 행사 조사하고 끝나면 서연한테 넘겨', '지민이랑 서연한테 맡겨: 행사 조사',
-    '지민한테 맡겨: 행사 일정 조사해서 알려줘', '지민한테 맡겨: 행사 일정표 파일로 만들어',
-    '지민한테 맡겨: 행사 일정 정리해서 슬랙에 올려', '지민한테 맡겨: 거래처에 메일 보내',
-  ]) expect(plainHandoff(ask, staff), ask).toBeUndefined()
+test('a hand-off to one teammate takes the team lane however it is worded, and nothing in the host builds the assign call from it', () => {
+  const who = { staff: ['하늘', '보람'], chief: true }
+  for (const ask of ['하늘한테 맡겨: 캠핑장 예약 가능한 날 모아 둬', '보람에게 시켜 줘： 전기차 보조금 조건 살펴보기', '이건 하늘한테 맡겨 줘: 도서관 휴관일 모으기', '하늘한테 캠핑장 후기 정리 맡겨', '하늘한테 맡겨: 캠핑장 살펴보고 끝나면 보람한테 넘겨', '보람한테 맡겨: 보조금 조건 살펴서 말해 줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  for (const ask of ['하늘한테 맡겨: 캠핑장 목록 정리해서 메일로 보내', '캠핑장 예약 가능한 날 모아 둬'])
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
+  expect(takesCompanyLane('하늘한테 맡겨: 캠핑장 예약 가능한 날 모아 둬', { ...who, chief: false })).toBe(false)
+  expect(Object.keys(companyTools)).not.toContain('plainHandoff')
 })
 
 test('anything that goes outside or names an app keeps the normal path, also on a scheduled run and when it also sets a regular time', () => {
@@ -237,7 +234,7 @@ test('what the team did comes from the one team record, with the records kept pe
 })
 
 import { parseAsk } from '../src/ask.js'
-import { aboutEmployee, assignTool, employeeNote, employeeWriteBack, handedFrom, handoffBrief, plainHire, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
+import { assignTool, employeeNote, employeeWriteBack, handedFrom, handoffBrief, isHireAsk, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
 import { keptItems, periodsIn, settleMember, sourceName } from '../src/team-hire-tools.js'
 import * as companyTools from '../src/company-tools.js'
 import { CUT_SHORT, handBacks, lateOwed, partOutcome, WRITER_RULE } from '../src/company-tools.js'
@@ -435,31 +432,30 @@ test('one agent\'s background result is handed back as they wrote it, and a hand
   expect(out.note).toContain('keep the facts it took from the earlier one')
 })
 
-test('adding one named agent with one duty is the agents call itself', async () => {
-  expect(plainHire('지민 하나 추가해줘. 리서치 담당이야')).toEqual({ add: [{ name: '지민', role: '리서치 담당' }] })
-  expect(plainHire('서연도 추가해줘. 카피 담당이야')).toEqual({ add: [{ name: '서연', role: '카피 담당', also: true }] })
-  expect(plainHire('도윤 뽑아줘, 디자인 담당')).toEqual({ add: [{ name: '도윤', role: '디자인 담당' }] })
-  expect(plainHire('경쟁사 분석 담당으로 하린 새로 팀에 추가해주세요')).toEqual({ add: [{ name: '하린', role: '경쟁사 분석 담당' }] })
-  expect(plainHire('김대리 하나 뽑아줘. 리서치 담당이야')).toEqual({ add: [{ name: '김대리', role: '리서치 담당' }] })
-  for (const ask of ['마케팅팀 만들고 지민이랑 새로 서연 뽑아서 넣어줘. 서연은 카피 담당', '지민이랑 서연 추가해줘. 리서치 담당이야', '지민 하나 추가해줘', '지민 추가해줘. 리서치 담당이고 꼼꼼하게 출처를 적어', '사람 사진 3장 뽑아줘. 디자인 담당이야', '지민 빼줘. 리서치 담당이야', '에이전트 하나 추가해줘. 리서치 담당이야', '사진 추가해줘. 편집 담당이야', `지민 추가해줘. ${'가'.repeat(200)} 담당이야`])
-    expect(plainHire(ask), ask).toBeUndefined()
-  expect(takesCompanyLane('서연도 추가해줘. 카피 담당이야', { staff: ['지민'], chief: true })).toBe(true)
-  expect(takesCompanyLane('서연도 추가해줘. 카피 담당이야', { staff: ['지민'], chief: false })).toBe(false)
+test('adding one named teammate with one duty takes the team lane, and the agents call the model makes adds them in one line', async () => {
+  for (const ask of ['다온을 채용해줘요. 일정 담당이에요', '이안도 고용해 주세요, 번역 담당', '로운 새로 뽑아, 회계 담당', '숙소 예약 담당으로 다온 팀에 채용해줘', '박주임 한 명 뽑아줘! 일정 담당'])
+    for (const staff of [[], ['보람']]) { expect(isHireAsk(ask), ask).toBe(true); expect(takesCompanyLane(ask, { staff, chief: true }), ask).toBe(true) }
+  for (const ask of ['다온을 채용해줘', '사진 채용해줘. 편집 담당', '에이전트 하나 고용해줘. 일정 담당', '다온 내보내줘. 일정 담당', '다온이랑 이안 고용해줘. 일정 담당이야', `다온 채용해줘. ${'나'.repeat(200)} 담당`])
+    expect(isHireAsk(ask), ask).toBe(false)
+  expect(takesCompanyLane('이안도 고용해 주세요, 번역 담당', { staff: ['다온'], chief: false })).toBe(false)
   const c = await company()
-  expect(await c.run(plainHire('지민 하나 추가해줘. 리서치 담당이야')!)).toBe('지민을 리서치 담당으로 추가했어요.')
-  expect((await c.named('지민'))!.label).toBe('리서치 담당')
+  expect(await c.run({ add: [{ name: '다온', role: '일정 담당' }] })).toBe('다온을 일정 담당으로 추가했어요.')
+  expect((await c.named('다온'))!.label).toBe('일정 담당')
 })
 
-test('who one agent is and what they did is answered from the team list and stored work', async () => {
+test('who one teammate is and what they did takes the team lane, and the lane note gives the model their role and finished work', async () => {
   const o = await office()
-  await o.assign({ wait: true, to: [{ who: '지민', brief: '다음 달 서울 IT 행사 일정 정리' }] })
-  await o.assign({ wait: true, to: [{ who: '지민', brief: '노션 이번 주 신기능 조사' }] })
-  const bots = await (await import('../src/bots.js')).loadBots(o.paths)
-  o.task.team!.members[0]!.finishedAt = '2026-11-16T01:00:00.000Z'; o.task.team!.members[1]!.finishedAt = '2026-11-16T02:00:00.000Z'
-  expect(aboutEmployee('지민 무슨 일 하는 사람이야?', bots, [o.task])).toBe('지민은 리서치 담당이에요. 요즘은 노션 이번 주 신기능 조사랑 다음 달 서울 IT 행사 일정 정리를 했어요.')
-  expect(aboutEmployee('서연은 누구야?', bots, [o.task])).toBe('서연은 카피 담당이에요. 아직 맡은 일은 없어요.')
-  for (const ask of ['지민이랑 서연 뭐 해?', '지민 무슨 일 하는 사람인지 표로 정리해줘', '하린 누구야?', '지민한테 행사 조사 시켜', '다들 뭐하고 있어?'])
-    expect(aboutEmployee(ask, bots, [o.task]), ask).toBeUndefined()
+  const bots = await loadBots(o.paths), kim = bots.find(bot => bot.name === '지민')!
+  const who = { staff: ['지민', '서연'], chief: true }
+  for (const ask of ['지민은 어떤 일을 맡고 있어?', '서연 씨는 누구예요?', '지민 담당이 뭐야?', '서연이는 요즘 뭐 했어?'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  for (const ask of ['하린 누구야?', '지민이 쓴 계획표 파일로 정리해줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
+  const note = await companyNote(o.paths, { bots, message: '지민은 어떤 일을 맡고 있어?', chief: true, tasks: [task({ botId: kim.id, goal: '캠핑장 예약 가능한 날 모으기' })] })
+  expect(note).toContain('- 지민 — 리서치 담당')
+  expect(note).toContain('캠핑장 예약 가능한 날 모으기')
+  expect(note).toContain('- 서연 — 카피 담당')
+  expect(Object.keys(companyTools)).not.toContain('aboutEmployee')
 })
 
 import stored from './fixtures/grokbar-stack2-team.json' with { type: 'json' }
@@ -478,7 +474,7 @@ test('the results as they were stored reach the lead whole: every teammate\'s wo
 test('no writer pass follows the lead: its merged draft, table and link included, is the answer byte for byte', async () => {
   const draft = `빵집이랑 둘레길 소식 모아 왔어요.\n\n| 항목 | 내용 |\n|---|---|\n| 빵집 | 3월 4일 개점 [밀밭 빵집](${BAKERY}) |\n| 둘레길 | 2구간 통제 [공원 공지](${TRAIL}) |`
   expect(await posted(draft, '빵집 개점일이랑 둘레길 통제 구간 표로 알려줘')).toBe(draft)
-  expect(Object.keys(companyTools).filter(name => /report|answer|hand|summary/i.test(name)).sort()).toEqual(['REPORT_WRITER_MS', 'SUMMARY_WRITER_MS', 'answersItself', 'employeesAnswer', 'handBacks', 'handedFrom', 'handoffBrief', 'handoffShown', 'plainHandoff', 'setReportLog', 'teamSummary', 'writesFromHandover'])
+  expect(Object.keys(companyTools).filter(name => /report|answer|hand|summary/i.test(name)).sort()).toEqual(['REPORT_WRITER_MS', 'employeesAnswer', 'handBacks', 'handedFrom', 'handoffBrief', 'handoffShown', 'writesFromHandover'])
 })
 
 test('a hand-off in the background: while the receiver works only the giver is handed back, then both, and a part that asks the person is left to the lead', () => {
@@ -515,7 +511,7 @@ test('a name as people write it names the teammate: 지민이, 지민이는, 지
   expect(await o.assign({ wait: false, to: [{ who: '지민이', brief: '날씨 조사', then: { who: '서연이는', brief: '문구 한 줄 써줘' } }, { who: '도윤이', brief: '뉴스 조사' }] })).toBe('도윤은 새로 넣고, 지민, 도윤한테 나눠 맡겼어요. 지민이 끝내면 서연한테 넘길게요.')
   expect((await loadBots(o.paths)).map(bot => bot.name).sort()).toEqual(['도윤', '서연', '엔그램', '지민'])
   expect(o.task.team!.members.map(m => [m.role, m.title, m.then?.who])).toEqual([['지민', '날씨 조사', '서연'], ['도윤', '뉴스 조사', undefined]])
-  expect(aboutEmployee('서연이는 무슨 일 하는 사람이야?', await loadBots(o.paths), [])).toBe('서연은 카피 담당이에요. 아직 맡은 일은 없어요.')
+  expect(isCompanyAsk('서연이는 어떤 일을 맡고 있어?', (await loadBots(o.paths)).map(bot => bot.name), false)).toBe(true)
 })
 
 test('one hand-off sentence, whoever is new and however many take a part', async () => {
@@ -540,28 +536,22 @@ test('what a job was, from the words it was asked in', () => {
 })
 
 test('a hand-off from one teammate to the next, and a part each for two, are the assign call itself', async () => {
-  const staff = ['지민', '서연', '도윤']
-  expect(plainHandoff('지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', staff)).toEqual({ wait: false, to: [{ who: '지민', then: { who: '서연', brief: '홍보 문구 3개 뽑기' } }] })
-  expect(plainHandoff('도윤이 일 다 끝나면 지민이한테 넘겨서 한 줄로 요약해줘', staff)).toEqual({ wait: false, to: [{ who: '도윤', then: { who: '지민', brief: '한 줄로 요약해줘' } }] })
-  expect(plainHandoff('지민이는 이번 주말 서울 날씨 찾아보고, 서연이는 그걸로 주말 나들이 추천 문구 한 줄 써줘', staff)).toEqual({ wait: false, to: [{ who: '지민', brief: '이번 주말 서울 날씨 찾기', then: { who: '서연', brief: '주말 나들이 추천 문구 한 줄 써줘' } }] })
-  expect(plainHandoff('도윤은 환율 조사하고 지민은 그 결과로 한 문단 써줘', staff)?.to).toEqual([{ who: '도윤', brief: '환율 조사', then: { who: '지민', brief: '한 문단 써줘' } }])
-  for (const ask of [
-    '하린 조사 끝나면 서연한테 넘겨서 문구 뽑게 해', '지민 조사 끝나면 지민한테 넘겨서 요약해줘',
-    '지민 조사 끝나면 서연한테 넘겨서 엑셀 파일로 만들어줘', '지민 조사 끝나면 서연한테 넘겨서 거래처에 메일 보내',
-    '지민이는 날씨 찾아보고, 서연이는 그걸로 문구 써서 슬랙에 올려줘', '지민이는 날씨 찾아보고, 하린이는 그걸로 문구 써줘',
-    '지민이는 날씨 찾아보고 서연이는 뉴스 찾아줘',
-  ]) expect(plainHandoff(ask, staff), ask).toBeUndefined()
+  const who = { staff: ['하늘', '보람', '다온'], chief: true }
+  for (const ask of ['하늘 일 마무리되면 보람한테 넘겨서 안내 글귀 두 개 쓰게 해', '다온이 일 다 끝나면 하늘이한테 넘겨서 세 줄로 줄여 줘', '다온이는 캠핑장 날씨 알아보고, 이안이는 그걸로 준비물 한 줄 써줘', '보람은 보조금 조건 살펴보고 하늘은 그 결과로 안내문 써줘', '하늘이는 도서관 휴관일 찾고 보람이는 셔틀 시간 찾아줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  for (const ask of ['하늘 일 마무리되면 보람한테 넘겨서 거래처에 메일 보내', '다온이는 요금 살피고, 보람이는 그걸로 글 써서 슬랙에 올려줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
   const o = await office()
-  const hand = plainHandoff('지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', ['지민', '서연'])!
+  const hand = { wait: false, to: [{ who: '지민', then: { who: '서연', brief: '안내 글귀 두 개 쓰기' } }] }
   o.attachable(true)
   expect(await o.assign(hand)).toBe('지민이 끝내면 서연한테 넘길게요.')
-  expect(o.attached.at(-1)).toMatchObject({ then: { who: '서연', brief: '홍보 문구 3개 뽑기' } })
+  expect(o.attached.at(-1)).toMatchObject({ then: { who: '서연', brief: '안내 글귀 두 개 쓰기' } })
   o.attachable(false)
   const { createTask, updateTask } = await import('../src/delegated-tasks.js')
   const earlier = await createTask(o.paths, '경쟁사 조사', o.chief.id), kim = (await o.named('지민'))!
   await updateTask(o.paths, earlier.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '노션 신기능 조사', botId: kim.id, state: 'released', result: 'Notion Agent 개선 https://www.notion.com/releases', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
   expect(await o.assign(hand)).toBe('지민이 한 걸 서연한테 넘겼어요.')
-  expect(o.task.team!.members[0]).toMatchObject({ role: '서연', writer: true, background: true, title: '홍보 문구 3개 뽑기' })
+  expect(o.task.team!.members[0]).toMatchObject({ role: '서연', writer: true, background: true, title: '안내 글귀 두 개 쓰기' })
   expect(handedFrom(o.task.team!.members[0]!.brief)).toMatchObject({ from: '지민', job: '노션 신기능 조사', result: 'Notion Agent 개선 https://www.notion.com/releases' })
   expect(['홍보 문구 3개 뽑기', '주말 나들이 추천 문구 한 줄 써줘', '한 줄로 요약해줘', '영어로 번역해줘'].map(writesFromHandover)).toEqual([true, true, true, true])
   expect(['그걸로 경쟁사 가격도 조사해줘', '관련 뉴스 찾아줘'].map(writesFromHandover)).toEqual([false, false])
@@ -582,20 +572,20 @@ test('a sentence that gives named teammates their parts takes the team lane; one
 })
 
 test('two or three people are added in one sentence, a removed name comes back, and it is said in one line', async () => {
-  expect(plainHire('지민이랑 서연이 팀에 추가해줘. 지민이는 조사 담당, 서연이는 글 담당')).toEqual({ add: [{ name: '지민', role: '조사 담당' }, { name: '서연', role: '글 담당' }] })
-  expect(plainHire('하린, 도윤, 민호 추가해줘. 하린은 디자인 담당, 도윤은 영업 담당이고 민호는 고객 응대 담당이야')).toEqual({ add: [{ name: '하린', role: '디자인 담당' }, { name: '도윤', role: '영업 담당' }, { name: '민호', role: '고객 응대 담당' }] })
-  for (const ask of ['지민이랑 서연이 팀에 추가해줘. 지민이는 조사 담당', '지민이랑 서연이 팀에 추가해줘. 지민이는 조사 담당, 하린이는 글 담당', '지민이랑 지민이 추가해줘. 지민이는 조사 담당, 지민이는 글 담당', '사진이랑 로고 추가해줘. 사진은 편집 담당, 로고는 디자인 담당', '가, 나, 다, 라 추가해줘. 가는 a 담당'])
-    expect(plainHire(ask), ask).toBeUndefined()
+  for (const ask of ['다온이랑 이안이 팀에 채용해줘. 다온이는 숙소 담당, 이안이는 번역 담당', '로운, 다온, 이안 고용해줘. 로운은 회계 담당, 다온은 일정 담당이고 이안은 통역 담당이야'])
+    expect([isHireAsk(ask), takesCompanyLane(ask, { staff: [], chief: true })], ask).toEqual([true, true])
+  for (const ask of ['다온이랑 이안이 팀에 채용해줘. 다온이는 숙소 담당', '다온이랑 이안이 팀에 채용해줘. 다온이는 숙소 담당, 로운이는 번역 담당', '다온이랑 다온이 채용해줘. 다온이는 숙소 담당, 다온이는 번역 담당', '사진이랑 로고 채용해줘. 사진은 편집 담당, 로고는 디자인 담당', '가, 나, 다, 라 채용해줘. 가는 a 담당'])
+    expect(isHireAsk(ask), ask).toBe(false)
   const c = await company()
   await c.run({ add: [{ name: '지민', role: '리서치 담당' }, { name: '서연', role: '카피 담당' }] })
   const kim = (await c.named('지민'))!, park = (await c.named('서연'))!
   await c.run({ remove: ['서연'], rename: [{ who: '지민', name: '지우' }] })
-  expect(await c.run(plainHire('지민이랑 서연이 팀에 추가해줘. 지민이는 조사 담당, 서연이는 글 담당')!)).toBe('지민은 조사 담당으로 넣고, 서연은 글 담당으로 다시 불렀어요.')
+  expect(await c.run({ add: [{ name: '지민', role: '조사 담당' }, { name: '서연', role: '글 담당' }] })).toBe('지민은 조사 담당으로 넣고, 서연은 글 담당으로 다시 불렀어요.')
   expect(await c.named('서연')).toMatchObject({ id: park.id, label: '글 담당' })
   expect((await c.named('지민'))!.id).not.toBe(kim.id)
   expect(await c.named('지우')).toMatchObject({ id: kim.id, label: '리서치 담당' })
   const fresh = await company()
-  expect(await fresh.run(plainHire('지민이랑 서연이 팀에 추가해줘. 지민이는 조사 담당, 서연이는 글 담당')!)).toBe('지민은 조사 담당, 서연은 글 담당으로 넣었어요.')
+  expect(await fresh.run({ add: [{ name: '지민', role: '자료 담당' }, { name: '서연', role: '글 담당' }] })).toBe('지민은 자료 담당, 서연은 글 담당으로 넣었어요.')
 })
 
 test('who someone is and what everyone is doing, on the tasks as they were stored', async () => {
@@ -607,15 +597,17 @@ test('who someone is and what everyone is doing, on the tasks as they were store
     { ...task({ id: 'c3', botId: c.chief.id, state: 'done' as const, goal: stored.c3.goal }), team: { members: own(c3, [id('지우'), id('서연'), id('도윤')]), hires: 3, maxHires: 8, maxDepth: 3, big: false } },
     { ...task({ id: 'c5', botId: c.chief.id, state: 'done' as const, goal: stored.c5.goal }), team: { members: own(c5, [id('지우')]), hires: 1, maxHires: 8, maxDepth: 3, big: false } },
   ]
-  expect(aboutEmployee('지우 무슨 일 하는 사람이야?', bots, tasks)).toBe('지우는 리서치 담당이에요. 요즘은 다음 달 서울 IT 행사 일정 정리랑 노션의 이번 주 신기능 조사를 했어요.')
+  expect(await companyNote(c.paths, { bots, message: '지우는 어떤 일을 맡고 있어?', chief: true, tasks })).toContain('- 지우 — 리서치 담당')
   expect(companyStatus(bots, tasks)).toBe('지우는 다음 달 서울 IT 행사 일정 정리, 서연은 슬랙의 이번 주 신기능 조사, 도윤은 리니어의 이번 주 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 한가해요.')
-  expect(`${aboutEmployee('지우 무슨 일 하는 사람이야?', bots, tasks)}${companyStatus(bots, tasks)}`).not.toMatch(/해줘|최근에 한 일:|^- |—/m)
+  expect(companyStatus(bots, tasks)).not.toMatch(/해줘|최근에 한 일:|^- |—/m)
   const cut = [{ ...tasks[0]!, team: { ...tasks[0]!.team, members: tasks[0]!.team.members.map((m, i) => i === 1 ? { ...m, title: '슬랙(Slack)의 이번 주(최근 7일 내) 신기능 발표나 업데이트를 조…', topic: '슬랙 신기능 조사' } : m) } }, tasks[1]!]
   expect(companyStatus(bots, cut)).toContain('서연은 슬랙 신기능 조사, 도윤은')
-  for (const ask of ['다들 뭐 하고 있어?', '내 일정 뭐 있어?', '서연은 빼고 지우는 이름을 지민으로 바꿔', '지우 무슨 일 하는 사람이야?', '하린 하나 추가해줘. 디자인 담당이야', '이거 지우한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '지우 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', '매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘'])
-    expect(answersItself(ask, bots), ask).toBe(true)
-  for (const ask of ['이번 주 팀이 한 일 요약해', '원달러 환율 지금 얼마야?', '이거 지우한테 맡겨: 정리해서 슬랙에 올려', '매주 월요일 9시에 슬랙에 요약 올려줘'])
-    expect(answersItself(ask, bots), ask).toBe(false)
+  const kept = [{ id: 'k', name: 'k', goal: '셔틀 시간 알려줘', schedule: { days: [2], hour: 8, minute: 0 } } as BotTask]
+  const who = { staff: ['지우', '서연', '도윤'], chief: true, kept, lastReply: `${scheduleWordsKo(kept[0]!.schedule!)}에 셔틀 시간 알려 드릴게요.` }
+  for (const ask of ['다들 뭐해', '팀 현황', '예약된 일정 보여줘', '그 일정 삭제해 주세요', '서연은 팀에서 빼 줘', '지우 이름을 지호로 바꿔줘', '지우 담당이 뭐야?', '로운 새로 뽑아, 회계 담당', '지우한테 시켜: 셔틀 시간표 모으기', '지우 일 마무리되면 도윤한테 넘겨서 안내문 쓰게 해', '평일마다 오전 7시에 셔틀 시간 알려줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  for (const ask of ['고양이 사료 추천해줘', '도윤한테 시켜서 결과는 메일로 넘겨', '셔틀 시간표 엑셀로 만들어줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
 })
 
 test('the team record gets a line for every finished part: a hand-off says whose work it was made from, and nothing found is said plainly', async () => {
@@ -656,30 +648,22 @@ test('what the team did: the prompt asks for sentences with who and day, bans fa
   expect(await companyNote(c.paths, { bots: await loadBots(c.paths), message: '이번 주 팀이 한 일 요약해', tasks, chief: true, now: new Date('2026-11-17T03:00:00.000Z') })).toContain('(지민, 11월 16일)')
 })
 
-import { topicOf, askedCount, dutyList, dutyToCancel, isDutyListAsk, plainChange, plainSplit } from '../src/company-tools.js'
+import { topicOf, askedCount, isDutyCancel } from '../src/company-tools.js'
+import { scheduleWordsKo } from '../src/schedule-tools.js'
 import type { BotTask } from '../src/bots.js'
 
-test('c4 C3: a plain split is the assign call itself: thing i goes to name i, and anything unsure is left to the model', async () => {
-  const staff = ['지민', '서연']
-  const c3 = '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜'
-  expect(plainSplit(c3, staff)).toEqual({ wait: false, to: [
-    { who: '지민', brief: '이번 주 노션 신기능 조사해서 알려줘', topic: '노션' },
-    { who: '서연', brief: '이번 주 슬랙 신기능 조사해서 알려줘', topic: '슬랙' },
-    { who: '도윤', brief: '이번 주 리니어 신기능 조사해서 알려줘', topic: '리니어' },
-  ] })
-  expect(jobTitle(plainSplit(c3, staff)!.to[0]!.brief)).toBe('이번 주 노션 신기능 조사')
-  expect(plainSplit('노션, 슬랙 가격 조사해줘. 지민이랑 서연이한테 나눠서 시켜', staff)?.to.map(one => [one.who, one.topic, one.brief])).toEqual([['지민', '노션', '노션 가격 조사해줘'], ['서연', '슬랙', '슬랙 가격 조사해줘']])
-  expect(plainSplit('서울, 부산 이번 주말 날씨 찾아줘. 지민, 서연에게 각각 맡겨줘.', staff)?.to.map(one => one.brief)).toEqual(['서울 이번 주말 날씨 찾아줘', '부산 이번 주말 날씨 찾아줘'])
-  expect(plainSplit('지민, 서연한테 나눠서 시켜: 노션, 슬랙 신기능 조사해줘', staff)?.to.map(one => one.topic)).toEqual(['노션', '슬랙'])
-  for (const ask of ['노션, 슬랙, 리니어 신기능 조사해서 알려줘. 지민, 서연한테 나눠서 시켜', '경쟁사 신기능 조사해서 알려줘. 지민, 서연한테 나눠서 시켜', '노션, 슬랙 비교 파일 만들어줘. 지민, 서연한테 나눠서 시켜', '노션, 슬랙 신기능 조사해서 슬랙에 올려줘. 지민, 서연한테 나눠서 시켜', '노션, 슬랙 신기능 조사해줘. 지민, 지민한테 나눠서 시켜', '아이폰 18, 갤럭시 S27, 픽셀 11 가격 조사해줘. 지민, 서연, 도윤한테 나눠서 시켜', '이거 지민한테 맡겨: 노션, 슬랙 조사'])
-    expect(plainSplit(ask, staff), ask).toBeUndefined()
+test('c4 C3: a split across named teammates takes the team lane however it is worded, and the assign call the model makes gives part i to name i', async () => {
+  const who = { staff: ['하늘', '보람'], chief: true }
+  for (const ask of ['캠핑장 셋(가평, 홍천, 양평) 예약 조건 알아봐 줘. 하늘, 보람, 다온한테 하나씩 맡겨', '가평, 홍천 캠핑장 요금 알아봐줘. 하늘이랑 보람이한테 각각 시켜', '하늘, 보람한테 나눠 맡겨 줘: 가평, 홍천 날씨 봐줘', '보조금 조건 찾아줘. 하늘, 보람에게 각각 맡겨줘.'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  expect(takesCompanyLane('가평, 홍천 캠핑장 요금 찾아서 슬랙에 올려줘. 하늘, 보람한테 하나씩 맡겨', who)).toBe(false)
   const o = await office()
-  expect(answersItself(c3, await loadBots(o.paths))).toBe(true)
-  const line = await o.assign(plainSplit(c3, staff)!)
+  const line = await o.assign({ wait: false, to: [{ who: '지민', brief: '노션 요금제 변화 알아봐줘', topic: '노션' }, { who: '서연', brief: '슬랙 요금제 변화 알아봐줘', topic: '슬랙' }, { who: '도윤', brief: '리니어 요금제 변화 알아봐줘', topic: '리니어' }] })
   expect(line).toBe('도윤은 새로 넣고, 지민, 서연, 도윤한테 나눠 맡겼어요.')
   expect(Array.from(line).length).toBeLessThanOrEqual(60)
   expect((await o.named('도윤'))?.label).toBe('리니어 담당')
   expect(o.task.team!.members.map(m => [m.role, m.topic, m.lookup, m.background])).toEqual([['지민', '노션', true, true], ['서연', '슬랙', true, true], ['도윤', '리니어', true, true]])
+  expect(Object.keys(companyTools)).not.toContain('plainSplit')
 })
 
 test('a teammate whose time ran out with pages in hand hands back what they read; one that stopped with nothing is handed back as failed', () => {
@@ -703,34 +687,38 @@ test('three short lines a writer made come back as their three lines, and the wr
   for (const [brief, n] of [['홍보 문구 3개 뽑기', 3], ['장점 3가지 정리', 3], ['소개 글 세 줄 쓰기', 3], ['후보 두 개 고르기', 2], ['문구 한 줄 쓰기', 0], ['12월 행사 일정 정리', 0], ['노션 신기능 조사', 0]] as const) expect(askedCount(brief), brief).toBe(n)
 })
 
-test('c4 C7: "내 일정 뭐 있어?" is answered from the stored schedules, and "그거 취소해" right after means that one', () => {
+test('c4 C7: asking for the schedules or cancelling the one just listed takes the team lane, where the schedule tool lists and removes', () => {
   const kept = (id: string, goal: string, days: number[], hour: number): BotTask => ({ id, name: goal, goal, schedule: { days, hour, minute: 0 } } as BotTask)
-  const weekly = kept('a', '지난주 팀이 한 일 요약해줘', [1], 9)
-  for (const ask of ['내 일정 뭐 있어?', '일정 뭐 있어', '내 스케줄 알려줘']) expect(isDutyListAsk(ask), ask).toBe(true)
-  for (const ask of ['내일 일정 정리해줘', '매주 월요일 9시에 요약해줘', '일정표 만들어줘']) expect(isDutyListAsk(ask), ask).toBe(false)
-  expect(dutyList([])).toBe('제가 따로 챙기는 일정은 아직 없어요. 다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
-  expect(dutyList([weekly, { id: 'r', name: 'x', goal: 'x', routineId: 'r1', schedule: { days: [1], hour: 8, minute: 0 } } as BotTask, { id: 'n', name: 'y', goal: 'y' } as BotTask])).toBe('제가 챙기는 건 매주 월요일 9시에 지난주 팀이 한 일 요약해 드리는 거 하나예요. 다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
-  expect(dutyList([weekly, kept('b', 'AI 뉴스 정리해줘', [0, 1, 2, 3, 4, 5, 6], 18)])).toBe('제가 챙기는 정기 일정은 2개예요.\n\n- 매주 월요일 9시: 지난주 팀이 한 일 요약\n- 매일 오후 6시: AI 뉴스 정리\n\n다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
-  expect(dutyToCancel('그거 취소해', [weekly], dutyList([weekly]))).toBe(weekly)
-  expect(dutyToCancel('그 일정 없애줘', [weekly], '매주 월요일 9시에 지난주 팀이 한 일 요약해 드릴게요.')).toBe(weekly)
-  expect(dutyToCancel('그거 취소해', [weekly], '지민한테 맡겼어요.')).toBeUndefined()
-  expect(dutyToCancel('그거 취소해', [weekly], undefined)).toBeUndefined()
-  expect(dutyToCancel('그거 취소해', [weekly, kept('b', 'AI 뉴스 정리해줘', [1], 18)], dutyList([weekly]))).toBeUndefined()
-  expect(dutyToCancel('그 회의 취소해', [weekly], dutyList([weekly]))).toBeUndefined()
+  const weekly = kept('a', '도서관 신착 도서 알려줘', [3], 10)
+  const told = `${scheduleWordsKo(weekly.schedule!)}에 도서관 신착 도서 알려 드릴게요.`
+  for (const ask of ['제 스케줄 뭐뭐 있어요?', '예약된 일정 보여줘', '지금 잡힌 스케줄 알려 줘']) {
+    expect(isDutyAsk(ask), ask).toBe(true)
+    expect(takesCompanyLane(ask, { staff: [], chief: true }), ask).toBe(true)
+  }
+  for (const ask of ['내일 회의 일정 정리해줘', '일정표 엑셀로 만들어줘']) expect(isDutyAsk(ask), ask).toBe(false)
+  for (const ask of ['그거 지워 줘', '방금 일정 삭제해 주세요', '그 일정은 없애줘요']) {
+    expect(isDutyCancel(ask, [weekly], told), ask).toBe(true)
+    expect(takesCompanyLane(ask, { staff: [], chief: true, kept: [weekly], lastReply: told }), ask).toBe(true)
+    expect(takesCompanyLane(ask, { staff: [], chief: true }), ask).toBe(false)
+    expect(takesCompanyLane(ask, { staff: [], chief: true, kept: [weekly], lastReply: told, scheduled: true }), ask).toBe(false)
+  }
+  expect(isDutyCancel('그거 지워 줘', [weekly], '하늘한테 맡겼어요.')).toBe(false)
+  expect(isDutyCancel('그거 지워 줘', [weekly], undefined)).toBe(false)
+  expect(isDutyCancel('그거 지워 줘', [weekly, kept('b', '셔틀 시간 알려줘', [1], 18)], told)).toBe(false)
+  expect(isDutyCancel('그 약속 지워 줘', [weekly], told)).toBe(false)
 })
 
-test('c4 C8/C2: taking one teammate off and renaming one is the agents call itself, answered in one sentence; "서연도" is answered "서연도"', async () => {
-  const staff = ['지민', '서연']
-  expect(plainChange('서연은 빼고 지민은 이름을 지우로 바꿔', staff)).toEqual({ remove: ['서연'], rename: [{ who: '지민', name: '지우' }] })
-  expect(plainChange('지민이 이름을 지우로 바꾸고 서연이는 빼줘', staff)).toEqual({ remove: ['서연'], rename: [{ who: '지민', name: '지우' }] })
-  expect(plainChange('서연은 빼줘', staff)).toEqual({ remove: ['서연'] })
-  expect(plainChange('지민 이름 지우로 바꿔줘.', staff)).toEqual({ rename: [{ who: '지민', name: '지우' }] })
-  for (const ask of ['도윤은 빼줘', '지민은 이름을 서연으로 바꿔', '지민은 디자인 담당으로 바꿔', '지민은 빼고 서연은 빼줘', '표에서 지민 이름을 지우로 바꿔서 저장해줘', '서연은 빼고 지민한테 이거 맡겨']) expect(plainChange(ask, staff), ask).toBeUndefined()
+test('c4 C8/C2: taking one teammate off and renaming one takes the team lane, and the agents call answers in one sentence; "서연도" is answered "서연도"', async () => {
+  const who = { staff: ['하늘', '보람'], chief: true }
+  for (const ask of ['보람은 팀에서 빼 줘', '하늘 이름을 하랑으로 바꿔줘', '보람 내보내고 하늘 이름은 하랑으로 바꿔', '하늘이 이름 하랑으로 바꾸고 보람이는 빼줘'])
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+  for (const ask of ['하늘 이름 하랑으로 바꿔서 메일로 쏴 줘', '보람은 빼고 결과는 메일로 넘겨'])
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
   const o = await company()
   expect(await o.run({ add: [{ name: '지민', role: '리서치 담당' }] })).toBe('지민을 리서치 담당으로 추가했어요.')
-  expect(await o.run(plainHire('서연도 추가해줘. 카피 담당이야')!)).toBe('서연도 카피 담당으로 넣었어요.')
+  expect(await o.run({ add: [{ name: '서연', role: '카피 담당', also: true }] })).toBe('서연도 카피 담당으로 넣었어요.')
   const kim = (await o.named('지민'))!
-  expect(await o.run(plainChange('서연은 빼고 지민은 이름을 지우로 바꿔', staff)!)).toBe('서연은 뺐고, 지민은 이제 지우예요.')
+  expect(await o.run({ remove: ['서연'], rename: [{ who: '지민', name: '지우' }] })).toBe('서연은 뺐고, 지민은 이제 지우예요.')
   expect((await o.named('지우'))?.id).toBe(kim.id)
   expect((await loadArchivedBots(o.paths)).map(bot => bot.name)).toEqual(['서연'])
   expect(await o.run({ remove: ['지우'] })).toBe('지우는 뺐어요. 다시 부르면 돌아와요.')
@@ -833,7 +821,7 @@ test('nothing is asked of a second model for a part that read English pages: the
   expect((JSON.parse(out!) as Handed).reports[0]!.result).toBe(m.result)
 })
 
-import { followsLate, lateParts, lateShown, markLate, teamSummary } from '../src/company-tools.js'
+import { followsLate, lateParts, lateShown, markLate } from '../src/company-tools.js'
 const teamTask = (members: TeamMember[], over: Partial<DelegatedTask> = {}): DelegatedTask => ({ ...task({ id: 'job', botId: 'lead', state: 'running', goal: '맡긴 일', ...over }), team: { members, hires: members.length, maxHires: 8, maxDepth: 3, big: false } })
 
 test('an address ending in .html is not a file, so the part is handed back to the lead step; a part that made a file is left for the lead to deliver', () => {
@@ -896,7 +884,7 @@ test('links that follow each other in a draft are posted exactly as written', as
   expect(await posted(draft, '빵집이랑 둘레길 소식')).toBe(draft)
 })
 
-test('c5 C10: what the team did is written from the record by the quick model, checked by the host, with no round of the lead', async () => {
+test('c5 C10: what the team did takes the team lane and the lane note carries the record, so the lane model writes it and no host writer is left', async () => {
   const c = await company()
   await c.run({ add: [{ name: '지우', role: '리서치 담당' }, { name: '서연', role: '카피 담당' }] })
   const day = new Date('2026-11-16T03:00:00.000Z'), now = new Date(2026, 10, 18, 10)
@@ -907,31 +895,16 @@ test('c5 C10: what the team did is written from the record by the quick model, c
     '지난 분기 정리 → 표로 정리했어요 (지우, 2026-11-03)',
   ], day)
   await c.run({ remove: ['서연'] })
-  const bots = await loadBots(c.paths), asked: string[] = []
-  const good = '월요일에 지우가 노션 신기능을 살펴봤는데 새 발표는 없었어요. 서연은 슬랙에서 세일즈포스 에이전트 스워밍 기능을 찾았어요. 지우 조사로 홍보 문구 3개도 썼고요.'
-  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return good } })).toBe(good)
-  expect(asked[0]).toContain('two to four short sentences')
-  expect(asked).toHaveLength(1)
-  expect(asked[0]!.length).toBeLessThan(3000)
-  const record = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; got: string; day: string; from?: string }[]
-  expect(record.map(job => [job.who, job.did, job.day])).toEqual([['지우', '노션 신기능 조사', '월요일'], ['서연', '슬랙 신기능 조사', '월요일'], ['서연', '홍보 문구 3개 뽑기', '월요일']])
-  expect(record[2]!.from).toBe('지우')
-  expect(asked[0]).not.toMatch(/https?:\/\/|2026-11/)
-  expect(asked[0]).toContain('start with exactly "이번 주엔" and use no other day or time word')
-  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 서연은 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요. 서연은 이제 팀에 없어요.'
-  const five = '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.'
-  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => five })).toBe(five)
-  for (const odd of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.']) expect(await teamSummary(c.paths, { bots, message: '금주 동료들 작업 내역 들려줘', now, write: async () => odd })).toBe(odd)
-  for (const none of ['', '  \n', undefined]) expect(await teamSummary(c.paths, { bots, message: '금주 동료들 작업 내역 들려줘', now, write: async () => none })).toBe(plain)
-  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })).toBe(plain)
-  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, timeoutMs: 10, write: () => new Promise(() => undefined) })).toBe(plain)
-  expect(await teamSummary(c.paths, { bots, message: '지난주 팀이 한 일 요약해줘', now, write: async () => good })).toBe('지난주엔 아직 팀이 끝낸 일이 없어요.')
-  const later = JSON.parse((await (async () => { const seen: string[] = []; await teamSummary(c.paths, { bots, message: '매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘', now: new Date(2026, 10, 23, 9), write: async prompt => { seen.push(prompt); return good } }); return seen[0]! })()).split('Record: ')[1]!) as { day: string }[]
-  expect(later.map(job => job.day)).toEqual(['11월 16일', '11월 16일', '11월 16일'])
-  expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now })).toBeUndefined()
+  const bots = await loadBots(c.paths), mine = '이번 달 팀원들이 한 일 쭉 말해 줘'
+  expect(takesCompanyLane(mine, { staff: employees(bots).map(bot => bot.name), chief: true })).toBe(true)
+  const note = await companyNote(c.paths, { bots, message: mine, chief: true, now })
+  expect(note).toContain('The team\'s record')
+  for (const line of ['노션 신기능 조사 → 새 발표는 없었어요', '(지우, 11월 16일)', '(서연, 11월 16일)', '(지우한테 받아서)', '(지우, 11월 3일)']) expect(note, line).toContain(line)
+  expect(note.split('The team\'s record')[1]).not.toMatch(/\d{4}-\d\d-\d\d/)
+  expect(Object.keys(companyTools).filter(key => /summary/i.test(key))).toEqual([])
 })
 
-test('c16a: in the host\'s week summary a teammate\'s second job keeps its subject (a wording not in the harness)', async () => {
+test('c16a: in the record the lane model writes the week from, a teammate\'s second job keeps its subject and who it came from', async () => {
   const c = await company()
   await c.run({ add: [{ name: '하람', role: '리서치 담당' }, { name: '이든', role: '글 담당' }] })
   const day = new Date('2026-11-16T03:00:00.000Z'), now = new Date(2026, 10, 18, 10)
@@ -940,9 +913,9 @@ test('c16a: in the host\'s week summary a teammate\'s second job keeps its subje
     '나들이 문구 쓰기 (하람한테 받아서) → 1. 바다 보러 가요 (이든, 2026-11-16)',
   ], day)
   const bots = await loadBots(c.paths)
-  const plain = await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })
-  expect(plain).toContain('이든은 하람이 찾은 걸로 나들이 문구 쓰기를 했어요.')
-  expect(plain).not.toMatch(/\. 하람이 찾은 걸로/)
+  const note = await companyNote(c.paths, { bots, message: '요번 주에 팀원들이 한 일 들려줘', chief: true, now })
+  expect(note).toContain('강릉 카페 찾기 → 카페 두 곳을 찾았어요 (이든, 11월 16일)')
+  expect(note).toContain('나들이 문구 쓰기 (하람한테 받아서) → 1. 바다 보러 가요 (이든, 11월 16일)')
 })
 
 test('a part still at work when the others are handed back is in the hand-back as working, and is handed back alone afterwards', () => {
@@ -1041,34 +1014,21 @@ test('a find dated outside the time asked is handed back with its own date, for 
   expect(COLLEAGUE_CORE_RULE).toContain('never left out and never shown as finished')
 })
 
-test('c6 item 5 (C10): the weekly summary says what the record says: no example a writer can copy, each job marked found or not, a found job never in a "없었" clause', async () => {
+test('c6 item 5 (C10): the record the lane model writes the week from says what each job brought, found or not, under its own teammate', async () => {
   const c = await company(), now = NOV17
   await c.run({ add: [{ name: '지우', role: '리서치 담당' }, { name: '도윤', role: '리니어 조사 담당' }] })
   const bots = await loadBots(c.paths)
   await recordFacts(c.paths, TEAM_MEMORY, stack5.record.map(line => line.replace('(지민, ', '(지우, ').replace('(지민한테 받아서)', '(지우한테 받아서)')), now)
-  const asked: string[] = []
-  const sum = (text: string) => teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return text } })
-  const plain = await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => '' })
-  expect(await sum(stack5.c10)).toBe(stack5.c10)
-  expect(plain).toContain('도윤')
-  expect(asked[0]).not.toMatch(/노션이랑 리니어|서연이 지민/)
-  expect(asked[0]).toContain('"A랑 B 쪽은 새 소식이 없었어요."')
-  const jobs = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; nothing: boolean }[]
-  expect(jobs.map(job => [job.who, job.did, job.nothing])).toEqual([['서연', '슬랙 신기능 조사', false], ['지우', '노션 신기능 조사', false], ['도윤', '리니어 신기능 조사', false], ['지우', '다음 달 서울 IT 행사 일정 정리', false], ['서연', '홍보 문구 3개 뽑기', false], ['지우', '이번 주말 서울 날씨 찾기', false], ['서연', '주말 나들이 추천 문구 한 줄 쓰기', false]])
-  const right = '이번 주엔 서연이 슬랙 신기능을 조사해서 Salesforce 에이전트 스워밍 기능을 확인했어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았고, 지우는 노션이랑 다음 달 서울 IT 행사, 주말 날씨를 살펴봤어요. 서연이 그 조사로 홍보 문구 3개와 주말 나들이 추천 문구를 썼어요.'
-  expect(await sum(right)).toBe(right)
+  const week = '요번 주에 팀원들이 한 일 들려줘'
+  const note = await companyNote(c.paths, { bots, message: week, chief: true, now })
+  for (const job of ['슬랙 신기능 조사', '노션 신기능 조사', '리니어 신기능 조사']) expect(note, job).toContain(job)
+  expect(note).toContain('도윤')
+  expect(note).not.toMatch(/노션이랑 리니어|서연이 지민/)
   const d = await company()
   await recordFacts(d.paths, TEAM_MEMORY, ['이번 주 노션 신기능 조사 → 못 찾았어요 (지우, 2026-11-17)', '이번 주 리니어 신기능 조사 → BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. (도윤, 2026-11-17)'], now)
-  const two = (text: string) => teamSummary(d.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return text } })
-  const fine = '이번 주엔 지우가 노션 쪽을 봤는데 새 소식은 없었어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았어요.'
-  expect(await two(fine)).toBe(fine)
-  expect((JSON.parse(asked.filter(one => one.includes('Record: ')).at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, false])
-  const odd = '오늘 지우랑 도윤이 노션이랑 리니어 쪽은 새 소식이 없었어요.'
-  expect(await two(odd)).toBe(odd)
-  const kept = (await two(''))!
-  expect(kept).toBe('이번 주엔 도윤은 리니어 신기능 조사를 했어요. BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요.')
-  expect(kept.split(/(?<=[.!?])\s+/).filter(one => one.includes('없었')).join(' ')).not.toMatch(/리니어|도윤/u)
-  expect(await two(' ')).not.toContain('못 찾았')
+  const two = await companyNote(d.paths, { bots, message: week, chief: true, now })
+  expect(two).toContain('이번 주 노션 신기능 조사 → 못 찾았어요 (지우, 11월 17일)')
+  expect(two).toContain('이번 주 리니어 신기능 조사 → BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. (도윤, 11월 17일)')
   const e = await company()
   await e.run({ add: [{ name: '도윤', role: '리니어 조사 담당' }] })
   const bot = (await loadBots(e.paths)).find(one => one.name === '도윤')!
@@ -1081,8 +1041,7 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   const acc = quiet({ ...s5.c5[0]!, role: '도윤' }, { text: 'ACC 2025가 서울 신라호텔에서 열렸어요.', url: 'https://itsight.zdnet.co.kr/conference/ACC2025', site: '', date: '2025년 12월 11일' })
   await employeeWriteBack(e.paths, { botId: bot.id, brief: acc.brief, result: acc.result!, title: s5.c5[0]!.title!, data: acc.data }, now)
   expect((await teamRecord(e.paths)).facts[1]!.text).toMatch(/^다음 달 서울 IT 행사 일정 정리 → 새로 나온 게 없었어요 \(도윤, /)
-  await teamSummary(e.paths, { bots: await loadBots(e.paths), tasks: [teamTask([linear, acc])], message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return '' } })
-  expect((JSON.parse(asked.at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, true])
+  expect((await teamRecord(e.paths)).facts.map(fact => fact.text).filter(text => text.includes('새로 나온 게 없었어요'))).toHaveLength(2)
   expect(await companyNote(e.paths, { bots: await loadBots(e.paths), message: '이번 주 팀이 한 일 요약해', chief: true, now })).not.toMatch(/노션, 슬랙, 리니어 쪽은|서연이 지민 조사로|\(지민, 11월 16일\)/)
 })
 
@@ -1142,7 +1101,7 @@ const s6 = { c3: stack6.c3.members as TeamMember[], c5: stack6.c5.members as Tea
 
 test('c7: each teammate has a way of speaking: given on joining, three in a row differ, kept through a rename, changed by chat, never said in a reply', async () => {
   const { paths, run, named } = await company()
-  const replies = [await run({ add: [{ name: '지민', role: '리서치 담당' }] }), await run(plainHire('서연도 추가해줘. 카피 담당이야')!), await run({ add: [{ name: '도윤', role: '리니어 담당', how: '변경 기록을 먼저 본다' }] })]
+  const replies = [await run({ add: [{ name: '지민', role: '리서치 담당' }] }), await run({ add: [{ name: '서연', role: '카피 담당', also: true }] }), await run({ add: [{ name: '도윤', role: '리니어 담당', how: '변경 기록을 먼저 본다' }] })]
   const voices = await Promise.all(['지민', '서연', '도윤'].map(async name => voiceOf((await named(name))!)))
   expect(voices.every(Boolean)).toBe(true)
   expect(new Set(voices).size).toBe(3)
@@ -1175,7 +1134,7 @@ test('c7: each teammate has a way of speaking: given on joining, three in a row 
   await o.assign({ wait: false, to: [{ who: '도윤', brief: '리니어 조사', topic: '리니어' }] })
   expect(voiceOf((await o.named('도윤'))!)).toBeTruthy()
   const bots = await loadBots(paths)
-  for (const text of [...replies, said, companyStatus(bots, []), String(aboutEmployee('지우 무슨 일 하는 사람이야?', bots, [])), await companyNote(paths, { bots, message: '지우 누구야?', chief: true })]) expect(text).not.toMatch(/말투|차분|또박또박|시원시원|담백|calm|bright|plain and brief/)
+  for (const text of [...replies, said, companyStatus(bots, []), await companyNote(paths, { bots, message: '지우 누구야?', chief: true })]) expect(text).not.toMatch(/말투|차분|또박또박|시원시원|담백|calm|bright|plain and brief/)
 })
 
 test('this run\'s stored results go to the lead under each teammate\'s name and part, and the note asks for one answer that reads as the teammates talking', () => {
@@ -1259,4 +1218,45 @@ test('c9b r2: assign stores each teammate\'s own voice on their part and on the 
   const m = o.task.team!.members[0]!
   expect(m.voice).toBe(voiceOf(kim))
   expect(m.then?.voice).toBe(voiceOf(park))
+})
+
+import { runComet } from '../src/agent-session.js'
+import type { ToolSessionJob } from '../src/engine/types.js'
+import { scheduleTool } from '../src/schedule-tools.js'
+
+test('s1a: a status ask or a question about what the team did over a span takes the team lane for the primary bot, and no other bot', () => {
+  const lead = { staff: ['하늘', '보람'], chief: true }
+  for (const ask of ['다들 뭐해', '팀 현황', '에이전트 현황 보여줘', '모두 무슨 일 하니', '이번 달 팀원들이 한 일 쭉 말해 줘', '요번 주 팀원들이 한 일 들려줘', '오늘 팀원들이 한 거 말해 줘', '다들 어제 뭐 했어?']) {
+    expect(takesCompanyLane(ask, lead), ask).toBe(true)
+    expect(takesCompanyLane(ask, { ...lead, chief: false }), ask).toBe(false)
+  }
+})
+
+test('s1a: one path: the lane model\'s first step calls agents, assign without waiting, schedule add or agents_now, and that tool\'s reply ends the turn; another wording of the same kind gets the same menu and options', async () => {
+  const o = await office()
+  const kept: BotTask[] = []
+  const schedule = scheduleTool({ list: async () => kept, add: async input => { const one = { id: `k${kept.length + 1}`, ...input }; kept.push(one); return one }, remove: async () => true, duty: true, now: () => new Date(2026, 10, 18, 9, 0) })
+  const outside: AgentTool = { name: 'file_read', description: 'reads a file', argsSchema: { type: 'object' }, run: async () => 'x' }
+  const menu = [staffTool(o.paths, o.changed), o.tool, schedule, companyStatusTool(o.paths), outside].filter(tool => COMPANY_LANE_TOOLS.has(tool.name))
+  const seen: { tools: string[]; effort?: string; hint?: string }[] = []
+  const turn = async (message: string, name: string, args: Record<string, unknown>) => {
+    expect(takesCompanyLane(message, { staff: ['지민', '서연'], chief: true, kept, lastReply: '' }), message).toBe(true)
+    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => {
+      seen.push({ tools: job.tools.map(tool => tool.name), effort: job.effort, hint: job.modelHint })
+      await job.tools.find(tool => tool.name === name)!.run(args)
+      return new Promise<never>(() => undefined)
+    } } as never
+    return (await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: menu }, message, { guided: false, modelHint: 'smart', light: true })).answer
+  }
+  expect(await turn('다온 새로 뽑아, 숙소 담당', 'agents', { add: [{ name: '다온', role: '숙소 담당' }] })).toBe('다온을 숙소 담당으로 추가했어요.')
+  expect(await turn('이안을 채용해줘요. 통역 담당이에요', 'agents', { add: [{ name: '이안', role: '통역 담당' }] })).toBe('이안을 통역 담당으로 추가했어요.')
+  expect(await turn('캠핑장 빈자리 살펴보기는 지민 씨한테 넘겨', 'assign', { wait: false, to: [{ who: '지민', brief: '캠핑장 빈자리 살펴보기' }] })).toBe('지민한테 맡겼어요.')
+  expect(await turn('서연에게 시켜 줘: 셔틀 시간표 모으기', 'assign', { wait: false, to: [{ who: '서연', brief: '셔틀 시간표 모으기' }] })).toMatch(/^서연/)
+  expect(await turn('매주 화요일 아침 7시에 도서관 신착 도서 알려줘', 'schedule', { action: 'add', what: '도서관 신착 도서 알려줘', time: '07:00', days: [2] })).toBe('매주 화요일 7시에 도서관 신착 도서 알려 드릴게요.')
+  expect(await turn('평일마다 오전 10시에 셔틀 시간 알려주세요', 'schedule', { action: 'add', what: '셔틀 시간 알려주세요', time: '10:00', days: [1, 2, 3, 4, 5] })).toMatch(/^평일 10시에/)
+  const status = await turn('다들 뭐해', 'agents_now', {})
+  expect(status).toContain('지민')
+  expect(await turn('팀 현황', 'agents_now', {})).toBe(status)
+  expect(new Set(seen.map(one => JSON.stringify(one))).size).toBe(1)
+  expect(seen[0]).toEqual({ tools: ['agents', 'assign', 'schedule', 'agents_now'], effort: 'low', hint: 'smart' })
 })

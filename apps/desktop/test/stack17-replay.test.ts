@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createBot, handBacks, handoffBrief, initVault, keepRead, keepSources, loadBots, LOOKUP_RULE, pointQueries, recordFacts, runToolSession, settleMember, skipWalls, staffTool, TEAM_MEMORY, teamSummary, timeBoxed, type AgentTool, type TeamMember } from 'core'
+import { companyNote, createBot, handBacks, handoffBrief, initVault, keepRead, keepSources, loadBots, LOOKUP_RULE, pointQueries, recordFacts, runToolSession, settleMember, skipWalls, staffTool, TEAM_MEMORY, timeBoxed, type AgentTool, type TeamMember } from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -103,7 +103,7 @@ describe('H2 (stack16: the November turn was rewritten back to December)', () =>
 })
 
 describe('C10 (stack16: "신기능 세 곳", no 노션·슬랙·리니어)', () => {
-  it('the stack16 record: the writer reads each job by its own subject under the rule that none is folded into a count, its text is the answer as written, and the fallback names 노션·슬랙·리니어', async () => {
+  it('the stack16 record: the team lane\'s note gives each job by its own subject, never folded into a count, and the lane model\'s text is the answer as written', async () => {
     const paths = await initVault(await tmpVaultRoot('s17-c10'), { git: false })
     await createBot(paths, { name: '엔그램' })
     await staffTool(paths, () => undefined).run({ add: [{ name: '지민', role: '리서치 담당' }, { name: '서연', role: '카피 담당' }, { name: '도윤', role: '리서치 담당' }] }, { task: '' })
@@ -115,16 +115,12 @@ describe('C10 (stack16: "신기능 세 곳", no 노션·슬랙·리니어)', () 
       '홍보 문구 3개 (지민한테 받아서) → 1. 12월 서울 IT 행사, 놓치지 마세요 (서연, 2026-11-18)',
     ], new Date('2026-11-18T02:00:00.000Z'))
     const bots = await loadBots(paths), now = new Date(2026, 10, 18, 15)
-    const calls: string[] = []
+    const ask = '요번 주 팀원들이 한 일 들려줘'
+    const record = (await companyNote(paths, { bots, message: ask, chief: true, now })).split('The team\'s record')[1]!
+    for (const name of ['노션 신기능 조사', '슬랙 신기능 조사', '리니어 신기능 조사']) expect(record).toContain(name)
+    expect(record).not.toContain('세 곳')
     const named = '이번 주엔 지민·서연·도윤이 노션·슬랙·리니어 신기능을 봤는데 새로 나온 게 없었어요.\n\n지민이 기술 모임 날짜를 모았고, 서연이 그걸로 알림 글을 썼어요.'
-    expect(await teamSummary(paths, { bots, message: '이번 주 팀원들 작업 간추려줘', now, write: async prompt => { calls.push(prompt); return named } })).toBe(named)
-    expect(calls).toHaveLength(1)
-    for (const name of ['노션 신기능', '슬랙 신기능', '리니어 신기능']) expect(calls[0]).toContain(name)
-    expect(calls[0]).toContain('never folded into a count ("세 곳", "여러 건")')
-    const out = (await teamSummary(paths, { bots, message: '이번 주 팀원들 작업 간추려줘', now, write: async () => '' }))!
-    console.log(`C10 replay (no writer text → host fallback):\n${out}`)
-    for (const name of ['노션', '슬랙', '리니어']) expect(out).toContain(name)
-    expect(out).not.toContain('세 곳')
+    expect((await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: named }) } as never, workdir: '/x', tools: [] }, ask)).answer).toBe(named)
   })
 })
 

@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest'
-import { plainSchedule, scheduleTool, scheduleWordsKo, type ScheduleDeps } from '../src/schedule-tools.js'
+import { scheduleTool, scheduleWordsKo, type ScheduleDeps } from '../src/schedule-tools.js'
+import { takesCompanyLane } from '../src/company-tools.js'
+import * as scheduleTools from '../src/schedule-tools.js'
 import type { BotTask } from '../src/bots.js'
 
 function kept(now = new Date(2026, 9, 19, 10, 0)) {
@@ -54,36 +56,38 @@ it('on the person\'s own thread a kept schedule is confirmed by the tool in one 
   expect(kept().tool.closes).toBeUndefined()
 })
 
-it('a plain weekly or daily ask is the schedule call itself: day, time and the job in the person\'s words', () => {
-  expect(plainSchedule('매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘')).toEqual({ action: 'add', what: '지난주 팀이 한 일 요약해줘', time: '09:00', days: [1] })
-  expect(plainSchedule('매주 금요일 오후 3시 반에 이번 주 뉴스 정리해 줘')).toEqual({ action: 'add', what: '이번 주 뉴스 정리해 줘', time: '15:30', days: [5] })
-  expect(plainSchedule('매일 9시 15분에 환율 알려줘')).toEqual({ action: 'add', what: '환율 알려줘', time: '09:15', days: [0, 1, 2, 3, 4, 5, 6] })
-  expect(plainSchedule('평일마다 오전 8시에 오늘 일정 정리해주세요')).toEqual({ action: 'add', what: '오늘 일정 정리해주세요', time: '08:00', days: [1, 2, 3, 4, 5] })
-  expect(plainSchedule('주말마다 낮 12시에 주간 요약 써줘')?.days).toEqual([0, 6])
-  expect(plainSchedule('매주 수요일 저녁 9시에 회의록 요약해줘')?.time).toBe('21:00')
-  expect(plainSchedule('매일 밤 12시에 하루 정리해줘')?.time).toBe('00:00')
-  expect(plainSchedule('매일 오후 12시에 점심 메뉴 추천해줘')?.time).toBe('12:00')
-  expect(plainSchedule('매일 18시에 뉴스 정리해줘')?.time).toBe('18:00')
-  for (const ask of [
-    '매주 월요일 3시에 뉴스 정리해줘',
-    '매주 월요일 아침 13시에 뉴스 정리해줘', '매일 25시에 뉴스 정리해줘', '매일 9시 70분에 뉴스 정리해줘',
-    '매주 월요일이랑 목요일 9시에 뉴스 정리해줘', '매달 1일 9시에 정산해줘', '내일 9시에 알려줘',
-    '매주 월요일 9시에 요약해서 슬랙에 올려줘', '매주 월요일 9시에 지금 것도 정리하고 요약해줘', '매주 월요일 9시에 요약하고 금요일 5시에도 해줘',
-    '매주 월요일 9시에 회의', '내 일정 뭐 있어?', '그거 취소해',
-  ]) expect(plainSchedule(ask), ask).toBeUndefined()
+it('a weekly or daily ask with a time takes the team lane however it is worded, and nothing in the host turns it into the schedule call', () => {
+  const lead = { staff: ['하늘'], chief: true }
+  for (const ask of ['매주 화요일 아침 7시에 도서관 신착 도서 알려줘', '매일 저녁 8시 반에 걸음 수 챙겨 줘', '평일마다 오전 10시에 셔틀 시간 알려주세요', '주말마다 낮 1시에 캠핑장 빈자리 봐 줘', '매주 목요일 22시에 가계부 정리해줘', '수요일마다 15시 정각에 하늘 작업 묶어 줘'])
+    expect(takesCompanyLane(ask, lead), ask).toBe(true)
+  for (const ask of ['매주 화요일 7시에 신착 도서 정리해서 슬랙에 올려줘', '모레 9시에 알려줘', '매주 하는 운동이 너무 힘들어'])
+    expect(takesCompanyLane(ask, lead), ask).toBe(false)
+  expect(takesCompanyLane('매일 저녁 8시 반에 걸음 수 챙겨 줘', { ...lead, scheduled: true })).toBe(false)
+  expect(Object.keys(scheduleTools)).not.toContain('plainSchedule')
+})
+
+it('with a fake clock the real schedule tool lists what is kept and removes the id it listed, and nothing else removes one', async () => {
+  const { tasks, tool } = kept(new Date(2026, 10, 18, 9, 0))
+  await tool.run({ action: 'add', what: '셔틀 시간 알려줘', time: '07:40', days: [1, 2, 3, 4, 5] }, { task: '' })
+  await tool.run({ action: 'add', what: '가계부 정리해줘', time: '22:00', days: [4] }, { task: '' })
+  const listed = JSON.parse(await tool.run({ action: 'list' }, { task: '' }) as string).scheduled as { id: string; what: string }[]
+  expect(listed.map(one => one.what)).toEqual(['셔틀 시간 알려줘', '가계부 정리해줘'])
+  expect(tasks).toHaveLength(2)
+  await tool.run({ action: 'remove', id: listed[1]!.id }, { task: '' })
+  expect(tasks.map(task => task.goal)).toEqual(['셔틀 시간 알려줘'])
 })
 
 it('the confirmation is one sentence that promises the job at the time as people say it; an ending that cannot be turned is quoted', async () => {
   const tasks: BotTask[] = []
   const tool = scheduleTool({ list: async () => tasks, add: async (input) => { const task = { id: `t${tasks.length + 1}`, ...input }; tasks.push(task); return task }, remove: async () => true, duty: true, now: () => new Date(2026, 10, 16, 10, 0) })
-  const add = (ask: string) => tool.run(plainSchedule(ask)!, { task: '' })
-  expect(await add('매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘')).toBe('매주 월요일 9시에 지난주 팀이 한 일 요약해 드릴게요.')
-  expect(await add('매주 금요일 오후 3시 반에 이번 주 뉴스 정리해 줘')).toBe('매주 금요일 오후 3시 반에 이번 주 뉴스 정리해 드릴게요.')
-  expect(await add('매일 9시 15분에 환율 알려줘')).toBe('매일 9시 15분에 환율 알려 드릴게요.')
-  expect(await add('평일마다 오전 8시에 오늘 일정 정리해주세요')).toBe('평일 8시에 오늘 일정 정리해 드릴게요.')
+  const add = (what: string, time: string, days: number[]) => tool.run({ action: 'add', what, time, days }, { task: '' })
+  expect(await add('신착 도서 정리해줘', '09:00', [1])).toBe('매주 월요일 9시에 신착 도서 정리해 드릴게요.')
+  expect(await add('가계부 정리해 줘', '15:30', [2])).toBe('매주 화요일 오후 3시 반에 가계부 정리해 드릴게요.')
+  expect(await add('걸음 수 알려줘', '09:15', [0, 1, 2, 3, 4, 5, 6])).toBe('매일 9시 15분에 걸음 수 알려 드릴게요.')
+  expect(await add('셔틀 시간 정리해주세요', '08:00', [1, 2, 3, 4, 5])).toBe('평일 8시에 셔틀 시간 정리해 드릴게요.')
   expect(await tool.run({ action: 'add', what: '주간 요약', time: '09:00', days: [1] }, { task: '' })).toBe('매주 월요일 9시에 할게요: "주간 요약"')
   expect(await tool.run({ action: 'add', what: '메일 확인해', time: '21:00', days: [1] }, { task: '' })).toBe('매주 월요일 오후 9시에 할게요: "메일 확인해"')
-  expect(tasks[0]).toMatchObject({ goal: '지난주 팀이 한 일 요약해줘', schedule: { days: [1], hour: 9, minute: 0 } })
-  expect(JSON.parse(await tool.run({ action: 'list' }, { task: '' }) as string).scheduled.map((one: { when: string }) => one.when).slice(0, 3)).toEqual(['매주 월요일 9시', '매주 금요일 오후 3시 반', '매일 9시 15분'])
+  expect(tasks[0]).toMatchObject({ goal: '신착 도서 정리해줘', schedule: { days: [1], hour: 9, minute: 0 } })
+  expect(JSON.parse(await tool.run({ action: 'list' }, { task: '' }) as string).scheduled.map((one: { when: string }) => one.when).slice(0, 3)).toEqual(['매주 월요일 9시', '매주 화요일 오후 3시 반', '매일 9시 15분'])
   expect(JSON.parse(await tool.run({ action: 'remove', id: 't1' }, { task: '' }) as string)).toEqual({ removed: 't1' })
 })

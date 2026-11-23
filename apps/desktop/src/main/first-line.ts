@@ -1,4 +1,4 @@
-import { isStatusAsk, type Engine, type EngineCwd } from 'core'
+import type { Engine, EngineCwd } from 'core'
 import { flog } from './flog.js'
 import { laneFirstLine, teamAsk } from './fast-lane.js'
 
@@ -45,7 +45,6 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
   if (ask.followUp) return 'follow-up'
   if (ask.secret) return 'secret'
   if (ask.message.trim().startsWith('/')) return 'command'
-  if (isStatusAsk(ask.message)) return 'status'
   if (ask.host) return 'host'
   return plainReply(ask.message) ? 'chit-chat' : null
 }

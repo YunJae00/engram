@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createBot, createTask, employeeWriteBack, handBacks, loadBots, MERGED_SHAPE, runToolSession, settleMember, teamSummary, withLiveSources, setReportLog, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { companyNote, createBot, createTask, employeeWriteBack, handBacks, loadBots, MERGED_SHAPE, MockEngine, runToolSession, settleMember, withLiveSources, updateTask, type AgentTool, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -17,7 +17,7 @@ const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-s16-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const PAGE: Record<string, string> = { 강릉: 'https://surf.example/gangneung', 속초: 'https://surf.example/sokcho', 양양: 'https://surf.example/yangyang', 고성: 'https://surf.example/goseong' }
 const results = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
-afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
+afterEach(() => { vi.useRealTimers() })
 const tick = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')) }, { once: true }) })
 const own = (town: string): string => `${town}은 이번 주말 파도가 1m 안팎이에요. [${town} 파도 예보](${PAGE[town]})`
 
@@ -115,21 +115,25 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect(quick).toEqual([])
   }, 15_000)
 
-  it('the team summary writer stops at once on a stop, and what it had not finished is never posted', async () => {
+  it('the team\'s week answer is the lane model\'s one step: a stop ends it at once, and what it had not finished is never posted', async () => {
     const paths = await vault('summary')
     for (const name of ['엔그램', '하람']) await createBot(paths, { name })
     const bots = await loadBots(paths), haram = bots.find(bot => bot.name === '하람')!
     await employeeWriteBack(paths, { botId: haram.id, brief: '양양 서핑 강습 요금 조사', result: '양양 서핑 강습은 5만 원부터예요.' })
-    const ctl = new AbortController()
+    const ask = '요번 주 팀원들이 한 일 들려줘'
+    expect(await companyNote(paths, { bots, message: ask, chief: true })).toContain('양양 서핑 강습 요금 조사 → 양양 서핑 강습은 5만 원부터예요.')
     let asked = 0
+    class Hung extends MockEngine { runTools(job: ToolSessionJob): Promise<ToolSessionResult> { asked++; return new Promise((_resolve, reject) => job.signal?.addEventListener('abort', () => reject(new Error('stopped')))) } }
+    class Typed extends MockEngine { constructor(private draft: string) { super() } runTools(): Promise<ToolSessionResult> { return Promise.resolve({ answer: this.draft }) } }
+    const ctl = new AbortController()
     setTimeout(() => ctl.abort(), 100)
     const began = Date.now()
-    const out = await teamSummary(paths, { bots, message: '팀원들 작업 내역 알려줘', write: () => { asked++; return new Promise<string>(() => undefined) }, timeoutMs: 20_000, signal: ctl.signal })
+    const out = await runToolSession({ engine: new Hung(), workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask, { signal: ctl.signal }).catch(() => undefined)
     expect(Date.now() - began).toBeLessThan(1000)
     expect(asked).toBe(1)
-    expect(out).toContain('하람')
+    expect(out?.answer ?? '').not.toContain('하람')
     const whole = '하람이 양양 서핑 강습 요금을 알아봤어요.\n\n강습은 5만 원부터라고 해요.'
-    expect(await teamSummary(paths, { bots, message: '팀원들 작업 내역 알려줘', write: async () => whole })).toBe(whole)
+    expect((await runToolSession({ engine: new Typed(whole), workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask)).answer).toBe(whole)
   })
 
   it('"멈춰" during a desk build ends the build at once and closes no turn: no reply is posted for a file that was not made', async () => {

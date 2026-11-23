@@ -1,20 +1,23 @@
-import { afterEach, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
+import { runToolSession } from '../src/agent-session.js'
 import { recordFacts } from '../src/bot-memory.js'
 import { createBot, loadBots } from '../src/bots.js'
-import { employeesAnswer, handBacks, handedFrom, handoffBrief, partOutcome, setReportLog, staffTool, teamSummary, TEAM_MEMORY, WRITER_RULE } from '../src/company-tools.js'
+import { companyNote, employeesAnswer, handBacks, handedFrom, handoffBrief, partOutcome, staffTool, TEAM_MEMORY, WRITER_RULE } from '../src/company-tools.js'
+import { MockEngine } from '../src/engine/mock.js'
+import type { EngineCwd, ToolSessionResult } from '../src/engine/types.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
-function model(drafts: string[]) {
-  const calls: string[] = []
-  const write = async (prompt: string): Promise<string> => { calls.push(prompt); return drafts.shift() ?? '' }
-  return { write, calls }
+class Typist extends MockEngine {
+  constructor(private draft: string) { super() }
+  runTools(): Promise<ToolSessionResult> { return Promise.resolve({ answer: this.draft }) }
 }
-const record = (prompt: string): { who: string; did: string; from?: string; left?: boolean }[] => JSON.parse(prompt.split('Record: ')[1]!) as { who: string; did: string; from?: string; left?: boolean }[]
-const logged: string[] = []
-afterEach(() => { logged.length = 0; setReportLog(() => undefined) })
+const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: new Typist(draft), workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask)).answer
+type Kept = { paths: Awaited<ReturnType<typeof initVault>>; bots: Awaited<ReturnType<typeof loadBots>>; now: Date }
+const noted = async (o: Kept, ask: string): Promise<[string, string]> => (await companyNote(o.paths, { bots: o.bots, message: ask, chief: true, now: o.now })).split('The team\'s record') as [string, string]
+const jobs = (record: string): string[] => record.split('\n').map(line => line.trim()).filter(line => line.startsWith('- ') && line.includes(' → ')).map(line => line.slice(2).split(' → ')[0]!)
 
 async function today() {
   const paths = await initVault(await tmpVaultRoot('c17c-summary'), { git: false })
@@ -34,38 +37,28 @@ const ASK = '오늘 팀 뭐 했어'
 const FOLDED = '오늘은 하은, 준, 소윤이 배송 정책 세 곳을 봤는데 새로 나온 게 없었어요. 준이 하은이 찾은 걸로 연말 프로모션 문구를 썼어요. 소윤은 이제 팀에 없어요.'
 
 
-test('a summary that folds jobs into a count ("배송 정책 세 곳") is the writer\'s to avoid: the rule is in its prompt, it is asked once, and what it wrote is returned byte for byte', async () => {
-  setReportLog(line => logged.push(line))
-  const { paths, bots, now } = await today()
-  const { write, calls } = model([FOLDED])
-  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(FOLDED)
-  expect(calls).toHaveLength(1)
-  expect(calls[0]).toContain('never folded into a count')
-  expect(calls[0]).toContain('every job\'s subject is named in its own words')
-  expect(logged).toEqual([expect.stringMatching(/^summary=written /)])
+test('a draft that folds jobs into a count ("배송 정책 세 곳") is the lane model\'s to avoid: the record gives every job its own subject, and what it wrote is returned byte for byte', async () => {
+  const [, record] = await noted(await today(), ASK)
+  for (const subject of ['쿠팡 배송 정책 조사', '마켓컬리 배송 정책 조사', '11번가 배송 정책 조사']) expect(jobs(record)).toContain(subject)
+  expect(await posted(FOLDED, ASK)).toBe(FOLDED)
 })
 
-test('a writer that writes nothing or is late leaves the host\'s own summary, and it names every subject, the hand-off, and who has left', async () => {
-  setReportLog(line => logged.push(line))
-  const { paths, bots, now } = await today()
-  const out = await teamSummary(paths, { bots, message: ASK, now, write: model(['  ']).write })
-  expect(out).toMatch(/^오늘은 /)
-  for (const subject of ['쿠팡', '마켓컬리', '11번가', '연말 프로모션 문구']) expect(out).toContain(subject)
-  expect(out).not.toContain('세 곳')
-  expect(out).toContain('소윤은 이제 팀에 없어요.')
-  expect(await teamSummary(paths, { bots, message: ASK, now, timeoutMs: 20, write: () => new Promise(() => undefined) })).toBe(out)
-  expect(logged).toEqual([expect.stringMatching(/^summary=empty /), expect.stringMatching(/^summary=late /)])
+test('no host summary stands in for the lane model: its note names every subject, the hand-off, and who has left by keeping them off the team', async () => {
+  const [team, record] = await noted(await today(), ASK)
+  for (const subject of ['쿠팡', '마켓컬리', '11번가', '연말 프로모션 문구 (하은한테 받아서)']) expect(record).toContain(subject)
+  expect(record).not.toContain('세 곳')
+  expect(record).toContain('(소윤, 11월 18일)')
+  expect(team).toContain('- 하은 — 리서치 담당')
+  expect(team).not.toContain('소윤')
 })
 
-test('the writer is given every job with its subject, who did it, whose work it came from and who has left, and a summary listing the subjects is returned as written', async () => {
-  const { paths, bots, now } = await today()
+test('the lane model is given every job with its subject, who did it and whose work it came from, and an answer listing the subjects is returned as written', async () => {
+  const kept = await today()
   const listed = '오늘은 하은, 준, 소윤이 쿠팡·마켓컬리·11번가 배송 정책을 봤는데 새로 나온 게 없었어요.\n\n준은 하은이 찾은 걸로 연말 프로모션 문구를 썼어요. 소윤은 이제 팀에 없어요.'
-  const { write, calls } = model([listed])
-  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(listed)
-  expect(calls).toHaveLength(1)
-  expect(record(calls[0]!).map(job => [job.who, job.did])).toEqual([['하은', '쿠팡 배송 정책 조사'], ['준', '마켓컬리 배송 정책 조사'], ['소윤', '11번가 배송 정책 조사'], ['준', '연말 프로모션 문구']])
-  expect(record(calls[0]!)[3]).toMatchObject({ from: '하은' })
-  expect(record(calls[0]!)[2]).toMatchObject({ left: true })
+  const [, record] = await noted(kept, ASK)
+  expect(jobs(record).sort()).toEqual(['11번가 배송 정책 조사', '마켓컬리 배송 정책 조사', '연말 프로모션 문구 (하은한테 받아서)', '쿠팡 배송 정책 조사'])
+  for (const who of ['(하은, 11월 18일)', '(준, 11월 18일)', '(소윤, 11월 18일)']) expect(record).toContain(who)
+  expect(await posted(listed, ASK)).toBe(listed)
 })
 
 const part = (id: string, role: string, brief: string, more: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'working', sessionKey: `s-${id}`, hiredAt: new Date().toISOString(), ...more })
@@ -132,8 +125,7 @@ test('side by side, each part reaches the lead with its part name and who did it
   expect(out.note).toContain('their part named')
 })
 
-test('a job whose subject is part of another job\'s word is its own entry in what the writer is given, and a summary naming only the longer one is returned as written', async () => {
-  setReportLog(line => logged.push(line))
+test('a job whose subject is part of another job\'s word is its own entry in what the lane model is given, and an answer naming only the longer one is returned as written', async () => {
   const paths = await initVault(await tmpVaultRoot('c17c-r2'), { git: false })
   await createBot(paths, { name: '엔그램' })
   const staff = staffTool(paths, () => undefined)
@@ -144,11 +136,9 @@ test('a job whose subject is part of another job\'s word is its own entry in wha
   ], new Date('2026-11-18T01:00:00.000Z'))
   const bots = await loadBots(paths), now = new Date(2026, 10, 18, 10)
   const half = '오늘은 준이 쿠팡이츠 수수료를 봤는데 새로 나온 게 없었어요. 하은도 같이 봤어요.'
-  const { write, calls } = model([half])
-  expect(await teamSummary(paths, { bots, message: '오늘 팀원들 한 일 알려줘', now, write })).toBe(half)
-  expect(calls).toHaveLength(1)
-  expect(record(calls[0]!).map(one => one.did)).toEqual(['쿠팡 수수료 조사', '쿠팡이츠 수수료 조사'])
-  expect(logged).toEqual([expect.stringMatching(/^summary=written jobs=2 /)])
+  const [, record] = await noted({ paths, bots, now }, ASK)
+  expect(jobs(record).sort()).toEqual(['쿠팡 수수료 조사', '쿠팡이츠 수수료 조사'])
+  expect(await posted(half, ASK)).toBe(half)
 })
 
 async function nested(dids: [string, string]) {
@@ -159,22 +149,17 @@ async function nested(dids: [string, string]) {
   await recordFacts(paths, TEAM_MEMORY, [`${dids[0]} → 못 찾았어요 (하은, 2026-11-18)`, `${dids[1]} → 못 찾았어요 (준, 2026-11-18)`], new Date('2026-11-18T01:00:00.000Z'))
   return { paths, bots: await loadBots(paths), now: new Date(2026, 10, 18, 10) }
 }
-test('a job whose words are all inside another job\'s is its own entry too, and the writer\'s one summary is what the person gets', async () => {
-  setReportLog(line => logged.push(line))
-  const { paths, bots, now } = await nested(['배민 광고 요금 조사', '배민 광고 요금 인상 조사'])
+test('a job whose words are all inside another job\'s is its own entry too, and the lane model\'s one answer is what the person gets', async () => {
+  const kept = await nested(['배민 광고 요금 조사', '배민 광고 요금 인상 조사'])
   const half = '오늘은 하은이랑 준이 배민 광고 요금 인상을 봤는데 새로 나온 게 없었어요.'
-  const { write, calls } = model([half, '다시 쓴 글'])
-  expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(half)
-  expect(calls).toHaveLength(1)
-  expect(record(calls[0]!).map(one => [one.who, one.did])).toEqual([['하은', '배민 광고 요금 조사'], ['준', '배민 광고 요금 인상 조사']])
-  expect(logged).toEqual([expect.stringMatching(/^summary=written /)])
+  const [, record] = await noted(kept, ASK)
+  expect(record).toContain('배민 광고 요금 조사 → 못 찾았어요 (하은, 11월 18일)')
+  expect(record).toContain('배민 광고 요금 인상 조사 → 못 찾았어요 (준, 11월 18일)')
+  expect(await posted(half, ASK)).toBe(half)
 })
 test('nested jobs said in separate sentences are returned as written the first time', async () => {
-  setReportLog(line => logged.push(line))
-  const { paths, bots, now } = await nested(['쿠팡 배송 정책 조사', '쿠팡 배송 정책 변경 조사'])
+  const kept = await nested(['쿠팡 배송 정책 조사', '쿠팡 배송 정책 변경 조사'])
   const apart = '오늘 하은은 쿠팡 배송 정책을 봤어요. 준은 쿠팡 배송 정책 변경을 봤는데 둘 다 새로 나온 게 없었어요.'
-  const { write, calls } = model([apart])
-  expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(apart)
-  expect(calls).toHaveLength(1)
-  expect(logged).toEqual([expect.stringMatching(/^summary=written /)])
+  expect(jobs((await noted(kept, ASK))[1]).sort()).toEqual(['쿠팡 배송 정책 변경 조사', '쿠팡 배송 정책 조사'])
+  expect(await posted(apart, ASK)).toBe(apart)
 })

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createTask, handBacks, officeTools, runToolSession, setReportLog, updateTask, type AgentTool, type Engine, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
+import { createTask, handBacks, officeTools, runToolSession, updateTask, type AgentTool, type Engine, type EngineCwd, type TeamMember, type ToolSessionJob, type ToolSessionResult, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -36,7 +36,7 @@ async function drive<T>(work: Promise<T>, step = 20): Promise<T> {
   while (!done) { await vi.advanceTimersByTimeAsync(step); await new Promise(resolve => setImmediate(resolve)) }
   return work
 }
-afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
+afterEach(() => { vi.useRealTimers() })
 
 async function sources(dir: string): Promise<string[]> {
   const out: string[] = []

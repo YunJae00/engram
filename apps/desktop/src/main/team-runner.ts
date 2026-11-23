@@ -6,7 +6,7 @@ import { answerOnly } from './result-check.js'
 import { withFiles } from './native-tools.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, checkedSearch, setJudgeLog, handedData, setReportLog, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, checkedSearch, setJudgeLog, handedData, employeeNote, employeeWriteBack, isSearchPage, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
@@ -58,7 +58,6 @@ export function teamRunner(deps: {
   const taskDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + answerMs, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + MIN_PART_MS * scale))
   const reading = new Map<string, Set<string>>()
   setJudgeLog(line => flog('item-judge', line))
-  setReportLog(line => flog('team-report', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
   const inflight = new Map<string, number>()

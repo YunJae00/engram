@@ -90,7 +90,7 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(await readFile(made.path)).toEqual(before)
   })
   it('is made before the model, only on the one deck of the thread, and logged', () => {
-    expect(ipc).toContain("const retitle = !handed && kind === 'deck' ? slideTitleFix(request.message) : undefined")
+    expect(ipc).toContain("const retitle = kind === 'deck' ? slideTitleFix(request.message) : undefined")
     expect(ipc).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
     expect(ipc).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
     expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await lookup.run(')
@@ -147,7 +147,7 @@ describe('a plain "기억해" is kept by the host (M1), and M2, M3 hold on what 
     expect(note).not.toContain('지민호')
   })
   it('is made after a correction is tried and before the model is asked', () => {
-    expect(ipc).toContain("const keep = !handed && !fixed && kind === 'keep' ? plainKeep(request.message,")
+    expect(ipc).toContain("const keep = !fixed && kind === 'keep' ? plainKeep(request.message,")
     expect(ipc).toContain("if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }")
     expect(ipc.indexOf('keptFix(request.message, remembered)')).toBeLessThan(ipc.indexOf('plainKeep(request.message,'))
   })

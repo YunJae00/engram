@@ -462,21 +462,16 @@ describe('instant first line', () => {
     expect(laneLine('이것 좀 해줘', true)).toBe('지금 바로 할게요.')
     for (const said of ['김대리 하나 뽑아줘', '내 일정 뭐 있어?', '이것 좀 해줘']) expect(laneLine(said, true)).not.toMatch(/^네[,.]|알겠습니다|습니다/)
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
-    expect(source('ipc.ts')).toMatch(/if \(company && !handed && !summing && !turn\?\.report\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
-    expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
-    expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && !split && !change && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : split \? \{ tool: 'assign', args: split \} : hire \? \{ tool: 'agents', args: hire \} : change \? \{ tool: 'agents', args: change \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
-    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : fixed \? /)
-    expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/const reporting = !direct && company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/: !company \|\| turn\?\.report \? undefined\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)\n\s*const handedBack = employeesAnswer\(reporting\)/)
+    expect(source('ipc.ts')).toMatch(/if \(company && !turn\?\.report\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    expect(source('ipc.ts')).not.toMatch(/\b(handoff|hire|split|change|direct|handed|summing) = /)
+    expect(source('ipc.ts')).toMatch(/const result: Awaited<ReturnType<typeof runComet>> = fixed \? /)
+    expect(source('ipc.ts')).toMatch(/const reporting = company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined\n[^\n]*const handedBack = employeesAnswer\(reporting\)/)
     expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
-    expect(source('ipc.ts')).toMatch(/const summing = !direct && !!company && chief && !turn\?\.report && isTeamWorkAsk\(request\.message\) && \(request\.scheduled === true \|\| !isDutyAsk\(request\.message\)\)\n\s*if \(summing\) firstLineNow\(/)
     expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)
     expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await lookup.run('), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
 
-  it('an ask the host answers itself is decided before the first line and shows none', async () => {
+  it('only a steer the host applies itself is decided before the first line and shows none; a team question is no host answer', async () => {
     const ask = { channel: 'bot-1', message: '지우 무슨 일 하는 사람이야?', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }
     expect(wantsFirstLine(ask)).toBeNull()
     expect(wantsFirstLine({ ...ask, host: true })).toBe('host')
@@ -494,13 +489,13 @@ describe('instant first line', () => {
     const ipc = source('ipc.ts'), decided = ipc.indexOf('const hostAnswers = '), begun = ipc.indexOf('beginFirstLine({ host: hostAnswers,')
     expect(decided).toBeGreaterThan(0)
     expect(begun).toBeGreaterThan(decided)
-    expect(ipc.slice(decided, begun)).toContain('answersItself(request.message, bots, lastReplyOf(request.history))')
-    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && \(answersItself/)
+    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && steerShaped\(request\.message\) && !!plainSteer\(request\.message, await listTasks\(paths\), request\.botId!\)/)
+    expect(ipc.slice(decided, begun)).not.toMatch(/answersItself|isStatusAsk|isDutyCancel|takesCompanyLane|lastReplyOf/)
     expect(ipc.slice(decided, begun)).toContain('() => false)')
   })
 
-  it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {
-    for (const patch of [{ interactive: false }, { message: '다들 뭐하고 있어?' }, { followUp: true }, { secret: true }]) {
+  it('the lane says nothing where no first line is wanted: a report turn, a follow-up, a secret, a stopped turn', () => {
+    for (const patch of [{ interactive: false }, { followUp: true }, { secret: true }] as Partial<FirstLineAsk>[]) {
       const { show } = begin(voice(async () => 'x'), patch)
       firstLineReady('bot-1')
       firstLineNow('bot-1', patch.message ?? '지민 하나 추가해줘', true)
@@ -515,18 +510,18 @@ describe('instant first line', () => {
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('starts no first line for the team status question, however fast the small model is', async () => {
-    for (const message of ['다들 뭐하고 있어?', '팀원들 지금 뭐 하고 있어요?', '현황']) {
-      expect(wantsFirstLine(ask({ message })), message).toBe('status')
-      const live = voice(async () => '팀 현황을 알려드릴게요.')
+  it('a team status question gets its first line like any other team ask: nothing in the first line reads it as status', async () => {
+    for (const message of ['다들 뭐해', '팀 현황', '에이전트 현황 보여줘', 'status']) {
+      expect(wantsFirstLine(ask({ message })), message).toBeNull()
+      const live = voice(async () => '다들 하는 일 볼게요.')
       const { show } = begin(live, { message })
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(2000)
-      expect(live.quick).not.toHaveBeenCalled()
-      expect(show).not.toHaveBeenCalled()
-      expect(firstLineNote('bot-1')).toBe('')
+      expect(live.quick, message).toHaveBeenCalled()
+      expect(show, message).toHaveBeenCalledOnce()
+      endFirstLine('bot-1')
     }
-    expect(wantsFirstLine(ask({ message: '다들 뭐하고 있는지 표로 정리해서 메일로 보내줘' }))).toBeNull()
+    expect(source('first-line.ts')).not.toMatch(/isStatusAsk|'status'/)
   })
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
@@ -765,13 +760,38 @@ describe('Claude command sandbox', () => {
 })
 
 describe('stack-5: low effort stays on the turns it was given to', () => {
-  it('a team turn is low only for the weekly summary, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team or lookup turn', () => {
+  it('a team turn is low unless it writes a result from hand-backs, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team or lookup turn', () => {
     const ipc = source('ipc.ts')
-    expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),")
+    expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).not.toContain('koreanLead(')
     expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
+  })
+})
+
+describe('s1a: the team lane\'s model does the team\'s work', () => {
+  const ipc = source('ipc.ts')
+  const chat = ipc.slice(ipc.indexOf('async function handleChatSend('), ipc.indexOf('answerDelivered = true'))
+  const imported = ipc.slice(0, ipc.indexOf('\nconst '))
+  it('the host runs no team tool and writes no team answer from a chat message', () => {
+    expect(chat.length).toBeGreaterThan(1000)
+    for (const host of [/tool\.name === direct\.tool/, /const (direct|handed|summing) =/, /companyStatus\(/, /dutyList\(/, /teamSummary\(/, /aboutEmployee\(/, /removeScheduled\(/]) expect(chat, String(host)).not.toMatch(host)
+    for (const name of ['answersItself', 'plainHandoff', 'plainSplit', 'plainChange', 'plainHire', 'aboutEmployee', 'dutyList', 'dutyToCancel', 'isDutyListAsk', 'isStatusAsk', 'teamSummary', 'plainSchedule', 'SUMMARY_WRITER_MS', 'companyStatus,']) expect(imported, name).not.toContain(name)
+    expect(ipc.match(/removeScheduled\(/g)).toEqual(['removeScheduled('])
+    expect(ipc).toContain('remove: (id) => removeScheduled(paths, id),')
+  })
+  it('a team turn reaches the lane with the kept schedules and the last reply, and its tools are the lane menu', () => {
+    expect(chat).toContain("takesCompanyLane(request.message, { staff: staff.map(one => one.name), gone: employees(await loadArchivedBots(paths)).map(one => one.name), chief, scheduled: request.scheduled === true, kept: everyone.flatMap(one => one.tasks ?? []), lastReply: lastReplyOf(savedHistory) })")
+    expect(chat).toContain('.filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))')
+  })
+  it('effort is set by lane: a team turn that is not a report turn is low effort on the smart tier, whatever it says; the fast lane, the desk lane and the report turn keep their options', () => {
+    const team = "...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),"
+    expect(chat).toContain(team)
+    expect(team).not.toMatch(/request|message|routed|ask/)
+    expect(chat).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
+    expect(chat).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
+    expect(chat).toContain("const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)\n        && (turn?.report === true || takesCompanyLane(")
   })
 })

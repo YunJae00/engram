@@ -51,7 +51,7 @@ test('what the structure check refused is now asked of the lead in the hand-back
   expect(note).toContain('who did what in natural sentences that name each agent')
   expect(note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result, never a site name alone')
   expect(note).toContain('Say plainly which part failed or is missing.')
-  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['answersItself', 'employeesAnswer', 'setReportLog'])
+  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['employeesAnswer'])
 })
 
 test('a handoff that makes copy: the copy\'s brief holds the find as written, and the writer\'s answer is its result exactly; writing only the final lines is the writer\'s rule', () => {

@@ -4,7 +4,7 @@ import { runComet } from '../src/agent-session.js'
 import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
 import { recordFacts } from '../src/bot-memory.js'
 import { createBot, loadBots } from '../src/bots.js'
-import { employeesAnswer, handBacks, partOutcome, staffTool, teamSummary, TEAM_MEMORY } from '../src/company-tools.js'
+import { companyNote, employeesAnswer, handBacks, partOutcome, staffTool, TEAM_MEMORY } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 import { settleMember } from '../src/team-hire-tools.js'
@@ -95,7 +95,7 @@ test('what the four problem kinds looked for is asked of the writer in its own p
   expect(COLLEAGUE_CORE_RULE).toContain('with every fact and every constraint of the original ask kept')
 })
 
-test('the week summary names a teammate who has left as gone: the writer is told "left" in its record and its text is returned as written; the host\'s own summary says it', async () => {
+test('what the team did this week: the lane note keeps a teammate who has left in the record only and a renamed one under the new name, and the lane model\'s text is returned as written', async () => {
   const paths = await initVault(await tmpVaultRoot('c14b-summary'), { git: false })
   await createBot(paths, { name: '엔그램' })
   const run = (args: Record<string, unknown>) => staffTool(paths, () => undefined).run(args, { task: '' })
@@ -112,20 +112,16 @@ test('the week summary names a teammate who has left as gone: the writer is told
   const task: DelegatedTask = { id: 't', goal: 'g', botId: 'chief', state: 'done', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team: { members: [{ id: 'm', parentId: null, depth: 1, role: '준호', brief: '이번 주 회의실 예약 정리', botId: junho.id, state: 'done', sessionKey: 's', hiredAt: at }], hires: 1, maxHires: 8, maxDepth: 3, big: false } }
   const ask = '이번 주 다들 뭐 했는지 정리해줘'
   const draft = '이번 주엔 하은이 성수동 카페 두 곳을 찾았어요. 준은 회의실을 목요일 오후로 잡았어요.'
-  const prompts: string[] = []
-  expect(await teamSummary(paths, { bots, tasks: [task], message: ask, now, write: async prompt => { prompts.push(prompt); return draft } })).toBe(draft)
-  expect(prompts).toHaveLength(1)
-  const data = JSON.parse(prompts[0]!.split('\nRecord: ')[1]!) as { who: string; left?: boolean }[]
-  expect(data.find(job => job.who === '하은')?.left).toBe(true)
-  expect(data.find(job => job.who === '준')?.left).toBeUndefined()
-  expect(prompts[0]).toContain('a job with "left" true was done by someone who has since left the team: say that once')
-  const plain = await teamSummary(paths, { bots, tasks: [task], message: ask, now, write: async () => '' })
-  expect(plain).toContain('하은은 이제 팀에 없어요.')
-  expect(plain).toContain('준은')
-  expect(plain).not.toContain('준호')
-  let asked = 0
-  expect(await teamSummary(paths, { bots, tasks: [task], message: ask, now, write: async () => { asked++; return '   ' } })).toBe(plain)
-  expect(asked).toBe(1)
+  const note = await companyNote(paths, { bots, tasks: [task], message: ask, chief: true, now })
+  const [team, record] = note.split('The team\'s record') as [string, string]
+  expect(record).toContain('이번 주 카페 후보 조사 → 성수동 카페 두 곳을 찾았어요 (하은, 11월 16일)')
+  expect(record).toContain('이번 주 회의실 예약 정리 → 목요일 오후로 잡았어요 (준, 11월 17일)')
+  expect(record).not.toContain('준호')
+  expect(team).toContain('- 준 — 정리 담당')
+  expect(team).not.toContain('하은')
+  const { answer, jobs } = await lead(ask, draft)
+  expect(answer).toBe(draft)
+  expect(jobs).toHaveLength(1)
 })
 
 test('a nothing-new part\'s latest change reaches the lead in the teammate\'s own words, whole, and the part counts as found from its words', () => {

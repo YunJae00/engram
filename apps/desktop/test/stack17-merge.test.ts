@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createBot, employeesAnswer, handBacks, initVault, loadBots, partOutcome, recordFacts, runToolSession, setReportLog, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, teamSummary, type AgentTool, type DelegatedTask, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
+import { companyNote, createBot, employeesAnswer, handBacks, initVault, loadBots, partOutcome, recordFacts, runToolSession, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, type AgentTool, type DelegatedTask, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -9,7 +9,6 @@ import { askNow, routeAsk } from '../src/main/desk-lane.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
-import { agreeing } from '../../../packages/core/test/agreeing.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 import * as firstLine from '../src/main/first-line.js'
 
@@ -158,25 +157,23 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
   })
 })
 
-describe('stack-17: "멈춰" during a summary repair (c17c) ends it at once', () => {
-  it('a summary refused for a missing subject is being repaired; the stop ends the writer within 3 s and no call follows', async () => {
+describe('stack-17: "멈춰" during the team lane\'s week answer ends it at once', () => {
+  it('the lane model is writing what the team did; the stop ends its step within 3 s and no call follows', async () => {
     const paths = await initVault(await tmpVaultRoot('s17-summary-stop'), { git: false })
     await createBot(paths, { name: '엔그램' })
     await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
     await recordFacts(paths, TEAM_MEMORY, ['스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (하윤, 2026-11-18)', '투썸 신메뉴 조사 → 밤 케이크 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
-    const stop = new AbortController(), calls: string[] = []
-    const write = agreeing(async (prompt: string): Promise<string> => {
-      calls.push(prompt)
-      if (calls.length === 1) return '오늘은 하윤, 다인이 카페 두 곳 신메뉴를 봤어요.'
-      setTimeout(() => stop.abort(), 50)
-      return new Promise<string>(() => undefined)
-    })
+    const ask = '오늘 팀원들이 한 거 말해 줘'
+    expect(await companyNote(paths, { bots: await loadBots(paths), message: ask, chief: true, now: new Date(2026, 10, 18, 10) })).toContain('투썸 신메뉴 조사 → 밤 케이크 (다인, 11월 18일)')
+    const stop = new AbortController()
+    let calls = 0
+    const engine = { id: 'mock', runTools: (job: ToolSessionJob) => { calls++; setTimeout(() => stop.abort(), 50); return new Promise((_resolve, reject) => job.signal?.addEventListener('abort', () => reject(new Error('stopped')))) } } as never
     const began = Date.now()
-    await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write, signal: stop.signal })
+    await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask, { signal: stop.signal }).catch(() => undefined)
     expect(Date.now() - began).toBeLessThan(3000)
-    const n = calls.length
+    const n = calls
     await tick(200)
-    expect(calls.length).toBe(n)
+    expect(calls).toBe(n)
   })
 })
 
@@ -193,23 +190,18 @@ describe('stack-17: a turn that starts in the same tick as a memory call holds i
   })
 })
 
-describe('stack-17: a job said only in filler words is still checked in the summary', () => {
-  it('the 주말 소식 job is in the record the writer reads, under the rule that every job is named; a draft that leaves it out is the answer as written, with one call', async () => {
-    const logged: string[] = []
-    setReportLog(line => logged.push(line))
-    try {
-      const paths = await initVault(await tmpVaultRoot('s17-filler'), { git: false })
-      await createBot(paths, { name: '엔그램' })
-      await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
-      await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
-      const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', calls: string[] = []
-      const write = async (prompt: string): Promise<string> => { calls.push(prompt); return left }
-      expect(await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write })).toBe(left)
-      expect(calls).toHaveLength(1)
-      expect(calls[0]).toContain('"did":"주말 소식 조사"')
-      expect(calls[0]).toContain('every job\'s subject is named in its own words')
-      expect(logged).toEqual([expect.stringMatching(/^summary=written /)])
-    } finally { setReportLog(() => undefined) }
+describe('stack-17: a job said only in filler words is still in what the team lane writes from', () => {
+  it('the 주말 소식 job is in the lane note\'s record by its own subject; a draft that leaves it out is the answer as written, with one call', async () => {
+    const paths = await initVault(await tmpVaultRoot('s17-filler'), { git: false })
+    await createBot(paths, { name: '엔그램' })
+    await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
+    await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
+    const ask = '오늘 팀원들이 한 거 말해 줘', left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.'
+    expect(await companyNote(paths, { bots: await loadBots(paths), message: ask, chief: true, now: new Date(2026, 10, 18, 10) })).toContain('주말 소식 조사 → 성수 팝업 두 곳 (하윤, 11월 18일)')
+    let calls = 0
+    const engine = { id: 'mock', runTools: async () => { calls++; return { answer: left } } } as never
+    expect((await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask)).answer).toBe(left)
+    expect(calls).toBe(1)
   })
 })
 

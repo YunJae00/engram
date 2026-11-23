@@ -3,7 +3,7 @@ import { createBot } from '../src/bots.js'
 import { HOST_TODAY } from '../src/comet-navigation-tools.js'
 import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
 import * as company from '../src/company-tools.js'
-import { companyStatus, employeeWriteBack, handBacks, partOutcome, teamRecord, teamSummary } from '../src/company-tools.js'
+import { companyNote, companyStatus, employeeWriteBack, handBacks, partOutcome, teamRecord } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { newsPeriod, periodSince } from '../src/search-template.js'
 import { dateLine, periodSpans } from '../src/team-hire-tools.js'
@@ -44,7 +44,7 @@ test('the lead is given who did each part and where it stands as data: a finishe
 })
 
 test('rule 7\'s "still looking" and the rule-12 words are the writer\'s rules now: no check refuses a written answer, and the voice rule names every word', () => {
-  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['answersItself', 'employeesAnswer', 'setReportLog'])
+  expect(Object.entries(company).filter(([name, value]) => typeof value === 'function' && /report|answer|check|merge|written|kind|period/i.test(name)).map(([name]) => name).sort()).toEqual(['employeesAnswer'])
   expect(COLLEAGUE_CORE_RULE).toContain('Do not call yourself or anyone on the team an 에이전트, and never speak of 세션, 턴, 토큰, 프롬프트, 런타임 or 컨텍스트')
   expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
   expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
@@ -73,7 +73,7 @@ test('live status names a part still at work as working, and one the runner mark
   expect(cut).not.toMatch(/이든[^.]*방금 끝냈|이든[^.]*끝낸 게 마지막/)
 })
 
-test('the record says a part that ended with nothing was not finished, and the summary never turns it, or a part at work, into "nothing new"; who left is data', async () => {
+test('the record says a part that ended with nothing was not finished, and the note and live status the team lane answers from never turn it, or a part at work, into "nothing new"; who left is off the team', async () => {
   const paths = await initVault(await tmpVaultRoot('c13a-record'))
   const haram = await createBot(paths, { name: '하람' }), eden = await createBot(paths, { name: '이든' })
   await employeeWriteBack(paths, { botId: haram.id, brief: '이번 주 피그마 업데이트 조사', result: '', title: '이번 주 피그마 업데이트 조사' }, WED)
@@ -82,19 +82,16 @@ test('the record says a part that ended with nothing was not finished, and the s
   const soyul = { id: 'bot-s', name: '소율', purpose: '조사', label: '조사 담당' }
   const live: DelegatedTask = { id: 't', goal: 'g', botId: 'chief', state: 'waiting', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team: { members: [member({ id: 's', role: '소율', brief: '이번 주 미로 업데이트 조사', title: '이번 주 미로 업데이트 조사', botId: 'bot-s', state: 'working' })], hires: 1, maxHires: 8, maxDepth: 3, big: false } }
   const bots = [{ id: 'chief', name: '엔그램', purpose: '', primary: true }, { ...haram, label: '조사 담당' }, soyul] as never
-  const asked: string[] = []
-  const written = '이번 주엔 하람이 피그마 업데이트 조사를 맡았는데 다 못 끝냈어요.\n\n소율은 미로 쪽을 아직 보고 있어요.'
-  const said = await teamSummary(paths, { bots, tasks: [live], message: '이번 주 팀 뭐 했는지 알려줘', now: WED, write: async prompt => { asked.push(prompt); return written } })
-  const record = JSON.parse(asked[0]!.split('Record: ')[1]!) as Record<string, unknown>[]
-  expect(record.find(job => job['who'] === '하람')).toMatchObject({ unfinished: true, nothing: false })
-  expect(record.find(job => job['who'] === '이든')).toMatchObject({ nothing: true, left: true })
-  expect(record.find(job => job['who'] === '소율')).toMatchObject({ working: true, nothing: false })
-  expect(asked).toHaveLength(1)
-  expect(said).toBe(written)
-  const late = await teamSummary(paths, { bots, tasks: [live], message: '이번 주 팀 뭐 했는지 알려줘', now: WED, write: async () => '' })
-  expect(late).not.toMatch(/하람[^.]*없었/)
-  expect(late).toMatch(/하람은 피그마 업데이트 조사를 다 못 끝냈어요\./)
-  expect(late).toMatch(/소율은 미로 업데이트 조사를 하고 있어요\./)
+  const note = await companyNote(paths, { bots, tasks: [live], message: '요번 주 팀원들 뭐 했는지 말해 줘', chief: true, now: WED })
+  const [team, record] = note.split('The team\'s record') as [string, string]
+  expect(record).toContain('이번 주 피그마 업데이트 조사 → 다 못 끝냈어요 (하람, 11월 18일)')
+  expect(record).toContain('이번 주 캔바 업데이트 조사 → 새로 나온 게 없었어요 (이든, 11월 18일)')
+  expect(record).not.toMatch(/하람[^\n]*없었/)
+  expect(team).toContain('- 소율 — 조사 담당')
+  expect(team).not.toContain('이든')
+  const live_ = companyStatus(bots, [live], WED.getTime())
+  expect(live_).toMatch(/소율은 [^.]*미로 업데이트 조사/)
+  expect(live_).not.toMatch(/소율[^.]*없었/)
 })
 
 test('a listing page ("부산 전시 일정 모음") is never counted as an item in the team record', async () => {
