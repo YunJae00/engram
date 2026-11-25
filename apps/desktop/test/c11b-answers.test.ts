@@ -28,10 +28,10 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
       const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false, short: true, attachmentContext: SHORT_QUESTION_NOTE })
       expect(result.answer, answer).toBe(answer)
     }
-    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
     const ipc = src('ipc.ts')
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
   it('has no rewriter left that cuts or leads an answer by its wording', () => {
     expect(Object.keys(firstLine)).not.toEqual(expect.arrayContaining(['withoutWorkNote']))
@@ -116,7 +116,7 @@ describe('a counted list\'s rows go to the writing model as the search gave them
     expect(judged.answer).toBe(draft)
     const ipc = src('ipc.ts')
     expect(ipc).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
   it('an ask with no count, one whose count changed mid-work and a list of places all get the rows as they came', async () => {
     const draft = item(1, '10월 수출이 13% 늘었어요.')

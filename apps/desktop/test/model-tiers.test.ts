@@ -293,13 +293,13 @@ describe('instant first line', () => {
   })
 
   it('never holds the main turn: the note is read without waiting and the turn races the line', () => {
-    const ipc = source('ipc.ts')
-    expect(ipc).toContain('const firstSaid = firstLineNote(channel)')
-    expect(ipc).not.toMatch(/await firstLine/)
-    expect(ipc).toMatch(/attachmentContext: \[[^\n]*firstSaid\]/)
-    expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
-    expect(ipc).toContain('const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: \'chat:token\', channel, text }) }')
-    expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
+    const ipc = source('ipc.ts'), turn = source('answer.ts')
+    expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
+    expect(turn).toContain('const note = firstLineNote(channel)')
+    expect(turn).not.toMatch(/await firstLine/)
+    expect(turn).toContain("const notes = [context?.(), note].filter(Boolean).join('\\n\\n')")
+    expect(turn).toContain('const hold = !!held || !!firstLineNote(channel)')
+    expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))
   })
 
   it('asks the first-line voice for its sentence without thinking', () => {
@@ -354,9 +354,11 @@ describe('instant first line', () => {
 
   it('wires the line into the answer stream after the saved request, with no reset of its own', () => {
     const ipc = source('ipc.ts')
-    expect(ipc).toContain("show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\\n\\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })")
-    expect(ipc.indexOf('recordedRequests.add(request)')).toBeLessThan(ipc.indexOf('firstLineReady(channel)'))
-    expect(ipc.indexOf('firstLineReady(channel)')).toBeLessThan(ipc.indexOf('const firstSaid = firstLineNote(channel)'))
+    expect(ipc).toContain("show: line => broadcast({ type: 'chat:token', channel, text: `${line}\\n\\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }),")
+    expect(ipc.indexOf('recordedRequests.add(request)')).toBeLessThan(ipc.indexOf('await answer({'))
+    const turn = source('answer.ts')
+    expect(turn.indexOf('firstLineReady(channel)')).toBeGreaterThan(turn.indexOf('beginFirstLine({'))
+    expect(turn.indexOf('firstLineReady(channel)')).toBeLessThan(turn.indexOf('const note = firstLineNote(channel)'))
     expect(ipc).toContain('extractChatCaptures(finishProgress(channel, rawText))')
     expect(ipc).not.toContain('withFirstLine')
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
@@ -463,13 +465,14 @@ describe('instant first line', () => {
     expect(laneLine('이것 좀 해줘', true)).toBe('지금 바로 할게요.')
     for (const said of ['김대리 하나 뽑아줘', '내 일정 뭐 있어?', '이것 좀 해줘']) expect(laneLine(said, true)).not.toMatch(/^네[,.]|알겠습니다|습니다/)
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
-    expect(source('ipc.ts')).toMatch(/if \(company && !turn\?\.report\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    expect(source('ipc.ts')).toContain('now: !!company && !turn?.report, reply:')
+    expect(source('answer.ts')).toMatch(/if \(now\) firstLineNow\(channel, message, korean\)\n[^\n]*\n\s*const note = firstLineNote\(channel\)/)
     expect(source('ipc.ts')).not.toMatch(/\b(handoff|hire|split|change|direct|handed|summing) = /)
-    expect(source('ipc.ts')).toMatch(/const result: Awaited<ReturnType<typeof runComet>> = fixed \? /)
+    expect(source('ipc.ts')).toMatch(/const result: AgentLoopResult = fixed \? /)
     expect(source('ipc.ts')).toMatch(/const reporting = company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined\n[^\n]*const handedBack = employeesAnswer\(reporting\)/)
     expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
     expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)
-    expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await lookup.run('), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await answer({'), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
 
   it('only a steer the host applies itself is decided before the first line and shows none; a team question is no host answer', async () => {
@@ -487,12 +490,12 @@ describe('instant first line', () => {
       expect(quick).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
     } finally { vi.useRealTimers(); endFirstLine('bot-1') }
-    const ipc = source('ipc.ts'), decided = ipc.indexOf('const hostAnswers = '), begun = ipc.indexOf('beginFirstLine({ host: hostAnswers,')
+    const ipc = source('ipc.ts'), decided = ipc.indexOf('const steer = bot?.primary && '), begun = ipc.indexOf('ack: { host: !!steer,')
     expect(decided).toBeGreaterThan(0)
     expect(begun).toBeGreaterThan(decided)
-    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && steerShaped\(request\.message\) && !!plainSteer\(request\.message, await listTasks\(paths\), request\.botId!\)/)
-    expect(ipc.slice(decided, begun)).not.toMatch(/answersItself|isStatusAsk|isDutyCancel|takesCompanyLane|lastReplyOf/)
-    expect(ipc.slice(decided, begun)).toContain('() => false)')
+    const line = ipc.slice(decided, ipc.indexOf('\n', decided))
+    expect(line).toMatch(/steerShaped\(request\.message\) \? plainSteer\(request\.message, await listTasks\(paths\), bot\.id\) : undefined$/)
+    expect(line).not.toMatch(/answersItself|isStatusAsk|isDutyCancel|takesCompanyLane|lastReplyOf/)
   })
 
   it('the lane says nothing where no first line is wanted: a report turn, a follow-up, a secret, a stopped turn', () => {
@@ -767,7 +770,7 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).not.toContain('koreanLead(')
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
 })

@@ -96,7 +96,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
   })
 
   it('the chat turn hands the answer from the model step to the thread with one unwrap and nothing else', () => {
-    const turn = ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true'))
+    const turn = ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true'))
     expect(turn.length).toBeGreaterThan(1000)
     expect([...turn.matchAll(/result\.answer\s*=[^=]/g)].map(one => turn.slice(one.index, turn.indexOf('\n', one.index)).trim())).toEqual(['result.answer = answered }'])
     expect(turn).toContain('const answered = answerOnly(result.answer)')

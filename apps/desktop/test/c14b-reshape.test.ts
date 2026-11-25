@@ -59,7 +59,7 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
 
   it('ipc hands the thread to the model turn and holds no reshape step', () => {
     const ipc = readFileSync(resolve(__dirname, '../src/main/ipc.ts'), 'utf8')
-    expect(ipc).toContain('history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),')
+    expect(ipc).toContain('history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, {')
     expect(ipc).not.toMatch(/reshape|askedBefore/i)
   })
 })

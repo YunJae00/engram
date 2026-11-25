@@ -1,10 +1,14 @@
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { keepRead, runComet, runToolSession, skipWalls, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 import * as laneModule from '../src/main/fast-lane.js'
-import { fastLane, firstSearch, laneQuery, swappedAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, firstSearch, laneQuery, swappedAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
+import { answer, openWorld } from '../src/main/answer.js'
 
 async function turn(page: string, ask: string, draft: string) {
   const quick = vi.fn(async () => '')
@@ -75,8 +79,8 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
-  expect(ipc).toContain('const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)')
-  expect(ipc).toContain('if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }')
+  expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const talked = reply === false ? undefined : await smallTalkAnswer(channel)')
 })
 
 it('bounds a lone lookup like a member, leaves a team turn to its members\' limits, and gives the turn today\'s date', () => {
@@ -107,7 +111,7 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` :")
   expect(ipc).toContain("if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped")
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
-  expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
@@ -120,22 +124,22 @@ it('lets the quick voice answer only a short question that needs nothing about t
   for (const message of ['나 누구랑 일하지?', '내 일정 뭐 있어?', '김대리 누구야?', '다들 뭐하고 있어?', '원달러 환율 지금 얼마야?', '오늘 서울 날씨 어때?', '그럼 2년은?', '민호 전화번호 뭐야?', '이 파일 뭐야?', '오늘 며칠이야?', '1234 곱하기 5678은?', '1년은 몇 초야', '회의 늦어서 죄송합니다를 영어로 써줘', 'who is on my team?', ...LANE]) expect(quickQuestion(message), message).toBe(false)
 })
 
-it('shows a lookup turn\'s answer and its reply to mid-turn words, never the notes written between calls', () => {
-  const shown: string[] = []
-  const quiet = quietRounds(text => shown.push(text))
-  quiet.token('Now I have solid sources for all 5 items. ', false)
-  quiet.token('Let me verify the article URL by reading it directly.', false)
-  expect(shown).toEqual([])
-  const note = 'Now I have the search results for all three cities. Let me check each one against the weather service page before I write the table, since the first result looked a day old and the second one did not carry a date at all. Searching the web for results once more.'
-  expect([...note].length).toBeGreaterThan(200)
-  for (const piece of note.match(/[^]{1,40}/g)!) quiet.token(piece, false)
-  expect(shown).toEqual([])
-  quiet.token('지금 1달러에 1,385원이에요.', false)
-  expect(shown).toEqual([])
-  quiet.token('대구도 넣을게요.', true)
-  expect(shown).toEqual(['대구도 넣을게요.'])
+it('shows a lookup turn\'s answer, never the notes written between calls', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
+  try {
+    const note = 'Now I have the search results for all three cities. Let me check each one against the weather service page before I write the table, since the first result looked a day old and the second one did not carry a date at all. Searching the web for results once more.'
+    expect([...note].length).toBeGreaterThan(200)
+    const pieces = ['Now I have solid sources for all 5 items. ', 'Let me verify the article URL by reading it directly.', ...note.match(/[^]{1,40}/g)!, '지금 1달러에 1,385원이에요.']
+    const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { for (const piece of pieces) job.onToken?.(piece); return { answer: '지금 1달러에 1,385원이에요.' } } } as unknown as Engine
+    const seen: boolean[] = []
+    const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { held: true, onToken: (_, held) => { seen.push(held) } })
+    expect(seen).toHaveLength(pieces.length)
+    expect(seen.every(Boolean)).toBe(true)
+    expect(trace.first?.text).toBe('지금 1달러에 1,385원이에요.')
+  } finally { await rm(root, { recursive: true, force: true }) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (quiet) quiet.token(text, false); else broadcast({ type: \'chat:token\', channel, text })')
+  expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
+  expect(ipc).toContain('held: lane,')
   expect(ipc).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
 })
 
@@ -263,7 +267,7 @@ it('c7 L2: a slow first round whose search is refused still ends with an answer 
     expect(first.opening).toContain('155.26 USD 전일대비')
     expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them, never a line that it could not get them.')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   } finally { vi.useRealTimers() }
 })
 
@@ -273,7 +277,7 @@ it('c7 L2: an answer is posted as written, a failure report included; not report
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
   for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '엔비디아 주식 마감 가격은?', answer)).answer, answer).toBe(answer)
-  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
   expect(LANE_NOTE).toContain('never reports a failure of your own')
   expect(LANE_NOTE).toContain('never a line that it could not get them')
   const lane = readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')
@@ -291,14 +295,14 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect(read.at(-1)).toContain('352.78')
   expect((await firstSearch(now!, search)).opening).toContain('name what the answer is now about in its first sentence ("애플은 …")')
   expect((await turn('', now!, '352.78달러예요.')).answer).toBe('352.78달러예요.')
-  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('steered.push(...taken)')
   expect(ipc).not.toContain('laneSaid')
   expect(ipc).toContain("let searched = solo && routed === request.message && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
-  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid]")
-  expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote].filter(Boolean).join")
+  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })
 
 it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held results, and the answer is still written from them', async () => {

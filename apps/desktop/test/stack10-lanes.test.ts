@@ -16,14 +16,14 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
   it('the desk folder sort needs a desk kind, which needs no lane; the lane has no tidy and no shaping step left to run anywhere', () => {
     expect(ipc).toMatch(/const kind = !company && !lane && deskLane\(/)
     expect(ipc).toMatch(/const sorted = kind === 'tidy'/)
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
     expect(ipc.split('sortByKind(').length - 1).toBe(1)
   })
   it('no turn is reshaped by a second model: a lookup, a team ask, a handed or company turn and a desk turn all post the one draft, and another form is the model\'s to write', () => {
     expect(ipc).not.toMatch(/const reshaped|reshapeCandidate/)
     expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
     expect(COLLEAGUE_CORE_RULE).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
   })

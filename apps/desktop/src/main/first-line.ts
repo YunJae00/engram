@@ -191,7 +191,6 @@ export function firstLineReady(channel: string): void {
   reveal(channel, turn)
 }
 
-export const heldRounds = (show: (text: string) => void): { token(text: string, aloud: boolean): void; reset(): void } => ({ token: (text, aloud) => { if (aloud) show(text) }, reset: () => {} })
 
 export function firstLineSpoke(channel: string): void {
   const turn = turns.get(channel)

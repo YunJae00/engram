@@ -9,7 +9,7 @@ import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from
 import * as deskLane from '../src/main/desk-lane.js'
 const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { DESK_NOTE, deskKind } from '../src/main/desk-lane.js'
 import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
@@ -92,7 +92,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     beginFirstLine({ channel: 'bot-1', message: '여름 워크숍 안내문 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: vi.fn() })
     await vi.advanceTimersByTimeAsync(10)
     expect(quick).toHaveBeenCalledOnce()
-    expect(source('ipc.ts')).toContain("said: async () => (request.botId ? await readBotTranscript(paths, request.botId, 12) : request.history ?? []).filter(one => one.role === 'assistant' && one.progress && !one.error")
+    expect(source('ipc.ts')).toContain("said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error")
   })
 
   it('a split ask is told to the voice as a split, and the voice line is posted as written (T3)', async () => {

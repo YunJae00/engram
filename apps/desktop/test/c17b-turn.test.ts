@@ -39,10 +39,10 @@ describe('a correction is checked against the ask as the person changed it', () 
   })
   it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
     expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
-    expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(askNow(message, earlier)).toContain(HOLDS)
     expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
-    expect(ipc).toMatch(/attachmentContext: \[[^\]]*changedNote[^\]]*\]/)
+    expect(ipc).toMatch(/context: \(\) => \[[^\]]*changedNote[^\]]*\]/)
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
   })
   it('the corrected meaning names the new part, and the rules for one part and one offer are the model\'s', () => {

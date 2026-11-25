@@ -19,7 +19,7 @@ const posted = async (draft: string, ask: string): Promise<string> => (await run
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-17: a correction after a lookup reaches the item judge as its meaning (c17b askNow × c17a points)', () => {
@@ -39,7 +39,7 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
     expect(ipc).toContain('const meant = askNow(request.message, savedHistory)')
     expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
     expect(ipc).toContain('const lookup = swapRounds(request.message, signal)')
-    const from = ipc.indexOf('await lookup.run(')
+    const from = ipc.indexOf('await answer({')
     expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })
 })

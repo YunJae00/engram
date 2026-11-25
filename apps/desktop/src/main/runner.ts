@@ -110,9 +110,9 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     dir = await mkdtemp(join(out, `${one.id}-`))
     const world = await openWorld(dir, engine)
     const own = await seedFiles(world.paths, one.files ?? {})
-    for (const ask of one.before ?? []) before.push(await answer(world, ask, { signal: stop.signal }))
+    for (const ask of one.before ?? []) before.push((await answer(world, ask, { signal: stop.signal })).trace)
     if (one.aside) aside = setTimeout(() => steer.push(one.aside!.text), one.aside.afterMs)
-    trace = await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0) })
+    trace = (await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0) })).trace
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
     checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)) })
   } catch (cause) {

@@ -104,7 +104,7 @@ describe('the model engine and the files it builds from', () => {
 })
 
 describe('the headless runner and its one answer entry', () => {
-  it.each(['src/main/answer.ts', 'src/main/runner.ts', 'scripts/runner.mts'])('%s never reaches the shell through its imports', file => {
+  it.each(['src/main/answer.ts', 'src/main/first-line.ts', 'src/main/fast-lane.ts', 'src/main/runner.ts', 'scripts/runner.mts'])('%s never reaches the shell through its imports', file => {
     expect(shellPath(file)).toBeNull()
   })
 })

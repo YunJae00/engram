@@ -128,7 +128,7 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   it('has no reply of its own in the chat turn: after the host\'s file jobs the model turn is the only writer (stack-10)', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/reshape/i)
-    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {')
+    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await answer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine),')
     expect(ipc).toContain('...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),')
   })
 })

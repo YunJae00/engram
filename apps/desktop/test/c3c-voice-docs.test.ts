@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendBotTurn, initVault, readBotTranscript, sessionRules } from 'core'
+import { appendBotTurn, initVault, readBotTranscript, sessionRules, type Engine } from 'core'
 
 const bus = vi.hoisted(() => ({ sent: [] as { type: string; reset?: boolean; drop?: boolean; text?: string }[] }))
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
@@ -10,14 +10,15 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: stri
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { answer, openWorld } from '../src/main/answer.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
-import { fastLane, quietRounds, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
+import { fastLane, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { answerOnly, asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
@@ -73,9 +74,9 @@ describe('the first line is a waiting line, not part of the answer', () => {
     firstLineSpoke('bot-1')
     expect(hide).not.toHaveBeenCalled()
     const ipc = source('ipc.ts')
-    expect(ipc).toContain('beginFirstLine({ host: hostAnswers, channel: entry.channel,')
-    expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
-    expect(ipc).toContain("if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text })")
+    expect(ipc).toContain('ack: { host: !!steer, channel,')
+    expect(source('answer.ts')).toMatch(/if \(!hold\) \{\n\s*firstLineSpoke\(channel\)/)
+    expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
     const aside = source('aside-ipc.ts')
     expect(aside).toContain('asideVoice(')
@@ -242,36 +243,41 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(toldPrompt(said, true)).toContain('do not say you saved or noted anything')
     const ipc = source('ipc.ts')
     expect(ipc).toContain('told: onlyTells(request.message,')
-    expect(ipc).toContain('if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }')
+    expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
+    expect(source('answer.ts')).toContain("result = talked ? { answer: talked, steps: [], fellBack: false } :")
   })
 })
 
 describe('nothing is said before or between tool calls once the host has spoken', () => {
-  it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', () => {
-    const ipc = source('ipc.ts')
-    expect(ipc).toContain('const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined')
+  const streamed = async (pieces: string[], options: { held?: boolean; ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
+    const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-'))
+    try {
+      const engine = { id: options.ack ? 'claude' : 'mock', desktopToolIsolation: true, quick: async () => options.ack, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { onToken?(text: string): void }) => { for (const piece of pieces) job.onToken?.(piece); return { answer: pieces.at(-1)! } } } as unknown as Engine
+      const seen: { text: string; held: boolean }[] = []
+      await answer(await openWorld(root, engine), '분기 실적 슬라이드 정리해줘', { ...(options.held ? { held: true } : {}), onToken: (text, held) => { seen.push({ text, held }) } })
+      return seen
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
+
+  it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', async () => {
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
-      const shown: string[] = [], quiet = quietRounds(text => shown.push(text))
-      quiet.token(narration, false)
-      quiet.token('3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.', false)
-      expect(shown, narration).toEqual([])
+      for (const options of [{ ack: '실적 표부터 볼게요.' }, { held: true }]) {
+        const seen = await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], options)
+        expect(seen.map(one => one.held), narration).toEqual([true, true])
+      }
     }
+    expect(source('answer.ts')).toContain('const hold = !!held || !!firstLineNote(channel)')
   })
 
-  it('shows no round of a general turn as it comes, however long, and still shows a reply to words said mid-turn', () => {
+  it('shows no round of a general turn as it comes, however long', async () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
       expect([...narration].length).toBeGreaterThan(200)
-      const shown: string[] = [], held = heldRounds(text => shown.push(text))
-      for (const piece of narration.match(/.{1,40}/g)!) held.token(piece, false)
-      held.reset()
-      expect(shown, narration.slice(0, 30)).toEqual([])
-      const leaked: string[] = [], lookup = quietRounds(text => leaked.push(text))
-      lookup.token(narration, false)
-      expect(leaked).toEqual([])
+      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { held: true }]) {
+        const seen = await streamed(narration.match(/.{1,40}/g)!, options)
+        expect(seen.every(one => one.held), narration.slice(0, 30)).toBe(true)
+      }
     }
-    const shown: string[] = [], held = heldRounds(text => shown.push(text))
-    held.token('대구도 넣을게요.', true)
-    expect(shown).toEqual(['대구도 넣을게요.'])
+    expect((await streamed(['지금 1달러에 1,385원이에요.'])).map(one => one.held)).toEqual([false])
   })
 
   it('does not keep an English progress line in a Korean thread, on screen or on disk', async () => {

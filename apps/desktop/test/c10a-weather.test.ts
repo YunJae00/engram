@@ -12,8 +12,8 @@ const now = new Date('2026-11-17T09:00:00+09:00')
 test('c10a L1: the run\'s answer is posted with its "13.0" and its bracketed date as written; whole degrees and plain dates are rules the model reads', async () => {
   const l1 = '오늘(11월 17일)은 비가 오고 있어요, 지금 13.0도예요. 저녁까지 비가 이어지다가 밤에는 흐림으로 바뀌어요. [네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)'
   for (const kept of [l1, '내일(18일 수)은 -3.0℃, 모레(11월 19일)는 10.0°까지 올라요.', '지금 13.5도예요.', '13.05도', '1달러에 1,385.0원이에요.', '이번 주말(21~22일)은 맑아요.', '11월 16일 종가 기준 155.0달러예요.']) expect(await posted(kept)).toBe(kept)
-  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
-  expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(LANE_NOTE).toContain('a temperature in whole degrees when it ends in .0')
   expect(COLLEAGUE_CORE_RULE).toContain('a whole number has no ".0", and a day is said with its date in plain words, never in brackets')
 })
@@ -28,7 +28,7 @@ test('c10a L3: a weekend answer that lumps the days is posted as the model wrote
   expect(LANE_NOTE).toContain('each one is answered by its own name in a clause of its own ("토요일은 맑고, 일요일은 오후에 비가 와요."), never lumped together')
   expect(await posted(l3)).toBe(l3)
   expect(laneToday('오늘 서울 날씨 어때?', now)).not.toContain('11월 21일 토요일')
-  expect(ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })
 
 test('c10a r2: a weekend answer is never rewritten, lumped or day by day; a clause for each day is the note\'s rule', async () => {

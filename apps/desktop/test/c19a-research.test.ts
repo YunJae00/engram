@@ -31,7 +31,7 @@ describe('7. the lone lookup across days: dates are given as labels, nothing rew
     expect(askedDays('광주 기온 알려줘', WED)).toEqual([])
   })
   it('no post-hoc rewrite is left to run after the reader ends', () => {
-    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'quietRounds', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
   })
 })
 

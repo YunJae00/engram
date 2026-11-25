@@ -19,7 +19,6 @@ export const LANE_NOTE = [
 export const LANE_SOLO_CALLS = 4
 export const LANE_SOLO_SOFT_MS = 12_000
 export const LANE_TEAM_CALLS = 8
-export const quietRounds = (show: (text: string) => void) => ({ token(text: string, aloud: boolean): void { if (aloud) show(text) } })
 export const teamAsk = (message: string): boolean => TEAM.test(message)
 const FIRST_STEPS: [RegExp, string, string][] = [
   [/날씨|기온|강수|비\s*(와|오|올)|눈\s*(와|오|올)|미세\s*먼지|\b(weather|forecast)\b/i, '지금 날씨 확인할게요.', 'Checking the weather now.'],

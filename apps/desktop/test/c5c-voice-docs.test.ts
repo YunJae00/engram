@@ -12,10 +12,10 @@ import * as deskLane from '../src/main/desk-lane.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'heldRounds', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
 const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await lookup.run('), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { cleanLine, firstLinePrompt, smallTalkPrompt, toldPrompt } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
@@ -68,7 +68,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(DESK_NOTE).toContain('change that same file, the one in the list of files you saved earlier: never make a second copy')
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory')
-    expect(ipc).toMatch(/attachmentContext: \[company, [^\]]*attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
+    expect(ipc).toMatch(/context: \(\) => \[company, [^\]]*attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
   })
   it('opens a document turn with its first step and closes with what is in the file (D2, D4 judge)', () => {
     const line = firstLinePrompt('위 회의록으로 워드 보고서 만들어줘', true)
