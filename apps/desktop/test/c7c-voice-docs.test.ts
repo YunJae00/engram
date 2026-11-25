@@ -6,30 +6,30 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import { DESK_NOTE, DESK_TOOLS } from '../src/main/desk-lane.js'
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
-import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
-import { ACK_MAX, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
+import { ACK_MAX, fallbackLine, firstLinePrompt, quickAnswerPrompt, saidBefore } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
-async function turn(draft: string, said: string, options: AgentLoopOptions) {
+const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
+const COLLEAGUE_RULE = core('agent-voice.ts')
+async function turn(draft: string, said: string, options: AgentLoopOptions = {}) {
   const jobs: ToolSessionJob[] = []
   const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
   const result = await runToolSession({ engine, workdir: '/tmp/c7c-voice' as EngineCwd, tools: [] }, said, options)
   return { posted: result.answer, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
 }
-const noteAnswer = async (ask: string, answer: string) => (await turn(answer, ask, { attachmentContext: DESK_NOTE })).posted
-const shortAnswer = async (answer: string) => (await turn(answer, '매표소 창구는 어느 쪽이야?', { short: true, attachmentContext: SHORT_QUESTION_NOTE })).posted
+const noteAnswer = async (ask: string, answer: string) => (await turn(answer, ask)).posted
+const shortAnswer = async (answer: string) => (await turn(answer, '매표소 창구는 어느 쪽이야?')).posted
 
 describe('the words of a slide are changed without XML (D5)', () => {
-  it('tells the deck kind to use the outline and the slide edits, inside the same menu', () => {
-    expect(DESK_NOTE).toContain('never read or write slide XML')
-    expect(DESK_NOTE).toContain('file_read_package outline:true')
-    expect(DESK_NOTE).toContain('{slide, with} for a title or {slide, text, with} for another text')
-    expect(DESK_NOTE).toContain('Only a change to the structure')
-    for (const tool of ['file_read_package', 'file_edit_package']) expect(DESK_TOOLS.deck!.has(tool)).toBe(true)
-    expect(DESK_TOOLS.deck!.size).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX)
+  it('tells the model in the slide tools themselves to use the outline and the slide edits, on the one menu', () => {
+    const tools = core('document-tools.ts')
+    expect(tools).toContain('To change the words on a slide of a PPTX write no XML')
+    expect(tools).toContain('after file_read_package outline:true')
+    expect(tools).toContain("every edit is {slide, with} for that slide\\'s title or {slide, text, with} for the one text that reads exactly so")
+    expect(tools).toContain('outline:true returns instead every slide with its number, its title and its other texts and no XML')
+    expect(source('answer.ts')).toContain('tools: everyTool,')
+    expect(source('answer.ts')).not.toMatch(/DESK_TOOLS|deskMenu/)
   })
 })
 
@@ -39,9 +39,9 @@ describe('decisions and tasks are said once (D1)', () => {
     '할 일', '', '한서연: 온보딩 화면 시안 확정 (11/20까지)', '오태민: 결제 모듈 교체 일정 수립 (11/24까지)', '윤가은: 베타 테스터 50명 모집 공지 발송 (11/27까지)', '백도현: 광고비·행사비 나눠서 마케팅 예산안 재정리 후 제출 (12/1까지)', '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의(11/23)에서 결정'].join('\n')
 
   it('the model is told to open on the answer and to say each thing under one part; a draft with a promise line and owner / date tails under 결정사항 is posted as written', async () => {
-    const { posted, told } = await turn(D1, D1_ASK, { attachmentContext: DESK_NOTE })
+    const { posted, told } = await turn(D1, D1_ASK)
     expect(told).toContain('The answer is the first line: no opening line about what you are about to do')
-    expect(told).toContain('Each thing goes under one of them, never both: an item with an owner and a due date is an action item.')
+    expect(told).toContain('A decision or item is listed once, never again under a second heading.')
     expect(posted).toBe(D1)
     expect(posted.startsWith(D1.split('\n')[0]!)).toBe(true)
     expect(posted.match(/담당: /g)).toHaveLength(4)
@@ -124,26 +124,25 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
 })
 
 describe('a fact about the person is a state, not an instruction (M3, c11b)', () => {
-  it('turns a closing -하세요 on a who / what / where question about them into -하고 계세요 (c11b: asked of the model, no host rewrite)', async () => {
-    expect(SHORT_QUESTION_NOTE).toContain('never with an ending that reads as telling them to do it')
+  it('posts a closing -하세요 on a who / what / where question about them as written, with no ending rule left in any prompt (c11b: no host rewrite)', async () => {
+    expect((await turn('민호 님이랑 일하세요.', '매표소 창구는 어느 쪽이야?')).told).not.toContain('never with an ending that reads as telling them to do it')
     for (const answer of ['민호 님이랑 일하세요.', '판교 사무실에서 근무하시죠', '민호 님이요.']) expect(await shortAnswer(answer), answer).toBe(answer)
   })
   it('leaves an instruction they asked for, an offer and a question about someone else (c11b: every answer is left as written)', async () => {
     for (const answer of ['목을 천천히 돌리면서 시작하세요.', '목 돌리기부터 시작하세요.', '민호 님이랑 일하고 계세요. 더 궁금한 거 있으면 말씀하세요.', '디자인을 담당하세요.', '칼국수를 하세요.']) expect(await shortAnswer(answer), answer).toBe(answer)
   })
   it('is said that way in the note and checked on short answers, with no word about memory (c11b: no template phrase)', () => {
-    expect(SHORT_QUESTION_NOTE).toContain('in one short, plain sentence the way a colleague would say it back')
-    expect(SHORT_QUESTION_NOTE).toContain('with no word about remembering or looking it up')
-    for (const template of ['같이 일하고 계세요', '살고 계세요']) expect(SHORT_QUESTION_NOTE).not.toContain(template)
+    expect(COLLEAGUE_RULE).toContain('without mentioning memory, records or notes ("제 기록에는…")')
+    for (const template of ['같이 일하고 계세요', '살고 계세요']) expect(COLLEAGUE_RULE).not.toContain(template)
     expect(source('ipc.ts')).not.toContain('asState')
   })
 })
 
 describe('a pick comes with its reason, recommendations with what they went by (H1)', () => {
-  it('says so in the short-ask note and keeps the rules Q2-Q4 and H2 ride on', () => {
-    for (const said of ['A pick ("하나만 골라줘") is the thing itself and half a clause of why', '"칼국수 어때요? 쌀쌀하니까요."', 'for a menu a dish, never a kind of restaurant', 'each with half a clause of why it fits what they told you', 'numbered when there are three or more', 'still no question back', 'fitting what they told you earlier about the thing asked',
-      'Asked for one thing, give exactly one; asked for three, give three', 'a line or a name is given as just that', 'so the reply is never the foreign line alone', '"평년 기준으로 31,536,000초예요."', 'names it in the conversation\'s own words and, for picks, says what you went by ("제주 가시면 아버님 무릎 생각해서 덜 걷는 걸로 골랐어요."', 'you never ask which one they mean']) expect(SHORT_QUESTION_NOTE, said).toContain(said)
-    expect(SHORT_QUESTION_NOTE).not.toContain('a pick is given as just that')
+  it('keeps the rules Q2-Q4 and H2 ride on in the prompts still sent, with no short-ask note left', () => {
+    for (const said of ['text they asked for in another language, which you hand over unchanged after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
+    expect(quickAnswerPrompt('1년은 몇 초야?', true)).toContain('"평년 기준으로 31,536,000초예요."')
+    expect(source('fast-lane.ts')).not.toContain('SHORT_QUESTION_NOTE')
   })
   it('keeps a recommendation\'s lead and every pick under it: nothing is taken off a short answer', async () => {
     const picks = '아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.\n\n1. 제주 가시면 해안도로 드라이브가 좋아요.\n2. 오설록 티뮤지엄은 실내라 편해요.\n3. 함덕 해변 카페에서 쉬어 가세요.'

@@ -135,7 +135,7 @@ describe('stack-18: one clock on the anonymous split (c18a page opens × c18b sc
     const text = await drive(hire.run({ members: members }, { task: '' }))
     const took = Date.now() - since
     expect(took).toBeLessThan(bound)
-    expect(hire.closesOn?.(text) ?? false).toBe(false)
+    expect(hire.closes).toBeUndefined()
     expect((JSON.parse(text) as { members: { result: string }[] }).members.map(m => m.result)).toEqual(TOWNS.slice(0, n).map(own))
     expect(calls.filter(c => c.kind === 'model')).toHaveLength(n)
     expect(calls.filter(c => c.kind === 'quick')).toHaveLength(0)

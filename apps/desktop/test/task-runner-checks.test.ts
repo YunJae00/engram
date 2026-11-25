@@ -318,8 +318,8 @@ it('ends a plain ask done on its delivered answer whatever the host still doubts
   await t.chat('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
   expect(await listTasks(t.paths)).toHaveLength(2)
   expect(t.sent[1]?.extra?.context).toBeUndefined()
-  const { deskLane } = await import('../src/main/desk-lane.js')
-  expect(deskLane('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', !t.sent[1]?.extra?.context)).toBe(true)
+  const { slideTitleFix } = await import('../src/main/desk-lane.js')
+  expect(slideTitleFix('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')).toEqual({ slide: 3, title: '핵심 지표' })
 })
 
 it('still runs the check when the person asked for one', async () => {

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import * as laneModule from '../src/main/fast-lane.js'
-import { laneFirstLine, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, teamAsk } from '../src/main/fast-lane.js'
+import { laneFirstLine, quickQuestion, teamAsk } from '../src/main/fast-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 async function turn(page: string, ask: string, draft: string) {
@@ -28,15 +28,22 @@ const LANE = [
   '오늘 서울 날씨 어때?', '엔비디아 오늘 주가 알려줘', '이번 주말 부산 비 와?', '원달러 환율 지금 얼마야?',
   'Have three bots research the weather in Seoul, Busan and Jeju', "What's the weather in Seoul today?",
 ]
-it('tells a short question from a short job, so only the question is asked to be brief', () => {
-  for (const message of ['1년은 몇 초야?', '정리한 폴더에 PDF 몇 개야?', '나 누구랑 일하지?', 'How many seconds in a year?']) expect(shortQuestion(message), message).toBe(true)
-  for (const message of ['메일 써줘', '방금 말한 거 더 짧게', '소설 써줘', '이 계약서의 위험 요소를 전부 찾아서 표로 정리하고 각 항목마다 근거 조항을 달아줄 수 있어?', '첫 줄\n둘째 줄?']) expect(shortQuestion(message), message).toBe(false)
-  expect(SHORT_QUESTION_NOTE).toContain('exact figures written out in digits')
+it('gives a short question and a short job the same call, and the host asks neither to be brief', async () => {
+  const jobs: { told: string; tools: string[]; maxCalls: number; modelHint?: string; effort?: string }[] = []
+  const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push({ told: [job.system, job.opening, job.prompt].join('\n'), tools: job.tools.map(one => one.name), maxCalls: job.maxCalls, ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}) }); return { answer: '네.' } } } as unknown as Engine
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => '' }
+  const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
+  try {
+    for (const ask of ['하루는 몇 분이야?', '휴가 신청 메일 써줘']) await answer(await openWorld(join(root, String(jobs.length)), engine), ask, { plainAsk: true, tools: [search], ack: { bare: true } })
+  } finally { await rm(root, { recursive: true, force: true }) }
+  expect(jobs).toHaveLength(2)
+  for (const job of jobs) expect(job.told).not.toContain('This is a short ask')
+  expect({ ...jobs[0]!, told: '' }).toEqual({ ...jobs[1]!, told: '' })
 })
 
 it('gives a lookup the shell and the full menu like any turn, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('tools: deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
   expect(ipc).toContain('...(native && !company ? { native } : {}),')
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native ? { native } : {}),')
   expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
@@ -69,7 +76,7 @@ it('tells a team ask from a lone one, and a lone lookup gets the quick model\'s 
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(bare ? {} : { told: onlyTells(message, lastReplyOf(earlier ?? world.history)), whole: quickQuestion(message) }),')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(bare ? {} : { whole: quickQuestion(message) }),')
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('whole: quickQuestion(message) }')
 })
 
@@ -104,7 +111,7 @@ it('posts a lookup\'s answer as written, a failure report included, and no host 
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
   for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '토트넘 어젯밤 경기 점수 몇 대 몇이야?', answer)).answer, answer).toBe(answer)
-  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
   const lane = readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')
   expect(lane.match(/^export (?:async )?function \w+/gm)).toEqual(['export function asideShape'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')

@@ -7,18 +7,18 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { DESK_NOTE, deskKind } from '../src/main/desk-lane.js'
-import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
+import { laneFirstLine } from '../src/main/fast-lane.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
+const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
 async function deskTurn(draft: string, said: string) {
   const jobs: ToolSessionJob[] = []
   const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
-  const result = await runToolSession({ engine, workdir: '/tmp/c6c-voice' as EngineCwd, tools: [] }, said, { attachmentContext: DESK_NOTE })
+  const result = await runToolSession({ engine, workdir: '/tmp/c6c-voice' as EngineCwd, tools: [] }, said)
   return { posted: result.answer, calls: jobs.length, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
 }
 const tail = (line: string) => line.replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/).slice(-2).join(' ')
@@ -108,18 +108,16 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(fallbackLine(T3, true)).toBe(laneFirstLine(T3, true))
     for (const ask of ['fixtures/inbox-dump 폴더 파일들 종류별로 나눠서 정리해줘', '회의록 요약해줘']) expect(splitAsk(ask), ask).toBe(false)
     expect(source('ipc.ts')).toContain('bare: !!(request.attachments?.length || (turn?.context && !turn.learned))')
-    expect(source('answer.ts')).toContain('...(bare ? {} : { told: onlyTells(message, lastReplyOf(earlier ?? world.history)), whole: quickQuestion(message) })')
+    expect(source('answer.ts')).toContain('...(bare ? {} : { whole: quickQuestion(message) })')
   })
 })
 
 describe('a figure that rests on a convention says so (Q2)', () => {
-  it('asks for the convention inside the one sentence, in both prompts', () => {
-    for (const text of [quickAnswerPrompt('1년은 몇 초야?', true), SHORT_QUESTION_NOTE]) {
-      expect(text).toContain('평년 기준으로 31,536,000초예요.')
-      expect(text).toMatch(/a common (year )?or a leap year, a 30- or 31-day month, which exchange/)
-    }
-    expect(quickAnswerPrompt('1년은 몇 초야?', true)).toContain('still one sentence, never the other variant and never an "if" clause')
-    expect(SHORT_QUESTION_NOTE).toContain('never adds the other variant')
+  it('asks for the convention inside the one sentence, in the quick answer prompt', () => {
+    const text = quickAnswerPrompt('1년은 몇 초야?', true)
+    expect(text).toContain('평년 기준으로 31,536,000초예요.')
+    expect(text).toMatch(/a common (year )?or a leap year, a 30- or 31-day month, which exchange/)
+    expect(text).toContain('still one sentence, never the other variant and never an "if" clause')
   })
 })
 
@@ -128,10 +126,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
   const F1 = ['inbox-dump 폴더를 종류별로 정리했어요.', '', '- PDF 폴더: 6개 — 견적서_A사.pdf, 계약서_초안.pdf, 세금계산서_10월.pdf, 제품소개서.pdf, 출장보고.pdf, 회의자료_1103.pdf', '- 이미지 폴더: 4개 — 로고_시안.png, 영수증_사진.png, 좌석배치도.png, 화면캡처_01.png', '- 문서 폴더: 3개 — 인사말.docx, 주간보고_44주차.docx, 채용공고_초안.docx', '- 엑셀 폴더: 3개 — 연락처목록.xlsx, 재고현황.xlsx, 출장비정산.xlsx', '- 텍스트 폴더: 4개 — wifi_안내.txt, 메모.txt, 전화메모_1112.txt, 할일.txt'].join('\n')
 
   it('pins the shape and the one move call in what the model is told; the chat turn reshapes nothing', async () => {
-    expect(deskKind(F1_ASK)).toBe('tidy')
-    expect(DESK_NOTE).toContain('then how many files went into each folder, no list and no table')
-    expect(DESK_NOTE).toContain('move every file in ONE file_move call')
-    expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
+    expect(source('file-move.ts')).toContain('up to 500 in one call')
     expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
     expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
   })
@@ -169,7 +164,6 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
   it('a 결정사항 block that the 할 일 lines say again is the model\'s to leave out: it is told so, and its answer keeps every line it wrote', async () => {
     for (const answer of [H3, marked]) {
       const { posted, told } = await deskTurn(answer, H3_ASK)
-      expect(told).toContain('No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask')
       expect(told).toContain('A decision or item is listed once, never again under a second heading.')
       expect(posted).toBe(answer)
       expect(posted.match(/온보딩 화면 시안 확정/g)).toHaveLength(2)
@@ -191,7 +185,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
 
   it('the short answer that opens on what was chosen is asked of the model and posted as written; a long one is not cut down by the host', async () => {
     const { posted, told } = await deskTurn(SHORT, H3_ASK)
-    expect(told).toContain('the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요.")')
+    expect(told).toContain('say in a few words what you chose ("팀에 바로 공유할 수 있게 결정사항이랑 할 일로 나눠서 정리했어요.")')
     expect(posted).toBe(SHORT)
     expect(posted.split('\n').filter(line => line.trim()).length).toBeLessThanOrEqual(9)
     for (const answer of [H3, marked]) {
@@ -211,11 +205,9 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect((await deskTurn(prose, H3_ASK)).posted).toBe(prose)
   })
 
-  it('pins the open-form note; the chat turn has no host fix between the model\'s answer and its delivery, and H4\'s offer is the model\'s own line', async () => {
-    expect(deskKind(H3_ASK)).toBe('note')
-    expect(DESK_NOTE).toContain('the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요.")')
-    expect(DESK_NOTE).toContain('at most about eight short lines: who does what by when, then what is still open, then the next meeting')
-    expect(DESK_NOTE).toContain('something not settled yet goes under 미결, never under 결정사항')
+  it('pins the open-form choice rule the model gets; the chat turn has no host fix between the model\'s answer and its delivery, and H4\'s offer is the model\'s own line', async () => {
+    expect(COLLEAGUE_RULE).toContain('When the ask is loose, decide the way a sensible colleague would and say in a few words what you chose')
+    expect((await deskTurn(SHORT, H3_ASK)).told).toContain('never offer a menu of options or ask how they want it when one reasonable choice exists')
     const ipc = source('ipc.ts')
     expect(answerSetInTurn(ipc)).toBe(1)
     expect(ipc.split('\n').filter(line => /result\.answer = /.test(line)).map(line => line.trim())).toEqual([expect.stringContaining('result.answer = answered }')])
@@ -237,7 +229,6 @@ it('stack-6: "할 일만" is asked of the model as that part only; a reply with 
   const shown = ['회의록에서 할 일을 뽑아봤어요.', '', '할 일', '', ...tasks, '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
   const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
   const { posted, told } = await deskTurn(shown, ask)
-  expect(told).toContain('gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for.')
   expect(told).toContain('When they ask for one part of something, give that part only.')
   expect(posted).toBe(shown)
   const marked = ['**할 일**', ...tasks.map(line => `- ${line}`), '', '**미결**', '- 결제 모듈 후보 선택', '', '```replies', '담당자별로 나눠줘', '```'].join('\n')
@@ -253,5 +244,5 @@ it('stack-6: the repeat check is the quick voice\'s only, and no block correctio
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
   expect(answerSetInTurn(ipc)).toBe(1)
   expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
+  expect(source('answer.ts')).not.toMatch(/deskNote|DESK_NOTE|fileGiven/)
 })

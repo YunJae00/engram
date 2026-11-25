@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendBotTurn, initVault, readBotTranscript, sessionRules, type Engine } from 'core'
+import { appendBotTurn, initVault, readBotTranscript, sessionRules, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 
 const bus = vi.hoisted(() => ({ sent: [] as { type: string; reset?: boolean; drop?: boolean; text?: string }[] }))
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
@@ -10,29 +10,37 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: stri
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, plainReply, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { answer, openWorld } from '../src/main/answer.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
-import { SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
-import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { answerOnly, asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
 import { displayTaskAnswer } from '../src/renderer/src/lib/threadLang.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
+const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
+const tool = (name: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object' }, run: async () => '' })
+const MENU = ['keep_in_mind', 'search_memory', 'file_read', 'find_files', 'file_move', 'ppt_build', 'file_read_package', 'file_edit_package', 'search_web', 'open_page', 'ask_person', 'report_result_check'].map(tool)
+async function lead(message: string, history: { role: 'user' | 'assistant'; text: string }[] = [], quick: (prompt: string) => Promise<string> = async () => 'NONE') {
+  const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-')), jobs: ToolSessionJob[] = []
+  try {
+    const engine = { id: 'claude', desktopToolIsolation: true, quick, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '네, 그렇게 할게요.' } } } as unknown as Engine
+    const { result } = await answer({ ...await openWorld(root, engine), history: [...history] }, message, { tools: MENU })
+    return { job: jobs[0], calls: jobs.length, posted: result?.answer, told: jobs.map(job => `${job.system}\n${job.opening ?? ''}\n${job.prompt}`).join('\n') }
+  } finally { await rm(root, { recursive: true, force: true }) }
+}
 const WORKDIR = { kind: 'vault' as const, path: 'C:/vault' } as never
 
 describe('the first line is a waiting line, not part of the answer', () => {
   const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, ...patch })
   const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
-  const start = (reply: string | ((prompt: string) => string), patch: Partial<FirstLineAsk> = {}, more: { told?: boolean; context?: () => Promise<string> } = {}) => {
+  const start = (reply: string | ((prompt: string) => string), patch: Partial<FirstLineAsk> = {}) => {
     const show = vi.fn(), hide = vi.fn(), quick = vi.fn((prompt: string) => later(typeof reply === 'string' ? reply : reply(prompt), 500)()), message = ask(patch).message
-    beginFirstLine({ ...ask(patch), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide, fallback: fallbackLine(message, true), ...more })
+    beginFirstLine({ ...ask(patch), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide, fallback: fallbackLine(message, true) })
     firstLineReady('bot-1')
     return { show, hide, quick }
   }
@@ -55,7 +63,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
   })
 
   it('stack-3: a host-answered ask shows no line, a lookup shows its own line at once and keeps it, and no round of either hold is aloud', async () => {
-    const hosted = start('NONE', { message: '지우가 누구야?', host: true }, { told: true })
+    const hosted = start('NONE', { message: '지우가 누구야?', host: true })
     await vi.advanceTimersByTimeAsync(2000)
     expect(hosted.show).not.toHaveBeenCalled()
     expect(hosted.quick).not.toHaveBeenCalled()
@@ -146,15 +154,14 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
     expect(source('ipc.ts')).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
-    const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, kind: 'short', tools: [] })
+    const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, tools: [] })
     expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')
     expect(rules).toContain('not between paragraphs and not before a list or a table')
-    expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
+    expect(rules).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
     expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
     expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
     expect(source('ipc.ts')).not.toContain('withoutWorkNote')
-    expect(SHORT_QUESTION_NOTE).toContain('what the earlier line means and its register stay')
-    expect(SHORT_QUESTION_NOTE).toContain('"I apologize for being late."')
+    expect(rules).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept')
   })
 
   it('the renderer replaces the waiting line with the answer and keeps no trace of it', () => {
@@ -211,39 +218,18 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(greeting('네 좋아')).toBe(false)
   })
 
-  it('answers something the person only told with one line from the quick voice, with the conversation in view, and shows its own first line only when that reply is declined', async () => {
-    const said = '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어'
-    const told = (reply: string, line: string) => (prompt: string) => prompt.includes('it asks for nothing') ? reply : line
-    const { show, quick } = start(told('부모님이랑 제주 가시는군요, 좋으시겠어요.', 'NONE'), { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
-    const reply = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(500)
-    expect(await reply).toBe('부모님이랑 제주 가시는군요, 좋으시겠어요.')
-    expect(show).not.toHaveBeenCalled()
-    const toldCall = quick.mock.calls.map(call => String((call as unknown[])[0])).find(prompt => prompt.includes('it asks for nothing'))
-    expect(toldCall).toContain('Conversation so far:\nPerson: 안녕')
-    endFirstLine('bot-1')
-    const declined = start('NONE', { message: said }, { told: true })
-    const none = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(2000)
-    expect(await none).toBeUndefined()
-    expect(declined.show).toHaveBeenCalledExactlyOnceWith(fallbackLine(said, true))
-    endFirstLine('bot-1')
-    const kept = start(told('사진 많이 찍으셨겠네요.', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
-    const both = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(2000)
-    expect(await both).toBe('사진 많이 찍으셨겠네요.')
-    expect(kept.show).not.toHaveBeenCalled()
-    endFirstLine('bot-1')
-    const work = start(told('NONE', '사진 날짜부터 맞춰 볼게요.'), { message: '지난 주말 캠핑 사진 날짜별로 묶어서 앨범 세 개' }, { told: true })
-    const dropped = smallTalkAnswer('bot-1')
-    await vi.advanceTimersByTimeAsync(500)
-    expect(await dropped).toBeUndefined()
-    expect(work.show).toHaveBeenCalledExactlyOnceWith('사진 날짜부터 맞춰 볼게요.')
-    expect(toldPrompt(said, true)).toContain('reply with exactly NONE')
-    expect(toldPrompt(said, true)).toContain('do not say you saved or noted anything')
-    const ipc = source('ipc.ts')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('told: onlyTells(message,')
-    expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
+  it('takes something the person only told to the lead with the conversation in view, with no quick-voice reply of its own, and posts the lead\'s words as written', async () => {
+    vi.useRealTimers()
+    const said = '이번 토요일에 동생 결혼식이라 아침 일찍 대전 내려가'
+    const asked: string[] = []
+    const { calls, posted, told } = await lead(said, [{ role: 'user', text: '주말에 뭐 할지 아직 몰라' }, { role: 'assistant', text: '천천히 정하셔도 돼요.' }], async prompt => { asked.push(prompt); return '축하드려요, 조심히 다녀오세요.' })
+    expect(calls).toBe(1)
+    expect(posted).toBe('네, 그렇게 할게요.')
+    expect(told).toContain('주말에 뭐 할지 아직 몰라')
+    expect(told).toContain(said)
+    expect(asked.some(prompt => prompt.includes('it asks for nothing'))).toBe(false)
+    expect(source('answer.ts')).not.toMatch(/told:|onlyTells|TOLD_NOTE/)
+    expect(source('ipc.ts')).toContain('reply: !(turn?.context || request.attachments?.length)')
     expect(source('answer.ts')).toContain("result = host ?? (talked ? { answer: talked, steps: [], fellBack: false } :")
   })
 })
@@ -312,102 +298,53 @@ describe('nothing is said before or between tool calls once the host has spoken'
 })
 
 describe('short asks, statements and corrections', () => {
-  it('takes a short ask to write, reword, pick, translate or recommend as a short ask', () => {
-    for (const message of [
-      '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', '방금 말한 거 더 짧게', '아 그 여행 가서 할 만한 거 세 개만 추천해줘', '이 문장 영어로 번역해줘', '둘 중에 하나 골라줘',
-      '팀 회식 건배사 한 줄 지어줘', '좀 더 정중하게 바꿔줘', '강아지 이름 세 개만 추천해줘', '더 쉽게 설명해줘', 'Rewrite that in one line', 'Suggest three names for a cat',
-    ]) { expect(shortAsk(message), message).toBe(true); expect(deskKind(message), message).toBe('ask'); expect(deskLane(message, true), message).toBe(true) }
-    for (const message of [
-      'fixtures/sales.csv에서 12월 매출 합계 알려줘', '회의록 파일 요약해서 써줘', '엔비디아 주가 검색해줘', '요즘 AI 뉴스 찾아줘', '오늘 서울 날씨 알려줘', '지민한테 문구 써달라고 해줘',
-      '이 내용 민호한테 메일로 보내줘', '매주 월요일 9시에 요약해줘', '보고서 써줘', '내 이름 기억해줘',
-      '지난 분기 실적을 지역별로 나눠서 왜 서울만 떨어졌는지 원인까지 붙여 가지고 경영진이 읽기 좋게 길게 풀어서 써줘', '첫 줄\n한 줄로 써줘', 'Write a report on Q3 sales',
-    ]) expect(shortAsk(message), message).toBe(false)
-    expect(deskKind('나 누구랑 일하지?')).toBe('question')
-    expect(shortQuestion('방금 말한 거 더 짧게')).toBe(false)
-    expect(SHORT_QUESTION_NOTE).toContain('Asked for one thing, give exactly one; asked for three, give three')
-    expect(SHORT_QUESTION_NOTE).toContain('No other variants, background or tips unless they ask')
-    expect(SHORT_QUESTION_NOTE).toContain('look something up only when they ask for current facts')
-    for (const tool of ['search_web', 'open_page', 'read_pages', 'read_open_page', 'page_steps']) expect(DESK_TOOLS.ask!.has(tool), tool).toBe(false)
+  it('gives a short ask to write, reword, pick or translate the same menu and call shape as a file or deck ask: no short rules, no model hint, no light effort', async () => {
+    const asks = ['송년회 초대 문구 한 줄 지어줘', '이 메모 더 다정하게 바꿔줘', '야유회 장소 두 곳만 추천해줘', '사내 봉사활동 소개 슬라이드 4장 만들어줘', '창고 재고 파일 열어서 볼펜 몇 개 남았는지 알려줘']
+    const jobs = await Promise.all(asks.map(async ask => (await lead(ask)).job!))
+    for (const [at, job] of jobs.entries()) {
+      expect(job.tools.map(one => one.name), asks[at]).toEqual(jobs[0]!.tools.map(one => one.name))
+      expect(job.tools.map(one => one.name), asks[at]).toEqual(expect.arrayContaining(MENU.map(one => one.name)))
+      expect(job.system, asks[at]).toBe(jobs[0]!.system)
+      expect(job.modelHint, asks[at]).toBeUndefined()
+      expect(job.effort, asks[at]).toBeUndefined()
+    }
+    expect(source('fast-lane.ts')).not.toMatch(/SHORT_QUESTION_NOTE|shortAsk|shortQuestion/)
   })
 
-  it('knows a statement that asks for nothing from a request, a question and a greeting', () => {
-    for (const message of [
-      '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어', '나 다음 달에 부산으로 이사 가게 됐어', '우리 팀장님이 이번 주 내내 휴가라서 결재가 좀 늦어질 것 같아',
-      '오늘 발표 생각보다 잘 끝났어. 다들 반응이 좋았어', '요즘 야근이 많아서 너무 피곤해요', '어제 면접 봤는데 느낌이 나쁘지 않았어', "I'm moving to Busan next month for work",
-    ]) expect(onlyTells(message), message).toBe(true)
-    for (const message of [
-      '다음 주 제주도 가는데 갈 만한 곳 추천해줘', '아빠 무릎이 안 좋은데 어디가 좋을까?', '제주도 날씨 알려줘', '부모님 모시고 갈 식당 찾아봐', '회의록 정리해서 팀에 공유해', '이 일정 어때',
-      '지민한테 다음 주 행사 조사 맡겨', '서연은 이번 주부터 디자인 담당이야', '매주 월요일 아침에 요약해서 올려 놔',
-      '아 그 사람 이름은 지민호 말고 김민호 대리야', '내 생일은 3월 12일이야 기억해', 'fixtures/notes.md는 지난주 회의 내용이야', '방금 만든 표에서 대구는 빼고 다시 해', '고마워 수고했어', '제주도 가', '안녕',
-      "I'm going to Jeju, can you find a hotel?",
-    ]) expect(onlyTells(message), message).toBe(false)
-    expect(onlyTells('다음 주 목요일 오전 열 시 비행기로 가려고 해', '몇 시 비행기로 가세요?')).toBe(false)
-    expect(TOLD_NOTE).toContain('use no tools')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('short ? SHORT_QUESTION_NOTE : onlyTells(message) ? TOLD_NOTE : \'\'')
-  })
-
-  it('routes a correction the way the ask before it went', () => {
-    for (const message of ['아 그거 말고 11월 걸로', '그냥 애플로 바꿔', '아니 그거 말고 지난주 걸로', '서울 말고 부산으로', '아 그거 대신 삼성전자로']) expect(isCorrection(message), message).toBe(true)
-    for (const message of ['아 지민호 말고 민호야', '11월 매출 합계 알려줘', '서울 말고 다른 도시들 날씨도 전부 조사해서 지역별로 표 만들고 주말 예보까지 길게 붙여서 다시 정리해줘 그리고 대구도', '고마워']) expect(isCorrection(message), message).toBe(false)
-    const earlier = [{ role: 'user', text: '엔비디아 오늘 주가 알려줘' }, { role: 'assistant', text: '162.85달러예요.' }]
-    expect(routeAsk('그냥 애플로 바꿔', earlier)).toBe('엔비디아 오늘 주가 알려줘')
-    const file = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 합계는 1,310만 원이에요.' }]
-    expect(deskKind(routeAsk('아 그거 말고 11월 걸로', file))).toBe('file')
-    expect(routeAsk('아 그거 말고 11월 걸로', [])).toBe('아 그거 말고 11월 걸로')
-    expect(routeAsk('아 지민호 말고 민호야', earlier)).toBe('아 지민호 말고 민호야')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const routed = routeAsk(message, world.history)')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+  it('takes a correction to the lead as typed, with the ask before it in the history and no host note on what is asked now', async () => {
+    const earlier = [{ role: 'user' as const, text: '본관 식당 이번 주 메뉴 정리해줘' }, { role: 'assistant' as const, text: '본관 식당 메뉴를 요일별로 정리했어요.' }]
+    const { job, told } = await lead('아니 그거 말고 별관 식당 걸로', earlier)
+    expect(job!.prompt).toContain('아니 그거 말고 별관 식당 걸로')
+    expect(told).toContain('본관 식당 이번 주 메뉴 정리해줘')
+    expect(told).not.toContain('What the person asks for now')
+    expect(told).not.toContain('The person then changed it')
+    expect(source('answer.ts')).not.toMatch(/routeAsk|askNow|isCorrection/)
   })
 })
 
 describe('desk tool menus', () => {
-  it('keeps the check tool on every menu, so a check the person asked for can run on a desk turn', () => {
-    const offered = (message: string): string[] => {
-      const every = ['ppt_build', 'file_read', 'file_move', 'keep_in_mind', 'open_page', ...(asksForCheck(message) ? ['report_result_check'] : [])]
-      const menu = DESK_TOOLS[deskKind(message) as keyof typeof DESK_TOOLS]!
-      return every.filter(tool => menu.has(tool))
-    }
-    for (const [message, kind] of [['3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘', 'deck'], ['Build the Q3 deck and double-check the numbers', 'deck'], ['fixtures/inbox-dump 폴더 파일들 종류별로 정리하고 빠진 거 없는지 검증까지 해줘', 'tidy'], ['fixtures/meeting-notes.md 요약하고 한 번 더 확인해줘', 'note']] as const) {
-      expect(deskKind(message), message).toBe(kind)
-      expect(offered(message), message).toContain('report_result_check')
-    }
-    expect(offered('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).not.toContain('report_result_check')
-    for (const menu of Object.values(DESK_TOOLS)) { expect(menu.has('report_result_check')).toBe(true); expect(menu.size).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX) }
+  it('keeps the check tool on the one menu, so a check the person asked for can run on any turn', async () => {
+    for (const message of ['3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘', 'Build the Q3 deck and double-check the numbers', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리하고 빠진 거 없는지 검증까지 해줘', 'fixtures/meeting-notes.md 요약하고 한 번 더 확인해줘']) expect(asksForCheck(message), message).toBe(true)
+    expect(asksForCheck('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).toBe(false)
+    expect((await lead('사내 봉사활동 소개 슬라이드 4장 만들고 숫자 맞는지 확인까지 해줘')).job!.tools.map(one => one.name)).toContain('report_result_check')
     expect(source('ipc.ts')).toContain("...(!turn?.verification && !asksForCheck(turnGoals.get(channel) ?? '') ? [] : [resultCheckTool(")
   })
 
-  it('gives a remember, tidy, note, short-ask and deck turn only its own tools, few enough to be preloaded', () => {
-    const kinds: [string, string, string[]][] = [
-      ['내 이름은 권윤재고 지민호랑 같이 일해. 기억해', 'keep', ['keep_in_mind']], ['아 지민호 말고 민호야', 'keep', ['keep_in_mind']], ['Remember that I work with Minho', 'keep', ['keep_in_mind']],
-      ['fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', 'tidy', ['find_files', 'file_move', 'file_read']], ['Organize the files in the inbox folder by type', 'tidy', ['file_move']],
-      ['다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', 'deck', ['ppt_build', 'file_read']], ['방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', 'deck', ['file_read_package', 'file_edit_package']],
-      ['fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', 'note', ['file_read']], ['fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘', 'note', ['file_read']], ['fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'note', ['file_read']],
-      ['방금 말한 거 더 짧게', 'ask', []],
-    ]
-    for (const [message, kind, needs] of kinds) {
-      expect(deskKind(message), message).toBe(kind)
-      const menu = DESK_TOOLS[kind as keyof typeof DESK_TOOLS]!
-      expect(menu.size, kind).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX)
-      for (const tool of needs) expect(menu.has(tool), `${kind}: ${tool}`).toBe(true)
+  it('gives a remember, tidy, note, short-ask and deck turn the whole menu the caller passed, with no kind table in between', async () => {
+    for (const message of ['우리 팀 회식은 매달 셋째 주 목요일이야', '공유 폴더 사진들 날짜별로 나눠줘', 'fixtures/weekly-sync.md 메모에서 결정된 것만 추려줘', '송년회 초대 문구 한 줄 지어줘', '사내 봉사활동 소개 슬라이드 4장 만들어줘']) {
+      expect((await lead(message)).job!.tools.map(one => one.name), message).toEqual(expect.arrayContaining(MENU.map(one => one.name)))
     }
-    expect([...DESK_TOOLS.keep!].sort()).toEqual(['keep_in_mind', 'read_note', 'report_result_check', 'search_chats', 'search_memory'])
-    expect([...DESK_TOOLS.tidy!].sort()).toEqual(['file_move', 'file_read', 'find_files', 'report_result_check'])
-    for (const tool of ['word_write', 'ppt_build', 'file_read', 'file_read_package', 'file_edit_package', 'file_create_workbook', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
-    expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)
-    expect(DESK_TOOLS.question).toBeUndefined()
-    for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
+    const answerSource = source('answer.ts')
+    expect(answerSource).toContain('tools: everyTool,')
+    expect(answerSource).not.toMatch(/DESK_TOOLS|deskMenu|closingBuilds/)
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {
-    expect(DESK_NOTE).toContain('how many files went into each folder')
-    expect(DESK_NOTE).toContain('File names are given only when they ask for them')
-    expect(DESK_NOTE.match(/exactly one short offer line/g)).toHaveLength(1)
-    expect(SHORT_QUESTION_NOTE).toContain('never a sentence that restates the ask or says what you are about to write')
-    expect(DESK_NOTE).toContain('File names are given only when they ask for them')
-    expect(DESK_NOTE).toContain('answered in the chat itself')
-    expect(DESK_NOTE).toContain('with only what is in that file')
+    expect(COLLEAGUE_RULE).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
+    expect(COLLEAGUE_RULE.match(/exactly ONE short offer line/g)).toHaveLength(1)
+    expect(COLLEAGUE_RULE).toContain('The answer is the first line: no opening line about what you are about to do')
+    expect(COLLEAGUE_RULE).toContain('A summary or tidy-up of a short note is answered in the chat itself')
+    expect(COLLEAGUE_RULE).toContain('holds only what is in it')
   })
 })
 

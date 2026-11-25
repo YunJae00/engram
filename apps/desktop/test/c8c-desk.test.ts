@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fileWorkTools, HOUSE_THEME, loadBotMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, resolveTheme, runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob, type VaultPaths } from 'core'
+import { fileWorkTools, HOUSE_THEME, loadBotMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, resolveTheme, type Engine, type ToolSessionJob, type VaultPaths } from 'core'
 
 const fake = vi.hoisted(() => ({ directory: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.directory, isPackaged: false }, shell: { openPath: async () => '' }, ipcMain: { handle: () => {} } }))
@@ -11,10 +11,10 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-import { DESK_NOTE, deskKind, deskLight, fixSlideTitle, keptFix, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
-import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
+import { fixSlideTitle, keptFix, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 import { fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
 import { buildDeck } from '../src/main/deck-render.js'
 import { learningTools } from '../src/main/learning-wiring.js'
@@ -25,6 +25,21 @@ const JSZip = require('jszip') as typeof import('../../../packages/core/node_mod
 let root: string
 beforeEach(async () => { await mkdir(resolve('tmp'), { recursive: true }); root = await mkdtemp(resolve('tmp/c8c-desk-')); fake.directory = root })
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
+const lead = (draft: (job: ToolSessionJob) => string): { engine: Engine; jobs: ToolSessionJob[] } => {
+  const jobs: ToolSessionJob[] = []
+  const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft(job) } } } as unknown as Engine
+  return { engine, jobs }
+}
+const worldIn = async (name: string, engine: Engine) => { const dir = join(root, name); await mkdir(dir, { recursive: true }); return openWorld(dir, engine) }
+
+const deck = async () => {
+  const built = await buildDeck({ theme: HOUSE_THEME, slides: [{ title: '3분기 실적 보고', subtitle: '다음 주 팀 회의용' }, { title: '요약', bullets: ['매출: 수치 입력', '영업이익: 수치 입력'] }, { title: '주요 지표', bullets: ['전년 대비 성장률: 수치 입력'] }] })
+  const path = join(root, built.name)
+  await writeFile(path, built.data)
+  return { name: built.name, path }
+}
+const slideText = async (path: string, slide: number) => (await (await JSZip.loadAsync(await readFile(path))).file(`ppt/slides/slide${slide}.xml`)!.async('string'))
+const tools = (approveRead: () => Promise<boolean> = async () => true) => fileWorkTools({ directory: join(root, 'outputs'), approveRead: approveRead as never })
 
 describe('a slide title by number is changed by the host (D5)', () => {
   it('reads the shape: a slide number, 제목, the new words in quotes, a change word', () => {
@@ -48,19 +63,6 @@ describe('a slide title by number is changed by the host (D5)', () => {
       '제목 "핵심 지표"로 바꿔줘',
     ]) expect(slideTitleFix(ask), ask).toBeUndefined()
   })
-  it('routes such an ask as document work even with no deck word in it', () => {
-    expect(deskKind('2번 장 제목을 \'일정\'으로 고쳐')).toBe('deck')
-    expect(deskKind('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')).toBe('deck')
-  })
-
-  const deck = async () => {
-    const built = await buildDeck({ theme: HOUSE_THEME, slides: [{ title: '3분기 실적 보고', subtitle: '다음 주 팀 회의용' }, { title: '요약', bullets: ['매출: 수치 입력', '영업이익: 수치 입력'] }, { title: '주요 지표', bullets: ['전년 대비 성장률: 수치 입력'] }] })
-    const path = join(root, built.name)
-    await writeFile(path, built.data)
-    return { name: built.name, path }
-  }
-  const slideText = async (path: string, slide: number) => (await (await JSZip.loadAsync(await readFile(path))).file(`ppt/slides/slide${slide}.xml`)!.async('string'))
-  const tools = (approveRead: () => Promise<boolean> = async () => true) => fileWorkTools({ directory: join(root, 'outputs'), approveRead: approveRead as never })
 
   it('edits the deck through the tools\' own read and edit calls and answers in one line', async () => {
     const made = await deck()
@@ -88,8 +90,15 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(await readdir(join(root, 'outputs')).catch(() => [])).toEqual([])
     expect(await readFile(made.path)).toEqual(before)
   })
+  it('is changed through answer when the ask has no deck word in it, before any model call', async () => {
+    const made = await deck(), { engine, jobs } = lead(() => '모델이 답했어요.')
+    const { result } = await answer(await worldIn('w', engine), '2번 장 제목을 \'모임 순서\'로 고쳐', { plainAsk: true, tools: tools(), earlierOutputs: [made] })
+    expect(result?.answer).toBe('2번 슬라이드 제목을 "모임 순서"로 바꿨어요.')
+    expect(result?.steps.map(step => step.tool)).toEqual(['file_read_package', 'file_edit_package'])
+    expect(jobs).toHaveLength(0)
+  })
   it('is made before the model, only on the one deck of the thread, and logged', () => {
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const retitle = kind === 'deck' ? slideTitleFix(message) : undefined")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const retitle = hostable && !keep ? slideTitleFix(message) : undefined')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined')
@@ -97,20 +106,13 @@ describe('a slide title by number is changed by the host (D5)', () => {
 })
 
 describe('which desk turns think briefly (D5, F1)', () => {
-  it('a change to a document that exists is light; a new document is not; tidy, keep and a pre-read note are', () => {
-    expect(deskLight('deck', '방금 만든 PPT 3번 슬라이드 본문 좀 더 짧게 고쳐줘', { made: true })).toBe(true)
-    expect(deskLight('deck', 'fixtures/budget.xlsx에 12월 행 추가해줘', {})).toBe(true)
-    expect(deskLight('deck', '그 보고서에서 미결 부분은 빼줘', { made: true })).toBe(true)
-    expect(deskLight('deck', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', { made: true })).toBe(false)
-    expect(deskLight('deck', '위 회의록으로 워드 보고서 만들어줘', {})).toBe(false)
-    expect(deskLight('deck', '차트 추가해서 PPT 새로 만들어줘', { made: true })).toBe(false)
-    expect(deskLight('deck', '슬라이드 제목 바꿔줘', {})).toBe(false)
-    expect(deskLight('tidy', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', {})).toBe(true)
-    expect(deskLight('keep', '이거 기억해?', {})).toBe(true)
-    expect(deskLight('note', '회의록 요약해줘', { given: true })).toBe(true)
-    expect(deskLight('note', '회의록 요약해줘', {})).toBe(false)
-    expect(deskLight('file', 'sales.csv 합계 알려줘', {})).toBe(false)
-    expect(deskLight(undefined, '바꿔줘', { made: true })).toBe(false)
+  it('a change to a document that exists and a new document get the same call: no light effort and no model hint', async () => {
+    const made = await deck(), shapes: { tools: string[]; modelHint?: string; effort?: string }[] = []
+    const { engine } = lead(job => { shapes.push({ tools: job.tools.map(tool => tool.name), ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}) }); return '고쳤어요.' })
+    const asks = ['방금 만든 모임 PPT 2번 슬라이드 문구 더 짧게 다듬어줘', 'fixtures/plants.xlsx에 10월 행 추가해줘', '가을 바자회 안내 PPT 3장 새로 만들어줘', '바자회 회의록으로 워드 보고서 만들어줘']
+    for (const [at, ask] of asks.entries()) await answer(await worldIn(`w${at}`, engine), ask, { plainAsk: true, tools: tools(), earlierOutputs: [made] })
+    expect(shapes).toHaveLength(asks.length)
+    for (const shape of shapes) expect(shape).toEqual({ tools: tools().map(tool => tool.name) })
   })
 })
 
@@ -146,53 +148,39 @@ describe('a plain "기억해" is kept by the host (M1), and M2, M3 hold on what 
     expect(note).not.toContain('지민호')
   })
   it('is made after a correction is tried and before the model is asked', () => {
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const keep = !fixed && kind === 'keep' ? plainKeep(message,")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const plain = !fixed && keep ? plainKeep(message,')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').indexOf('keptFix(message, remembered)')).toBeLessThan(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').indexOf('plainKeep(message,'))
   })
 })
 
-describe('recommendations name the trip and are things of that place (H1)', () => {
-  it('has one opener rule with one example, and asks for the place\'s own things', () => {
-    expect(SHORT_QUESTION_NOTE).toContain('the answer opens with one sentence that names it in the conversation\'s own words and, for picks, says what you went by ("제주 가시면 아버님 무릎 생각해서 덜 걷는 걸로 골랐어요."')
-    expect(SHORT_QUESTION_NOTE).toContain('each a thing of that place a person would name (a road, a museum, a market, a dish: "애월 해안도로 드라이브", "오설록 티뮤지엄")')
-    expect(SHORT_QUESTION_NOTE).toContain('each with half a clause of why it fits what they told you ("차에서 내려 조금만 걸으면 돼요")')
-    expect(SHORT_QUESTION_NOTE).not.toContain('open with what you went by')
-    expect(SHORT_QUESTION_NOTE).not.toContain('아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.')
-    expect(SHORT_QUESTION_NOTE).not.toContain('제주 가시면 이런 게 좋아요.')
-    expect(SHORT_QUESTION_NOTE.match(/제주 가시면/g)).toHaveLength(1)
-    expect(SHORT_QUESTION_NOTE).not.toContain('never a lunch pick')
-    for (const held of ['still no question back', 'you never ask which one they mean', 'fitting what they told you earlier about the thing asked', 'asked for three, give three', 'in Korean words only ("드라이브", never "drive-through 느낌")']) expect(SHORT_QUESTION_NOTE, held).toContain(held)
-  })
-})
-
 describe('an offer is the next step, never the same content in another shape (H4)', () => {
-  const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
-  const answer = '한서연: 온보딩 화면 시안 확정 — 11/20까지\n오태민: 결제 모듈 교체 일정 수립 — 11/24까지\n윤가은: 베타 테스터 모집 공지 발송 — 11/27까지'
-  async function turn(draft: string, options: AgentLoopOptions = {}) {
-    const jobs: ToolSessionJob[] = []
-    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
-    const result = await runToolSession({ engine, workdir: '/tmp/c8c-desk' as EngineCwd, tools: [] }, ask, { attachmentContext: DESK_NOTE, ...options })
-    return { posted: result.answer, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
+  const ask = 'fixtures/bazaar-notes.md 회의록에서 할 일만 뽑아줘'
+  const draft = '한서연: 온보딩 화면 시안 확정 — 11/20까지\n오태민: 결제 모듈 교체 일정 수립 — 11/24까지\n윤가은: 베타 테스터 모집 공지 발송 — 11/27까지'
+  let turns = 0
+  async function turn(draft: string, history: { role: string; text: string }[] = []) {
+    const { engine, jobs } = lead(() => draft)
+    const world = { ...await worldIn(`t${turns++}`, engine), history: [...history] }
+    const { result } = await answer(world, ask, { tools: [] })
+    return { posted: result!.answer, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
   }
-  it('the offer is the model\'s line, asked for by the note\'s example; the host adds none, and the note offers no table or file', async () => {
+  it('the offer is the model\'s line, asked for by the voice\'s rule; the host adds none and no table or file', async () => {
     const offer = '원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.'
-    const { posted, told } = await turn(answer)
-    expect(posted).toBe(answer)
-    expect(told).toContain(`("${offer}")`)
-    expect(DESK_NOTE).toContain('never the same content in another shape (a table, a file)')
+    const { posted, told } = await turn(draft)
+    expect(posted).toBe(draft)
+    expect(told).toContain('ends with exactly ONE short offer line')
     expect([...offer].length).toBeLessThanOrEqual(60)
-    const own = `${answer}\n\n${offer}`
+    const own = `${draft}\n\n${offer}`
     expect((await turn(own)).posted).toBe(own)
     expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-    for (const text of [DESK_NOTE, posted]) expect(text).not.toMatch(/표로 묶어|표로도 정리|워드 파일로도|in a table|Word file/)
+    expect(posted).not.toMatch(/표로 묶어|표로도 정리|워드 파일로도|in a table|Word file/)
   })
   it('dated lines, bare figures and a thread that already had an offer are all posted as written; the once-a-thread rule and the earlier reply are the model\'s to read', async () => {
     for (const draft of ['- 시안 확정: 11월 20일\n- 공지 발송: 11월 27일', '- 38%\n- 12명']) expect((await turn(draft)).posted).toBe(draft)
     const earlier = '정리했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.'
-    const { posted, told } = await turn(answer, { history: [{ role: 'user', text: '회의록 정리해줘' }, { role: 'assistant', text: earlier }] })
-    expect(posted).toBe(answer)
-    expect(told).toContain('unless an earlier reply of yours in this conversation already ended with an offer')
+    const { posted, told } = await turn(draft, [{ role: 'user', text: '바자회 회의록 정리해줘' }, { role: 'assistant', text: earlier }])
+    expect(posted).toBe(draft)
+    expect(told).toContain('document turns in a row carry at most one offer between them')
     expect(told).toContain('원하시면 워드 파일로도 만들어 드릴게요.')
   })
 })

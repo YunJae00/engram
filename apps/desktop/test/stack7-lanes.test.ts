@@ -9,14 +9,16 @@ import * as desk from '../src/main/desk-lane.js'
 const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
 const posted = async (ask: string, draft: string, options: NonNullable<Parameters<typeof runComet>[2]> = {}): Promise<string> => (await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, ask, { guided: false, modelHint: 'smart', ...options })).answer
 
-it('stack-7: no desk correction runs on any answer: the desk kind still exists only outside the team lane, and the turn posts the model\'s words (c11b: asState went)', () => {
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const short = kind === 'ask' || kind === 'question'")
+it('stack-7: no desk correction runs on any answer: no desk kind is left, the keep gate runs only outside the team lane, and the turn posts the model\'s words (c11b: asState went)', () => {
+  const source = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
+  expect(source).toContain('const keep = hostable && keepAsk(message)')
+  expect(source).toContain('const hostable = !company && plainAsk')
+  expect(source).not.toMatch(/deskKind|deskLane|const short =/)
   expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
   expect(ipc).not.toContain('asState(')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-  expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
-  expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine'])
+  expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
+  expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine'])
 })
 
 it('stack-7: a team result and a lookup answer reach the thread as written, whatever lane they came through (c11b)', async () => {

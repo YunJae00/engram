@@ -7,7 +7,7 @@ import { companyNote, createBot, createTask, handBacks, keepRead, keepSources, l
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
-import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const RUN = '/Users/kwon-yunjae/engram-orch/tmp/grokbar/runs/stack14-63bdfb8a'
@@ -108,11 +108,19 @@ describe('R3 replay', () => {
 })
 
 describe('H1 replay', () => {
-  it('the lunch ask with the knee fact in memory: the prompt carries the relevance rule, and the short-ask note has no trip/lunch line', () => {
+  it('the lunch ask with the knee fact in memory: the prompt carries the relevance rule, the ask reaches the model as typed with no host note on its length, and the pick is posted as written', async () => {
     const memory = '- 다음 주 목요일에 부모님 모시고 제주도 가요. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어요'
     const lines = personaLines('persona', memory)
     console.log(`[replay H1] ${lines.slice(1).join(' | ')}`)
     expect(lines).toContain(RELEVANCE_RULE)
-    expect(SHORT_QUESTION_NOTE).not.toMatch(/lunch|점심|trip/i)
+    const jobs: { told: string; prompt: string; modelHint?: string }[] = []
+    const engine = { id: 'claude', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string; modelHint?: string }) => { jobs.push({ told: [job.system, job.opening, job.prompt].join('\n'), prompt: job.prompt, ...(job.modelHint ? { modelHint: job.modelHint } : {}) }); return { answer: '들깨 칼국수 어때요? 쌀쌀하니까요.' } } } as never
+    const { result } = await answer(await openWorld(await scratch('h1'), engine), '오늘 점심에 갈 식당 하나 찍어줘', { memory, tools: [], ack: { bare: true } })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.told).toContain(RELEVANCE_RULE)
+    expect(jobs[0]!.prompt).toContain('오늘 점심에 갈 식당 하나 찍어줘')
+    expect(jobs[0]!.told).not.toContain('This is a short ask')
+    expect(jobs[0]!.modelHint).toBeUndefined()
+    expect(result?.answer).toBe('들깨 칼국수 어때요? 쌀쌀하니까요.')
   })
 })

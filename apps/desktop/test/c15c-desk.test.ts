@@ -3,11 +3,15 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+import { answer, openWorld } from '../src/main/answer.js'
+const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
+import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
 
 const SOURCE = '# 무선 이어폰 리뷰\n\n## 써 본 느낌\n- 무게가 4g이라 오래 껴도 귀가 안 아프다.\n- 배터리가 5시간밖에 안 간다.\n- 노이즈 캔슬링이 지하철에서도 잘 된다.\n'
@@ -18,11 +22,20 @@ const FIXED = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔
 const ONCE = 'A decision or item is listed once, never again under a second heading.'
 const ONLY_FILE = 'holds only what is in it: add no item, number, owner, date or open question that is not there'
 async function deskTurn(draft: string, said = ASK, source = SOURCE) {
-  const jobs: ToolSessionJob[] = []
+  const jobs: ToolSessionJob[] = [], seen: string[] = []
   const quick = vi.fn(async () => '{"problems":[]}')
-  const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick } as unknown as Engine
-  const result = await runToolSession({ engine, workdir: '/tmp/c15c-desk' as EngineCwd, tools: [] }, said, { attachmentContext: [deskLane.DESK_NOTE, deskLane.fileGiven({ name: 'memo.md', text: source })].join('\n\n') })
-  return { posted: result.answer, calls: jobs.length, quick, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
+  const read: AgentTool = { name: 'file_read', description: 'reads a saved file', argsSchema: { type: 'object' }, run: async () => source }
+  const engine = { id: 'mock', desktopToolIsolation: true, quick, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => {
+    jobs.push(job)
+    const out = await job.tools.find(tool => tool.name === 'file_read')!.run({ path: 'memo.md' })
+    seen.push(typeof out === 'string' ? out : out.text)
+    return { answer: draft }
+  } } as unknown as Engine
+  const dir = await mkdtemp(join(tmpdir(), 'c15c-desk-'))
+  try {
+    const { result } = await answer(await openWorld(dir, engine), said, { tools: [read], ack: { interactive: false } })
+    return { posted: result!.answer, calls: jobs.length, quick, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n'), seen: seen.join('\n') }
+  } finally { await rm(dir, { recursive: true, force: true }) }
 }
 const times = (text: string, line: string): number => text.split('\n').filter(one => one.includes(line)).length
 
@@ -30,10 +43,11 @@ describe('a structured desk answer is the model\'s own, posted as written (D1 cl
   it('posts every shape byte for byte: a list, numbers, a table, one sentence, label rows', async () => {
     for (const shape of [DRAFT, '1. 하나\n2. 둘', '| 항목 | 값 |\n| 가 | 1 |', '평년 기준으로 31,536,000초예요.', '칼국수 어때요? 쌀쌀하니까요.', '장점: 가벼워요.\n\n단점: 배터리가 짧아요.', '원인: 캐시가 오래됐어요.\n대책: 매일 비워요.']) expect((await deskTurn(shape)).posted, shape).toBe(shape)
   })
-  it('parts that say the same thing are the model\'s to avoid: it is told once is enough, has the source, and what it writes is posted in one call', async () => {
-    const { posted, told, calls, quick } = await deskTurn(FIXED)
+  it('parts that say the same thing are the model\'s to avoid: it is told once is enough, reads the source with its own file_read, and what it writes is posted in one call', async () => {
+    const { posted, told, seen, calls, quick } = await deskTurn(FIXED)
     expect(told).toContain(ONCE)
-    expect(told).toContain('배터리가 5시간밖에')
+    expect(seen).toContain('배터리가 5시간밖에')
+    expect(told).not.toContain('배터리가 5시간밖에')
     expect(posted).toBe(FIXED)
     expect(calls).toBe(1)
     expect(quick).not.toHaveBeenCalled()
@@ -78,7 +92,7 @@ describe('a copy under a second part', () => {
     const text = '원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요'
     expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
     expect((await deskTurn(text)).posted).toBe(text)
-    expect(Object.keys(deskLane)).toContain('DESK_NOTE')
+    expect(Object.keys(deskLane)).not.toContain('DESK_NOTE')
   })
 })
 
@@ -131,7 +145,6 @@ describe('the host never drops a copy and never writes a line of its own (r3)', 
     const { posted, told } = await deskTurn(RETRO)
     expect(posted).toBe(RETRO)
     expect(told).toContain(ONCE)
-    expect(told).toContain('Each thing goes under one of them, never both')
   })
   it('no copy is removed: the host does not judge which one is wrong', async () => {
     const { posted, quick } = await deskTurn(RETRO)
@@ -159,7 +172,6 @@ describe('a list goes out whole, every row as written (H2 class, rule 7)', () =>
   })
   it('a one-fact ask from a file is asked to be one sentence in the rules; a longer answer is still posted whole', async () => {
     const { posted, told } = await deskTurn(DRAFT, '방문자 csv에서 10월 방문자 수 알려줘', '지점,요일,방문자')
-    expect(told).toContain('A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.')
     expect(told).toContain('gets that fact in one sentence, also when it comes from a file')
     expect(posted).toContain('강남점')
     expect(posted.split('\n')).toHaveLength(DRAFT.split('\n').length)

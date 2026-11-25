@@ -71,7 +71,7 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     expect(handed.rows).toEqual(['https://p.example/1', 'https://q.example/2', 'https://r.example/3'])
     expect(handed.answer).toBe(draft)
     for (const gone of ['itemCheck', 'itemVerdicts', 'judgeItems', 'offLinks', 'listGap']) expect(gone in lane, gone).toBe(false)
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
   })
 
   it('ipc gives a lookup its search rows unjudged, and no link check or citation step runs after writing', () => {

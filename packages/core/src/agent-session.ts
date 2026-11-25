@@ -195,10 +195,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
       if (said.length) renew()
-      const whole = tool.closesOn?.(observation)
-      if (closing && (whole ?? !composing) && !said.length && !observation.startsWith('that did not work')) {
-        if (whole) composing = false
-        closeLines.push(tool.closeAnswer?.(observation) ?? observation)
+      if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
+        closeLines.push(observation)
         held ??= []
         const mark = startedCalls
         setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)

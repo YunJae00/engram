@@ -4,10 +4,11 @@ import { runComet, type AgentTool, type Engine, type EngineCwd, type ToolSession
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
 import * as lane from '../src/main/fast-lane.js'
-import { asideShape, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
+import { asideShape } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8')
+const voice = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
 async function turn(page: string, ask: string, draft: string) {
   const quick = vi.fn(async () => '')
   let out = ''
@@ -25,11 +26,11 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
   ]
   it('a short ask meets no post-processor: the English line and everything under it are posted as written', async () => {
     for (const answer of answers) {
-      const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false, short: true, attachmentContext: SHORT_QUESTION_NOTE })
+      const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false })
       expect(result.answer, answer).toBe(answer)
     }
-    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
     const ipc = src('ipc.ts')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
@@ -37,8 +38,9 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
     expect(Object.keys(firstLine)).not.toEqual(expect.arrayContaining(['withoutWorkNote']))
     for (const gone of ['withoutWorkNote', 'koreanLead', 'asState']) expect(Object.keys(firstLine)).not.toContain(gone)
     for (const gone of ['withoutWorkNote(', 'koreanLead(', 'asState(', 'newsItems(', 'shortSaid(', 'listOnly(']) expect(src('ipc.ts')).not.toContain(gone)
-    expect(SHORT_QUESTION_NOTE).toContain('A line they asked for in another language is led by those few words in their own language')
-    expect(SHORT_QUESTION_NOTE).not.toMatch(/같이 일하고 계세요|살고 계세요/)
+    expect(voice).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
+    expect(voice).not.toMatch(/같이 일하고 계세요|살고 계세요/)
+    for (const gone of ['SHORT_QUESTION_NOTE', 'shortAsk', 'shortQuestion']) expect(src('fast-lane.ts')).not.toContain(gone)
   })
 })
 

@@ -60,7 +60,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
   })
 
   it('no post-hoc rewrite is left to run after the reader ends', () => {
-    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
   })
 })
 

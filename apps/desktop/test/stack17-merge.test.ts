@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { companyNote, createBot, employeesAnswer, handBacks, initVault, loadBots, partOutcome, recordFacts, runToolSession, settleMember, staffTool, TEAM_ANSWER_MS, TEAM_MEMORY, type AgentTool, type DelegatedTask, type EngineCwd, type TeamMember, type ToolSessionJob } from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { askNow, routeAsk } from '../src/main/desk-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
@@ -19,25 +21,29 @@ const posted = async (draft: string, ask: string): Promise<string> => (await run
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
 afterEach(() => { vi.useRealTimers() })
 
-describe('stack-17: a correction after a lookup reaches the item judge as its meaning (c17b askNow × c17a points)', () => {
-  const history = [{ role: 'user', text: '청주 내일 날씨 어때?' }, { role: 'assistant', text: '청주는 내일 맑고 낮 최고 13도예요.' }]
-  const message = '아니 그거 말고 춘천으로'
-  it('the route is the earlier lookup, the model reads the earlier ask with the later words holding, and its reply about 춘천 is posted as written with no row judged away', async () => {
-    expect(routeAsk(message, history)).toBe('청주 내일 날씨 어때?')
-    const meant = askNow(message, history)
-    expect(meant).toContain('청주 내일 날씨 어때?')
-    expect(meant).toContain('그거 말고 춘천으로')
-    expect(meant).toContain('the later words hold')
-    const draft = '춘천은 내일 흐리고 낮 최고 8도예요. [날씨 예보](https://weather.example/chuncheon)'
-    expect(await posted(draft, meant)).toBe(draft)
+describe('stack-17: a correction after a lookup reaches the model as typed, with the earlier lookup in the history', () => {
+  const history = [{ role: 'user', text: '대전 모레 날씨 어때?' }, { role: 'assistant', text: '대전은 모레 비 오고 낮 최고 11도예요.' }]
+  const message = '아 거기 말고 원주로'
+  it('the model gets the correction as typed and the earlier ask from the thread, with no host note of what is meant now, and its reply about 원주 is posted as written', async () => {
+    let told = '', prompt = ''
+    const draft = '원주는 모레 흐리고 낮 최고 9도예요. [날씨 예보](https://weather.example/wonju)'
+    const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { prompt = job.prompt; told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
+    const world = { ...await openWorld(await mkdtemp(join(tmpdir(), 'stack17-fix-')), engine), history: [...history] }
+    const { result } = await answer(world, message, { tools: [], ack: { bare: true } })
+    expect(prompt).toContain(message)
+    expect(told).toContain('대전 모레 날씨 어때?')
+    expect(told).not.toContain('What the person asks for now')
+    expect(told).not.toContain('the later words hold')
+    expect(result?.answer).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
   })
-  it('in the turn, the meaning reaches the model as a note of the turn; no judge, page read, helpers\' writer or lead check reads it after the answer, and the turn keeps the plain words', () => {
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const meant = askNow(message, world.history)')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const changedNote = meant !== message ? `What the person asks for now: ${meant}` : \'\'')
+  it('in the turn, no meaning is built by the host and no judge, page read, helpers\' writer or lead check reads the answer after it; the turn keeps the plain words', () => {
+    const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
+    expect(own).not.toMatch(/askNow|routeAsk|changedNote|What the person asks for now/)
+    expect(own).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
     const from = ipc.indexOf('await begun!.run({')
     expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })

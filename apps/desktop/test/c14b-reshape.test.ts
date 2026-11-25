@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 
 const ASK = '광합성이 뭔지 초등학생 아이에게 설명하듯 써줘'
@@ -47,7 +47,7 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
 
   it('a reshape is an ordinary turn: the desk lane has no reshape of its own to fall back from', () => {
     expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-    expect(Object.keys(deskLane)).toContain('closingBuilds')
+    expect(Object.keys(deskLane)).not.toContain('closingBuilds')
   })
 
   it('no checker is waited on: a quick voice that never answers does not hold the reply', async () => {

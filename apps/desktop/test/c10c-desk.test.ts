@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import { DESK_NOTE, deskKind, kindSortAsk, sortByKind } from '../src/main/desk-lane.js'
+import { kindSortAsk, sortByKind } from '../src/main/desk-lane.js'
 import { fileMoveTool } from '../src/main/file-move.js'
 
 const INBOX = ['채용공고_초안.docx', '영수증_사진.png', '출장보고.pdf', '로고_시안.png', '제품소개서.pdf', '할일.txt', '주간보고_44주차.docx', '출장비정산.xlsx', '재고현황.xlsx', '계약서_초안.pdf',
@@ -26,7 +26,6 @@ describe('c10c F1: the host sorts one folder by kind', () => {
   afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
   it('sorts the folder whatever the sentence shape, and leaves other asks to the model', async () => {
-    expect(deskKind(F1)).toBe('tidy')
     const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘',
       '"fixtures/inbox-dump" 안의 자료 형식별로 분류해 주세요.', '받은 파일 모아둔 fixtures/inbox-dump/ 좀 확장자별로 나눠줘', 'fixtures/inbox-dump의 파일들 파일유형별로 정리해 줄래']
     for (const ask of yes) {
@@ -129,13 +128,6 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/reshape/i)
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),')
-  })
-})
-
-describe('c10c D3: the desk note no longer expects a second build', () => {
-  it('tells the model a saved file is not read back or built again', () => {
-    expect(DESK_NOTE).not.toContain('built twice')
-    expect(DESK_NOTE).toContain('After ppt_build, word_write or file_create_workbook says the file is saved, do not read it back or build it again')
+    for (const gone of ['laneNote', 'SHORT_QUESTION_NOTE', 'short: true']) expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8'), gone).not.toContain(gone)
   })
 })

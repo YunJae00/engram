@@ -3,13 +3,12 @@ import { companyNote, createBot, handBacks, handoffBrief, initVault, keepRead, k
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { askNow } from '../src/main/desk-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 import * as desk from '../src/main/desk-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
-const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
+const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const looking = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), new Set<string>()), []), () => 28_000)
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (url: string, title: string, snippet: string, day = '11월 18일'): string => `- ${title} — ${url} — ${snippet} — ${day}`
@@ -88,14 +87,19 @@ describe('R2 (stack16: prices only, 출시일 never looked for)', () => {
 
 describe('H2 (stack16: the November turn was rewritten back to December)', () => {
   const history = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 매출 합계는 2,916,000원이에요.' }]
-  it('the turn\'s ask carries 11월 as the later word; a November draft is posted as written, with no check to rewrite it', async () => {
-    const meant = askNow('아니 12월 대신 11월 치로', history)
+  it('the turn\'s ask reaches the model as typed, with the December ask in the thread and no host note of what is meant now; a November draft is posted as written, with no check to rewrite it', async () => {
+    const said = '아니 12월 대신 11월 치로'
+    let told = '', prompt = ''
     const draft = '11월 매출 합계는 2,764,000원이에요.'
-    const out = await posted(draft, meant)
-    console.log(`H2 replay: meaning = ${meant}\nanswer = ${out}`)
-    expect(meant).toContain('"아니 12월 대신 11월 치로"')
-    expect(meant).toContain('the later words hold')
-    expect(out).toBe(draft)
+    const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string }) => { prompt = job.prompt; told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
+    const world = { ...await openWorld(await tmpVaultRoot('stack17-h2'), engine), history: [...history] }
+    const { result } = await answer(world, said, { tools: [], ack: { bare: true } })
+    console.log(`H2 replay: answer = ${result?.answer}`)
+    expect(prompt).toContain(said)
+    expect(told).toContain('fixtures/sales.csv에서 12월 매출 합계 알려줘')
+    expect(told).not.toContain('the later words hold')
+    expect(told).not.toContain('What the person asks for now')
+    expect(result?.answer).toBe(draft)
     expect(fns(desk)).toEqual(DESK_FNS)
   })
 })

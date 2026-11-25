@@ -48,7 +48,6 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     expect(out.members.map(m => [m.role, m.accepted, m.result])).toEqual(['도쿄', '오사카', '후쿠오카'].map(city => [`${city} 조사`, true, SAID(city)]))
     expect(out.note).toContain('write the answer now')
     expect(hire.closes).toBeUndefined()
-    expect(hire.closesOn).toBeUndefined()
     expect(models).toHaveLength(3)
     expect(quick).toHaveLength(0)
   })

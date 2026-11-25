@@ -7,18 +7,17 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { closingBuilds } from '../src/main/desk-lane.js'
+import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import * as desk from '../src/main/desk-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 import * as fastLane from '../src/main/fast-lane.js'
-import { answerOnly } from '../src/main/result-check.js'
 import { answerBubbles } from '../src/renderer/src/markdown.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
-const FAST_FNS = ['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk']
+const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
+const FAST_FNS = ['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const temporary = join(root, 'tmp')
@@ -104,6 +103,7 @@ async function split(tag: string, cities: string[], added?: { city: string; at: 
 const WORKDIR = join(temporary, 'stack19') as EngineCwd
 const brain = (script: (job: ToolSessionJob) => Promise<ToolSessionResult>): Engine => ({ id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: script }) as unknown as Engine
 const SLIDES = [{ title: '동네 도서관 소개' }, { title: '이용 시간', bullets: ['평일 오전 9시부터 밤 10시'] }, { title: '프로그램', bullets: ['주말 그림책 읽기'] }]
+const world = async (tag: string, engine: Engine) => { await mkdir(temporary, { recursive: true }); return openWorld(await mkdtemp(join(temporary, `engram-s19-${tag}-`)), engine) }
 const receipt = { artifact: 'a9', path: '/out/동네 도서관 소개.pptx', markdownLink: '[동네 도서관 소개.pptx](engram-artifact:a9)', completeReadback: true }
 
 describe('stack-19: one clock (fake time) across both branches', () => {
@@ -114,7 +114,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(Date.now() - since).toBeLessThan(35_000)
     expect((JSON.parse(text) as Handed).members.map(m => m.result)).toEqual(['순천', '여수', '광양'].map(own))
     expect(quick).toEqual([])
-    expect(hire.closesOn?.(text) ?? false).toBe(false)
+    expect(hire.closes).toBeUndefined()
     expect(Object.keys(JSON.parse(text) as object)).toEqual(['members', 'hiresLeft', 'note'])
   }, 30_000)
 
@@ -129,25 +129,24 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(quick).toEqual([])
   }, 30_000)
 
-  it('a deck build ends under 60 s: 25 s to the build, a 2 s build that closes the turn with the model\'s reply, and nothing is checked or read back after', async () => {
-    fake()
+  it('a deck build ends under 60 s: 25 s to the build, a 2 s build, then the model\'s own reply closes the turn as written, and the host checks or reads back nothing', async () => {
     const tools = officeTools({ run: async () => { await wait(2000); return receipt } })
     let read = 0, quick = 0
     const reader: AgentTool = { name: 'file_read_package', description: 'reads a package', argsSchema: { type: 'object' }, run: async () => { read++; return '{}' } }
     const reply = '동네 도서관 소개 자료를 3장으로 만들었어요. 이용 시간은 표 대신 한 줄로 넣었어요.'
     const engine = { ...brain(async job => {
       await wait(25_000)
-      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES, reply, more: false })
-      await wait(15_000)
-      await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
-      await wait(15_000)
-      return { answer: 'late' }
+      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES })
+      await wait(1000)
+      return { answer: reply }
     }), quick: async () => { quick++; return '' } } as Engine
+    const opened = await world('deck', engine)
+    fake()
     const since = Date.now()
-    const done = await drive(runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(tools), reader] }, '동네 도서관 소개 발표 자료 3장 만들어줘'))
+    const { result } = await drive(answerTurn(opened, '동네 도서관 소개 발표 자료 3장 만들어줘', { tools: [...tools, reader], ack: { bare: true } }))
     expect(Date.now() - since).toBeLessThan(60_000)
-    expect(done.answer).toBe(reply)
-    expect(done.files).toEqual([{ name: '동네 도서관 소개.pptx', href: 'a9' }])
+    expect(result?.answer).toBe(reply)
+    expect(result?.files).toEqual([{ name: '동네 도서관 소개.pptx', href: 'a9' }])
     expect([read, quick]).toEqual([0, 0])
     expect(fns(desk)).toEqual(DESK_FNS)
   }, 30_000)
@@ -239,10 +238,11 @@ describe('stack-19: "멈춰" halts within 3 s and nothing posts after', () => {
       await job.tools.find(tool => tool.name === 'file_read_package')!.run({}).catch(() => '')
       return { answer: '다 만들었어요.' }
     })
-    const out = await drive(runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(tools), reader] }, '동네 도서관 소개 발표 자료 만들어줘', { signal: stop.signal }).then(r => r.answer, () => undefined))
+    const { result, trace } = await drive(answerTurn(await world('stop', engine), '동네 도서관 소개 발표 자료 만들어줘', { tools: [...tools, reader], signal: stop.signal, ack: { bare: true } }))
     expect(stoppedAt).toBeGreaterThan(0)
     expect(Date.now() - stoppedAt).toBeLessThan(3000)
-    expect(out).toBeUndefined()
+    expect(result).toBeUndefined()
+    expect(trace.end).toBe('stop')
     expect(read).toBe(0)
   }, 30_000)
 })
@@ -258,50 +258,46 @@ describe('stack-19: fixes after the branch results', () => {
     expect(fns(desk)).toEqual(DESK_FNS)
   })
 
-  it('a closing build keeps the model\'s own two-sentence answer exactly, the choice it took and the person\'s own file name included; with no reply the model writes its answer in its next step', async () => {
+  it('after a build the model\'s own two-sentence answer is posted exactly, the choice it took and the person\'s own file name included, with the file listed under it and no host line from the build', async () => {
     const ask = 'fixtures/budget.csv로 월별 지출 엑셀 만들고 차트도 넣어줘'
     const reply = 'budget.csv 월별 지출 합계를 엑셀로 만들었어요. 추이를 보기 좋게 막대 차트로 넣었어요.'
     const book: AgentTool = { name: 'file_create_workbook', description: 'book', argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify({ markdownLink: '[월별 지출.xlsx](engram-artifact:b1)' }) }
-    const close = async (said?: string) => runToolSession({ engine: brain(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }], ...(said ? { reply: said } : {}), more: false }); await wait(400); return { answer: '월별 지출 표를 엑셀 파일로 만들어 뒀어요.' } }), workdir: WORKDIR, tools: closingBuilds([book]) }, ask)
-    const kept = await close(reply)
-    expect(kept.answer).toBe(reply)
-    expect(kept.files).toEqual([{ name: '월별 지출.xlsx', href: 'b1' }])
-    const own = await close()
-    expect(answerOnly(own.answer)).toBe('월별 지출 표를 엑셀 파일로 만들어 뒀어요.')
-    expect(own.answer).not.toContain('시트 1개로 만들었어요')
-    expect(own.files).toEqual([{ name: '월별 지출.xlsx', href: 'b1' }])
+    let menu: unknown
+    const engine = brain(async job => { menu = job.tools.find(tool => tool.name === 'file_create_workbook'); await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }] }); return { answer: reply } })
+    const { result } = await answerTurn(await world('book', engine), ask, { tools: [book], ack: { bare: true } })
+    expect(result!.answer).toBe(reply)
+    expect(result!.answer).not.toContain('시트 1개로 만들었어요')
+    expect(result!.files).toEqual([{ name: '월별 지출.xlsx', href: 'b1' }])
+    expect(JSON.stringify(menu)).not.toMatch(/"reply"|"more"/)
   })
 })
 
 describe('stack-19: Codex-cap decisions', () => {
-  it('c19b r3 #1: no line about a build is made by the host from its title: the build asks the model for the reply in the person\'s language, and that reply closes the turn as written', async () => {
+  it('c19b r3 #1: no line about a build is made by the host from its title: the build reaches the model with its own schema, and the model\'s reply in the person\'s language closes the turn as written', async () => {
     expect(fns(desk)).toEqual(DESK_FNS)
-    const deck: AgentTool = { name: 'ppt_build', description: 'deck', argsSchema: { type: 'object', properties: {}, required: [] }, run: async () => JSON.stringify({ markdownLink: '[안내.pptx](engram-artifact:p1)' }) }
-    const [closing] = closingBuilds([deck])
-    const schema = closing!.argsSchema as { properties: { reply: { description: string } }; required: string[] }
-    expect(schema.properties.reply.description).toContain('Your answer to the person once this file is made, in their language and polite form')
-    expect(schema.required).toEqual(['more'])
+    const deck: AgentTool = { name: 'ppt_build', description: 'deck', argsSchema: { type: 'object', properties: {}, required: [] }, run: async () => JSON.stringify({ artifact: 'p1', path: '/out/안내.pptx', markdownLink: '[안내.pptx](engram-artifact:p1)', completeReadback: true }) }
     const reply = '봄 산행 안내 자료를 2장으로 만들었어요.'
-    const out = await closing!.run({ slides: [{ title: 'Spring hike plan and club goals 안내' }, { title: '일정' }], reply, more: false }, { task: '' })
-    expect(closing!.closesOn?.(out)).toBe(true)
-    expect(closing!.closeAnswer?.(out)).toBe(reply)
+    let schema: unknown
+    const engine = brain(async job => { const tool = job.tools.find(one => one.name === 'ppt_build')!; schema = tool.argsSchema; await tool.run({ slides: [{ title: 'Spring hike plan and club goals 안내' }, { title: '일정' }] }); return { answer: reply } })
+    const { result } = await answerTurn(await world('title', engine), '봄 산행 안내 PPT 2장 만들어줘', { tools: [deck], ack: { bare: true } })
+    expect(schema).toEqual({ type: 'object', properties: {}, required: [] })
+    expect(result!.answer).toBe(reply)
+    expect(result!.answer).not.toContain('Spring hike')
   })
-  it('c19b r3 #2: a build that does not say it finishes the ask leaves the turn to the model, so a second file is still made', async () => {
+  it('c19b r3 #2: no build ends the turn, so a second file is still made and the model\'s answer after both is posted as written', async () => {
     const made: string[] = []
-    const fake = (name: string, link: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => { made.push(name); return JSON.stringify({ markdownLink: link }) } })
-    const tools = closingBuilds([fake('ppt_build', '[동네 축제.pptx](engram-artifact:p2)'), fake('word_write', '[동네 축제.docx](engram-artifact:w2)')])
-    expect(tools.find(tool => tool.name === 'ppt_build')!.argsSchema).toMatchObject({ required: ['more'] })
+    const fake = (name: string, link: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => { made.push(name); return JSON.stringify({ artifact: link.slice(-3, -1), path: `/out/${link.slice(1, link.indexOf(']'))}`, markdownLink: link, completeReadback: true }) } })
     const reply = '동네 축제 발표 자료랑 워드 안내문을 둘 다 만들었어요.'
-    const result = await runToolSession({ engine: brain(async job => {
-      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동네 축제' }], reply: '발표 자료부터 만들었어요.' })
+    const engine = brain(async job => {
+      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동네 축제' }] })
       await wait(300)
-      await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동네 축제', reply, more: false })
-      await wait(300)
-      return { answer: 'late' }
-    }), workdir: WORKDIR, tools }, '동네 축제 PPT랑 워드 둘 다 만들어줘')
+      await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동네 축제' })
+      return { answer: reply }
+    })
+    const { result } = await answerTurn(await world('two', engine), '동네 축제 PPT랑 워드 둘 다 만들어줘', { tools: [fake('ppt_build', '[동네 축제.pptx](engram-artifact:p2)'), fake('word_write', '[동네 축제.docx](engram-artifact:w2)')], ack: { bare: true } })
     expect(made).toEqual(['ppt_build', 'word_write'])
-    expect(result.answer).toBe(reply)
-    expect(result.files).toEqual([{ name: '동네 축제.pptx', href: 'p2' }, { name: '동네 축제.docx', href: 'w2' }])
+    expect(result!.answer).toBe(reply)
+    expect(result!.files).toEqual([{ name: '동네 축제.pptx', href: 'p2' }, { name: '동네 축제.docx', href: 'w2' }])
   })
   it('c19a r3 #1: two facts read on one page are both in the hand-back, each on its own line, and linking each fact is the model\'s rule', () => {
     const page = 'https://fest.example/gangwon', at = new Date().toISOString()

@@ -7,7 +7,7 @@ import * as desk from '../src/main/desk-lane.js'
 import { answerBubbles, answerReplies } from '../src/renderer/src/markdown.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[], added: string[] = []): { added?: string[]; reports: Report[]; note: string } => JSON.parse(handBacks(members, added)) as { added?: string[]; reports: Report[]; note: string }
 const lead = async (draft: string, ask: string): Promise<{ answer: string; quick: number }> => {

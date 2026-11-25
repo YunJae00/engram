@@ -7,6 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import * as desk from '../src/main/desk-lane.js'
+import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { WORK_REPLY_RULE } from '../../../packages/core/src/agent-session-shape.js'
 
@@ -51,7 +52,7 @@ async function lane(tag: string, ask: string, opts: { searchMs?: number; modelMs
 }
 const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`, topic: town, brief: `${town} 이번 주말 서핑 파도 높이`, lookup: true }))
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
+const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const SPLIT = '강릉 속초 양양 토요일 서핑 파도 견줘줘'
 
 describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
@@ -85,7 +86,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     const text = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
     expect(Date.now() - since).toBeLessThan(35_000)
     for (const town of ['강릉', '속초', '양양']) { expect(text).toContain(own(town).slice(0, 12)); expect(text).toContain(PAGE[town]) }
-    expect(hire.closesOn?.(text) ?? false).toBe(false)
+    expect(hire.closes).toBeUndefined()
     expect(searches).toHaveLength(3)
     expect(models).toHaveLength(3)
     expect(quick).toEqual([])
@@ -96,7 +97,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     const first = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
     expect((JSON.parse(first) as Handed).members.map(m => [m.state, m.result])).toEqual([['working', undefined], ['working', undefined], ['working', undefined]])
     expect((JSON.parse(first) as Handed).note).toContain('call hire_members now for that part only')
-    expect(hire.closesOn?.(first) ?? false).toBe(false)
+    expect(hire.closes).toBeUndefined()
     const out = JSON.parse(await hire.run({ members: members(['고성']) }, { task: '' })) as Handed
     expect(out.members.map(m => m.result)).toEqual(['강릉', '속초', '양양', '고성'].map(own))
   })
@@ -136,15 +137,19 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect((await runToolSession({ engine: new Typed(whole), workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask)).answer).toBe(whole)
   })
 
-  it('"멈춰" during a desk build ends the build at once and closes no turn: no reply is posted for a file that was not made', async () => {
+  it('"멈춰" during a desk build ends the build at once and ends the turn as stopped: no reply is posted for a file that was not made', async () => {
     const stop = new AbortController()
+    let built: Promise<string> | undefined
     const build: AgentTool = { name: 'word_write', description: '', argsSchema: { type: 'object', properties: {}, required: [] }, run: (_args, context) => new Promise<string>((_resolve, reject) => context.signal!.addEventListener('abort', () => reject(new Error('stopped')))) }
-    const [closing] = desk.closingBuilds([build])
+    const engine = new class extends MockEngine { async runTools(job: ToolSessionJob): Promise<ToolSessionResult> { built = job.tools.find(tool => tool.name === 'word_write')!.run({ title: '회고 메모' }) as Promise<string>; await built; return { answer: '원인이랑 대책으로 나눠 워드로 만들었어요.' } } }()
+    await mkdir(temporary, { recursive: true })
     setTimeout(() => stop.abort(), 50)
     const began = Date.now()
-    await expect(closing!.run({ title: '회고 메모', reply: '원인이랑 대책으로 나눠 워드로 만들었어요.', more: false }, { task: '', signal: stop.signal })).rejects.toThrow('stopped')
+    const { result, trace } = await answerTurn(await openWorld(await mkdtemp(join(temporary, 'engram-s16-stop-')), engine), '회고 메모 워드로 정리해줘', { tools: [build], signal: stop.signal, ack: { bare: true } })
+    await expect(built).rejects.toThrow('stopped')
     expect(Date.now() - began).toBeLessThan(3000)
-    expect(closing!.closesOn?.('')).toBe(false)
+    expect(result).toBeUndefined()
+    expect(trace.end).toBe('stop')
     expect(fns(desk)).toEqual(DESK_FNS)
   })
 })

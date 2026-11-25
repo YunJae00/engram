@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -108,6 +108,21 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(jobs[0]!.maxCalls).toBe(12)
   })
 
+  it('gives a deck, a note, a file question, a correction and a plain telling the same menu and call shape: no model hint, no light effort, no shorter turn, no file read for the model', async () => {
+    const jobs: { tools: string[]; maxCalls: number; modelHint?: string; effort?: string; system: string }[] = [], prompts: string[] = []
+    const engine = fake(async job => { jobs.push({ tools: job.tools.map(tool => tool.name), maxCalls: job.maxCalls, ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}), system: job.system }); prompts.push(job.prompt); return '했어요.' })
+    const reader: AgentTool = { name: 'file_read', description: 'reads a file', argsSchema: { type: 'object' }, run: async () => 'unused' }
+    const build: AgentTool = { name: 'ppt_build', description: 'builds a deck', argsSchema: { type: 'object' }, run: async () => 'unused' }
+    const dir = await temp()
+    const world = await openWorld(dir, engine)
+    await writeFile(join(world.paths.workspace, 'kitchen-duty.md'), '- 월: 설거지 담당 민서')
+    for (const ask of ['신입 교육 일정 슬라이드 다섯 장 만들어줘', 'kitchen-duty.md 요약해줘', 'budget-q4.csv에서 총합 얼마야?', '아니 그거 말고 엑셀로', '오늘 드디어 이사 끝냈어'])
+      await answer({ ...world, history: [] }, ask, { plainAsk: true, tools: [reader, build], maxCalls: 12 })
+    expect(jobs).toHaveLength(5)
+    for (const job of jobs) expect(job).toEqual({ tools: ['file_read', 'ppt_build'], maxCalls: 12, system: jobs[0]!.system })
+    expect(prompts.join('\n')).not.toContain('설거지 담당 민서')
+  })
+
   it('gives a lookup ask the quick model\'s own ack, like any other ask', async () => {
     const shown: string[] = []
     const engine = fake(async () => '오사카는 토요일 오후에 비가 와요.', async prompt => prompt.includes('first line') ? '오사카 주말 예보부터 볼게요.' : 'NONE')
@@ -153,7 +168,8 @@ describe('answer is the one entry the app and the runner share', () => {
     for (const work of ['buildRetrievedContext(', 'readChatAttachments(', 'await cometToolSet({ channel, engine, settings, permission', 'await skillShortlist(', 'await begun!.run({'])
       expect(turn.indexOf(work), work).toBeGreaterThan(begin)
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8'), run = own.indexOf('const run = async')
-    for (const work of ['await namedText(', 'keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skills()']) expect(own.indexOf(work), work).toBeGreaterThan(run)
+    expect(own).not.toMatch(/namedText|namedBy|fileGiven|deskLane|deskKind|deskLight|closingBuilds/)
+    for (const work of ['keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skills()']) expect(own.indexOf(work), work).toBeGreaterThan(run)
     expect(ipc).toMatch(/for \(const ack of acks\) ack\.end\(\)/)
   })
 })

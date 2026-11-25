@@ -11,17 +11,18 @@ const reply = '엔비디아는 지금 182.3달러예요. [네이버 증권](http
 const posted = async (ask: string, draft: string, quick = vi.fn(async () => ''), options: NonNullable<Parameters<typeof runComet>[2]> = {}) => (await runComet({ engine: { id: 'claude', quick, runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, ask, { guided: false, modelHint: 'smart', history: [{ role: 'assistant', text: reply }], ...options })).answer
 
 describe('stack-10: the c10c desk paths and the c10a lane paths never share a turn', () => {
-  it('the desk folder sort needs a desk kind, which needs no lane; the lane has no tidy and no shaping step left to run anywhere', () => {
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const kind = !company && deskLane\(/)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const sorted = kind === 'tidy'/)
+  it('the desk folder sort runs outside the team lane on its own parser, with no desk kind; the lane has no tidy and no shaping step left to run anywhere', () => {
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hostable = !company && plainAsk')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const sorted = hostable && !keep && !retitle && korean \? await sortByKind\(/)
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/deskKind|deskLane|kind === 'tidy'/)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').split('sortByKind(').length - 1).toBe(1)
     expect(ipc).not.toContain('sortByKind(')
   })
   it('no turn is reshaped by a second model: a lookup, a team ask, a handed or company turn and a desk turn all post the one draft, and another form is the model\'s to write', () => {
     expect(ipc).not.toMatch(/const reshaped|reshapeCandidate/)
-    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
+    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
     expect(COLLEAGUE_CORE_RULE).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')

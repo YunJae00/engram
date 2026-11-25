@@ -94,7 +94,6 @@ export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools
 export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export * from './company-tools.js'
 export { checkedSearch, setJudgeLog } from './teammate-search.js'
-export * from './closing-tool.js'
 export { backgroundOpen } from './delegated-tasks.js'
 export { askKey } from './repeat.js'
 export {

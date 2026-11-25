@@ -32,7 +32,7 @@ test('a replacement said mid-work reaches the running turn as the person said it
     expect(jobs[1]!.prompt).toContain('아 리스본 말고 포르투로 봐 줄래')
     expect(result?.answer).toBe(drafts[1])
   })
-  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
 })
 
 test.each([

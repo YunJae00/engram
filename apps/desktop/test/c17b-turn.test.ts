@@ -1,102 +1,130 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { EngineCwd, ToolSessionJob } from 'core'
+import type { AgentTool, Engine, EngineCwd, ToolSessionJob } from 'core'
 const logged = vi.hoisted(() => vi.fn())
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: logged }))
 import * as desk from '../src/main/desk-lane.js'
-import { askNow, closingBuilds, routeAsk } from '../src/main/desk-lane.js'
+import { answer as answerTurn, openWorld } from '../src/main/answer.js'
+import { answerOnly } from '../src/main/result-check.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
+const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
 
-describe('a correction is checked against the ask as the person changed it', () => {
-  const earlier = [{ role: 'user', text: 'inventory.csv에서 3분기 입고 수량 알려줘' }, { role: 'assistant', text: '3분기 입고 수량은 1,240개예요.' }]
-  const message = '아니 그거 말고 2분기로'
-  const HOLDS = 'Where the two differ, the later words hold.'
-  it('routes by the earlier ask, means the earlier ask with the later words holding', () => {
-    expect(routeAsk(message, earlier)).toBe('inventory.csv에서 3분기 입고 수량 알려줘')
-    const meant = askNow(message, earlier)
-    expect(meant).toContain('inventory.csv에서 3분기 입고 수량 알려줘')
-    expect(meant).toContain('The person then changed it: "아니 그거 말고 2분기로". Where the two differ, the later words hold.')
-    expect(askNow('inventory.csv 품목 수 알려줘', earlier)).toBe('inventory.csv 품목 수 알려줘')
+type Turn = { role: 'user' | 'assistant'; text: string }
+const scratch: string[] = []
+afterEach(async () => { await Promise.all(scratch.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
+const leadWorld = async (draft: string | ((job: ToolSessionJob) => Promise<string>), history: Turn[] = []) => {
+  const jobs: ToolSessionJob[] = []
+  const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: typeof draft === 'string' ? draft : await draft(job) } } } as unknown as Engine
+  const dir = await mkdtemp(join(tmpdir(), 'c17b-turn-')); scratch.push(dir)
+  const world = { ...await openWorld(dir, engine), history: [...history] }
+  const told = (at = -1): string => { const job = jobs.at(at)!; return [job.system, job.opening ?? '', job.prompt].join('\n') }
+  return { world, jobs, told }
+}
+const lead = async (said: string, history: Turn[], draft = '알겠어요.', tools: AgentTool[] = []) => {
+  const { world, jobs, told } = await leadWorld(draft, history)
+  const done = await answerTurn(world, said, { tools })
+  return { done, jobs, told: told() }
+}
+const NO_HOST_NOTE = /What the person asks for now|The person then changed it|the later words hold/
+
+describe('a correction reaches the model as typed, and the thread says what it changes', () => {
+  const earlier: Turn[] = [{ role: 'user', text: '창고 재고표 stock-dec.csv에서 냉동 품목 수량 알려줘' }, { role: 'assistant', text: '냉동 품목은 312개예요.' }]
+  const message = '아니 냉동 말고 냉장으로'
+  it('a correction reaches the model as typed, with the earlier ask in the history and no host note on what is asked now', async () => {
+    const { told, jobs } = await lead(message, earlier)
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.prompt).toContain(message)
+    expect(told).toContain('창고 재고표 stock-dec.csv에서 냉동 품목 수량 알려줘')
+    expect(told.indexOf('냉동 품목은 312개예요.')).toBeLessThan(told.lastIndexOf(message))
+    expect(told).not.toMatch(NO_HOST_NOTE)
   })
-  it('a 2분기 reply written with a build closes the turn exactly as the model wrote it', async () => {
-    const draft = '2분기 입고 수량은 980개예요.\n\n표로도 넣어 뒀어요.'
-    const receipt = JSON.stringify({ markdownLink: '[입고-2분기.xlsx](engram-artifact:stock-q2.xlsx)' })
+  it('a 냉장 reply the model writes after a build is posted exactly as written, and the build gets only the arguments the model gave', async () => {
+    const draft = '냉장 품목 수량은 205개예요.\n\n표로도 넣어 뒀어요.'
     const seen: Record<string, unknown>[] = []
-    const made = (): ReturnType<typeof closingBuilds>[number] => closingBuilds([{ name: 'file_create_workbook', description: '', argsSchema: { type: 'object', properties: {}, required: [] }, run: async args => { seen.push(args); return receipt } }])[0]!
-    const build = made(), silent = made()
-    const out = await build.run({ name: '입고-2분기.xlsx', reply: draft, more: false }, { task: askNow(message, earlier) })
-    expect(build.closesOn!(out)).toBe(true)
-    expect(build.closeAnswer!(out)).toBe(draft)
-    expect(seen).toEqual([{ name: '입고-2분기.xlsx' }])
-    expect(silent.closesOn!(await silent.run({ name: '입고-2분기.xlsx', more: false }, { task: '' }))).toBe(false)
+    const book: AgentTool = { name: 'file_create_workbook', description: 'makes a workbook', argsSchema: { type: 'object', properties: {}, required: [] }, run: async args => { seen.push(args); return JSON.stringify({ markdownLink: '[냉장-수량.xlsx](engram-artifact:cold-count.xlsx)' }) } }
+    const { world, jobs } = await leadWorld(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '냉장-수량.xlsx' }, { task: message }); return draft }, earlier)
+    const { result } = await answerTurn(world, message, { tools: [book] })
+    expect(answerOnly(result!.answer)).toBe(draft)
+    expect(seen).toEqual([{ name: '냉장-수량.xlsx' }])
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.tools.find(tool => tool.name === 'file_create_workbook')!.argsSchema).toEqual(book.argsSchema)
   })
   it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
-    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind'])
+    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(askNow(message, earlier)).toContain(HOLDS)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const changedNote = meant !== message ? `What the person asks for now: ${meant}` : \'\'')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const notes = \[context\?\.\(\)[^\]]*changedNote[^\]]*\]/)
+    expect(own).not.toMatch(/changedNote|askNow|routeAsk|What the person asks for now/)
+    expect(own).toContain('const notes = [context?.(), calendarLine(), note].filter(Boolean).join(\'\\n\\n\')')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
   })
-  it('the corrected meaning names the new part, and the rules for one part and one offer are the model\'s', () => {
-    const before = [{ role: 'user', text: 'notes/branch-sync.md에서 서울 지점 과제만 골라줘' }, { role: 'assistant', text: '- 김하늘: 재고 점검 — 12월 2일' }]
-    const meant = askNow('그냥 부산 걸로 바꿔', before)
-    expect(meant).toContain('"그냥 부산 걸로 바꿔"')
-    expect(meant).toContain('notes/branch-sync.md에서 서울 지점 과제만 골라줘')
+  it('a correction naming a new part reaches the model beside the ask it changes, and the rules for one part and one offer are the model\'s', async () => {
+    const before: Turn[] = [{ role: 'user', text: '팀 일정표 week-plan.md에서 대전 출장 건만 골라줘' }, { role: 'assistant', text: '- 대전 출장: 12월 3일' }]
+    const { told, jobs } = await lead('그냥 광주 걸로 바꿔', before)
+    expect(jobs[0]!.prompt).toContain('그냥 광주 걸로 바꿔')
+    expect(told).toContain('팀 일정표 week-plan.md에서 대전 출장 건만 골라줘')
+    expect(told).not.toMatch(NO_HOST_NOTE)
     expect(COLLEAGUE_CORE_RULE).toContain('When they ask for one part of something, give that part only.')
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
-  it('a correction that widens the ask reaches the model with the earlier narrowing word and the widening after it', () => {
-    const before = [{ role: 'user', text: 'docs/branch-week.md에서 할 일만 추려줘' }, { role: 'assistant', text: '- 재고 점검' }]
-    for (const widen of ['아니 그거 말고 다 보여줘', '음 그거 말고 미결까지 같이']) {
-      const meant = askNow(widen, before)
-      expect(meant.indexOf('할 일만 추려줘')).toBeGreaterThan(-1)
-      expect(meant.indexOf(`"${widen}"`)).toBeGreaterThan(meant.indexOf('할 일만 추려줘'))
-      expect(meant).toContain(HOLDS)
+  it('a correction that widens the ask reaches the model with the earlier narrowing word before it', async () => {
+    const before: Turn[] = [{ role: 'user', text: 'meeting/trim-02.md에서 결정만 추려줘' }, { role: 'assistant', text: '- 예산 동결' }]
+    for (const widen of ['아니 그거 말고 전부 보여줘', '음 그거 말고 보류 건까지 같이']) {
+      const { told, jobs } = await lead(widen, before)
+      expect(jobs[0]!.prompt).toContain(widen)
+      expect(told.indexOf('결정만 추려줘')).toBeGreaterThan(-1)
+      expect(told.lastIndexOf(widen)).toBeGreaterThan(told.indexOf('결정만 추려줘'))
+      expect(told).not.toMatch(NO_HOST_NOTE)
     }
-    expect(askNow('아니 그거 말고 과제만 다시', [{ role: 'user', text: 'docs/branch-week.md 간추려줘' }])).toContain('"아니 그거 말고 과제만 다시"')
-    expect(askNow('docs/branch-week.md에서 과제만 추려줘', [])).toBe('docs/branch-week.md에서 과제만 추려줘')
   })
-  it('along a chain, every correction is given in order and the latest one is last', () => {
-    const chain = [{ role: 'user', text: 'memo/store-plan.md 정리해줘' }, { role: 'user', text: '아니 그거 말고 과제만' }]
-    for (const widen of ['아니 그거 말고 전부 다', '음 그거 말고 처음처럼']) {
-      const meant = askNow(widen, chain)
-      expect(meant).toContain(`"아니 그거 말고 과제만", then "${widen}". Where they differ, the later words hold.`)
-      expect(askNow('그거 말고 다 줘', [...chain, { role: 'user', text: widen }])).toContain(`"아니 그거 말고 과제만", then "${widen}", then "그거 말고 다 줘".`)
-    }
-    expect(askNow('아니 그거 말고 과제만 줘', [...chain, { role: 'user', text: '음 그거 말고 전체로' }])).toMatch(/then "아니 그거 말고 과제만 줘"\. Where they differ, the later words hold\.$/)
-    expect(routeAsk('그거 말고 원래대로', [{ role: 'user', text: 'memo/a.md 간추려줘' }, { role: 'user', text: '아니 그거 말고 돌려보기 편하게' }])).toBe('memo/a.md 간추려줘')
+  it('along a chain of turns, answer keeps every correction in the history in order, and the latest one is the message', async () => {
+    const { world, jobs, told } = await leadWorld('정리했어요.')
+    for (const said of ['memo/garden-plan.md 정리해줘', '아니 그거 말고 물주기만', '음 그거 말고 처음 순서대로']) await answerTurn(world, said, { tools: [] })
+    expect(jobs).toHaveLength(3)
+    const last = told()
+    expect(jobs[2]!.prompt).toContain('음 그거 말고 처음 순서대로')
+    expect(last.indexOf('memo/garden-plan.md 정리해줘')).toBeGreaterThan(-1)
+    expect(last.indexOf('아니 그거 말고 물주기만')).toBeGreaterThan(last.indexOf('memo/garden-plan.md 정리해줘'))
+    expect(last.lastIndexOf('음 그거 말고 처음 순서대로')).toBeGreaterThan(last.indexOf('아니 그거 말고 물주기만'))
+    expect(world.history.filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['memo/garden-plan.md 정리해줘', '아니 그거 말고 물주기만', '음 그거 말고 처음 순서대로'])
+    for (const at of [0, 1, 2]) expect(told(at)).not.toMatch(NO_HOST_NOTE)
   })
-  it('successive corrections keep the original task as the route and every change in the meaning, oldest first', () => {
-    const turns = [
-      { role: 'user', text: 'reading/list.md에서 이번 달 읽을 책만 골라줘' }, { role: 'assistant', text: '- 책 A' },
-      { role: 'user', text: '아 그거 말고 전부로' }, { role: 'assistant', text: '- 책 A\n- 책 B' },
-      { role: 'user', text: '아니 그거 말고 저자별로' }, { role: 'assistant', text: '…' },
+  it('successive corrections reach the model with the original task and every change in the history, oldest first', async () => {
+    const turns: Turn[] = [
+      { role: 'user', text: 'library/wishlist.md에서 올해 살 책만 골라줘' }, { role: 'assistant', text: '- 책 가' },
+      { role: 'user', text: '아 그거 말고 다 넣어줘' }, { role: 'assistant', text: '- 책 가\n- 책 나' },
+      { role: 'user', text: '아니 그거 말고 출판사별로' }, { role: 'assistant', text: '…' },
     ]
-    const third = '음 그거 말고 출판연도순으로'
-    expect(routeAsk(third, turns)).toBe('reading/list.md에서 이번 달 읽을 책만 골라줘')
-    const meant = askNow(third, turns)
-    expect(meant).toContain('changed it: "아 그거 말고 전부로", then "아니 그거 말고 저자별로", then "음 그거 말고 출판연도순으로". Where they differ, the later words hold.')
-    expect(routeAsk('아 그거 말고 장르별로', [...turns, { role: 'user', text: 'notes/plan.md 요약해줘' }])).toBe('notes/plan.md 요약해줘')
+    const third = '음 그거 말고 가격순으로'
+    const { told, jobs } = await lead(third, turns)
+    const order = ['library/wishlist.md에서 올해 살 책만 골라줘', '아 그거 말고 다 넣어줘', '아니 그거 말고 출판사별로'].map(text => told.indexOf(text))
+    expect(order.every(at => at > -1)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(told.lastIndexOf(third)).toBeGreaterThan(order[2]!)
+    expect(jobs[0]!.prompt).toContain(third)
+    expect(told).not.toMatch(NO_HOST_NOTE)
   })
-  it('the model reads the meaning in its turn context and the named file; the route alone decides the lane', () => {
-    for (const use of ['namedText(meant,', 'namedBy(meant, path)', 'const meant = askNow(message, world.history)']) expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(use)
-    const routedUses = ipc.split('\n').filter(line => /\brouted\b/.test(line) && !line.trim().startsWith('//'))
-    for (const line of routedUses) expect(line).toMatch(/const routed = routeAsk|fastLane\(routed|deskLane\(routed|deskKind\(routed|routed === request\.message|deskLight\(kind, routed/)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('What the person asks for now: ${meant}')
+  it('the model reads the meaning from the thread and the named file with its own call; no route or pre-read is left in answer or ipc', () => {
+    for (const gone of ['namedText', 'namedBy', 'askNow', 'routeAsk', 'fileGiven', 'const meant', 'deskLane', 'deskKind', 'deskLight']) expect(own).not.toContain(gone)
+    expect(ipc.split('\n').filter(line => /\brouted\b|\bdeskLane\(|\bdeskKind\(|\brouteAsk\(/.test(line))).toEqual([])
+    expect(own).toContain('tools: everyTool,')
     expect(ipc).toMatch(/await deliverAnswer\(\s*`\$\{result\.asked \? askText\(result\.answer, result\.options\) : result\.answer\}\$\{note\}`/)
   })
-  it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', () => {
+  it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', async () => {
     expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
     expect(COLLEAGUE_CORE_RULE).toContain('means do the new thing at once - never ask which one they mean when the thread already says it')
-    expect(askNow('더 짧게', [{ role: 'user', text: '서울 지점 할 일 알려줘' }, { role: 'assistant', text: '부산 지점 할 일은 두 개예요.' }])).toBe('더 짧게')
+    const { told, jobs } = await lead('조금만 더 짧게', [{ role: 'user', text: '대구 지점 할 일 알려줘' }, { role: 'assistant', text: '울산 지점 할 일은 두 개예요.' }])
+    expect(jobs[0]!.prompt).toContain('조금만 더 짧게')
+    expect(told).toContain('대구 지점 할 일 알려줘')
+    expect(told).toContain('울산 지점 할 일은 두 개예요.')
+    expect(told).not.toMatch(NO_HOST_NOTE)
   })
 })
 

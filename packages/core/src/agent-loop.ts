@@ -34,8 +34,6 @@ export interface AgentTool {
   run(args: Record<string, unknown>, context: AgentToolContext): Promise<string>
   runRich?(args: Record<string, unknown>, context: AgentToolContext): Promise<ToolOutcome>
   closes?: true | ((args: Record<string, unknown>) => boolean)
-  closesOn?: (observation: string) => boolean
-  closeAnswer?: (observation: string) => string | undefined
 }
 
 export interface AgentLoopDeps {

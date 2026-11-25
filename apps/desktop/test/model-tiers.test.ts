@@ -202,9 +202,9 @@ describe('instant first line', () => {
     const QUESTION = '마라톤 풀코스는 몇 미터야?'
     const HOST = '호스트가 고른 줄이에요.'
     const byPrompt = (whole: () => Promise<string>, line: () => Promise<string>) => voice(async () => 'unused').quick.mockImplementation(((prompt: string) => prompt.includes('You write the assistant\'s first line') ? line() : whole()) as never)
-    const run = (quick: ReturnType<typeof byPrompt>, patch: Partial<FirstLineAsk> = {}, more: { told?: boolean; said?: () => Promise<readonly string[]> } = {}) => {
+    const run = (quick: ReturnType<typeof byPrompt>, patch: Partial<FirstLineAsk> = {}, more: { whole?: boolean; said?: () => Promise<readonly string[]> } = {}) => {
       const show = vi.fn()
-      beginFirstLine({ ...ask({ message: QUESTION, ...patch }), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, whole: !more.told, fallback: HOST, ...more })
+      beginFirstLine({ ...ask({ message: QUESTION, ...patch }), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, whole: true, fallback: HOST, ...more })
       firstLineReady('bot-1')
       return { show, reply: smallTalkAnswer('bot-1') }
     }
@@ -221,7 +221,7 @@ describe('instant first line', () => {
         expect(firstLineNote('bot-1')).toContain('"코스 기록부터 찾아볼게요."')
       }
       endFirstLine('bot-1')
-      const told = run(byPrompt(async () => 'NONE', later('일정표부터 맞춰 볼게요.', 300)), { message: '다음 달에 이사해요' }, { told: true })
+      const told = run(byPrompt(async () => 'NONE', later('일정표부터 맞춰 볼게요.', 300)), { message: '다음 달에 이사해요' }, { whole: false })
       await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
       expect(await told.reply).toBeUndefined()
       expect(told.show).toHaveBeenCalledExactlyOnceWith('일정표부터 맞춰 볼게요.')
@@ -252,23 +252,16 @@ describe('instant first line', () => {
       expect(show).toHaveBeenCalledExactlyOnceWith('후보지 목록부터 뽑을게요.')
     })
 
-    it('sends a told reply that arrives in time even when the voice also names a step, and shows the step only when the reply is declined', async () => {
-      const first = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
-      await vi.advanceTimersByTimeAsync(300)
-      expect(await first.reply).toBe('새 집 기대되시겠어요.')
-      await vi.advanceTimersByTimeAsync(5000)
-      expect(first.show).not.toHaveBeenCalled()
-      endFirstLine('bot-1')
-      const step = run(byPrompt(later('NONE', 300), later('평수별 매물부터 볼게요.', 500)), { message: '다음 달 이사할 동네 원룸 시세 셋만' }, { told: true })
-      await vi.advanceTimersByTimeAsync(500)
-      expect(await step.reply).toBeUndefined()
-      expect(step.show).toHaveBeenCalledExactlyOnceWith('평수별 매물부터 볼게요.')
-      endFirstLine('bot-1')
-      const late = run(byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 5000)), { message: '나 다음 달에 이사 가' }, { told: true })
-      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
-      expect(await late.reply).toBe('새 집 기대되시겠어요.')
-      await vi.advanceTimersByTimeAsync(5000)
-      expect(late.show).not.toHaveBeenCalled()
+    it('a message that only tells gets no reply from the quick voice, even one ready in time: only the first-line prompt is sent, and the voice\'s step shows', async () => {
+      for (const message of ['다음 달 이사할 동네 원룸 시세 셋만', '나 다음 달에 이사 가']) {
+        endFirstLine('bot-1')
+        const quick = byPrompt(later('새 집 기대되시겠어요.', 300), later('평수별 매물부터 볼게요.', 500))
+        const told = run(quick, { message }, { whole: false })
+        await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+        expect(await told.reply, message).toBeUndefined()
+        expect(told.show).toHaveBeenCalledExactlyOnceWith('평수별 매물부터 볼게요.')
+        expect(quick.mock.calls.map(call => (call as unknown[])[0])).toEqual([firstLinePrompt(message, true)])
+      }
     })
 
     it('still puts the host line up at the fallback time when the voice gives nothing for either call', async () => {
@@ -297,7 +290,7 @@ describe('instant first line', () => {
     expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
     expect(turn).toContain('const note = firstLineNote(channel)')
     expect(turn).not.toMatch(/await firstLine/)
-    expect(turn).toContain("const notes = [context?.(), calendarLine(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\\n\\n')")
+    expect(turn).toContain("const notes = [context?.(), calendarLine(), note].filter(Boolean).join('\\n\\n')")
     expect(turn).toContain('const hold = !!firstLineNote(channel)')
     expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))
   })
@@ -763,11 +756,10 @@ describe('Claude command sandbox', () => {
 })
 
 describe('stack-5: low effort stays on the turns it was given to', () => {
-  it('a team turn is low unless it writes a result from hand-backs, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team turn', () => {
+  it('a team turn is low unless it writes a result from hand-backs, and no desk turn sets its own model or effort', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/modelHint|light: true|deskKind|deskLane/)
     expect(ipc).not.toContain('koreanLead(')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
@@ -789,11 +781,11 @@ describe('s1a: the team lane\'s model does the team\'s work', () => {
     expect(chat).toContain("takesCompanyLane(request.message, { staff: staff.map(one => one.name), gone: employees(await loadArchivedBots(paths)).map(one => one.name), chief, scheduled: request.scheduled === true, kept: everyone.flatMap(one => one.tasks ?? []), lastReply: lastReplyOf(savedHistory) })")
     expect(chat).toContain('.filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))')
   })
-  it('effort is set by lane: a team turn that is not a report turn is low effort on the smart tier, whatever it says; the desk lane and the report turn keep their options', () => {
+  it('effort is set by lane: a team turn that is not a report turn is low effort on the smart tier, whatever it says; the report turn keeps its options and every other turn gets no model hint or effort of its own', () => {
     const team = "...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),"
     expect(chat).toContain(team)
     expect(team).not.toMatch(/request|message|routed|ask/)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/modelHint|light: true|deskKind|deskLane/)
     expect(chat).toContain("const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)\n        && (turn?.report === true || takesCompanyLane(")
   })
 })

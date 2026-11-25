@@ -9,10 +9,8 @@ vi.mock('electron', () => ({ app: { getPath: () => '', getVersion: () => '0', is
 
 const { extractChatCaptures } = await import('../src/main/ipc.js')
 const { finishProgress } = await import('../src/main/conversation-progress.js')
-const { closingBuilds, DESK_TOOLS } = await import('../src/main/desk-lane.js')
 const { answer, openWorld } = await import('../src/main/answer.js')
 const { withFiles } = await import('../src/main/native-tools.js')
-const { answerOnly } = await import('../src/main/result-check.js')
 
 const DRAFT = [
   '등대는 토요일 오전 9시에 열어요 [1]. [항만 안내소](https://harbor.example/lighthouse?day=sat&gate=(north))',
@@ -64,20 +62,22 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(result.answer).not.toContain('search.example')
   })
 
-  it('desk lane: a build closes the turn with the reply the model gave, and the file travels beside it as one card', async () => {
+  it('a build: the file is made by the model\'s own call on the full menu, its reply after the build is posted as written, and the file travels beside it as one card', async () => {
     const id = '5f0c1a2b-aaaa-bbbb-cccc-0123456789ab-등대 안내문.docx'
-    const build = tool('word_write', async () => JSON.stringify({ artifact: id, markdownLink: `[등대 안내문.docx](engram-artifact:${encodeURIComponent(id)})` }))
-    const menu = closingBuilds([build, tool('search_web', async () => 'unused')].filter(one => DESK_TOOLS.deck!.has(one.name) || one.name === 'word_write'))
-    const made = await runComet({ engine: brain(async job => { await job.tools.find(one => one.name === 'word_write')!.run({ title: '등대 안내문', reply: DRAFT, more: false }); await new Promise(resolve => setTimeout(resolve, 600)); return '이 줄은 닫힌 뒤라 쓰이지 않아요.' }), workdir: '.', tools: menu }, '등대 안내문을 문서 파일로 써줘', { guided: false, modelHint: 'smart' })
+    const build = tool('word_write', async () => JSON.stringify({ artifact: id, markdownLink: `[등대 안내문.docx](engram-artifact:${encodeURIComponent(id)})`, completeReadback: true }))
+    const jobs: ToolSessionJob[] = []
+    const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
+    const engine = brain(async job => { jobs.push(job); await job.tools.find(one => one.name === 'word_write')!.run({ title: '등대 안내문' }); return DRAFT })
+    const { result: made } = await answer(await openWorld(root, engine), '등대 안내문을 문서 파일로 써줘', { plainAsk: true, tools: [build, tool('search_web', async () => 'unused')] }).finally(() => rm(root, { recursive: true, force: true }))
+    if (!made) throw new Error('no result')
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.tools.map(one => one.name)).toEqual(expect.arrayContaining(['word_write', 'search_web']))
+    expect(jobs[0]!.modelHint).toBeUndefined()
     expect(made.answer).toBe(DRAFT)
     expect(stored(made.answer)).toBe(DRAFT)
     expect(made.answer).not.toContain('engram-artifact:')
     expect(made.files).toEqual([{ name: '등대 안내문.docx', href: encodeURIComponent(id) }])
     expect(withFiles(made.answer, made.files)).toBe(`${DRAFT}\n\n[등대 안내문.docx](engram-artifact:${encodeURIComponent(id)})`)
-    const silent = await runComet({ engine: brain(async job => { await job.tools.find(one => one.name === 'word_write')!.run({ title: '등대 안내문', more: false }); return DRAFT }), workdir: '.', tools: menu }, '등대 안내문을 문서 파일로 써줘', { guided: false, modelHint: 'smart' })
-    expect(silent.answer.endsWith(`Unverified response:\n${DRAFT}`)).toBe(true)
-    expect(answerOnly(silent.answer)).toBe(DRAFT)
-    expect(silent.files).toEqual([{ name: '등대 안내문.docx', href: encodeURIComponent(id) }])
   })
 
   it('team result: the lead step is handed every teammate\'s words and sources, and its draft is posted as written', async () => {

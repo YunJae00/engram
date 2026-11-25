@@ -19,7 +19,7 @@ const posted = async (draft: string): Promise<string | undefined> => {
 
 test('c10a L1: a weather answer is posted with its ".0" and its bracketed date as written; whole degrees and plain dates are rules the model reads', async () => {
   for (const kept of ['오늘(12월 3일)은 흐리고 지금 7.0도예요. [기상청](https://www.weather.go.kr/w/index.do)', '내일(4일 목)은 -1.0℃, 모레(12월 5일)는 6.0°까지 올라요.', '지금 8.5도예요.', '1엔에 9.0원이에요.']) expect(await posted(kept)).toBe(kept)
-  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
+  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(COLLEAGUE_CORE_RULE).toContain('a whole number has no ".0", and a day is said with its date in plain words, never in brackets')
 })

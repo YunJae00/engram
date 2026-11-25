@@ -60,7 +60,6 @@ describe('c17a (B): one due for helpers on the merge path', () => {
     for (const [i, town] of TOWNS.entries()) expect(back.members[i]!.sources).toEqual([`https://search.example/?q=${encodeURIComponent(`${town} 케이블카 요금`)}`])
     expect(back.note).toContain('the address copied exactly from sources')
     expect(hire.closes).toBeUndefined()
-    expect(hire.closesOn).toBeUndefined()
     for (const m of (await listTasks(paths))[0]!.team!.members.filter(one => one.lookup)) { expect('proof' in m).toBe(false); expect(m.data).toBeUndefined() }
   }, 45_000)
 
