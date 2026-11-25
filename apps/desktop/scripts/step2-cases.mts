@@ -68,7 +68,7 @@ export const CASES: EvalCase[] = [
   {
     id: 'lookup-live',
     ask: () => '지금 도쿄 날씨 어때?',
-    grade: run => ({ linked: /\]\(https?:\/\//.test(all(run)), degrees: /\d+(?:\.\d+)?\s*°/.test(all(run)) }),
+    grade: run => ({ linked: /\]\(https?:\/\//.test(all(run)), degrees: /\d+(?:\.\d+)?\s*(?:°|도)/.test(all(run)) }),
   },
   {
     ...quick('mid-work-words'),
