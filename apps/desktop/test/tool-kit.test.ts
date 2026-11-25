@@ -88,7 +88,7 @@ describe('the tool kit built from plain inputs', () => {
       await mkdir(join(paths.workspace, 'garden'), { recursive: true })
       await writeFile(join(paths.workspace, 'garden', 'seeds.txt'), '토마토 12\n바질 7\n')
       const read = await tool('file_read').run({ path: join(paths.workspace, 'garden', 'seeds.txt') }, { task: '씨앗 목록 읽어줘' })
-      const moved = await tool('file_move').run({ moves: [{ from: 'garden/seeds.txt', to: 'garden/spring/seeds.txt' }] }, { task: '봄 폴더로 옮겨줘' })
+      const moved = await tool('file_move').run({ moves: [{ from: 'garden/seeds.txt', to: 'garden/spring/seeds.txt' }] }, { task: '씨앗은 봄 칸에 넣어둬' })
       const sheet = await tool('file_create_workbook').run({ name: 'harvest.xlsx', sheet: 'Harvest', rows: [['crop', 'kg'], ['tomato', 4]] }, { task: '수확표 만들어줘' })
       const doc = await tool('word_write').run({ title: '텃밭 일지', blocks: [{ kind: 'title', text: '텃밭 일지' }, { kind: 'paragraph', text: '토마토가 익었어요.' }], theme: THEME }, { task: '일지 문서로 써줘' })
       await rm(join(paths.workspace, 'garden'), { recursive: true, force: true })
