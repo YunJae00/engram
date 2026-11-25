@@ -19,14 +19,12 @@ const folderOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/
 
 const sortedByKind = (run: CaseRun) => {
   const names = Object.keys(RECEIVED).map(nameOf)
-  const at = new Map(run.files.map(path => [nameOf(path), folderOf(path)]))
-  const folders = new Map<string, Set<string>>()
-  for (const name of names) folders.set(kindOf(name), (folders.get(kindOf(name)) ?? new Set()).add(at.get(name) ?? '?'))
-  const used = [...folders.values()].map(set => [...set])
+  const at = (name: string) => run.files.filter(path => nameOf(path) === name).map(folderOf)
+  const used = [...new Set(names.map(kindOf))].map(kind => [...new Set(names.filter(name => kindOf(name) === kind).flatMap(at))])
   return {
-    allKept: names.every(name => at.has(name)),
-    leftNone: names.every(name => at.get(name) !== '받은자료'),
-    oneFolderPerKind: used.every(set => set.length === 1 && set[0] !== '?') && new Set(used.map(set => set[0])).size === used.length,
+    eachOnce: names.every(name => at(name).length === 1),
+    leftNone: run.files.every(path => folderOf(path) !== '받은자료'),
+    oneFolderPerKind: used.every(set => set.length === 1) && new Set(used.map(set => set[0])).size === used.length,
   }
 }
 
@@ -35,7 +33,7 @@ export const CASES: EvalCase[] = [
   {
     id: 'greet',
     ask: () => '좋은 아침이에요, 오늘도 잘 부탁해요',
-    grade: run => ({ said: all(run).trim().length > 0, noPage: run.site.visits.length === 0 }),
+    grade: run => ({ said: all(run).trim().length > 0, noStep: run.steps.length === 0 }),
   },
   {
     id: 'quick-fact',

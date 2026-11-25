@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Engine, ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
-import { loadCases, runCases, runtimeInputs, summaryTable, type EvalCase } from '../src/main/runner.js'
+import { loadCases, runCases, runtimeInputs, summaryTable, type CaseRun, type EvalCase } from '../src/main/runner.js'
 
 const scratch: string[] = []
 const temp = async () => { const dir = await mkdtemp(join(tmpdir(), 'runner-test-')); scratch.push(dir); return dir }
@@ -184,6 +184,46 @@ describe('earlier asks and the work folder', () => {
     await runCases([barn('duck', '오리 일지 찾아줘', { '오리일지.txt': '알 6개' }), barn('goat', '염소 일지 찾아줘', { '염소일지.txt': '젖 2리터' })], engine, { out: await temp(), workers: 2, deadlineMs: 10_000 })
     expect(seen).toEqual({ duck: ['오리일지.txt'], goat: ['염소일지.txt'] })
     expect(listed).toEqual({ duck: ['오리일지.txt'], goat: ['염소일지.txt'] })
+  })
+})
+
+describe('what a case is graded on', () => {
+  it('fails the case when an earlier ask breaks, even if the graded answer is right', async () => {
+    let calls = 0
+    const engine = fakeEngine(async () => { calls += 1; if (calls === 1) throw new Error('물뿌리개 고장'); return '벌써 다 줬어요.' })
+    const [row] = await runCases([{ id: 'watering', before: ['오늘 화분 물 줘'], ask: () => '물 다 줬어?', grade: () => ({ said: true }) }], engine, { out: await temp(), workers: 1, deadlineMs: 10_000 })
+    expect(row).toMatchObject({ pass: false, end: 'done', error: '물뿌리개 고장' })
+  })
+
+  it('lists seeded files that sit in folders the vault made itself, and leaves out what the vault made', async () => {
+    const engine = fakeEngine(async () => '봤어요.')
+    const listed: string[][] = []
+    await runCases([{ id: 'compost', files: { 'inbox/퇴비일지.md': '3주차', 'notes/물주기.md': '이틀마다', '화단/배치도.txt': '앞줄 국화' }, ask: () => '퇴비일지 봐줘', grade: run => { listed.push(run.files); return {} } }], engine, { out: await temp(), workers: 1, deadlineMs: 10_000 })
+    expect(listed).toEqual([['inbox/퇴비일지.md', 'notes/물주기.md', '화단/배치도.txt']])
+  })
+
+  it('hands the grade the tools the answer used, and none when it only talked', async () => {
+    const engine = fakeEngine(async (job, call) => { if (job.prompt.includes('찾아')) await call('find_files', { query: '모종' }); return '네.' })
+    const used: Record<string, string[]> = {}
+    const pot = (id: string, ask: string): EvalCase => ({ id, ask: () => ask, grade: run => { used[id] = run.steps.map(line => line.split(':')[0]!); return {} } })
+    await runCases([pot('hello', '반가워요'), pot('seek', '모종 기록 찾아줘')], engine, { out: await temp(), workers: 1, deadlineMs: 10_000 })
+    expect(used).toEqual({ hello: [], seek: ['find_files'] })
+  })
+})
+
+describe('the step2 case grades', () => {
+  const grade = async (id: string, run: Partial<CaseRun>) => (await loadCases(join(__dirname, '../scripts/step2-cases.mts'), [id]))[0]!.grade({ answers: ['좋아요.'], site: { visits: [], posts: [] }, offers: [], tasks: [], steps: [], files: [], ...run })
+
+  it('fails the file sort when a copy is made and the original stays behind', async () => {
+    const moved = ['문서/계약서_수정.docx', '문서/계약서_초안.docx', '사진/현장사진_입구.jpg', '사진/현장사진_창고.jpg', 'pdf/견적서_1차.pdf', 'pdf/견적서_2차.pdf']
+    expect(Object.values(await grade('file-sort', { files: moved })).every(Boolean)).toBe(true)
+    const copied = await grade('file-sort', { files: [...moved, '받은자료/견적서_1차.pdf'] })
+    expect(copied).toMatchObject({ eachOnce: false, leftNone: false })
+  })
+
+  it('fails the greeting when any step ran, not only a page visit', async () => {
+    expect(await grade('greet', { steps: ['schedule: 매일 9시'] })).toMatchObject({ noStep: false })
+    expect(await grade('greet', {})).toMatchObject({ said: true, noStep: true })
   })
 })
 

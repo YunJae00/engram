@@ -15,6 +15,7 @@ export interface CaseRun {
   site: SiteLog
   offers: { what: string; state: string }[]
   tasks: { schedule?: { hour?: number; days?: number[] } }[]
+  steps: string[]
   files: string[]
 }
 export interface EvalCase {
@@ -78,19 +79,20 @@ export function runtimeInputs(home: string, env: NodeJS.ProcessEnv = process.env
   }
 }
 
+async function workFiles(paths: VaultPaths): Promise<string[]> {
+  const entries = await readdir(paths.workspace, { recursive: true, withFileTypes: true })
+  return entries.filter(entry => entry.isFile()).map(entry => relative(paths.workspace, join(entry.parentPath, entry.name)).split(sep).join('/')).filter(path => !path.split('/').some(part => part.startsWith('.'))).sort()
+}
+
 async function seedFiles(paths: VaultPaths, files: Record<string, string>): Promise<Set<string>> {
-  const own = new Set([...await readdir(paths.workspace), 'tasks'])
+  const own = new Set(await workFiles(paths))
   for (const [name, text] of Object.entries(files)) {
     const path = join(paths.workspace, name)
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, text)
+    own.delete(name)
   }
   return own
-}
-
-async function workFiles(paths: VaultPaths, own: Set<string>): Promise<string[]> {
-  const entries = await readdir(paths.workspace, { recursive: true, withFileTypes: true })
-  return entries.filter(entry => entry.isFile()).map(entry => relative(paths.workspace, join(entry.parentPath, entry.name)).split(sep).join('/')).filter(path => !own.has(path.split('/')[0]!)).sort()
 }
 
 async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number): Promise<CaseRow> {
@@ -112,7 +114,7 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     if (one.aside) aside = setTimeout(() => steer.push(one.aside!.text), one.aside.afterMs)
     trace = await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0) })
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
-    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, files: await workFiles(world.paths, own) })
+    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)) })
   } catch (cause) {
     failure = cause instanceof Error ? cause.message : String(cause)
   } finally {
@@ -121,7 +123,7 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     server?.close()
     if (dir) await rm(dir, { recursive: true, force: true })
   }
-  const error = failure ?? trace?.error
+  const error = failure ?? [...before, trace].find(one => one?.error)?.error
   const end = trace?.end ?? 'error'
   await writeFile(join(out, `${one.id}.json`), JSON.stringify({ id: one.id, ...(before.length ? { before } : {}), ...trace, end, site: log, checks, ...(error ? { error } : {}) }, null, 2))
   return { id: one.id, pass: !error && end === 'done' && Object.values(checks).every(Boolean), checks, firstMs: trace?.first?.ms ?? null, finalMs: trace?.final.ms ?? 0, end, ...(error ? { error } : {}) }
