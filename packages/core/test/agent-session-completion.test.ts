@@ -393,6 +393,27 @@ it('holds the model\'s words after a closing tool succeeds: dropped when the tur
   expect(shown).toEqual(['바로 답'])
 })
 
+it('a closing tool that follows an earlier call leaves the turn to the model\'s own reply, whatever its output; as the first call it closes the turn', async () => {
+  const table = '| 동네 | 주차 |\n|---|---|\n| 망원 | 공영 2곳 |'
+  const roster: AgentTool = { name: 'roster', description: 'roster', argsSchema: {}, closes: true, run: async () => table }
+  const shown: string[] = []
+  const late = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'search_memory')!.run({ query: '주차' })
+    await job.tools.find(tool => tool.name === 'roster')!.run({})
+    await pause(400)
+    job.onToken?.('공영 주차장 두 곳이 있어요.')
+    return { answer: '공영 주차장 두 곳이 있어요.' }
+  })
+  expect((await runToolSession({ engine: late, workdir: WORKDIR, tools: [...tools, roster] }, '망원 주차 어때', { onToken: text => shown.push(text) })).answer).toBe('공영 주차장 두 곳이 있어요.')
+  expect(shown).toEqual(['공영 주차장 두 곳이 있어요.'])
+  const first = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'roster')!.run({})
+    await pause(400)
+    return { answer: 'unused' }
+  })
+  expect((await runToolSession({ engine: first, workdir: WORKDIR, tools: [...tools, roster] }, '망원 주차 어때')).answer).toBe(table)
+})
+
 it('a tool that closes by its arguments ends the turn only for the calls it says', async () => {
   const assign: AgentTool = { name: 'assign', description: 'assign', argsSchema: {}, closes: args => args['wait'] === false, run: async args => args['wait'] === false ? '김대리한테 맡겼어요.' : '{"reports":[]}' }
   const handed = await runToolSession({ engine: sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'assign')!.run({ wait: false }); await pause(400); return { answer: 'again' } }), workdir: WORKDIR, tools: [...tools, assign] }, '김대리한테 맡겨')

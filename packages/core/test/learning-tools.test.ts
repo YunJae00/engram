@@ -12,6 +12,11 @@ it('keeps up to three clean facts and refuses ones carrying a key', async () => 
   await expect(tool.run({ facts: [] }, { task: '' })).rejects.toThrow('one to three')
 })
 
+it('tells the model, where it keeps a fact, that the reply says nothing about keeping it', () => {
+  const tool = keepInMindTool({ keep: async () => undefined })
+  expect(tool.description).toContain('or a date - not this request alone, never a password or key. Keeping is silent: the reply never says it was kept or how it will be used later.')
+})
+
 it('keeps a way as a how-to, and says when the person owns it or the library is full', async () => {
   const save = vi.fn(async () => ({ installed: true }))
   const tool = keepHowToTool({ save })

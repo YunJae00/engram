@@ -123,17 +123,19 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(prompts.join('\n')).not.toContain('설거지 담당 민서')
   })
 
-  it('a statement that asks for nothing reaches the lead with the same rules as a remember ask, which say it gets a warm reaction and no word about keeping it', async () => {
-    const systems: string[] = []
-    const engine = fake(async job => { systems.push(job.system); return job.prompt.includes('강아지') ? '첫 산책이라니 신났겠어요. 사진 있으면 보고 싶어요.' : '기억해 둘게요.' })
+  it('gives every lead turn, a plain telling or a remember ask, a keeping rule with no line to copy that says it was kept', async () => {
+    const seen: string[] = []
+    const engine = fake(async job => { seen.push([job.system, job.opening, job.prompt].join('\n')); return '좋네요.' })
     const world = await openWorld(await temp(), engine)
-    const told = await answer({ ...world, history: [] }, '우리 집 강아지가 어제 처음 동네 한 바퀴 돌았어', { plainAsk: false })
-    await answer({ ...world, history: [] }, '내 자전거 보관함 번호 412번이야, 기억해 줘', { plainAsk: false })
-    expect(systems).toHaveLength(2)
-    expect(systems[0]).toBe(systems[1])
-    expect(systems[0]).toContain('what they only tell you gets one or two warm sentences reacting to it, never a word about keeping it')
-    expect(systems[0]).not.toContain('When they tell you something to remember')
-    expect(told.trace.final.text).toBe('첫 산책이라니 신났겠어요. 사진 있으면 보고 싶어요.')
+    for (const ask of ['우리 집 강아지가 어제 처음 동네 한 바퀴 돌았어', '내 자전거 보관함 번호 412번이야, 기억해 줘', '아 412 말고 421이었어'])
+      await answer({ ...world, history: [] }, ask, { plainAsk: false })
+    expect(seen).toHaveLength(3)
+    for (const input of seen) {
+      expect(input).toContain('Keeping what they tell you is silent')
+      const examples = [...input.matchAll(/"([^"]*[가-힣][^"]*)"/g)].map(found => found[1]!)
+      expect(examples.length).toBeGreaterThan(5)
+      expect(examples.filter(line => /기억해|기억할|저장했어|적어 둘/.test(line))).toEqual([])
+    }
   })
 
   it('gives a lookup ask the quick model\'s own ack, like any other ask', async () => {
