@@ -284,9 +284,9 @@ it('stack-7: a teammate hired in a turn whose own first search already ran the s
     const [iphone] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
     expect(iphone!.sources).toContain('https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EA%B0%80%EA%B2%A9')
   } finally { laneSearches.delete('bot-b1') }
-  const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
-  expect(ipc).toContain('if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? \'\' }); else laneSearches.delete(channel)')
-  expect(ipc).toContain('let searched: Awaited<ReturnType<typeof firstSearch>> | undefined\n        laneSearches.delete(channel)')
-  expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('const searchFirst = solo && routed === request.message && !fixed')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('onSearched?.(found.query ? { query: found.query, found: found.found ?? \'\' } : undefined)')
+  expect(readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')).toContain('searched: found => { if (found) laneSearches.set(channel, found); else laneSearches.delete(channel) },')
+  expect(readFileSync(fileURLToPath(new URL('../src/main/answer.ts', import.meta.url)), 'utf8')).toContain('let searched: Awaited<ReturnType<typeof firstSearch>> | undefined\n      onSearched?.()')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('solo = lane && !teamAsk(message)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const searchFirst = solo && routed === message && !fixed')
 })

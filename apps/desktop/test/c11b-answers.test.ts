@@ -115,7 +115,7 @@ describe('a counted list\'s rows go to the writing model as the search gave them
     expect(judged.told).toContain('never two items about the same event')
     expect(judged.answer).toBe(draft)
     const ipc = src('ipc.ts')
-    expect(ipc).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
   it('an ask with no count, one whose count changed mid-work and a list of places all get the rows as they came', async () => {

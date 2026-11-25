@@ -21,7 +21,6 @@ import { learningTools } from '../src/main/learning-wiring.js'
 
 const require = createRequire(resolve('packages/core/package.json'))
 const JSZip = require('jszip') as typeof import('../../../packages/core/node_modules/jszip')
-const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 
 let root: string
 beforeEach(async () => { await mkdir(resolve('tmp'), { recursive: true }); root = await mkdtemp(resolve('tmp/c8c-desk-')); fake.directory = root })
@@ -90,10 +89,10 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(await readFile(made.path)).toEqual(before)
   })
   it('is made before the model, only on the one deck of the thread, and logged', () => {
-    expect(ipc).toContain("const retitle = kind === 'deck' ? slideTitleFix(request.message) : undefined")
-    expect(ipc).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
-    expect(ipc).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
-    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await begun!.run({')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const retitle = kind === 'deck' ? slideTitleFix(message) : undefined")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined')
   })
 })
 
@@ -147,9 +146,9 @@ describe('a plain "기억해" is kept by the host (M1), and M2, M3 hold on what 
     expect(note).not.toContain('지민호')
   })
   it('is made after a correction is tried and before the model is asked', () => {
-    expect(ipc).toContain("const keep = !fixed && kind === 'keep' ? plainKeep(request.message,")
-    expect(ipc).toContain("if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }")
-    expect(ipc.indexOf('keptFix(request.message, remembered)')).toBeLessThan(ipc.indexOf('plainKeep(request.message,'))
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const keep = !fixed && kind === 'keep' ? plainKeep(message,")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').indexOf('keptFix(message, remembered)')).toBeLessThan(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').indexOf('plainKeep(message,'))
   })
 })
 

@@ -46,7 +46,7 @@ describe('stack-12 merge: time and the anonymous helpers', () => {
     expect(runner).toMatch(/if \(me\.botId\) reserve = setTimeout\(answerNow/)
     expect(runner).not.toMatch(/const structured/)
     expect(runner).toContain('settleMember(m, { ...outcome, ')
-    expect(src('../src/main/ipc.ts')).toMatch(/solo = lane && !teamAsk\(request\.message\)/)
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/solo = lane && !teamAsk\(message\)/)
     expect(teamAsk('봇 2개 만들어서 대전 광주 미세먼지 알아보고 합쳐줘')).toBe(true)
   })
 })

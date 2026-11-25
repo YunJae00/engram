@@ -8,10 +8,11 @@ const source = (file: string) => readFileSync(fileURLToPath(new URL(`../src/main
 const ipc = source('ipc.ts'), runner = source('team-runner.ts')
 
 it('stack-9: a replacement aborts only a solo lookup', async () => {
-  expect(ipc).toContain("const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')")
-  expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('if (solo && !fixed) laneChanges.set(channel, said => {')
-  expect(ipc.match(/laneChanges\.set\(/g)).toHaveLength(1)
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('solo = lane && !teamAsk(message)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('if (solo && !fixed) laneChanges.set(channel, said => {')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').match(/laneChanges\.set\(/g)).toHaveLength(1)
+  expect(ipc).not.toContain('laneChanges')
   for (const ask of ['봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜']) expect(teamAsk(ask), ask).toBe(true)
   expect(swappedAsk('서울 날씨 알려줘', '아 대구도 추가해')).toBeUndefined()
   const turn = new AbortController(), lookup = swapRounds('엔비디아 오늘 주가 알려줘', turn.signal)

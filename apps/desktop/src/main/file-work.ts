@@ -13,6 +13,22 @@ const within = (root: string, path: string) => {
   const tail = relative(root, path)
   return tail === '' || (!tail.startsWith('..') && !isAbsolute(tail))
 }
+const fold = (text: string): string => text.normalize('NFC').toLowerCase().replaceAll('\\', '/')
+export function namedBy(said: string | undefined, path: string): boolean {
+  if (!said) return false
+  const words = fold(said), file = fold(path), name = file.slice(file.lastIndexOf('/') + 1)
+  for (let at = words.indexOf(name); at >= 0; at = words.indexOf(name, at + 1)) {
+    if (/^([\w/-]|\.\w)/.test(words.slice(at + name.length))) continue
+    const written = /[^\s"'`“”‘’()[\]<>,:]*$/.exec(words.slice(0, at))![0].replace(/^[.~]*\/+/, '') + name
+    const upTo = words.slice(0, at + name.length)
+    for (let cut = file.lastIndexOf('/'); cut >= 0; cut = cut > 0 ? file.lastIndexOf('/', cut - 1) : -1) {
+      const tail = file.slice(cut + 1)
+      if (!upTo.endsWith(tail)) break
+      if (tail.length >= written.length) return true
+    }
+  }
+  return false
+}
 export const artifactDirectory = (paths: VaultPaths) => join(paths.cache, 'artifacts')
 
 const REVISION = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i

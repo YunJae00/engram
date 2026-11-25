@@ -8,10 +8,8 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { closingBuilds, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, routeAsk, askNow, onlyTells, TOLD_NOTE } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -141,7 +139,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, skipWalls, keepRead, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, type AgentLoopResult, type FileCard, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, type FileCard, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -180,9 +178,9 @@ import { registerFirstSetupIpc } from './first-setup.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { firstLineSaw, firstLineSpoke, firstLineWaiting, plainReply } from './first-line.js'
-import { beginAnswer, type Answering } from './answer.js'
-import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
+import { firstLineSaw, firstLineSpoke, firstLineWaiting } from './first-line.js'
+import { beginAnswer, laneChanged, lastReplyOf, type Answering } from './answer.js'
+import { cometNativeTools, commandSandbox, deliverOutputs, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
@@ -201,7 +199,6 @@ import { withModelCallContext } from './model-call-metrics.js'
 import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
-const lastReplyOf = (history?: readonly { role: string; text: string }[]): string | undefined => [...(history ?? [])].reverse().find(one => one.role === 'assistant')?.text
 const HANDED_BACK = 'Your teammates handed back their parts of this job. Write the one result for the person from what they handed back, as its note says.'
 import { appCourier } from './app-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -925,10 +922,9 @@ export function registerIpc(ctx: VaultContext): void {
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
     stop: (channel) => abortAllChat(channel),
   })
-  const laneChanges = new Map<string, (said: string) => void>()
   registerAsideIpc({
     paths,
-    changed: (channel, said) => laneChanges.get(channel)?.(said),
+    changed: laneChanged,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
     followUp: followUpFor,
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
@@ -2105,7 +2101,7 @@ export function registerIpc(ctx: VaultContext): void {
         return
       }
     }
-    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), ...(request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (await readBotTranscript(paths, bot.id, 8)).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
+    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), bare: !!(request.attachments?.length || (turn?.context && !turn.learned)), earlier: request.history ?? [], context: async () => (await readBotTranscript(paths, bot.id, 8)).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
     if (begun) acks.push(begun)
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
@@ -2277,77 +2273,28 @@ export function registerIpc(ctx: VaultContext): void {
         if (reporting && lateOwed(reporting)) await updateTask(paths, reporting.id, lateShown)
         if (reporting) await updateTask(paths, reporting.id, handoffShown)
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
-        const routed = routeAsk(request.message, savedHistory)
-        const meant = askNow(request.message, savedHistory)
-        const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
-        const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined
-        const short = kind === 'ask' || kind === 'question'
-        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
-        if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
-        if (lane) void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`))
-        const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
-        const given = kind === 'note' || kind === 'file' ? await namedText(meant, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(meant, path)) : undefined
-        const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\n\n') : ''
-        const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : ''
-        if (given) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-preread', bytes: given.text.length }))
-        if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane', kind }))
-        const fix = kind === 'keep' ? keptFix(request.message, remembered) : undefined
-        const fixArgs = fix ? { facts: [fix.fact], replaces: [fix.old], scope: personMemory.facts.some(fact => fact.text === fix.old) ? 'everyone' : 'this bot' } : undefined
-        const fixed = fix && fixArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(fixArgs, { task: request.message, signal }).then(() => fix.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
-        if (fixed) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-fix' })) }
-        const keep = !fixed && kind === 'keep' ? plainKeep(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), threadKorean(request.message, request.history ?? [])) : undefined
-        const keepArgs = keep ? { facts: [keep.fact] } : undefined
-        const keptPlain = keep && keepArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(keepArgs, { task: request.message, signal }).then(() => keep.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
-        if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }
-        const retitle = kind === 'deck' ? slideTitleFix(request.message) : undefined
-        const decks = retitle ? earlierOutputs.filter(output => /\.pptx$/i.test(output.name)) : []
-        const retitled = retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool, { task: request.message, signal }, threadKorean(request.message, request.history ?? [])) : undefined
-        if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }
-        const sorted = kind === 'tidy' && threadKorean(request.message, request.history ?? []) ? await sortByKind(request.message, paths.workspace, everyTool.find(tool => tool.name === 'file_move'), { task: request.message, signal }) : undefined
-        if (sorted) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kind-sort', moved: (sorted.steps[0]!.args['moves'] as unknown[]).length })) }
         const steered: string[] = []
-        const laneRead: string[] = [], solo = lane && !teamAsk(request.message)
-        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined
-        const lookup = swapRounds(request.message, signal), laneSearch = laneTools?.find(tool => tool.name === 'search_web')
-        if (solo && !fixed) laneChanges.set(channel, said => {
-          if (!lookup.change(said)) return
-          const taken = takeFollowUps(channel)
-          steered.push(...taken)
-        })
-        const searchFor = async (ask: string, within: AbortSignal): Promise<Awaited<ReturnType<typeof firstSearch>>> => {
-          const found = await firstSearch(ask, laneSearch, within)
-          flog('chat-phase', JSON.stringify({ channel, phase: 'lane-first-search', ran: !!found.opening }))
-          if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? '' }); else laneSearches.delete(channel)
-          return found
-        }
-        const searchFirst = solo && routed === request.message && !fixed
-        let searched: Awaited<ReturnType<typeof firstSearch>> | undefined
-        laneSearches.delete(channel)
-        const result: AgentLoopResult = fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await begun!.run({
-          tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,
+        const ran = await begun!.run({
+          tools: everyTool,
           ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
           now: !!company && !turn?.report,
           reply: !(turn?.context || request.attachments?.length),
-          held: lane,
-          rounds: lead => lookup.run(async (laneAsk, roundSignal, again) => {
-            if (again) flog('chat-phase', JSON.stringify({ channel, phase: 'lane-swap', ms: Date.now() - nativeSince }))
-            if (again || searchFirst) searched = await searchFor(laneAsk, roundSignal)
-            return lead(laneAsk, roundSignal, solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS } : {})
-          }),
-          context: () => [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote].filter(Boolean).join('\n\n'),
+          plainAsk,
+          company: !!company,
+          remembered,
+          shared: personMemory.facts.map(fact => fact.text),
+          earlierOutputs,
+          warm: () => void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`)),
+          searched: found => { if (found) laneSearches.set(channel, found); else laneSearches.delete(channel) },
+          context: () => [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n'),
           tokenBudget: turn?.tokenBudget,
           onUsage: tokens => { tokensUsed += tokens },
           waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
           onToolStart: () => { toolStarted = true },
-          skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+          skills: async () => company ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
           ...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),
-          ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
-          ...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),
           ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
           compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
-          ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
           onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
           ...(resume ? { resume } : {}),
           persona: cometIdentity(bot, 'a colleague who gets the task done'),
@@ -2355,7 +2302,7 @@ export function registerIpc(ctx: VaultContext): void {
           ...(memory ? { memory } : {}),
           ...(onScreen ? { onScreen } : {}),
           session: company ? `company:${bot.id}` : bot.id,
-          ...(native && !lane && !company ? { native } : {}),
+          ...(native && !company ? { native } : {}),
           onStep: (line) => {
             broadcast({ type: 'comet:step', channel, line })
             const said = /^([a-z_]+): ([^]*)$/.exec(line)
@@ -2374,10 +2321,11 @@ export function registerIpc(ctx: VaultContext): void {
             broadcast({ type: 'comet:observed', channel })
             audit('result', { tool, detail: observation })
           },
-        }).finally(() => laneChanges.delete(channel)).then(({ result, failure }) => { if (!result) throw failure; return result })
+        })
+        if (!ran.result) throw ran.failure
+        const { result, kind } = ran
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
-        if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped
         const answered = answerOnly(result.answer)
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         clearApplicationWork(channel)

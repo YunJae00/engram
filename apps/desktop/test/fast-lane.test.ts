@@ -67,12 +67,13 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined')
-  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
-  expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
-  expect(ipc).toContain("return lead(laneAsk, roundSignal, solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS } : {})")
-  expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
-  expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("return lead(laneAsk, roundSignal, solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS } : {})")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const lane = !company && fastLane(routed, plainAsk)')
+  expect(ipc).toContain('...(native && !company ? { native } : {}),')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native && !lane ? { native } : {}),')
   expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
   expect(ipc).toContain('voice: () => chatEngine(ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
@@ -81,7 +82,7 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
   expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const talked = reply === false ? undefined : await smallTalkAnswer(channel)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const talked = host || reply === false ? undefined : await smallTalkAnswer(channel)')
 })
 
 it('bounds a lone lookup like a member, leaves a team turn to its members\' limits, and gives the turn today\'s date', () => {
@@ -109,15 +110,16 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(laneFirstLine("what's the weather in Seoul?", false)).toBe('Checking the weather now.')
   for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길|알아볼)/) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` :")
-  expect(ipc).toContain("if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(message)}` :")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped")
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-  expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('if (lane) warm?.()')
+  expect(ipc).toContain('warm: () => void agentContext().then(() => armIdleClose())')
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
-  expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
-  expect(ipc).toContain('whole: quickQuestion(request.message) }')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('fastLane(message, true) ? { line: laneFirstLine(message, ')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('whole: quickQuestion(message) }')
 })
 
 it('lets the quick voice answer only a short question that needs nothing about the person, the thread, the company or the present', () => {
@@ -133,14 +135,15 @@ it('shows a lookup turn\'s answer, never the notes written between calls', async
     const pieces = ['Now I have solid sources for all 5 items. ', 'Let me verify the article URL by reading it directly.', ...note.match(/[^]{1,40}/g)!, '지금 1달러에 1,385원이에요.']
     const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { for (const piece of pieces) job.onToken?.(piece); return { answer: '지금 1달러에 1,385원이에요.' } } } as unknown as Engine
     const seen: boolean[] = []
-    const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { held: true, onToken: (_, held) => { seen.push(held) } })
+    const search = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => '' }
+    const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { plainAsk: true, tools: [search], onToken: (_, held) => { seen.push(held) } })
     expect(seen).toHaveLength(pieces.length)
     expect(seen.every(Boolean)).toBe(true)
     expect(trace.first?.text).toBe('지금 1달러에 1,385원이에요.')
   } finally { await rm(root, { recursive: true, force: true }) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
-  expect(ipc).toContain('held: lane,')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hold = lane || !!firstLineNote(channel)')
   expect(ipc).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
 })
 
@@ -298,12 +301,13 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect((await turn('', now!, '352.78달러예요.')).answer).toBe('352.78달러예요.')
   expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('steered.push(...taken)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('if (!lookup.change(said)) return\n        takeSteer?.()')
   expect(ipc).not.toContain('laneSaid')
-  expect(ipc).toContain("const searchFirst = solo && routed === request.message && !fixed")
-  expect(ipc).toContain("if (again || searchFirst) searched = await searchFor(laneAsk, roundSignal)")
-  expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
-  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote].filter(Boolean).join")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const searchFirst = solo && routed === message && !fixed")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("if (again || searchFirst) searched = await searchFor(laneAsk, roundSignal)")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const found = await firstSearch(ask, laneSearch, within)")
+  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const notes = [context?.(), laneNote, searched?.opening, deskNote, changedNote, note].filter(Boolean).join")
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })
 

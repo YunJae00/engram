@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
 
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, namedText, PREREAD_MAX, routeAsk } from '../src/main/desk-lane.js'
-import { namedBy } from '../src/main/native-tools.js'
+import { namedBy } from '../src/main/file-work.js'
 import { fastLane } from '../src/main/fast-lane.js'
 
 describe('desk lane', () => {
@@ -37,13 +37,14 @@ describe('desk lane', () => {
 
   it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
-    expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
-    expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
-    expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
-    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
-    expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
+    expect(ipc).toContain('...(native && !company ? { native } : {}),')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native && !lane ? { native } : {}),')
   })
 })
 
@@ -65,8 +66,7 @@ describe('a question about a named file', () => {
     expect(deskLane(routed, true)).toBe(true)
     expect(deskKind(routed)).toBe('file')
     expect(deskKind('아 그거 말고 11월 걸로')).not.toBe('file')
-    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain("kind === 'note' || kind === 'file' ? await namedText(meant, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(meant, path))")
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("kind === 'note' || kind === 'file' ? await namedText(meant, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(meant, path))")
   })
 
   it('hands the turn a small text file the person named inside the workspace, and nothing else', async () => {

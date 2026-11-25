@@ -242,37 +242,38 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(toldPrompt(said, true)).toContain('reply with exactly NONE')
     expect(toldPrompt(said, true)).toContain('do not say you saved or noted anything')
     const ipc = source('ipc.ts')
-    expect(ipc).toContain('told: onlyTells(request.message,')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('told: onlyTells(message,')
     expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
-    expect(source('answer.ts')).toContain("result = talked ? { answer: talked, steps: [], fellBack: false } :")
+    expect(source('answer.ts')).toContain("result = host ?? (talked ? { answer: talked, steps: [], fellBack: false } :")
   })
 })
 
 describe('nothing is said before or between tool calls once the host has spoken', () => {
-  const streamed = async (pieces: string[], options: { held?: boolean; ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
+  const streamed = async (pieces: string[], options: { lane?: boolean; ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-'))
     try {
       const engine = { id: options.ack ? 'claude' : 'mock', desktopToolIsolation: true, quick: async () => options.ack, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { onToken?(text: string): void }) => { for (const piece of pieces) job.onToken?.(piece); return { answer: pieces.at(-1)! } } } as unknown as Engine
       const seen: { text: string; held: boolean }[] = []
-      await answer(await openWorld(root, engine), '분기 실적 슬라이드 정리해줘', { ...(options.held ? { held: true } : {}), onToken: (text, held) => { seen.push({ text, held }) } })
+      const search = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => '' }
+      await answer(await openWorld(root, engine), options.lane ? '오늘 서울 날씨 어때?' : '분기 실적 슬라이드 정리해줘', { ...(options.lane ? { plainAsk: true, tools: [search] } : {}), onToken: (text, held) => { seen.push({ text, held }) } })
       return seen
     } finally { await rm(root, { recursive: true, force: true }) }
   }
 
   it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', async () => {
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
-      for (const options of [{ ack: '실적 표부터 볼게요.' }, { held: true }]) {
+      for (const options of [{ ack: '실적 표부터 볼게요.' }, { lane: true }]) {
         const seen = await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], options)
         expect(seen.map(one => one.held), narration).toEqual([true, true])
       }
     }
-    expect(source('answer.ts')).toContain('const hold = !!held || !!firstLineNote(channel)')
+    expect(source('answer.ts')).toContain('const hold = lane || !!firstLineNote(channel)')
   })
 
   it('shows no round of a general turn as it comes, however long', async () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
       expect([...narration].length).toBeGreaterThan(200)
-      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { held: true }]) {
+      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { lane: true }]) {
         const seen = await streamed(narration.match(/.{1,40}/g)!, options)
         expect(seen.every(one => one.held), narration.slice(0, 30)).toBe(true)
       }
@@ -343,7 +344,7 @@ describe('short asks, statements and corrections', () => {
     ]) expect(onlyTells(message), message).toBe(false)
     expect(onlyTells('다음 주 목요일 오전 열 시 비행기로 가려고 해', '몇 시 비행기로 가세요?')).toBe(false)
     expect(TOLD_NOTE).toContain('use no tools')
-    expect(source('ipc.ts')).toContain('short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : \'\'')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('short ? SHORT_QUESTION_NOTE : onlyTells(message) ? TOLD_NOTE : \'\'')
   })
 
   it('routes a correction the way the ask before it went', () => {
@@ -356,9 +357,8 @@ describe('short asks, statements and corrections', () => {
     expect(deskKind(routeAsk('아 그거 말고 11월 걸로', file))).toBe('file')
     expect(routeAsk('아 그거 말고 11월 걸로', [])).toBe('아 그거 말고 11월 걸로')
     expect(routeAsk('아 지민호 말고 민호야', earlier)).toBe('아 지민호 말고 민호야')
-    const ipc = source('ipc.ts')
-    expect(ipc).toContain('const routed = routeAsk(request.message, savedHistory)')
-    expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const routed = routeAsk(message, world.history)')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const lane = !company && fastLane(routed, plainAsk)')
   })
 })
 
@@ -398,9 +398,8 @@ describe('desk tool menus', () => {
     expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)
     expect(DESK_TOOLS.question).toBeUndefined()
     for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
-    const ipc = source('ipc.ts')
-    expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {

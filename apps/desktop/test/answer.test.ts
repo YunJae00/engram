@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { answer, beginAnswer, openWorld } from '../src/main/answer.js'
+import { LANE_NOTE, LANE_SOLO_CALLS } from '../src/main/fast-lane.js'
 
 const scratch: string[] = []
 const temp = async () => { const dir = await mkdtemp(join(tmpdir(), 'answer-test-')); scratch.push(dir); return dir }
@@ -92,25 +93,35 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.error).toBe('서가 정리 중')
   })
 
-  it('shows the ack before slow work a round does ahead of the lead, and that round\'s own limits reach the engine', async () => {
+  it('shows the ack before a lookup\'s first search comes back, and the lone lookup\'s own call limit reaches the engine', async () => {
     const shown: number[] = [], started = performance.now()
     let calls = 0
-    const engine = fake(async job => { calls = job.maxCalls; return '주차장은 지하 2층이에요.' }, async () => '안내도부터 볼게요.')
-    await answer(await openWorld(await temp(), engine), '주차장 어디야?', {
-      ack: { show: () => { shown.push(performance.now() - started) } },
-      maxCalls: 9,
-      rounds: async lead => { await wait(400); return lead('주차장 어디야?', new AbortController().signal, { maxCalls: 2 }) },
-    })
+    const engine = fake(async job => { calls = job.maxCalls; return '부산은 지금 11도예요.' }, async () => '부산 기온부터 볼게요.')
+    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => { await wait(400); return 'results for "부산 기온"\n1. 부산 11도' } }
+    await answer(await openWorld(await temp(), engine), '부산 지금 기온 몇 도야?', { ack: { show: () => { shown.push(performance.now() - started) } }, tools: [search], maxCalls: 9 })
     expect(shown).toHaveLength(1)
     expect(shown[0]!).toBeLessThan(400)
-    expect(calls).toBe(2)
+    expect(calls).toBe(LANE_SOLO_CALLS - 1)
   })
 
-  it('ipc runs the lane\'s first search inside the answer\'s rounds, after the ack has started', () => {
+  it('picks the lane inside answer: a lookup asked through answer gets the lane note, the first search\'s rows and only the lane\'s tools', async () => {
+    let told = '', menu: string[] = []
+    const engine = fake(async job => { told = [job.system, job.opening, job.prompt].join('\n'); menu = job.tools.map(tool => tool.name); return '제주는 지금 맑아요.' })
+    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => 'results for "제주 날씨"\n1. 제주 맑음 14도' }
+    const shelf: AgentTool = { name: 'shelf_lookup', description: 'finds a book on the shelf', argsSchema: { type: 'object' }, run: async () => '3층 서가' }
+    const { result } = await answer(await openWorld(await temp(), engine), '제주 지금 날씨 어때?', { plainAsk: true, tools: [search, shelf] })
+    expect(told).toContain(LANE_NOTE)
+    expect(told).toContain('제주 맑음 14도')
+    expect(menu).toEqual(['search_web'])
+    expect(result?.answer).toBe('제주는 지금 맑아요.')
+  })
+
+  it('ipc picks no lane and runs no search of its own; the lane\'s first search runs inside answer\'s rounds, after the ack has started', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    const call = ipc.indexOf('await begun!.run({')
-    expect(ipc.slice(0, call)).not.toMatch(/await searchFor\(/)
-    expect(ipc.slice(call)).toMatch(/rounds: lead => [^]*?searched = await searchFor\(/)
+    const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
+    expect(ipc).not.toMatch(/searchFor|firstSearch|fastLane\(|deskKind\(|swapRounds/)
+    expect(own.indexOf('beginFirstLine({')).toBeLessThan(own.indexOf('const run = async'))
+    expect(own).toMatch(/lookup\.run\(async \(laneAsk, roundSignal, again\) => \{[^]*?searched = await searchFor\(/)
   })
 
   it('ipc makes a bot\'s answer through answer, with no runComet call of its own', () => {
@@ -140,8 +151,10 @@ describe('answer is the one entry the app and the runner share', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     const turn = ipc.slice(ipc.indexOf('async function handleChatSend('))
     const begin = turn.indexOf('beginAnswer(')
-    for (const work of ['buildRetrievedContext(', 'readChatAttachments(', 'await cometToolSet({ channel, engine, settings, permission', 'await namedText(', 'keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skillShortlist(', 'await begun!.run({'])
+    for (const work of ['buildRetrievedContext(', 'readChatAttachments(', 'await cometToolSet({ channel, engine, settings, permission', 'await skillShortlist(', 'await begun!.run({'])
       expect(turn.indexOf(work), work).toBeGreaterThan(begin)
+    const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8'), run = own.indexOf('const run = async')
+    for (const work of ['await namedText(', 'keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skills()']) expect(own.indexOf(work), work).toBeGreaterThan(run)
     expect(ipc).toMatch(/for \(const ack of acks\) ack\.end\(\)/)
   })
 })

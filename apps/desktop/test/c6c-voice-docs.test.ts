@@ -107,7 +107,8 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     }
     expect(fallbackLine(T3, true)).toBe(laneFirstLine(T3, true))
     for (const ask of ['fixtures/inbox-dump 폴더 파일들 종류별로 나눠서 정리해줘', '회의록 요약해줘']) expect(splitAsk(ask), ask).toBe(false)
-    expect(source('ipc.ts')).toContain('request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true)')
+    expect(source('ipc.ts')).toContain('bare: !!(request.attachments?.length || (turn?.context && !turn.learned))')
+    expect(source('answer.ts')).toContain('...(bare ? {} : fastLane(message, true) ? { line: laneFirstLine(message, korean) }')
   })
 })
 
@@ -252,5 +253,5 @@ it('stack-6: the repeat check is the quick voice\'s only, and no block correctio
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
   expect(answerSetInTurn(ipc)).toBe(1)
   expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-  expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
 })

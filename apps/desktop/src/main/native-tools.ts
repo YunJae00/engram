@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, type FileCard, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { replacedLinks, withCards } from '../shared/file-cards.js'
-import { artifactDirectory, ensureTaskFolder, freeName, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot, twinsFile } from './file-work.js'
+import { artifactDirectory, ensureTaskFolder, freeName, namedBy, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot, twinsFile } from './file-work.js'
 import { flog } from './flog.js'
 import { latestResultOutputs } from './result-check.js'
 import { noteScript } from './turn-scripts.js'
@@ -18,22 +18,6 @@ const FREE = new Set(['ToolSearch', 'TodoWrite', 'TaskList', 'TaskGet', 'TaskCre
 const within = (root: string, path: string): boolean => {
   const rel = relative(root, path)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..\\`) && !rel.startsWith('../') && !isAbsolute(rel))
-}
-const fold = (text: string): string => text.normalize('NFC').toLowerCase().replaceAll('\\', '/')
-export function namedBy(said: string | undefined, path: string): boolean {
-  if (!said) return false
-  const words = fold(said), file = fold(path), name = file.slice(file.lastIndexOf('/') + 1)
-  for (let at = words.indexOf(name); at >= 0; at = words.indexOf(name, at + 1)) {
-    if (/^([\w/-]|\.\w)/.test(words.slice(at + name.length))) continue
-    const written = /[^\s"'`“”‘’()[\]<>,:]*$/.exec(words.slice(0, at))![0].replace(/^[.~]*\/+/, '') + name
-    const upTo = words.slice(0, at + name.length)
-    for (let cut = file.lastIndexOf('/'); cut >= 0; cut = cut > 0 ? file.lastIndexOf('/', cut - 1) : -1) {
-      const tail = file.slice(cut + 1)
-      if (!upTo.endsWith(tail)) break
-      if (tail.length >= written.length) return true
-    }
-  }
-  return false
 }
 const deny = (message: string): NativeDecision => ({ behavior: 'deny', message })
 const PLAN_ONLY = 'Plan mode: commands and file changes are off. Read what you need, then reply with the plan.'

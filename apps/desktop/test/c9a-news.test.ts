@@ -69,7 +69,7 @@ test('c9a R3: five rows for five asked reach the model whole, the trend row amon
   expect(all.rows).toContain('https://e.example/5')
   expect(all.judged).toBe(0)
   expect(all.answer).toBe(answer)
-  expect(ipc).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(COLLEAGUE_CORE_RULE).toContain('with the address copied exactly from what a tool returned')
 })

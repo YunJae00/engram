@@ -10,8 +10,8 @@ const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta
 const posted = async (ask: string, draft: string, options: NonNullable<Parameters<typeof runComet>[2]> = {}): Promise<string> => (await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, ask, { guided: false, modelHint: 'smart', ...options })).answer
 
 it('stack-7: no desk correction runs on any answer: the desk kind still exists only outside the team lane and the lookup lane, and the turn posts the model\'s words (c11b: asState went)', () => {
-  expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
-  expect(ipc).toContain("const short = kind === 'ask' || kind === 'question'")
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const short = kind === 'ask' || kind === 'question'")
   expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
   expect(ipc).not.toContain('asState(')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])

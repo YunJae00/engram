@@ -12,7 +12,7 @@ const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 describe('c13c: a short ask has one owner for its reply shape', () => {
   it('the host note owns it, says the line stands alone, and the session sends no work reply rule', () => {
     expect(SHORT_QUESTION_NOTE).toContain('nothing after it: no line on what it means, why it fits or how you chose it')
-    expect(ipc).toContain('...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),')
     const ask = '‘내일 휴가입니다’를 일본어 한 줄로 써줘'
     const kind = deskKind(ask)
     expect(kind === 'ask' || kind === 'question').toBe(true)
