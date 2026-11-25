@@ -14,6 +14,7 @@ afterEach(async () => { await Promise.all(scratch.splice(0).map(dir => rm(dir, {
 type Script = (job: ToolSessionJob, call: (name: string, args: Record<string, unknown>) => Promise<unknown>) => Promise<string>
 const fakeEngine = (script: Script): Engine => ({
   id: 'mock',
+  desktopToolIsolation: true,
   detect: async () => ({ installed: true, loggedIn: true }),
   run: async function* () { yield { type: 'result', text: '' } },
   runTools: async (job: ToolSessionJob) => ({ answer: await script(job, (name, args) => job.tools.find(tool => tool.name === name)!.run(args)) }),
@@ -134,6 +135,55 @@ describe('what a case is graded on', () => {
     const scale = JSON.parse(await readFile(join(out, 'broken-scale.json'), 'utf8'))
     expect(scale).toMatchObject({ final: { text: '12킬로예요.' }, error: 'scale jammed' })
     expect(JSON.parse(await readFile(join(out, 'no-question.json'), 'utf8'))).toMatchObject({ end: 'error', error: 'ask lost' })
+  })
+})
+
+const observed = (out: unknown) => JSON.parse(String(out).split('\n(Observation')[0]!)
+
+describe('earlier asks and the work folder', () => {
+  it('runs the earlier asks in the same world so the graded answer hears them, and grades only the last', async () => {
+    const openings: string[] = []
+    const engine = fakeEngine(async job => { openings.push(job.opening ?? ''); return openings.length === 1 ? '올해 모종은 상추로 할게요.' : openings.length === 2 ? '상추 말고 깻잎으로 바꿀게요.' : '깻잎이에요.' })
+    const graded: string[][] = []
+    const out = await temp()
+    const [row] = await runCases([{ id: 'seedlings', before: ['올해 모종은 상추야', '아 상추 말고 깻잎이야'], ask: () => '올해 모종 뭐였지?', grade: run => { graded.push(run.answers); return { leaf: run.answers[0] === '깻잎이에요.' } } }], engine, { out, workers: 1, deadlineMs: 10_000 })
+    expect(openings).toHaveLength(3)
+    expect(openings[2]).toContain('아 상추 말고 깻잎이야')
+    expect(openings[2]).toContain('상추 말고 깻잎으로 바꿀게요.')
+    expect(graded).toEqual([['깻잎이에요.']])
+    expect(row).toMatchObject({ pass: true })
+    const trace = JSON.parse(await readFile(join(out, 'seedlings.json'), 'utf8'))
+    expect(trace.before.map((one: { message: string }) => one.message)).toEqual(['올해 모종은 상추야', '아 상추 말고 깻잎이야'])
+    expect(trace.message).toBe('올해 모종 뭐였지?')
+  })
+
+  it('seeds the case files where the file tools find, read and move them, and grades the folder after the run', async () => {
+    const read: string[] = []
+    const engine = fakeEngine(async (_job, call) => {
+      const found = observed(await call('find_files', { query: '씨앗' })) as { matches: { path: string }[] }
+      const path = found.matches.map(one => one.path).find(one => one.endsWith('씨앗목록.txt'))!
+      read.push(String(await call('file_read', { path })))
+      await call('file_move', { moves: [{ from: '창고/씨앗목록.txt', to: '정리/목록/씨앗목록.txt' }] })
+      return '옮겼어요.'
+    })
+    const listed: string[][] = []
+    await runCases([{ id: 'shed', files: { '창고/씨앗목록.txt': '호박 3봉지', '창고/농기구.md': '삽 2개' }, ask: () => '씨앗 목록 정리 폴더로 옮겨줘', grade: run => { listed.push(run.files); return {} } }], engine, { out: await temp(), workers: 1, deadlineMs: 10_000 })
+    expect(read.join('')).toContain('호박 3봉지')
+    expect(listed).toEqual([['정리/목록/씨앗목록.txt', '창고/농기구.md']])
+  })
+
+  it('keeps the files of two cases running side by side apart', async () => {
+    const seen: Record<string, string[]> = {}
+    const engine = fakeEngine(async (job, call) => {
+      const found = observed(await call('find_files', { query: '일지' })) as { matches: { name: string }[] }
+      seen[job.prompt.includes('오리') ? 'duck' : 'goat'] = found.matches.map(one => one.name).sort()
+      return '찾았어요.'
+    })
+    const listed: Record<string, string[]> = {}
+    const barn = (id: string, ask: string, files: Record<string, string>): EvalCase => ({ id, files, ask: () => ask, grade: run => { listed[id] = run.files; return {} } })
+    await runCases([barn('duck', '오리 일지 찾아줘', { '오리일지.txt': '알 6개' }), barn('goat', '염소 일지 찾아줘', { '염소일지.txt': '젖 2리터' })], engine, { out: await temp(), workers: 2, deadlineMs: 10_000 })
+    expect(seen).toEqual({ duck: ['오리일지.txt'], goat: ['염소일지.txt'] })
+    expect(listed).toEqual({ duck: ['오리일지.txt'], goat: ['염소일지.txt'] })
   })
 })
 

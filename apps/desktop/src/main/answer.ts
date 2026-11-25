@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { addBotTask, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type Engine, type VaultPaths, type WebCourier } from 'core'
+import { taskRoot } from './file-work.js'
 import { fetchPlainPage } from './plain-page.js'
 import { addStudyOffer } from './study-offers.js'
 import { toolKit } from './tool-kit.js'
@@ -51,9 +52,10 @@ export async function answer(world: World, message: string, options: { signal?: 
       changed: () => {},
       said: () => message,
     },
+    files: { readable: [], workFolder: join(taskRoot(paths), `bot-${botId}`), consent: {}, host: { app: { getPath: () => paths.workspace }, assertDesktopTurnNotStopped: () => options.signal?.throwIfAborted() } },
   })
   try {
-    const result = await runComet({ engine, workdir: engineCwd(paths), tools: [...kit.web, ...kit.team, ...kit.learning, offerStudyTool({ offer: input => addStudyOffer(paths, botId, input, message) })] }, message, {
+    const result = await runComet({ engine, workdir: engineCwd(paths), tools: [...kit.web, ...kit.files, ...kit.team, ...kit.learning, offerStudyTool({ offer: input => addStudyOffer(paths, botId, input, message) })] }, message, {
       guided: false,
       session: botId,
       history: world.history,

@@ -74,7 +74,7 @@ async function runCase(win: Page, brain: string, one: EvalCase, round: number): 
   const offers = await win.evaluate(id => (window as any).engram.studyList(id), botId) as any[]
   const tasks = ((await win.evaluate(() => (window as any).engram.botsList())) as any[]).find(bot => bot.id === botId)?.tasks ?? []
   server.close()
-  const run: CaseRun = { answers, site: log, offers, tasks }
+  const run: CaseRun = { answers, site: log, offers, tasks, files: [] }
   const checks = one.grade(run)
   return { codeRevision, dirty, model: brain === 'claude' ? 'sonnet' : 'runtime-default', effort: 'runtime-default', brain, id: one.id, round, seconds: Math.round((Date.now() - started) / 1000), pass: !error && Object.values(checks).every(Boolean), checks, error, answer: answers.join('\n---\n').slice(0, 1500), visits: log.visits.length, steps: await win.evaluate(c => (window as any).__eval[c]?.steps ?? 0, channel) }
 }

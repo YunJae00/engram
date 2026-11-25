@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
-import { join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { loadBots, type Engine } from 'core'
+import { loadBots, type Engine, type VaultPaths } from 'core'
 import { answer, openWorld, type AnswerTrace } from './answer.js'
 import type { ClaudeInputs } from './engine-claude.js'
 import { SessionPool } from './engine-claude-session.js'
@@ -15,12 +15,15 @@ export interface CaseRun {
   site: SiteLog
   offers: { what: string; state: string }[]
   tasks: { schedule?: { hour?: number; days?: number[] } }[]
+  files: string[]
 }
 export interface EvalCase {
   id: string
   ask(url: string): string
   page?(path: string): { html: string; status?: number } | null
   aside?: { afterMs: number; text: string }
+  before?: string[]
+  files?: Record<string, string>
   judged?: boolean
   desk?: [string, string, number][]
   grade(run: CaseRun): Record<string, boolean>
@@ -75,12 +78,28 @@ export function runtimeInputs(home: string, env: NodeJS.ProcessEnv = process.env
   }
 }
 
+async function seedFiles(paths: VaultPaths, files: Record<string, string>): Promise<Set<string>> {
+  const own = new Set([...await readdir(paths.workspace), 'tasks'])
+  for (const [name, text] of Object.entries(files)) {
+    const path = join(paths.workspace, name)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, text)
+  }
+  return own
+}
+
+async function workFiles(paths: VaultPaths, own: Set<string>): Promise<string[]> {
+  const entries = await readdir(paths.workspace, { recursive: true, withFileTypes: true })
+  return entries.filter(entry => entry.isFile()).map(entry => relative(paths.workspace, join(entry.parentPath, entry.name)).split(sep).join('/')).filter(path => !own.has(path.split('/')[0]!)).sort()
+}
+
 async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number): Promise<CaseRow> {
   const log: SiteLog = { visits: [], posts: [] }
   const stop = new AbortController()
   const timer = setTimeout(() => stop.abort(), deadlineMs)
   const steer: string[] = []
-  const aside = one.aside && setTimeout(() => steer.push(one.aside!.text), one.aside.afterMs)
+  let aside: NodeJS.Timeout | undefined
+  const before: AnswerTrace[] = []
   let trace: AnswerTrace | undefined, checks: Record<string, boolean> = {}, failure: string | undefined
   let server: Server | undefined, dir: string | undefined
   try {
@@ -88,20 +107,23 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     server = served.server
     dir = await mkdtemp(join(out, `${one.id}-`))
     const world = await openWorld(dir, engine)
+    const own = await seedFiles(world.paths, one.files ?? {})
+    for (const ask of one.before ?? []) before.push(await answer(world, ask, { signal: stop.signal }))
+    if (one.aside) aside = setTimeout(() => steer.push(one.aside!.text), one.aside.afterMs)
     trace = await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0) })
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
-    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks })
+    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, files: await workFiles(world.paths, own) })
   } catch (cause) {
     failure = cause instanceof Error ? cause.message : String(cause)
   } finally {
     clearTimeout(timer)
-    if (aside) clearTimeout(aside)
+    clearTimeout(aside)
     server?.close()
     if (dir) await rm(dir, { recursive: true, force: true })
   }
   const error = failure ?? trace?.error
   const end = trace?.end ?? 'error'
-  await writeFile(join(out, `${one.id}.json`), JSON.stringify({ id: one.id, ...trace, end, site: log, checks, ...(error ? { error } : {}) }, null, 2))
+  await writeFile(join(out, `${one.id}.json`), JSON.stringify({ id: one.id, ...(before.length ? { before } : {}), ...trace, end, site: log, checks, ...(error ? { error } : {}) }, null, 2))
   return { id: one.id, pass: !error && end === 'done' && Object.values(checks).every(Boolean), checks, firstMs: trace?.first?.ms ?? null, finalMs: trace?.final.ms ?? 0, end, ...(error ? { error } : {}) }
 }
 
