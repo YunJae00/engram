@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { openRuleLines, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines, stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
 import { sessionRules } from '../src/agent-session-shape.js'
-import { FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from '../src/agent-voice.js'
 
 describe('a comet speaks to the person, not about them', () => {
   it('the open rules ask for direct, first-person progress lines and forbid third-person narration', () => {
@@ -13,15 +13,14 @@ describe('a comet speaks to the person, not about them', () => {
     expect(rule).toContain('The user asked')
   })
 
-  it('the open rules forbid internal tool names in what the person reads and ask for plain words', () => {
-    const rule = openRuleLines().find((line) => line.startsWith('Never name internal tools or functions'))
-    expect(rule).toBeDefined()
-    expect(rule).toMatch(/what the person reads/)
-    expect(rule).toContain('word_read')
-    expect(rule).toContain('word_edit')
-    expect(rule).toMatch(/plain words/)
-    expect(rule).toMatch(/in their language/)
-    expect(rule).toContain('문서를 읽고 수정했어요')
+  it('one rule keeps tool names out of what the person reads, and a figure off a results page is linked to that results page', () => {
+    const lines = openRuleLines()
+    expect(lines.filter(line => line.includes('no tool or function names'))).toEqual([COLLEAGUE_CORE_RULE])
+    expect(lines.some(line => line.startsWith('Never name internal tools'))).toBe(false)
+    const prompt = lines.join('\n')
+    expect(prompt).not.toContain('never a results address')
+    expect(prompt).toContain("a results page's own figure to that page's address")
+    expect(COLLEAGUE_CORE_RULE).toContain('A fact read from a page or results carries a Markdown link to it')
   })
 })
 

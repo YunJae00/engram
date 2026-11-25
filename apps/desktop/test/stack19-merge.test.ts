@@ -310,7 +310,7 @@ describe('stack-19: Codex-cap decisions', () => {
     const got = JSON.parse(handBacks([member])) as { reports: { result: string }[]; note: string }
     expect(got.reports[0]!.result.split('\n')).toEqual(result.split('\n'))
     expect(got.note).toContain('each agent\'s source right after what it backs as a markdown link copied from sources or from their result')
-    expect(COLLEAGUE_CORE_RULE).toContain('A fact read from a page carries a Markdown link to that page, written by you right after the fact')
+    expect(COLLEAGUE_CORE_RULE).toContain('A fact read from a page or results carries a Markdown link to it, written by you right after the fact')
     expect(Object.keys(got)).toEqual(['reports', 'note'])
   })
 })

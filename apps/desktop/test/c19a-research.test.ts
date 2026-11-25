@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createTask, updateTask, type AgentTool, type Engine, type ToolSessionJob, type VaultPaths } from 'core'
+import { calendarLine, createTask, updateTask, type AgentTool, type Engine, type ToolSessionJob, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -22,19 +22,20 @@ describe('7. relative days come from one calendar on every lead step; nothing re
       for (const ask of ['다음 주 월요일이랑 목요일 춘천 미세먼지 알려줘', '모레 여수 바람 세기 좀 봐줄래', '탕비실 정수기 필터 갈아 끼우는 법 정리해줘']) await answer(world, ask, { ack: { bare: true } })
       expect(told).toHaveLength(3)
       for (const prompt of told) {
-        expect(prompt).toContain('Today is 2027-01-08 (Friday)')
-        expect(prompt).toContain('2027-01-10 Sun')
-        expect(prompt).toContain('2027-01-11 Mon')
-        expect(prompt).toContain('2027-01-14 Thu')
-        expect(prompt).toContain('2027-01-21 Thu')
-        expect(prompt).not.toContain('2027-01-22')
-        expect(prompt).toContain('never how the date was worked out')
+        expect(prompt).toContain('2027-01-08 Fri, 01-09 Sat')
+        expect(prompt).toContain('01-10 Sun')
+        expect(prompt).toContain('01-11 Mon')
+        expect(prompt).toContain('01-14 Thu')
+        expect(prompt).toContain('01-21 Thu')
+        expect(prompt).not.toContain('01-22')
+        expect(prompt).toContain('never say how a date was worked out')
       }
+      expect(calendarLine(new Date(2027, 0, 8)).length).toBeLessThanOrEqual(300)
       vi.setSystemTime(new Date(2027, 11, 29, 23, 30))
       told.length = 0
       await answer(world, '새해 첫 주 화요일 강릉 해돋이 시각', { ack: { bare: true } })
-      expect(told[0]).toContain('Today is 2027-12-29 (Wednesday)')
-      expect(told[0]).toContain('2028-01-04 Tue')
+      expect(told[0]).toContain('2027-12-29 Wed')
+      expect(told[0]).toContain('12-31 Fri, 01-01 Sat')
     } finally { vi.useRealTimers() }
   })
 
