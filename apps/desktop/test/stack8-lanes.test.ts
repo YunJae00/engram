@@ -40,7 +40,7 @@ it('stack-8: light effort is the team lane\'s own step only; a deck build, a dec
     const engine = { id: 'claude', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push({ tools: job.tools.map(tool => tool.name), ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}) }); return { answer: '했어요.' } } } as unknown as Engine
     const tools = ['ppt_build', 'file_read', 'file_edit_package', 'search_web'].map((name): AgentTool => ({ name, description: name, argsSchema: { type: 'object' }, run: async () => 'ok' }))
     for (const ask of ['다음 분기 채용 계획 PPT 4장 만들어줘', '그 덱에서 부록 슬라이드는 지워줘', '엔비디아 오늘 주가 알려줘'])
-      await answer(await openWorld(dir, engine), ask, { plainAsk: true, tools, earlierOutputs: [{ name: '채용.pptx', path: join(dir, '채용.pptx') }], ack: { bare: true } })
+      await answer(await openWorld(dir, engine), ask, { plainAsk: true, tools, earlierOutputs: [{ name: '채용.pptx', path: join(dir, '채용.pptx') }] })
     expect(jobs).toHaveLength(3)
     for (const job of jobs) expect(job).toEqual({ tools: ['ppt_build', 'file_read', 'file_edit_package', 'search_web'] })
   } finally { await rm(dir, { recursive: true, force: true }) }

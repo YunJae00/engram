@@ -64,6 +64,7 @@ describe('one world per case', () => {
 describe('the trace of one case', () => {
   it('records the first line shown, each step, the final text and how it ended', async () => {
     const engine = fakeEngine(async (job, call) => {
+      await new Promise(done => setTimeout(done, 30))
       job.onToken?.('지금 과수원 장부 ')
       job.onToken?.('열어볼게요.\n')
       await call('open_page', { url: 'http://127.0.0.1:9/' }).catch(() => undefined)

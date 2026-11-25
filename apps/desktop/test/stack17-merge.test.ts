@@ -21,7 +21,7 @@ const posted = async (draft: string, ask: string): Promise<string> => (await run
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-17: a correction after a lookup reaches the model as typed, with the earlier lookup in the history', () => {
@@ -32,7 +32,7 @@ describe('stack-17: a correction after a lookup reaches the model as typed, with
     const draft = '원주는 모레 흐리고 낮 최고 9도예요. [날씨 예보](https://weather.example/wonju)'
     const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { prompt = job.prompt; told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
     const world = { ...await openWorld(await mkdtemp(join(tmpdir(), 'stack17-fix-')), engine), history: [...history] }
-    const { result } = await answer(world, message, { tools: [], ack: { bare: true } })
+    const { result } = await answer(world, message, { tools: [] })
     expect(prompt).toContain(message)
     expect(told).toContain('대전 모레 날씨 어때?')
     expect(told).not.toContain('What the person asks for now')

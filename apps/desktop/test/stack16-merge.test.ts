@@ -145,7 +145,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     await mkdir(temporary, { recursive: true })
     setTimeout(() => stop.abort(), 50)
     const began = Date.now()
-    const { result, trace } = await answerTurn(await openWorld(await mkdtemp(join(temporary, 'engram-s16-stop-')), engine), '회고 메모 워드로 정리해줘', { tools: [build], signal: stop.signal, ack: { bare: true } })
+    const { result, trace } = await answerTurn(await openWorld(await mkdtemp(join(temporary, 'engram-s16-stop-')), engine), '회고 메모 워드로 정리해줘', { tools: [build], signal: stop.signal })
     await expect(built).rejects.toThrow('stopped')
     expect(Date.now() - began).toBeLessThan(3000)
     expect(result).toBeUndefined()

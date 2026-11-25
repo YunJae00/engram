@@ -16,7 +16,7 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const sorted = hostable && !keep && !retitle && korean \? await sortByKind\(/)
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/deskKind|deskLane|kind === 'tidy'/)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').split('sortByKind(').length - 1).toBe(1)
     expect(ipc).not.toContain('sortByKind(')
   })

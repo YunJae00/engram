@@ -115,7 +115,7 @@ describe('H1 replay', () => {
     expect(lines).toContain(RELEVANCE_RULE)
     const jobs: { told: string; prompt: string; modelHint?: string }[] = []
     const engine = { id: 'claude', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string; modelHint?: string }) => { jobs.push({ told: [job.system, job.opening, job.prompt].join('\n'), prompt: job.prompt, ...(job.modelHint ? { modelHint: job.modelHint } : {}) }); return { answer: '들깨 칼국수 어때요? 쌀쌀하니까요.' } } } as never
-    const { result } = await answer(await openWorld(await scratch('h1'), engine), '오늘 점심에 갈 식당 하나 찍어줘', { memory, tools: [], ack: { bare: true } })
+    const { result } = await answer(await openWorld(await scratch('h1'), engine), '오늘 점심에 갈 식당 하나 찍어줘', { memory, tools: [] })
     expect(jobs).toHaveLength(1)
     expect(jobs[0]!.told).toContain(RELEVANCE_RULE)
     expect(jobs[0]!.prompt).toContain('오늘 점심에 갈 식당 하나 찍어줘')

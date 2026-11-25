@@ -76,12 +76,25 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.first!.ms).toBeLessThan(trace.final.ms)
   })
 
-  it('answers from the quick voice when the app asks for a whole answer, and the lead never runs', async () => {
-    const lead = vi.fn(async () => '쓰이면 안 돼요.')
-    const engine = fake(lead, async prompt => prompt.includes('short question') ? '한 시간은 3,600초예요.' : 'NONE')
-    const { result } = await answer(await openWorld(await temp(), engine), '한 시간은 몇 초야?', { ack: { whole: true } })
+  it('makes one quick call for the ack, shows nothing when it says NONE, and the lead\'s own words are the first text', async () => {
+    const quick = vi.fn(async () => 'NONE')
+    const engine = fake(async job => { await wait(30); job.onToken?.('한 시간은 3,600초예요.'); return '한 시간은 3,600초예요.' }, quick)
+    const shown: string[] = []
+    const { result, trace } = await answer(await openWorld(await temp(), engine), '한 시간은 몇 초야?', { ack: { show: line => { shown.push(line) } } })
+    expect(quick).toHaveBeenCalledOnce()
+    expect(shown).toEqual([])
     expect(result?.answer).toBe('한 시간은 3,600초예요.')
-    expect(lead).not.toHaveBeenCalled()
+    expect(trace.first?.text).toBe('한 시간은 3,600초예요.')
+  })
+
+  it('drops an ack that comes after the lead\'s first text', async () => {
+    const quick = vi.fn(async () => { await wait(200); return '도서 목록부터 볼게요.' })
+    const engine = fake(async job => { await wait(20); job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, quick)
+    const shown: string[] = []
+    const { trace } = await answer(await openWorld(await temp(), engine), '이번 주 들어온 신간 몇 권이야', { ack: { show: line => { shown.push(line) } } })
+    await wait(300)
+    expect(shown).toEqual([])
+    expect(trace.first?.text).toBe('신간은 세 권이에요.')
   })
 
   it('hands a failed lead step back as the failure, with the trace kept', async () => {

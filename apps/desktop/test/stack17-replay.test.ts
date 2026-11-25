@@ -93,7 +93,7 @@ describe('H2 (stack16: the November turn was rewritten back to December)', () =>
     const draft = '11월 매출 합계는 2,764,000원이에요.'
     const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string }) => { prompt = job.prompt; told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
     const world = { ...await openWorld(await tmpVaultRoot('stack17-h2'), engine), history: [...history] }
-    const { result } = await answer(world, said, { tools: [], ack: { bare: true } })
+    const { result } = await answer(world, said, { tools: [] })
     console.log(`H2 replay: answer = ${result?.answer}`)
     expect(prompt).toContain(said)
     expect(told).toContain('fixtures/sales.csv에서 12월 매출 합계 알려줘')

@@ -10,8 +10,8 @@ import * as deskLane from '../src/main/desk-lane.js'
 const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { laneFirstLine } from '../src/main/fast-lane.js'
-import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
+import { COLLEAGUE_RULE as VOICE } from '../../../packages/core/src/agent-voice.js'
+import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, firstLinePrompt, firstLineReady } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
@@ -21,13 +21,12 @@ async function deskTurn(draft: string, said: string) {
   const result = await runToolSession({ engine, workdir: '/tmp/c6c-voice' as EngineCwd, tools: [] }, said)
   return { posted: result.answer, calls: jobs.length, told: jobs.map(job => `${job.system}\n${job.prompt}`).join('\n') }
 }
-const tail = (line: string) => line.replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/).slice(-2).join(' ')
 
 describe('the first line does not repeat itself in a thread (D3, D4, D5)', () => {
   const DOCS = ['위 회의록으로 워드 보고서 만들어줘', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘']
   const run = async (message: string, reply: string, said: string[]) => {
     const show = vi.fn(), quick = vi.fn(async () => reply)
-    beginFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show, said: async () => said, fallback: lines => fallbackLine(message, true, lines) })
+    beginFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show, said: async () => said })
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(10)
     endFirstLine('bot-1')
@@ -36,36 +35,17 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
   beforeEach(() => { vi.useFakeTimers(); endFirstLine('bot-1') })
   afterEach(() => { endFirstLine('bot-1'); vi.useRealTimers() })
 
-  it('reads an ending as the last two words', () => {
-    expect(saidBefore('3분기 실적 내용부터 정리할게요.', ['회의록 내용부터 정리할게요.'])).toBe(true)
-    expect(saidBefore('매출 파일부터 살펴볼게요.', ['회의록 내용부터 정리할게요.', '3분기 실적 내용부터 정리할게요.'])).toBe(true)
-    expect(saidBefore('매출 파일 바로 살펴볼게요.', ['회의록 내용부터 정리할게요.', '3분기 실적 내용부터 정리할게요.'])).toBe(false)
-    expect(saidBefore('슬라이드 순서부터 잡을게요.', [])).toBe(false)
-  })
-
   it('shows the voice the last two lines, and posts its line as written even when it repeats the ending', async () => {
     const first = await run(DOCS[0]!, '회의록 내용부터 정리할게요.', [])
     expect(first.line).toBe('회의록 내용부터 정리할게요.')
     expect(first.prompt).not.toContain('earlier in this conversation')
     const second = await run(DOCS[1]!, '3분기 실적 내용부터 정리할게요.', [first.line!])
     expect(second.prompt).toContain('Your first lines earlier in this conversation: "회의록 내용부터 정리할게요."')
-    expect(second.prompt).toContain('Do not reuse their ending or their sentence frame')
+    expect(second.prompt).toContain('Do not reuse their ending, their last word or their sentence frame')
     expect(second.shown).toBe(1)
     expect(second.line).toBe('3분기 실적 내용부터 정리할게요.')
     expect((await run(DOCS[2]!, '월별로 먼저 더해 볼게요.', [first.line!, second.line!])).line).toBe('월별로 먼저 더해 볼게요.')
     expect(firstLinePrompt('x 정리해줘', true, ['하나 볼게요.', '둘 볼게요.', '셋 볼게요.'])).not.toContain('하나 볼게요.')
-  })
-
-  it('three document asks the voice has no line for give three different endings', async () => {
-    const said: string[] = []
-    for (const ask of DOCS) said.push((await run(ask, '', [...said])).line!)
-    expect(new Set(said.map(tail)).size).toBe(3)
-    const again: string[] = []
-    for (let at = 0; at < 3; at++) again.push(fallbackLine('이 글 요약해줘', true, [...again]))
-    expect(new Set(again.map(tail)).size).toBe(3)
-    for (const line of [...said, ...again]) { expect([...line].length).toBeLessThanOrEqual(60); expect(line).toMatch(/^[^.!?]+게요\.$/); expect(line).not.toMatch(/알겠습니다|금방|곧/) }
-    expect(fallbackLine('이 글 요약해줘', true)).toBe('지금 정리할게요.')
-    expect(fallbackLine('What is this?', false, ['Checking now.'])).toBe('Checking now.')
   })
 
   it('never shows a voice line over 60 characters as the acknowledgement (rule 1)', async () => {
@@ -73,16 +53,12 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect([...long].length).toBe(64)
     expect(ACK_MAX).toBe(60)
     expect(cleanLine(long, ACK_MAX)).toBeUndefined()
-    const got = await run(DOCS[0]!, long, [])
-    expect(got.shown).toBe(1)
-    expect(got.line).toBe(fallbackLine(DOCS[0]!, true, []))
-    expect([...got.line!].length).toBeLessThanOrEqual(ACK_MAX)
+    expect((await run(DOCS[0]!, long, [])).shown).toBe(0)
     const edge = '가'.repeat(55) + ' 볼게요.'
     expect([...edge].length).toBe(60)
     expect((await run(DOCS[0]!, edge, [])).line).toBe(edge)
     expect(cleanLine(long)).toBe(long)
     expect(firstLinePrompt('x 정리해줘', true)).toContain('at most 40 characters')
-    for (const ask of [...DOCS, '엔비디아 오늘 주가 알려줘', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '클로드, GPT, 제미나이 비교해줘. 각각 따로 조사시켜']) for (const said of [[], [fallbackLine(ask, true, [])]]) expect([...fallbackLine(ask, true, said)].length, ask).toBeLessThanOrEqual(ACK_MAX)
   })
 
   it('keeps the budget and asks the voice once on a turn that only needs a first line', async () => {
@@ -99,25 +75,21 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     const T3 = '아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜'
     expect(firstLinePrompt(T3, true)).toContain('the line says the split in their words ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")')
     for (const ask of [T3, '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '이번 주 경쟁사 3곳 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜']) {
-      expect(splitAsk(ask), ask).toBe(true)
-      expect(fallbackLine(ask, true), ask).toMatch(/나눠/)
-      expect(laneLine(ask, true), ask).toMatch(/나눠/)
       expect((await run(ask, '가격표부터 훑어볼게요.', [])).line, ask).toBe('가격표부터 훑어볼게요.')
       expect((await run(ask, '셋이 나눠서 알아볼게요.', [])).line).toBe('셋이 나눠서 알아볼게요.')
     }
-    expect(fallbackLine(T3, true)).toBe(laneFirstLine(T3, true))
-    for (const ask of ['fixtures/inbox-dump 폴더 파일들 종류별로 나눠서 정리해줘', '회의록 요약해줘']) expect(splitAsk(ask), ask).toBe(false)
-    expect(source('ipc.ts')).toContain('bare: !!(request.attachments?.length || (turn?.context && !turn.learned))')
-    expect(source('answer.ts')).toContain('...(bare ? {} : { whole: quickQuestion(message) })')
+    expect(source('first-line.ts')).not.toMatch(/splitAsk|SPLIT|teamAsk/)
+    expect(source('answer.ts')).not.toMatch(/whole|quickQuestion/)
   })
 })
 
 describe('a figure that rests on a convention says so (Q2)', () => {
-  it('asks for the convention inside the one sentence, in the quick answer prompt', () => {
-    const text = quickAnswerPrompt('1년은 몇 초야?', true)
+  it('asks for the convention inside the one sentence, in the lead\'s voice rule every turn gets', () => {
+    const text = VOICE
     expect(text).toContain('평년 기준으로 31,536,000초예요.')
     expect(text).toMatch(/a common (year )?or a leap year, a 30- or 31-day month, which exchange/)
-    expect(text).toContain('still one sentence, never the other variant and never an "if" clause')
+    expect(source('first-line.ts')).not.toContain('quickAnswerPrompt')
+    expect(text).toContain('inside that same sentence ("평년 기준으로 31,536,000초예요."), never the other variant and never an "if" clause')
   })
 })
 
@@ -218,12 +190,6 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
   })
 })
 
-it('stack-6: a split asked as a question still gets a line that says the split; a plain question keeps its own', async () => {
-  const { laneLine } = await import('../src/main/first-line.js')
-  expect(laneLine('지민이랑 서연한테 나눠서 조사해줄래?', true)).toBe('누가 뭘 맡을지 나눠 볼게요.')
-  expect(laneLine('다들 뭐 하고 있어?', true)).toBe('지금 확인해 볼게요.')
-})
-
 it('stack-6: "할 일만" is asked of the model as that part only; a reply with a 미결 block and a lone heading is posted as written, every task kept', async () => {
   const tasks = ['한서연: 신규 온보딩 화면 시안 확정 — 11월 20일까지', '오태민: 결제 모듈 교체 일정 수립 — 11월 24일까지', '윤가은: 베타 테스터 50명 모집 공지 발송 — 11월 27일까지', '백도현: 4분기 마케팅 예산안 제출 — 12월 1일까지']
   const shown = ['회의록에서 할 일을 뽑아봤어요.', '', '할 일', '', ...tasks, '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
@@ -240,7 +206,7 @@ it('stack-6: "할 일만" is asked of the model as that part only; a reply with 
 
 it('stack-6: the repeat check is the quick voice\'s only, and no block correction is left in the chat turn or the desk lane', () => {
   const first = source('first-line.ts'), ipc = source('ipc.ts')
-  expect(first.slice(first.indexOf('export function firstLineNow'))).not.toContain('saidBefore')
+  expect(first).not.toMatch(/saidBefore|fallbackLine/)
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
   expect(answerSetInTurn(ipc)).toBe(1)
   expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)

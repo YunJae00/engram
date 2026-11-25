@@ -19,7 +19,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
       vi.setSystemTime(new Date(2027, 0, 8, 10, 0))
       const told: string[] = []
       const world = await openWorld(await mkdtemp(join(temporary, 'engram-c19a-days-')), leadOnly(async job => { told.push(job.prompt); return '알겠어요.' }))
-      for (const ask of ['다음 주 월요일이랑 목요일 춘천 미세먼지 알려줘', '모레 여수 바람 세기 좀 봐줄래', '탕비실 정수기 필터 갈아 끼우는 법 정리해줘']) await answer(world, ask, { ack: { bare: true } })
+      for (const ask of ['다음 주 월요일이랑 목요일 춘천 미세먼지 알려줘', '모레 여수 바람 세기 좀 봐줄래', '탕비실 정수기 필터 갈아 끼우는 법 정리해줘']) await answer(world, ask)
       expect(told).toHaveLength(3)
       for (const prompt of told) {
         expect(prompt).toContain('2027-01-08 Fri, 01-09 Sat')
@@ -35,7 +35,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
       expect(calendarLine(new Date(2027, 0, 8)).length - zone.length).toBeLessThanOrEqual(245)
       vi.setSystemTime(new Date(2027, 11, 29, 23, 30))
       told.length = 0
-      await answer(world, '새해 첫 주 화요일 강릉 해돋이 시각', { ack: { bare: true } })
+      await answer(world, '새해 첫 주 화요일 강릉 해돋이 시각')
       expect(told[0]).toContain('2027-12-29 Wed')
       expect(told[0]).toContain('12-31 Fri, 01-01 Sat')
     } finally { vi.useRealTimers() }
@@ -52,7 +52,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
       return `순천은 오늘 17시 29분에 해가 져요. [일몰 시각](${PAGE('순천 오늘 일몰')})`
     })
     const since = Date.now()
-    const { result } = await answer(await openWorld(await mkdtemp(join(temporary, 'engram-c19a-swap-')), engine), '목포 오늘 해 지는 시각 알려줘', { tools: [search], ack: { bare: true }, takeSteer: () => waiting.splice(0) })
+    const { result } = await answer(await openWorld(await mkdtemp(join(temporary, 'engram-c19a-swap-')), engine), '목포 오늘 해 지는 시각 알려줘', { tools: [search], takeSteer: () => waiting.splice(0) })
     expect(Date.now() - since).toBeLessThan(20_000)
     expect(queries).toEqual(['목포 오늘 일몰', '순천 오늘 일몰'])
     expect(result?.answer).toMatch(/^순천/)
@@ -60,7 +60,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
   })
 
   it('no post-hoc rewrite is left to run after the reader ends', () => {
-    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
+    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
   })
 })
 

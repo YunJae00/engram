@@ -3,7 +3,6 @@ import type { EngramEvent } from '../shared/types.js'
 import { asides, turnGoals } from './turn-state.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { firstLineWaiting } from './first-line.js'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const work = new Map<string, string[]>()
@@ -48,10 +47,10 @@ export function conversationProgress(paths: VaultPaths) {
           else void flush(channel)
         } else { if (!pending.get(channel)) since.set(channel, new Date().toISOString()); pending.set(channel, (pending.get(channel) ?? '') + event.text) }
       } else if (event.type === 'comet:step') {
-        if (pending.get(channel)?.trim() && !firstLineWaiting(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
+        if (pending.get(channel)?.trim()) broadcast({ type: 'chat:token', channel, text: '', reset: true })
         if (!/^\s*<- /.test(event.line)) work.set(channel, [...(work.get(channel) ?? []).slice(-63), event.line])
       } else if (event.type === 'chat:done' || event.type === 'chat:error') {
-        if ((event.type === 'chat:error' || !event.text) && !firstLineWaiting(channel)) void flush(channel)
+        if (event.type === 'chat:error' || !event.text) void flush(channel)
         pending.delete(channel); since.delete(channel); work.delete(channel)
       }
     },

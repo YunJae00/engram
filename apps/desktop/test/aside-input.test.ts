@@ -10,7 +10,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
 import { turnGoals } from '../src/main/turn-state.js'
-import { beginFirstLine, endFirstLine, firstLineCarried, firstLineReady, firstLineSaw, quickAnswerPrompt } from '../src/main/first-line.js'
+import { beginFirstLine, endFirstLine, firstLineCarried, firstLineReady, firstLineSaw } from '../src/main/first-line.js'
 import { broadcast, tapBroadcast } from '../src/main/engine-health.js'
 import type { EngramEvent } from '../src/shared/types.js'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
@@ -204,11 +204,11 @@ it('hands a change to the running turn before the reply is written, keeps a rema
     expect((await say('고마워, 대구 넣어줘')).instruction).toBe('고마워, 대구 넣어줘')
     expect(held).toEqual(['아 대구도 추가해', '고마워, 대구 넣어줘'])
     held.pop()
-    answers.push('31,536,000초예요.')
-    expect(await say('1년은 몇 초야?')).toEqual({ ok: true, action: 'relay', reply: '31,536,000초예요.' })
-    expect(asked.at(-1)).toBe(quickAnswerPrompt('1년은 몇 초야?', true))
-    expect(held).toEqual(['아 대구도 추가해'])
-    expect((await readBotTranscript(paths, 'reply')).slice(-2).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', '1년은 몇 초야?', true, false], ['assistant', '31,536,000초예요.', true, true]])
+    answers.push('CHANGE: 그것도 같이 알려 드릴게요.')
+    expect(await say('1년은 몇 초야?')).toEqual({ ok: true, action: 'relay', instruction: '1년은 몇 초야?', reply: '그것도 같이 알려 드릴게요.' })
+    expect(asked.at(-1)).toContain('in the middle of the job')
+    expect(held.pop()).toBe('1년은 몇 초야?')
+    expect((await readBotTranscript(paths, 'reply')).slice(-2).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', '1년은 몇 초야?', true, false], ['assistant', '그것도 같이 알려 드릴게요.', true, true]])
     for (const line of ['NONE', 'There are 31,536,000 seconds.']) {
       answers.push(line)
       const count = asked.length
@@ -256,7 +256,7 @@ it('stack-7: a lookup\'s first line still live when the person speaks mid-work i
   try {
     vi.mocked(broadcast).mockClear()
     vi.mocked(broadcast).mockImplementation(event => { firstLineSaw(event as { type: string; channel?: string; reset?: boolean }) })
-    beginFirstLine({ host: false, channel: 'bot-t2', message: '엔비디아 오늘 주가 알려줘', korean: true, interactive: true, engine: async () => ({ id: 'claude' as const, quick: async () => '' }) as never, workdir: '' as never, signal: new AbortController().signal, show: () => {}, line: '지금 시세 확인할게요.' })
+    beginFirstLine({ host: false, channel: 'bot-t2', message: '엔비디아 오늘 주가 알려줘', korean: true, interactive: true, engine: async () => ({ id: 'claude' as const, quick: async () => '지금 시세 확인할게요.' }) as never, workdir: '' as never, signal: new AbortController().signal, show: () => {} })
     firstLineReady('bot-t2')
     await vi.waitFor(() => expect(firstLineCarried('bot-t2')).toBeDefined())
     expect(firstLineCarried('bot-t2')).toBe('지금 시세 확인할게요.')

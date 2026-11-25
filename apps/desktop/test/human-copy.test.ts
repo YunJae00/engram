@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { COLLEAGUE_RULE } from '../../../packages/core/src/agent-voice.js'
 import { openRuleLines } from '../../../packages/core/src/agent-prompt.js'
-import { firstLinePrompt, smallTalkPrompt } from '../src/main/first-line.js'
+import { firstLinePrompt, SAFETY_LINE } from '../src/main/first-line.js'
 import { errorLine } from '../src/renderer/src/components/ErrorAnswer.js'
 import { teamKo } from '../src/renderer/src/i18n-ko-team.js'
 import { pendingStatus, stepLabel, workLabel } from '../src/renderer/src/lib/pendingStatus.js'
@@ -116,8 +116,20 @@ describe('how the bot is told to talk', () => {
     expect(prompt).toMatch(/Do not echo the request back/)
     expect(prompt).toContain('네, 알겠습니다')
     expect(prompt).not.toMatch(/restates the job/)
-    const talk = smallTalkPrompt('안녕', true)
-    expect(talk).toMatch(/never ask or offer help in any wording/)
-    expect(talk).toContain('Korean, polite -요 form')
+  })
+
+  it('asks the same one prompt to return nothing for a greeting, a thanks or a one-step question, whatever the wording', () => {
+    for (const said of ['오후도 힘내요', '덕분에 살았어요', '광년은 몇 킬로미터야?']) {
+      const prompt = firstLinePrompt(said, true)
+      expect(prompt).toMatch(/Reply with exactly NONE when the message is a greeting, a thanks, something the person only tells you/)
+      expect(prompt).toMatch(/a question the assistant answers in one reply from what it already knows/)
+      expect(prompt).toContain(JSON.stringify(said))
+    }
+  })
+
+  it('has one plain safety line with no jargon', () => {
+    expect(jargon(SAFETY_LINE.ko)).toEqual([])
+    expect(SAFETY_LINE.ko).toMatch(/요\.$/)
+    expect([...SAFETY_LINE.ko].length).toBeLessThanOrEqual(60)
   })
 })

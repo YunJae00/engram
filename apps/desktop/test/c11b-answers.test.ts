@@ -29,8 +29,8 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
       const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false })
       expect(result.answer, answer).toBe(answer)
     }
-    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
+    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
     const ipc = src('ipc.ts')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })

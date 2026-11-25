@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import * as laneModule from '../src/main/fast-lane.js'
-import { laneFirstLine, quickQuestion, teamAsk } from '../src/main/fast-lane.js'
+import { teamAsk } from '../src/main/fast-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 async function turn(page: string, ask: string, draft: string) {
@@ -34,7 +34,7 @@ it('gives a short question and a short job the same call, and the host asks neit
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => '' }
   const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
   try {
-    for (const ask of ['하루는 몇 분이야?', '휴가 신청 메일 써줘']) await answer(await openWorld(join(root, String(jobs.length)), engine), ask, { plainAsk: true, tools: [search], ack: { bare: true } })
+    for (const ask of ['하루는 몇 분이야?', '휴가 신청 메일 써줘']) await answer(await openWorld(join(root, String(jobs.length)), engine), ask, { plainAsk: true, tools: [search] })
   } finally { await rm(root, { recursive: true, force: true }) }
   expect(jobs).toHaveLength(2)
   for (const job of jobs) expect(job.told).not.toContain('This is a short ask')
@@ -53,36 +53,20 @@ it('gives a lookup the shell and the full menu like any turn, and hands mid-turn
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
-  expect(ipc).toContain('reply: !(turn?.context || request.attachments?.length)')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const talked = host || reply === false ? undefined : await smallTalkAnswer(channel)')
+  expect(ipc).not.toMatch(/reply: !\(turn\?\.context/)
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/smallTalkAnswer|talked/)
 })
 
 it('tells a team ask from a lone one, and a lone lookup gets the quick model\'s ack like any ask', () => {
   for (const message of LANE.slice(0, 3)) expect(teamAsk(message), message).toBe(true)
   for (const message of LANE.slice(3, 8)) expect(teamAsk(message), message).toBe(false)
-  expect(laneFirstLine('엔비디아 오늘 주가 알려줘', true)).toBe('지금 시세 확인할게요.')
-  expect(laneFirstLine('오늘 서울 날씨 어때?', true)).toBe('지금 날씨 확인할게요.')
-  expect(laneFirstLine('원달러 환율 지금 얼마야?', true)).toBe('지금 환율 확인할게요.')
-  expect(laneFirstLine('오늘 AI 뉴스 5개 찾아줘', true)).toBe('최신 뉴스 검색할게요.')
-  expect(laneFirstLine('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', true)).toBe('봇들한테 나눠 맡길게요.')
-  expect(laneFirstLine('아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜', true)).toBe('나눠서 알아볼게요.')
-  expect(laneFirstLine('경쟁사 3곳 신기능 각각 조사해줘', true)).toBe('셋으로 나눠 알아볼게요.')
-  expect(laneFirstLine('research these two phones separately', false)).toBe('Splitting this up to look into it now.')
-  expect(laneFirstLine('아이폰 17 출시일 조사해줘', true)).toBe('웹에서 검색해 볼게요.')
-  expect(laneFirstLine("what's the weather in Seoul?", false)).toBe('Checking the weather now.')
-  for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길|알아볼)/) }
+  expect(readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')).not.toMatch(/laneFirstLine|FIRST_STEPS/)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(bare ? {} : { whole: quickQuestion(message) }),')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('whole: quickQuestion(message) }')
-})
-
-it('lets the quick voice answer only a short question that needs nothing about the person, the thread, the company or the present', () => {
-  for (const message of ['1년은 몇 초야?', '1마일은 몇 km야?', '물의 끓는점은 몇 도야?', 'How many seconds are in a year?']) expect(quickQuestion(message), message).toBe(true)
-  for (const message of ['나 누구랑 일하지?', '내 일정 뭐 있어?', '김대리 누구야?', '다들 뭐하고 있어?', '원달러 환율 지금 얼마야?', '오늘 서울 날씨 어때?', '그럼 2년은?', '민호 전화번호 뭐야?', '이 파일 뭐야?', '오늘 며칠이야?', '1234 곱하기 5678은?', '1년은 몇 초야', '회의 늦어서 죄송합니다를 영어로 써줘', 'who is on my team?', ...LANE]) expect(quickQuestion(message), message).toBe(false)
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/whole|quickQuestion/)
 })
 
 it('streams a lookup turn\'s words as they come, like any turn with no ack on screen', async () => {
@@ -91,7 +75,7 @@ it('streams a lookup turn\'s words as they come, like any turn with no ack on sc
     const note = 'Now I have the search results for all three cities. Let me check each one against the weather service page before I write the table, since the first result looked a day old and the second one did not carry a date at all. Searching the web for results once more.'
     expect([...note].length).toBeGreaterThan(200)
     const pieces = ['Now I have solid sources for all 5 items. ', 'Let me verify the article URL by reading it directly.', ...note.match(/[^]{1,40}/g)!, '지금 1달러에 1,385원이에요.']
-    const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { for (const piece of pieces) job.onToken?.(piece); return { answer: '지금 1달러에 1,385원이에요.' } } } as unknown as Engine
+    const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { await new Promise(done => setTimeout(done, 20)); for (const piece of pieces) job.onToken?.(piece); return { answer: '지금 1달러에 1,385원이에요.' } } } as unknown as Engine
     const seen: boolean[] = []
     const search = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => '' }
     const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { plainAsk: true, tools: [search], onToken: (_, held) => { seen.push(held) } })
@@ -102,7 +86,7 @@ it('streams a lookup turn\'s words as they come, like any turn with no ack on sc
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hold = !!firstLineNote(channel)')
-  expect(ipc).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
+  expect(ipc).toContain('onReset: (drop, tool) => { broadcast(')
 })
 
 it('posts a lookup\'s answer as written, a failure report included, and no host line is put after it', async () => {
@@ -111,7 +95,7 @@ it('posts a lookup\'s answer as written, a failure report included, and no host 
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
   for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '토트넘 어젯밤 경기 점수 몇 대 몇이야?', answer)).answer, answer).toBe(answer)
-  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
+  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
   const lane = readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')
   expect(lane.match(/^export (?:async )?function \w+/gm)).toEqual(['export function asideShape'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')

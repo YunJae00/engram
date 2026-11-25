@@ -92,7 +92,7 @@ describe('stack-16 replays', () => {
     const draft = '11월 16일 제품팀 주간 회의록을 결정사항과 할 일 중심으로 정리했어요.\n\n결정사항\n\n신규 온보딩 화면 시안 확정 — 담당: 한서연, 기한: 11월 20일\n결제 모듈 교체 일정 수립 — 담당: 오태민, 기한: 11월 24일\n베타 테스터 50명 모집 공지 발송 — 담당: 윤가은, 기한: 11월 27일\n4분기 마케팅 예산안 제출 — 담당: 백도현, 기한: 12월 1일\n\n미결\n\n결제 모듈 후보 두 곳 중 어디로 갈지는 견적을 받은 뒤 다음 회의에서 정함'
     let told = ''
     const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string }) => { told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
-    const { result } = await answer(await openWorld(await mkdtemp(join(tmpdir(), 'stack16-d1-')), engine), '회의 메모에서 정해진 것과 맡은 일만 추려줘', { ack: { bare: true } })
+    const { result } = await answer(await openWorld(await mkdtemp(join(tmpdir(), 'stack16-d1-')), engine), '회의 메모에서 정해진 것과 맡은 일만 추려줘')
     expect(result?.answer).toBe(draft)
     expect(told).toContain('A summary or tidy-up of a short note is answered in the chat itself')
     expect(told).not.toContain('A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file')

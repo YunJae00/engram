@@ -16,8 +16,8 @@ import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
-const FAST_FNS = ['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
+const FAST_FNS = ['asideShape', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const temporary = join(root, 'tmp')
@@ -143,7 +143,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     const opened = await world('deck', engine)
     fake()
     const since = Date.now()
-    const { result } = await drive(answerTurn(opened, '동네 도서관 소개 발표 자료 3장 만들어줘', { tools: [...tools, reader], ack: { bare: true } }))
+    const { result } = await drive(answerTurn(opened, '동네 도서관 소개 발표 자료 3장 만들어줘', { tools: [...tools, reader] }))
     expect(Date.now() - since).toBeLessThan(60_000)
     expect(result?.answer).toBe(reply)
     expect(result?.files).toEqual([{ name: '동네 도서관 소개.pptx', href: 'a9' }])
@@ -238,7 +238,7 @@ describe('stack-19: "멈춰" halts within 3 s and nothing posts after', () => {
       await job.tools.find(tool => tool.name === 'file_read_package')!.run({}).catch(() => '')
       return { answer: '다 만들었어요.' }
     })
-    const { result, trace } = await drive(answerTurn(await world('stop', engine), '동네 도서관 소개 발표 자료 만들어줘', { tools: [...tools, reader], signal: stop.signal, ack: { bare: true } }))
+    const { result, trace } = await drive(answerTurn(await world('stop', engine), '동네 도서관 소개 발표 자료 만들어줘', { tools: [...tools, reader], signal: stop.signal }))
     expect(stoppedAt).toBeGreaterThan(0)
     expect(Date.now() - stoppedAt).toBeLessThan(3000)
     expect(result).toBeUndefined()
@@ -264,7 +264,7 @@ describe('stack-19: fixes after the branch results', () => {
     const book: AgentTool = { name: 'file_create_workbook', description: 'book', argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify({ markdownLink: '[월별 지출.xlsx](engram-artifact:b1)' }) }
     let menu: unknown
     const engine = brain(async job => { menu = job.tools.find(tool => tool.name === 'file_create_workbook'); await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }] }); return { answer: reply } })
-    const { result } = await answerTurn(await world('book', engine), ask, { tools: [book], ack: { bare: true } })
+    const { result } = await answerTurn(await world('book', engine), ask, { tools: [book] })
     expect(result!.answer).toBe(reply)
     expect(result!.answer).not.toContain('시트 1개로 만들었어요')
     expect(result!.files).toEqual([{ name: '월별 지출.xlsx', href: 'b1' }])
@@ -279,7 +279,7 @@ describe('stack-19: Codex-cap decisions', () => {
     const reply = '봄 산행 안내 자료를 2장으로 만들었어요.'
     let schema: unknown
     const engine = brain(async job => { const tool = job.tools.find(one => one.name === 'ppt_build')!; schema = tool.argsSchema; await tool.run({ slides: [{ title: 'Spring hike plan and club goals 안내' }, { title: '일정' }] }); return { answer: reply } })
-    const { result } = await answerTurn(await world('title', engine), '봄 산행 안내 PPT 2장 만들어줘', { tools: [deck], ack: { bare: true } })
+    const { result } = await answerTurn(await world('title', engine), '봄 산행 안내 PPT 2장 만들어줘', { tools: [deck] })
     expect(schema).toEqual({ type: 'object', properties: {}, required: [] })
     expect(result!.answer).toBe(reply)
     expect(result!.answer).not.toContain('Spring hike')
@@ -294,7 +294,7 @@ describe('stack-19: Codex-cap decisions', () => {
       await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동네 축제' })
       return { answer: reply }
     })
-    const { result } = await answerTurn(await world('two', engine), '동네 축제 PPT랑 워드 둘 다 만들어줘', { tools: [fake('ppt_build', '[동네 축제.pptx](engram-artifact:p2)'), fake('word_write', '[동네 축제.docx](engram-artifact:w2)')], ack: { bare: true } })
+    const { result } = await answerTurn(await world('two', engine), '동네 축제 PPT랑 워드 둘 다 만들어줘', { tools: [fake('ppt_build', '[동네 축제.pptx](engram-artifact:p2)'), fake('word_write', '[동네 축제.docx](engram-artifact:w2)')] })
     expect(made).toEqual(['ppt_build', 'word_write'])
     expect(result!.answer).toBe(reply)
     expect(result!.files).toEqual([{ name: '동네 축제.pptx', href: 'p2' }, { name: '동네 축제.docx', href: 'w2' }])

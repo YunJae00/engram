@@ -7,7 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { ACK_MAX, fallbackLine, firstLinePrompt, quickAnswerPrompt, saidBefore } from '../src/main/first-line.js'
+import { firstLinePrompt } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
@@ -79,46 +79,22 @@ describe('decisions and tasks are said once (D1)', () => {
     const ipc = source('ipc.ts')
     expect(answerSetInTurn(ipc)).toBe(1)
     expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,'))
-    const first = source('first-line.ts')
-    expect(first.slice(first.indexOf('export const laneLine'), first.indexOf('const FILE_WORK ='))).not.toContain('saidBefore')
+    expect(source('first-line.ts')).not.toMatch(/saidBefore|laneLine|FILE_WORK/)
     expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })
 })
 
 describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
-  it('counts a second "…부터" line and the closing verb of the line before as a repeat', () => {
-    expect(saidBefore('매출 데이터부터 정리할게요.', ['보고서 구성부터 잡을게요.'])).toBe(true)
-    expect(saidBefore('슬라이드 흐름부터 짜볼게요.', ['보고서 구성부터 잡을게요.'])).toBe(true)
-    expect(saidBefore('엑셀로 바로 묶어 볼게요.', ['보고서 구성부터 잡을게요.'])).toBe(false)
-    expect(saidBefore('3번 슬라이드 제목 바꿀게요.', ['보고서 구성부터 잡을게요.', '엑셀로 바로 묶어 볼게요.'])).toBe(false)
-    expect(saidBefore('차트까지 넣어 볼게요.', ['엑셀로 바로 묶어 볼게요.'])).toBe(true)
-    expect(saidBefore('차트까지 넣어 볼게요.', ['엑셀로 바로 묶어 볼게요.', '3번 슬라이드 제목 바꿀게요.'])).toBe(false)
-    expect(saidBefore('보고서 구성부터 잡을게요.', [])).toBe(false)
-    expect(saidBefore('매출 데이터부터 정리할게요.', ['지금 시세 확인할게요.'])).toBe(false)
-  })
-
-  it('the host line after a "…부터" line is built another way, for every kind of ask', () => {
-    const asks = ['fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', '위 회의록으로 워드 보고서 만들어줘', '점심 메뉴 하나만 골라줘', '이거 영어로 번역해줘', '회의록 요약해줘', '이게 뭐야?', '그냥 해']
-    for (const ask of asks) for (const said of [['보고서 구성부터 잡을게요.'], ['보고서 구성부터 잡을게요.', '슬라이드 흐름 짜볼게요.'], ['파일 먼저 열어 볼게요.', '보고서 구성부터 잡을게요.'], ['보고서 구성부터 잡을게요.', '보내주신 것 먼저 살필게요.', '지금 고쳐 볼게요.']]) {
-      const line = fallbackLine(ask, true, said)
-      expect(line, `${ask} after ${said.join(' ')}`).not.toContain('부터')
-      expect(saidBefore(line, said), `${ask}: ${line}`).toBe(false)
-      expect([...line].length).toBeLessThanOrEqual(ACK_MAX)
-    }
-    expect(fallbackLine('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true)).toBe('파일부터 확인할게요.')
-  })
-
   it('tells the voice which frame is used up and shows other builds', () => {
     const fresh = firstLinePrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(fresh).not.toContain('Your first lines earlier')
     const later = firstLinePrompt('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true, ['보고서 구성부터 잡을게요.'])
-    for (const said of ['"보고서 구성부터 잡을게요."', '"엑셀로 바로 묶어 볼게요."', '"3번 슬라이드 제목 바꿀게요."', '"차트까지 넣어서 만들게요."', 'this one has no 부터 in it', 'does not end on the last word of the line before it']) expect(later, said).toContain(said)
-    expect(firstLinePrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).not.toContain('this one has no 부터 in it')
+    for (const said of ['"보고서 구성부터 잡을게요."', '"엑셀로 바로 묶어 볼게요."', '"3번 슬라이드 제목 바꿀게요."', '"차트까지 넣어서 만들게요."', 'Do not reuse their ending, their last word or their sentence frame']) expect(later, said).toContain(said)
+    expect(firstLinePrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).toBe(firstLinePrompt('회의록 요약해줘', true, ['보고서 구성부터 잡을게요.']).replace('"보고서 구성부터 잡을게요."', '"지금 시세 확인할게요."'))
   })
 
-  it('touches only the quick voice line and its fallback', () => {
-    const first = source('first-line.ts')
-    expect(first.slice(first.indexOf('export const laneLine'), first.indexOf('const FILE_WORK ='))).not.toContain('saidBefore')
+  it('leaves the repeat to the voice: no host code reads the earlier lines', () => {
+    expect(source('first-line.ts')).not.toMatch(/saidBefore|endedTwice|FROM_FRAME|lineTail/)
     expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })
 })
@@ -141,7 +117,7 @@ describe('a fact about the person is a state, not an instruction (M3, c11b)', ()
 describe('a pick comes with its reason, recommendations with what they went by (H1)', () => {
   it('keeps the rules Q2-Q4 and H2 ride on in the prompts still sent, with no short-ask note left', () => {
     for (const said of ['text they asked for in another language, which you hand over unchanged after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
-    expect(quickAnswerPrompt('1년은 몇 초야?', true)).toContain('"평년 기준으로 31,536,000초예요."')
+    expect(COLLEAGUE_RULE).toContain('"평년 기준으로 31,536,000초예요."')
     expect(source('fast-lane.ts')).not.toContain('SHORT_QUESTION_NOTE')
   })
   it('keeps a recommendation\'s lead and every pick under it: nothing is taken off a short answer', async () => {

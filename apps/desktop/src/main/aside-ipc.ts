@@ -2,8 +2,8 @@ import { conversationProgress } from './conversation-progress.js'
 import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
 import { appendBotTurn, engineCwd, readBotTranscript, withoutSecrets, type Engine, type VaultPaths } from 'core'
-import { cleanLine, firstLineCarried, firstLineWaiting, quickAnswerPrompt } from './first-line.js'
-import { asideShape, quickQuestion, teamAsk, type AsideShape } from './fast-lane.js'
+import { cleanLine, firstLineCarried } from './first-line.js'
+import { asideShape, teamAsk, type AsideShape } from './fast-lane.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { broadcast, tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -68,11 +68,6 @@ export async function asideVoice(voice: Voice | Promise<Voice>, workdir: string,
   return { line: fits(line, `${goal} ${said}`, korean) && joined && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) ? line : fixed, ...(changes === undefined ? {} : { changes }) }
 }
 export const asideReply = async (...args: Parameters<typeof asideVoice>): Promise<string> => (await asideVoice(...args)).line
-async function asideAnswer(voice: Voice | Promise<Voice>, workdir: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string | undefined> {
-  if (!quickQuestion(said)) return undefined
-  const line = await voiceLine(voice, quickAnswerPrompt(said, korean), workdir, budgetMs)
-  return fits(line, said, korean) ? line : undefined
-}
 
 export const STOP_WORDS = /^\s*(멈춰|멈춰\s?줘|멈춰요|그만|그만\s?해|그만\s?해\s?줘|그만해요|중지|중지\s?해|중지\s?해\s?줘|중단|중단\s?해|중단\s?해\s?줘|스톱|취소|취소\s?해|취소\s?해\s?줘|stop|stop it|cancel|cancel it|abort)\s*[.!~]*\s*$/i
 
@@ -127,7 +122,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (!busy || deps.answered?.(channel) || saving.has(channel)) return { ok: false }
     const hold = deps.followUp?.(channel)
     const said = text.trim()
-    if (firstLineCarried(channel) && !firstLineWaiting(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
+    if (firstLineCarried(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
     const botId = channel.slice('bot-'.length)
     const goal = turnGoals.get(channel) ?? ''
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
@@ -135,19 +130,17 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const stopped = (): boolean => (stops.get(channel) ?? 0) !== stopsBefore
     const korean = await inKorean()
     const workdir = deps.voice ? engineCwd(deps.paths) : ''
-    const answer = await asideAnswer(deps.voice?.(channel), workdir, said, korean)
+    const voiced = await asideVoice(deps.voice?.(channel), workdir, goal, said, korean)
     if (stopped()) return { ok: true }
-    const voiced = answer || quickQuestion(said) ? undefined : await asideVoice(deps.voice?.(channel), workdir, goal, said, korean)
-    if (stopped()) return { ok: true }
-    const steer = !answer && voiced?.changes !== false
+    const steer = voiced.changes !== false
     if (steer) {
       await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
       asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
       hold?.(said)
     }
     void deps.setOffersAside(botId).catch(error => flog('study', error))
-    const reply = answer ?? voiced?.line ?? fixedAsideReply(said, korean)
-    flog('aside', JSON.stringify({ channel, reply: 'shown', shape: answer ? 'answer' : voiced?.changes === undefined ? asideShape(said, goal) : voiced.changes ? 'change' : 'remark', ms: Date.now() - started }))
+    const reply = voiced.line
+    flog('aside', JSON.stringify({ channel, reply: 'shown', shape: voiced.changes === undefined ? asideShape(said, goal) : voiced.changes ? 'change' : 'remark', ms: Date.now() - started }))
     await appendBotTurn(deps.paths, botId, { role: 'assistant', text: withoutSecrets(reply, said), at: new Date().toISOString(), progress: true, aside: true }).catch(error => flog('aside', error))
     if (!steer) return { ok: true, action: 'relay', reply }
     const pending = await readCheckpoint(deps.paths, botId).catch(() => ({ pending: [said] }))

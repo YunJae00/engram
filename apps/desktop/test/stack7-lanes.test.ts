@@ -18,7 +18,7 @@ it('stack-7: no desk correction runs on any answer: no desk kind is left, the ke
   expect(ipc).not.toContain('asState(')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
-  expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine'])
+  expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine'])
 })
 
 it('stack-7: a team result and a lookup answer reach the thread as written, whatever lane they came through (c11b)', async () => {

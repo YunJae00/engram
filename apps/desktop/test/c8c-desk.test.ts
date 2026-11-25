@@ -15,7 +15,7 @@ const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'p
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 import { fixSlideTitle, keptFix, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
-import { fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
+import { firstLinePrompt } from '../src/main/first-line.js'
 import { buildDeck } from '../src/main/deck-render.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
@@ -186,23 +186,12 @@ describe('an offer is the next step, never the same content in another shape (H4
 })
 
 describe('first lines across a document thread (D5, F1)', () => {
-  it('a third line in a row on one verb ending is a repeat; another ending is not', () => {
+  it('the voice sees the last two lines with other ways to end, the same prompt whatever they end in', () => {
     const said = ['회의록 내용 정리할게요.', '장표 흐름 구성할게요.']
-    expect(saidBefore('3번 슬라이드 제목 수정할게요.', said)).toBe(true)
-    expect(saidBefore('3번 슬라이드 제목 바꿔 볼게요.', said)).toBe(false)
-    expect(saidBefore('금방 돼요.', said)).toBe(false)
-    expect(saidBefore('제목 수정할게요.', ['회의록 내용 정리할게요.', '장표 흐름 짜볼게요.'])).toBe(false)
-    expect(saidBefore('제목 수정할게요.', ['회의록 내용 정리할게요.'])).toBe(false)
-  })
-  it('the host\'s own line turns the same way, and the voice is told', () => {
-    const said = ['회의록 내용 정리할게요.', '장표 흐름 구성할게요.']
-    for (const ask of ['fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '방금 만든 PPT 3번 슬라이드 본문 고쳐줘', '이 문장 번역해줘', '다음 주 일정 요약해줘']) {
-      const line = fallbackLine(ask, true, said)
-      expect(line, ask).not.toMatch(/할게요\.$/)
-      expect(saidBefore(line, said), ask).toBe(false)
-    }
-    expect(firstLinePrompt('3번 슬라이드 본문 고쳐줘', true, said)).toContain('The last two both end in "…할게요": this one ends another way ("…볼게요.", "금방 돼요.")')
-    expect(firstLinePrompt('3번 슬라이드 본문 고쳐줘', true, ['회의록 내용 정리할게요.', '장표 흐름 짜볼게요.'])).not.toContain('The last two both end')
+    const prompt = firstLinePrompt('3번 슬라이드 본문 고쳐줘', true, said)
+    expect(prompt).toContain('Your first lines earlier in this conversation: "회의록 내용 정리할게요.", "장표 흐름 구성할게요."')
+    expect(prompt).toContain('"금방 돼요."')
+    expect(firstLinePrompt('3번 슬라이드 본문 고쳐줘', true, ['회의록 내용 정리할게요.', '장표 흐름 짜볼게요.'])).toBe(prompt.replace('장표 흐름 구성할게요.', '장표 흐름 짜볼게요.'))
   })
 })
 

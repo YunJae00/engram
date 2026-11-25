@@ -178,7 +178,7 @@ import { registerFirstSetupIpc } from './first-setup.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { firstLineSaw, firstLineSpoke, firstLineWaiting } from './first-line.js'
+import { firstLineSaw, firstLineSpoke } from './first-line.js'
 import { beginAnswer, lastReplyOf, type Answering } from './answer.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
@@ -2100,7 +2100,7 @@ export function registerIpc(ctx: VaultContext): void {
         return
       }
     }
-    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), bare: !!(request.attachments?.length || (turn?.context && !turn.learned)), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
+    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
     if (begun) acks.push(begun)
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
@@ -2276,8 +2276,6 @@ export function registerIpc(ctx: VaultContext): void {
         const ran = await begun!.run({
           tools: everyTool,
           ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
-          now: !!company && !turn?.report,
-          reply: !(turn?.context || request.attachments?.length),
           plainAsk,
           company: !!company,
           remembered,
@@ -2307,7 +2305,7 @@ export function registerIpc(ctx: VaultContext): void {
             audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
           },
           onToken: (text, held) => { if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
-          onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
+          onReset: (drop, tool) => { broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
           onObservation: (tool: string, observation: string) => {
             observedProgress.push({ tool, args: {}, observation })
             if (observedProgress.length > 8) observedProgress.shift()

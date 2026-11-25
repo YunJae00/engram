@@ -11,11 +11,11 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import * as deskLane from '../src/main/desk-lane.js'
 import { keepAsk, keptFix } from '../src/main/desk-lane.js'
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
 const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { cleanLine, firstLinePrompt, smallTalkPrompt } from '../src/main/first-line.js'
+import { cleanLine, firstLinePrompt } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
@@ -120,8 +120,9 @@ describe('a kept fact is corrected by the host (M2)', () => {
 })
 
 describe('small talk never sounds like a help desk (Q1)', () => {
-  it('the quick voice is told never to ask or offer help, and its line is shown as written: no sentence is taken out of it', () => {
-    expect(smallTalkPrompt('안녕', true)).toContain('never ask or offer help in any wording')
+  it('a greeting goes to the lead, whose rule says never to ask or offer help, and the quick voice is asked for nothing on it; a line is shown as written', () => {
+    expect(COLLEAGUE_RULE).toContain('no asking or offering help in any wording')
+    expect(firstLinePrompt('주말 잘 보내셨어요?', true)).toContain('Reply with exactly NONE when the message is a greeting')
     for (const said of ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요! 오늘은 무엇을 도와드릴까요?', '좋은 아침이에요. 뭐 도와드릴까요?', '안녕하세요! 도와드릴 일 있으면 말씀하세요.', '반가워요. 필요하신 게 있으면 말씀해 주세요.', 'Hi there! How can I help you today?', '무엇을 도와드릴까요?']) expect(cleanLine(said), said).toBe(said)
     for (const none of ['NONE', '  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()
   })
@@ -130,8 +131,9 @@ describe('small talk never sounds like a help desk (Q1)', () => {
     expect((await turn('안녕하세요!\n\n좋은 하루 보내세요.', '안녕')).posted).toBe('안녕하세요!\n\n좋은 하루 보내세요.')
   })
   it('describes the pattern in the prompts, not one string, and the main model\'s small talk is posted as it wrote it', async () => {
-    for (const text of [smallTalkPrompt('안녕', true), COLLEAGUE_RULE]) { expect(text).toMatch(/help in any wording/); expect(text).toContain('뭘 도와드릴까요') }
-    expect(smallTalkPrompt('안녕', true)).toContain('안녕하세요! 좋은 아침이에요.')
+    expect(COLLEAGUE_RULE).toMatch(/help in any wording/)
+    expect(COLLEAGUE_RULE).toContain('뭘 도와드릴까요')
+    expect(source('first-line.ts')).not.toMatch(/smallTalkPrompt|SMALL_TALK/)
     expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     for (const said of ['뭘 도와드릴까요?', '안녕하세요! 뭘 도와드릴까요?', '안녕하세요! 좋은 아침이에요.', 'How can I help you today?']) {

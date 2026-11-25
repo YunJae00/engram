@@ -1,8 +1,7 @@
 import { join } from 'node:path'
 import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
 import { fixSlideTitle, keepAsk, keptFix, plainKeep, slideTitleFix, sortByKind } from './desk-lane.js'
-import { quickQuestion } from './fast-lane.js'
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSpoke, smallTalkAnswer } from './first-line.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSpoke } from './first-line.js'
 import { taskRoot } from './file-work.js'
 import { flog } from './flog.js'
 import { fetchPlainPage } from './plain-page.js'
@@ -36,9 +35,7 @@ export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' 
   takeSteer?(): string[]
   tools?: AgentTool[]
   imagePaths?: string[]
-  ack?: Partial<Omit<AckInputs, 'message' | 'workdir' | 'signal'>> & { bare?: boolean }
-  now?: boolean
-  reply?: boolean
+  ack?: Partial<Omit<AckInputs, 'message' | 'workdir' | 'signal'>>
   plainAsk?: boolean
   company?: boolean
   remembered?: readonly string[]
@@ -99,7 +96,7 @@ export async function answer(world: World, message: string, options: AnswerOptio
 
 export function beginAnswer(world: World, message: string, options: Pick<AnswerOptions, 'signal' | 'ack'> = {}): Answering {
   const { paths, botId, engine } = world
-  const { signal, ack: { bare, ...asked } = {} } = options
+  const { signal, ack: asked = {} } = options
   const started = performance.now()
   const ms = () => Math.round(performance.now() - started)
   const trace: AnswerTrace = { message, steps: [], final: { text: '', ms: 0 }, end: 'done' }
@@ -107,15 +104,14 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   const korean = asked.korean ?? threadKorean(message, world.history)
   const turn = signal ?? new AbortController().signal
   beginFirstLine({
-    interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => engine, fallback: said => fallbackLine(message, korean, said),
-    ...(bare ? {} : { whole: quickQuestion(message) }),
+    interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => engine,
     ...asked,
     channel, message, korean, workdir: engineCwd(paths), signal: turn,
     show: line => { trace.first ??= { text: line, ms: ms() }; asked.show?.(line) },
   })
   firstLineReady(channel)
   const run = async (options: Omit<AnswerOptions, 'signal' | 'ack'> = {}): Promise<Answered> => {
-    const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, now, reply, plainAsk = engine.id === 'claude', company = false, remembered = [], shared = [], earlierOutputs = [], skills, native, ...loop } = options
+    const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, plainAsk = engine.id === 'claude', company = false, remembered = [], shared = [], earlierOutputs = [], skills, native, ...loop } = options
     let streamed = '', firstLine = false, result: AgentLoopResult | undefined, failure: unknown
     const everyTool = tools ?? worldTools(world, message, signal)
     const hostable = !company && plainAsk
@@ -138,12 +134,10 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
       const host: AgentLoopResult | undefined = fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
         : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
         : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined
-      if (!host && now) firstLineNow(channel, message, korean)
-      const talked = host || reply === false ? undefined : await smallTalkAnswer(channel)
       const note = firstLineNote(channel)
-      const shortlist = host || talked || !skills ? undefined : await skills()
+      const shortlist = host || !skills ? undefined : await skills()
       const notes = [context?.(), calendarLine(), note].filter(Boolean).join('\n\n')
-      result = host ?? (talked ? { answer: talked, steps: [], fellBack: false } : await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
+      result = host ?? await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,
         history: world.history,
@@ -169,7 +163,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
           onToken?.(text, hold)
         },
         onReset: (drop, tool) => { streamed = ''; onReset?.(drop, tool) },
-      }))
+      })
       trace.final = { text: result.answer, ms: ms() }
     } catch (cause) {
       failure = cause

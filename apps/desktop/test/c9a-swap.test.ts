@@ -32,7 +32,7 @@ test('a replacement said mid-work reaches the running turn as the person said it
     expect(jobs[1]!.prompt).toContain('아 리스본 말고 포르투로 봐 줄래')
     expect(result?.answer).toBe(drafts[1])
   })
-  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'teamAsk'])
+  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
 })
 
 test.each([
@@ -51,7 +51,7 @@ test.each([
     } }
     let seen = ''
     const { engine, jobs } = engineOf(async job => { seen = await searchText(job, '오사카 벚꽃 개화'); return '오사카 성은 다음 주에 피기 시작해요. [개화 소식](https://bloom.example/osaka)' })
-    const { result, trace } = await answer(await openWorld(dir, engine), '오사카 벚꽃 언제 피는지 알아봐 줄래', { tools: [search], ack: { bare: true }, takeSteer: () => waiting.splice(0) })
+    const { result, trace } = await answer(await openWorld(dir, engine), '오사카 벚꽃 언제 피는지 알아봐 줄래', { tools: [search], takeSteer: () => waiting.splice(0) })
     expect(jobs).toHaveLength(1)
     expect(searchSignal?.aborted).toBe(false)
     expect(seen).toContain('https://bloom.example/osaka')
@@ -72,7 +72,7 @@ test('a change said before the lead calls anything reaches the lead at its first
       await searchText(job, '속초 바다 수온')
       return '속초 바다는 지금 13도예요.'
     })
-    const { result } = await answer(await openWorld(dir, engine), '강릉 바다 수온 지금 몇 도야', { tools: [search], ack: { bare: true }, takeSteer: () => waiting.splice(0) })
+    const { result } = await answer(await openWorld(dir, engine), '강릉 바다 수온 지금 몇 도야', { tools: [search], takeSteer: () => waiting.splice(0) })
     expect(jobs).toHaveLength(1)
     expect(queries).toEqual(['강릉 바다 수온', '속초 바다 수온'])
     expect(result?.answer).toBe('속초 바다는 지금 13도예요.')
@@ -90,7 +90,7 @@ test('stopping the whole turn while a search hangs ends the turn, cancels that s
     }) }
     const { engine } = engineOf(async job => { await searchText(job, '제주 항공편 결항'); return '제주 항공편은 모두 정상이에요.' })
     const since = Date.now()
-    const { result, trace } = await answer(await openWorld(dir, engine), '오늘 제주 가는 비행기 결항 있는지 봐줘', { tools: [search], ack: { bare: true }, signal: turn.signal })
+    const { result, trace } = await answer(await openWorld(dir, engine), '오늘 제주 가는 비행기 결항 있는지 봐줘', { tools: [search], signal: turn.signal })
     expect(Date.now() - since).toBeLessThan(3_000)
     expect(searchSignal?.aborted).toBe(true)
     expect(trace.end).toBe('stop')
@@ -103,7 +103,7 @@ test('after a change the lead is told to name the new subject first, and its dra
     await inDir(async dir => {
       const waiting = ['유로 말고 파운드로']
       const { engine, jobs } = engineOf(async (_job, call) => call === 1 ? '유로는 지금 1,520원이에요.' : draft)
-      const { result } = await answer(await openWorld(dir, engine), '유로 환율 얼마야', { tools: [], ack: { bare: true }, takeSteer: () => waiting.splice(0) })
+      const { result } = await answer(await openWorld(dir, engine), '유로 환율 얼마야', { tools: [], takeSteer: () => waiting.splice(0) })
       expect(jobs).toHaveLength(2)
       expect(jobs[1]!.system).toContain('When they change the ask while you work, the first sentence names the new subject.')
       expect(result?.answer).toBe(draft)
