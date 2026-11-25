@@ -286,7 +286,7 @@ it('stack-7: a teammate hired in a turn whose own first search already ran the s
   } finally { laneSearches.delete('bot-b1') }
   const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
   expect(ipc).toContain('if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? \'\' }); else laneSearches.delete(channel)')
-  expect(ipc).toContain('if (!searched) laneSearches.delete(channel)')
+  expect(ipc).toContain('let searched: Awaited<ReturnType<typeof firstSearch>> | undefined\n        laneSearches.delete(channel)')
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('let searched = solo && routed === request.message && !fixed ? await searchFor(')
+  expect(ipc).toContain('const searchFirst = solo && routed === request.message && !fixed')
 })

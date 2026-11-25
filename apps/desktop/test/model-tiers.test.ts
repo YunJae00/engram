@@ -793,7 +793,8 @@ describe('s1a: the team lane\'s model does the team\'s work', () => {
     const team = "...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),"
     expect(chat).toContain(team)
     expect(team).not.toMatch(/request|message|routed|ask/)
-    expect(chat).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
+    expect(chat).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
+    expect(chat).toContain("return lead(laneAsk, roundSignal, solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS } : {})")
     expect(chat).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(chat).toContain("const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)\n        && (turn?.report === true || takesCompanyLane(")
   })

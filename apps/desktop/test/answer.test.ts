@@ -92,6 +92,27 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.error).toBe('서가 정리 중')
   })
 
+  it('shows the ack before slow work a round does ahead of the lead, and that round\'s own limits reach the engine', async () => {
+    const shown: number[] = [], started = performance.now()
+    let calls = 0
+    const engine = fake(async job => { calls = job.maxCalls; return '주차장은 지하 2층이에요.' }, async () => '안내도부터 볼게요.')
+    await answer(await openWorld(await temp(), engine), '주차장 어디야?', {
+      ack: { show: () => { shown.push(performance.now() - started) } },
+      maxCalls: 9,
+      rounds: async lead => { await wait(400); return lead('주차장 어디야?', new AbortController().signal, { maxCalls: 2 }) },
+    })
+    expect(shown).toHaveLength(1)
+    expect(shown[0]!).toBeLessThan(400)
+    expect(calls).toBe(2)
+  })
+
+  it('ipc runs the lane\'s first search inside the answer\'s rounds, after the ack has started', () => {
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    const call = ipc.indexOf('await answer({ paths, botId: bot.id')
+    expect(ipc.slice(0, call)).not.toMatch(/await searchFor\(/)
+    expect(ipc.slice(call)).toMatch(/rounds: lead => [^]*?searched = await searchFor\(/)
+  })
+
   it('ipc makes a bot\'s answer through answer, with no runComet call of its own', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/\brunComet\b/)

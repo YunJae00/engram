@@ -35,7 +35,7 @@ export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' 
   ack?: Partial<Omit<AckInputs, 'message' | 'workdir' | 'signal'>> & { now?: boolean; reply?: boolean }
   held?: boolean
   context?(): string
-  rounds?(round: (ask: string, signal: AbortSignal) => Promise<AgentLoopResult>): Promise<AgentLoopResult>
+  rounds?(round: (ask: string, signal: AbortSignal, more?: Partial<LoopOptions>) => Promise<AgentLoopResult>): Promise<AgentLoopResult>
   onToken?(text: string, held: boolean): void
   onReset?(drop?: boolean, tool?: string): void
   onStep?(line: string): void
@@ -96,11 +96,12 @@ export async function answer(world: World, message: string, options: AnswerOptio
     if (now) firstLineNow(channel, message, korean)
     const talked = reply === false ? undefined : await smallTalkAnswer(channel)
     const note = firstLineNote(channel)
-    const lead = (ask: string, within: AbortSignal): Promise<AgentLoopResult> => { const notes = [context?.(), note].filter(Boolean).join('\n\n'); return runComet({ engine, workdir: engineCwd(paths), tools: tools ?? worldTools(world, message, signal), ...(imagePaths ? { imagePaths } : {}) }, ask, {
+    const lead = (ask: string, within: AbortSignal, more: Partial<LoopOptions> = {}): Promise<AgentLoopResult> => { const notes = [context?.(), note].filter(Boolean).join('\n\n'); return runComet({ engine, workdir: engineCwd(paths), tools: tools ?? worldTools(world, message, signal), ...(imagePaths ? { imagePaths } : {}) }, ask, {
       guided: false,
       session: botId,
       history: world.history,
       ...loop,
+      ...more,
       signal: within,
       ...(takeSteer ? { takeSteer } : {}),
       ...(notes ? { attachmentContext: notes } : {}),
