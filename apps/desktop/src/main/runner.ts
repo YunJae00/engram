@@ -7,6 +7,7 @@ import { loadBots, type Engine } from 'core'
 import { answer, openWorld, type AnswerTrace } from './answer.js'
 import type { ClaudeInputs } from './engine-claude.js'
 import { SessionPool } from './engine-claude-session.js'
+import { openStudies } from './study-offers.js'
 
 export interface SiteLog { visits: string[]; posts: string[] }
 export interface CaseRun {
@@ -31,7 +32,7 @@ export interface CaseRow {
   checks: Record<string, boolean>
   firstMs: number | null
   finalMs: number
-  end: AnswerTrace['end']
+  end: AnswerTrace['end'] | 'error'
   error?: string
 }
 
@@ -76,25 +77,32 @@ export function runtimeInputs(home: string, env: NodeJS.ProcessEnv = process.env
 
 async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number): Promise<CaseRow> {
   const log: SiteLog = { visits: [], posts: [] }
-  const { url, server } = await servePages(one, log)
-  const dir = await mkdtemp(join(out, `${one.id}-`))
   const stop = new AbortController()
   const timer = setTimeout(() => stop.abort(), deadlineMs)
   const steer: string[] = []
   const aside = one.aside && setTimeout(() => steer.push(one.aside!.text), one.aside.afterMs)
+  let trace: AnswerTrace | undefined, checks: Record<string, boolean> = {}, failure: string | undefined
+  let server: Server | undefined, dir: string | undefined
   try {
+    const served = await servePages(one, log)
+    server = served.server
+    dir = await mkdtemp(join(out, `${one.id}-`))
     const world = await openWorld(dir, engine)
-    const trace = await answer(world, one.ask(url), { signal: stop.signal, takeSteer: () => steer.splice(0) })
+    trace = await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0) })
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
-    const checks = one.grade({ answers: [trace.final.text], site: log, offers: [], tasks })
-    await writeFile(join(out, `${one.id}.json`), JSON.stringify({ id: one.id, ...trace, site: log, checks }, null, 2))
-    return { id: one.id, pass: !trace.error && trace.end === 'done' && Object.values(checks).every(Boolean), checks, firstMs: trace.first?.ms ?? null, finalMs: trace.final.ms, end: trace.end, ...(trace.error ? { error: trace.error } : {}) }
+    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks })
+  } catch (cause) {
+    failure = cause instanceof Error ? cause.message : String(cause)
   } finally {
     clearTimeout(timer)
     if (aside) clearTimeout(aside)
-    server.close()
-    await rm(dir, { recursive: true, force: true })
+    server?.close()
+    if (dir) await rm(dir, { recursive: true, force: true })
   }
+  const error = failure ?? trace?.error
+  const end = trace?.end ?? 'error'
+  await writeFile(join(out, `${one.id}.json`), JSON.stringify({ id: one.id, ...trace, end, site: log, checks, ...(error ? { error } : {}) }, null, 2))
+  return { id: one.id, pass: !error && end === 'done' && Object.values(checks).every(Boolean), checks, firstMs: trace?.first?.ms ?? null, finalMs: trace?.final.ms ?? 0, end, ...(error ? { error } : {}) }
 }
 
 export async function runCases(cases: EvalCase[], engine: Engine, options: { out: string; workers: number; deadlineMs: number }): Promise<CaseRow[]> {
@@ -102,7 +110,7 @@ export async function runCases(cases: EvalCase[], engine: Engine, options: { out
   const queue = [...cases], rows: CaseRow[] = []
   await Promise.all(Array.from({ length: Math.max(1, Math.min(options.workers, queue.length)) }, async () => {
     for (let one = queue.shift(); one; one = queue.shift()) {
-      const row = await runCase(one, engine, options.out, options.deadlineMs).catch((cause): CaseRow => ({ id: one!.id, pass: false, checks: {}, firstMs: null, finalMs: 0, end: 'done', error: cause instanceof Error ? cause.message : String(cause) }))
+      const row = await runCase(one, engine, options.out, options.deadlineMs).catch((cause): CaseRow => ({ id: one!.id, pass: false, checks: {}, firstMs: null, finalMs: 0, end: 'error', error: cause instanceof Error ? cause.message : String(cause) }))
       rows.push(row)
     }
   }))

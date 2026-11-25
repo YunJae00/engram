@@ -3,7 +3,7 @@ import { changeStudies, installSkill, readBotTranscript, readStudies, studyCandi
 import type { ChatRequestDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { dismissStudyOffers } from './study-offers.js'
+import { addStudyOffer, dismissStudyOffers, openStudies } from './study-offers.js'
 import { afterChecks, offeredIn, studying } from './turn-state.js'
 
 interface StudyIpcDeps {
@@ -22,7 +22,7 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
   }
   const offerStudy = async (botId: string, input: { what: string; where: string[] }, ask: string): Promise<void> => {
     offeredIn.add(`bot-${botId}`)
-    await changeStudies(deps.paths, list => [...list.filter(one => !(one.botId === botId && one.state === 'offered')), { id: `study-${Date.now().toString(36)}`, botId, ...input, ask, state: 'offered', at: new Date().toISOString() }])
+    await addStudyOffer(deps.paths, botId, input, ask)
     broadcast({ type: 'study:changed', botId })
   }
   const studyFound = async (botId: string, draft: SkillDraft): Promise<boolean> => {
@@ -31,8 +31,7 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
     if (found) broadcast({ type: 'study:changed', botId })
     return found
   }
-  const studiesFor = async (botId: string) => (await readStudies(deps.paths)).filter(one => one.botId === botId && (one.state === 'offered' || one.state === 'studying' || one.state === 'review'))
-  ipcMain.handle('study:list', async (_e, botId: unknown) => typeof botId === 'string' ? studiesFor(botId) : [])
+  ipcMain.handle('study:list', async (_e, botId: unknown) => typeof botId === 'string' ? openStudies(deps.paths, botId) : [])
   ipcMain.handle('study:answer', async (_e, id: unknown, answer: unknown): Promise<{ ask?: string }> => {
     const study = (await readStudies(deps.paths)).find(one => one.id === id)
     if (!study) throw new Error('That study is gone.')

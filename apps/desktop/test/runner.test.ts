@@ -99,6 +99,44 @@ describe('the trace of one case', () => {
   })
 })
 
+describe('what a case is graded on', () => {
+  it('grades the study offers the answer made in its own world', async () => {
+    const engine = fakeEngine(async (job, call) => {
+      if (job.prompt.includes('양봉')) await call('offer_study', { what: '양봉 일지 쓰는 법', where: ['농장 기록장'] })
+      return '그건 아직 몰라요.'
+    })
+    const offered: Record<string, string[]> = {}
+    const hive = (id: string, ask: string): EvalCase => ({ id, ask: () => ask, grade: run => { offered[id] = run.offers.map(one => one.what); return {} } })
+    await runCases([hive('bees', '양봉 일지 정리해줘'), hive('hay', '건초 몇 단이야?')], engine, { out: await temp(), workers: 2, deadlineMs: 10_000 })
+    expect(offered).toEqual({ bees: ['양봉 일지 쓰는 법'], hay: [] })
+  })
+
+  it('hands a message sent mid-work to the model and grades the answer that took it in', async () => {
+    const prompts: string[] = []
+    const engine = fakeEngine(async job => {
+      prompts.push(job.prompt)
+      if (prompts.length === 1) { await new Promise(resolve => setTimeout(resolve, 120)); return '감자는 3포대예요.' }
+      return '감자 3포대, 고구마 2포대예요.'
+    })
+    const out = await temp()
+    const [row] = await runCases([{ id: 'cellar', ask: () => '창고에 감자 몇 포대야?', aside: { afterMs: 20, text: '고구마도 같이 세어줘' }, grade: run => ({ both: run.answers[0]!.includes('고구마') }) }], engine, { out, workers: 1, deadlineMs: 10_000 })
+    expect(prompts.slice(1).join('\n')).toContain('고구마도 같이 세어줘')
+    expect(row).toMatchObject({ pass: true, end: 'done' })
+  })
+
+  it('still writes the trace when the case fails outside the answer', async () => {
+    const out = await temp()
+    const rows = await runCases([
+      { id: 'broken-scale', ask: () => '무게 재줘', grade: () => { throw new Error('scale jammed') } },
+      { id: 'no-question', ask: () => { throw new Error('ask lost') }, grade: () => ({}) },
+    ], fakeEngine(async () => '12킬로예요.'), { out, workers: 1, deadlineMs: 10_000 })
+    expect(rows.map(row => [row.id, row.pass, row.end, row.error])).toEqual([['broken-scale', false, 'done', 'scale jammed'], ['no-question', false, 'error', 'ask lost']])
+    const scale = JSON.parse(await readFile(join(out, 'broken-scale.json'), 'utf8'))
+    expect(scale).toMatchObject({ final: { text: '12킬로예요.' }, error: 'scale jammed' })
+    expect(JSON.parse(await readFile(join(out, 'no-question.json'), 'utf8'))).toMatchObject({ end: 'error', error: 'ask lost' })
+  })
+})
+
 describe('the summary table and the runtime inputs', () => {
   it('lists the failed checks and the error of each row', () => {
     expect(summaryTable([{ id: 'fig', pass: false, checks: { ripe: false, picked: true }, firstMs: null, finalMs: 12, end: 'done', error: 'boom' }])).toContain('| fig | FAIL | - | 12 | done | ripe, boom |')

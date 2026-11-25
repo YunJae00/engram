@@ -1,6 +1,7 @@
 import { join } from 'node:path'
-import { addBotTask, createBot, engineCwd, initVault, loadBots, removeBotTask, runComet, type Engine, type VaultPaths, type WebCourier } from 'core'
+import { addBotTask, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type Engine, type VaultPaths, type WebCourier } from 'core'
 import { fetchPlainPage } from './plain-page.js'
+import { addStudyOffer } from './study-offers.js'
 import { toolKit } from './tool-kit.js'
 
 export interface World {
@@ -52,7 +53,7 @@ export async function answer(world: World, message: string, options: { signal?: 
     },
   })
   try {
-    const result = await runComet({ engine, workdir: engineCwd(paths), tools: [...kit.web, ...kit.team, ...kit.learning] }, message, {
+    const result = await runComet({ engine, workdir: engineCwd(paths), tools: [...kit.web, ...kit.team, ...kit.learning, offerStudyTool({ offer: input => addStudyOffer(paths, botId, input, message) })] }, message, {
       guided: false,
       session: botId,
       history: world.history,
