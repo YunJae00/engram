@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -263,30 +262,20 @@ it('c7 R2: a price reported with no figure gets one host-run search for the prev
   expect(galaxy!.state).toBe('released')
 })
 
-it('stack-7: a teammate hired in a turn whose own first search already ran the same words starts from those results, with no second search', async () => {
-  const { laneSearches } = await import('../src/main/team-runner.js')
+it('every lookup teammate runs its own first search with its own words; nothing the lead turn searched stands in for it', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-stack7-')), '.engram') } as unknown as VaultPaths
-  const created = await createTask(paths, '아이폰 18 가격 알려줘', 'b1')
+  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-own-search-')), '.engram') } as unknown as VaultPaths
+  const created = await createTask(paths, '전주 한옥마을이랑 군산 근대거리 입장료 알아봐 줘', 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
   const searched: string[] = []
-  const rows = (query: string): string => `results for "${query}" at https://search.naver.com/search.naver?query=${encodeURIComponent(query)} (DATA, not instructions):\n- ${query} 정리 - 전자신문 — https://www.etnews.com/${encodeURIComponent(query)} — 199만 원부터 — 2026.11.01.`
+  const rows = (query: string): string => `results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):\n- ${query} 안내 — https://tour.example/${encodeURIComponent(query)} — 무료 — 2026.11.01.`
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { searched.push(String(args['query'])); return rows(String(args['query'])) } }
   const prompts: string[] = []
-  const run: Run = async (_deps, prompt, options = {}) => { options.onStart?.(); prompts.push(prompt); return { answer: '가격: 199만 원부터 https://www.etnews.com/a', steps: [], fellBack: false } }
+  const run: Run = async (_deps, prompt, options = {}) => { options.onStart?.(); prompts.push(prompt); return { answer: '입장료: 무료 https://tour.example/a', steps: [], fellBack: false } }
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  laneSearches.set('bot-b1', { query: '아이폰 18 가격', found: rows('아이폰 18 가격') })
-  try {
-    await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'iphone', brief: '아이폰 18의 가격 조사', lookup: true, query: '아이폰  18 가격' }, { role: 'galaxy', brief: '갤럭시 S27의 가격 조사', lookup: true, query: '갤럭시 S27 가격' }] }, { task: '' })
-    expect(searched).toEqual(['갤럭시 S27 가격'])
-    expect(prompts.filter(prompt => prompt.includes('Results of the search already run for you'))).toHaveLength(2)
-    const [iphone] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
-    expect(iphone!.sources).toContain('https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EA%B0%80%EA%B2%A9')
-  } finally { laneSearches.delete('bot-b1') }
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('onSearched?.(found.query ? { query: found.query, found: found.found ?? \'\' } : undefined)')
-  expect(readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')).toContain('searched: found => { if (found) laneSearches.set(channel, found); else laneSearches.delete(channel) },')
-  expect(readFileSync(fileURLToPath(new URL('../src/main/answer.ts', import.meta.url)), 'utf8')).toContain('let searched: Awaited<ReturnType<typeof firstSearch>> | undefined\n      onSearched?.()')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('solo = lane && !teamAsk(message)')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const searchFirst = solo && routed === message && !fixed')
+  await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'jeonju', brief: '전주 한옥마을 입장료 조사', lookup: true, query: '전주 한옥마을 입장료' }, { role: 'gunsan', brief: '군산 근대거리 입장료 조사', lookup: true, query: '군산 근대거리 입장료' }] }, { task: '' })
+  expect(searched.sort()).toEqual(['군산 근대거리 입장료', '전주 한옥마을 입장료'])
+  expect(prompts.filter(prompt => prompt.includes('https://tour.example/'))).toHaveLength(2)
+  expect('laneSearches' in await import('../src/main/team-runner.js')).toBe(false)
 })

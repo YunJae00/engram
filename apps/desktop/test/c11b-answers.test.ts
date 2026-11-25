@@ -1,20 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { keepRead, runComet, skipWalls, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
+import { runComet, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
 import * as lane from '../src/main/fast-lane.js'
-import { asideShape, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
+import { asideShape, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8')
 async function turn(page: string, ask: string, draft: string) {
   const quick = vi.fn(async () => '')
-  let out = '', told = ''
+  let out = ''
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page }
-  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
-  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
-  return { out, told, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
+  const result = await runComet({ engine, workdir: '.' as never, tools: [search] }, ask, { guided: false })
+  return { out, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
 }
 
 describe('an answer asked for in another language reaches the thread whole (Q3 class)', () => {
@@ -29,7 +29,7 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
       expect(result.answer, answer).toBe(answer)
     }
     expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
     const ipc = src('ipc.ts')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
@@ -98,24 +98,22 @@ describe('a counted list\'s rows go to the writing model as the search gave them
     expect(judged.out).toBe(held[0])
     expect(judged.answer).toBe(picked)
   })
-  it('adds no count line and no lead of its own: a short list\'s lead is the model\'s, asked of it by the note', async () => {
+  it('adds no count line and no lead of its own: a short list\'s lead is the model\'s', async () => {
     const draft = `세 건을 찾으셨는데 수출 실적 기사는 두 건이에요.\n\n${item(1, '10월 수출이 13% 늘었어요.')}\n${item(3, 'HBM 수출이 가장 많았어요.')}`
     const judged = await turn(held[0]!, '이달 반도체 수출 기사 세 건 골라줘', draft)
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
     expect(judged.judged).toBe(0)
     expect(judged.out).not.toContain('of these rows are from the period asked')
     expect(judged.out.split('\n').filter(line => !line.startsWith('- ') && !line.startsWith('results for ') && /[가-힣]/.test(line))).toEqual([])
-    expect(judged.told).toContain('when it is fewer the lead says in one plain clause how many there are, in your own words')
     expect(judged.answer).toBe(draft)
   })
   it('leaves a same-event group and a page that may not open to the model: every row reaches it, and no link is tested after it writes', async () => {
     const draft = [item(1, '10월 수출이 13% 늘었어요.'), item(2, '수출 비중이 가장 높았어요.')].join('\n')
     const judged = await turn(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', draft)
     expect(judged.rows).toEqual(rows.map(row => / — (https?:\S+)/.exec(row)![1]!))
-    expect(judged.told).toContain('never two items about the same event')
     expect(judged.answer).toBe(draft)
     const ipc = src('ipc.ts')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/keepRead|skipWalls/)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
   it('an ask with no count, one whose count changed mid-work and a list of places all get the rows as they came', async () => {
@@ -137,19 +135,17 @@ describe('words said mid-work: a remark goes on, a change needs a named thing (H
   it('takes complaints, questions about the wait and thanks as remarks, in any wording', () => {
     for (const said of ['아 진짜 오래 걸리네', '아직이야?', '하 답답하다 진짜', '이거 왜 안 끝나', '아직도야?', '수고했어 고마워', '반도체 아직이야?'])
       expect(asideShape(said, ask), said).toBe('remark')
-    for (const said of ['아 진짜 오래 걸리네', '아직이야?']) expect(swappedAsk(ask, said)).toBeUndefined()
   })
   it('takes a new subject as a replacement and a new scope as an addition', () => {
     expect(asideShape('그냥 테슬라로 해', ask)).toBe('replace')
-    expect(swappedAsk('엔비디아 오늘 주가 알려줘', '그냥 테슬라로 해')).toBe('테슬라 오늘 주가 알려줘')
     expect(asideShape('광주도 넣어', '서울 부산 날씨 알려줘')).toBe('add')
     expect(asideShape('고마워, 디스플레이 넣어줘', ask)).not.toBe('remark')
     expect(asideShape('표로 보여줘', ask)).toBe('other')
-    expect(swappedAsk(ask, '표로 해줘')).toBeUndefined()
+    expect(asideShape('표로 해줘', ask)).not.toBe('replace')
   })
 })
 
-it('c11b r2, r3: a row dated outside the asked period reaches the writer with its date, and how an older item is told is the note\'s rule', async () => {
+it('c11b r2, r3: a row dated outside the asked period reaches the writer with its date, and the answer is posted as written', async () => {
   const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
   for (const ask of ['요즘 국내 핀테크 투자 뉴스 2개만', '최근 배터리 업계 소식 2건', '이번 달 조선업 기사 2개']) {
     const draft = '이번 달 기사는 한 건이에요. [뉴스](https://news.example/new)'
@@ -157,7 +153,6 @@ it('c11b r2, r3: a row dated outside the asked period reaches the writer with it
     expect(judged.rows, ask).toEqual(['https://news.example/old', 'https://news.example/new', 'https://news.example/title'])
     expect(judged.out).toContain('https://news.example/old — 2025.11.01.')
     expect(judged.judged).toBe(0)
-    expect(judged.told).toContain('"올해" is never said over an item of another year')
     expect(judged.answer).toBe(draft)
   }
 })
@@ -167,5 +162,5 @@ it('c13b (c11b r3): no host line goes under a delivered list: the shortfall line
   expect('withoutOff' in lane).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/listShortfall|withoutOff|itemsOff|딱 맞는 건|확인된 건/)
-  expect(lane.LANE_NOTE).toContain('when it is fewer the lead says in one plain clause how many there are, in your own words')
+  expect('LANE_NOTE' in lane).toBe(false)
 })

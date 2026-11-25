@@ -18,7 +18,7 @@ import { answer, openWorld } from '../src/main/answer.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
-import { fastLane, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
+import { SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { answerOnly, asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
@@ -249,31 +249,30 @@ describe('the first line is a waiting line, not part of the answer', () => {
 })
 
 describe('nothing is said before or between tool calls once the host has spoken', () => {
-  const streamed = async (pieces: string[], options: { lane?: boolean; ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
+  const streamed = async (pieces: string[], options: { ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-'))
     try {
       const engine = { id: options.ack ? 'claude' : 'mock', desktopToolIsolation: true, quick: async () => options.ack, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { onToken?(text: string): void }) => { for (const piece of pieces) job.onToken?.(piece); return { answer: pieces.at(-1)! } } } as unknown as Engine
       const seen: { text: string; held: boolean }[] = []
-      const search = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => '' }
-      await answer(await openWorld(root, engine), options.lane ? '오늘 서울 날씨 어때?' : '분기 실적 슬라이드 정리해줘', { ...(options.lane ? { plainAsk: true, tools: [search] } : {}), onToken: (text, held) => { seen.push({ text, held }) } })
+      await answer(await openWorld(root, engine), '분기 실적 슬라이드 정리해줘', { onToken: (text, held) => { seen.push({ text, held }) } })
       return seen
     } finally { await rm(root, { recursive: true, force: true }) }
   }
 
   it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', async () => {
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
-      for (const options of [{ ack: '실적 표부터 볼게요.' }, { lane: true }]) {
+      for (const options of [{ ack: '실적 표부터 볼게요.' }, { ack: '슬라이드 순서부터 훑어볼게요.' }]) {
         const seen = await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], options)
         expect(seen.map(one => one.held), narration).toEqual([true, true])
       }
     }
-    expect(source('answer.ts')).toContain('const hold = lane || !!firstLineNote(channel)')
+    expect(source('answer.ts')).toContain('const hold = !!firstLineNote(channel)')
   })
 
   it('shows no round of a general turn as it comes, however long', async () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
       expect([...narration].length).toBeGreaterThan(200)
-      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { lane: true }]) {
+      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { ack: '분기 숫자부터 맞춰 볼게요.' }]) {
         const seen = await streamed(narration.match(/.{1,40}/g)!, options)
         expect(seen.every(one => one.held), narration.slice(0, 30)).toBe(true)
       }
@@ -352,13 +351,12 @@ describe('short asks, statements and corrections', () => {
     for (const message of ['아 지민호 말고 민호야', '11월 매출 합계 알려줘', '서울 말고 다른 도시들 날씨도 전부 조사해서 지역별로 표 만들고 주말 예보까지 길게 붙여서 다시 정리해줘 그리고 대구도', '고마워']) expect(isCorrection(message), message).toBe(false)
     const earlier = [{ role: 'user', text: '엔비디아 오늘 주가 알려줘' }, { role: 'assistant', text: '162.85달러예요.' }]
     expect(routeAsk('그냥 애플로 바꿔', earlier)).toBe('엔비디아 오늘 주가 알려줘')
-    expect(fastLane(routeAsk('그냥 애플로 바꿔', earlier), true)).toBe(true)
     const file = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 합계는 1,310만 원이에요.' }]
     expect(deskKind(routeAsk('아 그거 말고 11월 걸로', file))).toBe('file')
     expect(routeAsk('아 그거 말고 11월 걸로', [])).toBe('아 그거 말고 11월 걸로')
     expect(routeAsk('아 지민호 말고 민호야', earlier)).toBe('아 지민호 말고 민호야')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const routed = routeAsk(message, world.history)')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const lane = !company && fastLane(routed, plainAsk)')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
   })
 })
 

@@ -5,7 +5,6 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { askNow } from '../src/main/desk-lane.js'
 import * as desk from '../src/main/desk-lane.js'
-import { LANE_NOTE } from '../src/main/fast-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
@@ -68,7 +67,6 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
     expect(urls(out)).toEqual(rows.map((_, i) => `https://news.example/${i + 1}`))
     expect(out).not.toContain('of these rows are from the period asked')
     expect(out).not.toContain(kind)
-    expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them')
   })
 })
 

@@ -17,7 +17,6 @@ interface AsideIpcDeps {
   setOffersAside(botId: string): Promise<void>
   stop?(channel: string, said: string): Promise<void>
   voice?(channel: string): Promise<Pick<Engine, 'id' | 'quick'> | undefined>
-  changed?(channel: string, said: string): void
 }
 
 export const ASIDE_REPLY_MS = 1300
@@ -145,7 +144,6 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
       await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
       asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
       hold?.(said)
-      deps.changed?.(channel, said)
     }
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     const reply = answer ?? voiced?.line ?? fixedAsideReply(said, korean)

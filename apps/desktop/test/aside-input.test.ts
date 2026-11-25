@@ -268,18 +268,18 @@ it('stack-7: a lookup\'s first line still live when the person speaks mid-work i
   } finally { vi.mocked(broadcast).mockReset(); endFirstLine('bot-t2'); await rm(cache, { recursive: true, force: true }) }
 })
 
-it('offers handed words to the running lookup after queueing them, and never a remark', async () => {
+it('holds a change said mid-work for the running turn, and never a remark', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const cache = await mkdtemp(join(temporary, 'aside-changed-'))
   const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const order: string[] = []
-  const voice = { id: 'claude', quick: async (prompt: string) => prompt.includes('느려') ? 'REMARK: 거의 다 찾았어요.' : 'CHANGE: 애플로 바꿔서 볼게요.' }
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), changed: (_channel, said) => order.push(`changed ${said}`), setOffersAside: async () => {}, voice: async () => voice })
+  const voice = { id: 'claude', quick: async (prompt: string) => prompt.includes('언제 돼') ? 'REMARK: 금방 올릴게요.' : 'CHANGE: 대전도 같이 볼게요.' }
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), setOffersAside: async () => {}, voice: async () => voice })
   try {
-    await handlers.get('chat:say')!({}, 'bot-swap', '그냥 애플로 바꿔')
-    await handlers.get('chat:say')!({}, 'bot-swap', '아 왜 이렇게 느려')
-    expect(order).toEqual(['held 그냥 애플로 바꿔', 'changed 그냥 애플로 바꿔'])
+    await handlers.get('chat:say')!({}, 'bot-swap', '대전 숙소도 끼워서 봐줄래')
+    await handlers.get('chat:say')!({}, 'bot-swap', '이거 언제 돼')
+    expect(order).toEqual(['held 대전 숙소도 끼워서 봐줄래'])
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
 

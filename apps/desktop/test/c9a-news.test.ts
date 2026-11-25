@@ -1,17 +1,23 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { cometTools, keepRead, runComet, skipWalls, type AgentTool, type Engine, type ToolSessionJob } from 'core'
+import { cometTools, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
-import { LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS } from '../src/main/fast-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 
 const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 async function turn(page: string, ask: string, draft: string) {
   const quick = vi.fn(async () => '')
-  let out = '', told = ''
-  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page }
-  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
-  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
-  return { out, told, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+  let out = '', ran = 0
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => { ran++; return page } }
+  const engine = { id: 'claude', quick, detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
+  const dir = await mkdtemp(join(tmpdir(), 'c9a-news-'))
+  try {
+    const { result } = await answer(await openWorld(dir, engine), ask, { tools: [search], plainAsk: false, ack: { interactive: false } })
+    return { out, ran, answer: result?.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+  } finally { await rm(dir, { recursive: true, force: true }) }
 }
 
 const r3Rows = [
@@ -30,25 +36,23 @@ test('c9a R3: the run\'s four rows for five asked reach the model with no host v
     '정부, 2030년까지 기업가치 1조 AI 스타트업 20곳 육성 지원 계획 발표 — 11월 11일 [헤럴드경제](https://biz.heraldcorp.com/article/10000003)',
     "젠슨 황 퇴진 소식에 글로벌 AI 스타트업 투자 환경 '비상' — 11월 16일 [조선일보](https://www.chosun.com/economy/2026/11/16/x)"].join('\n')
   expect(answer).toContain('벤처투자 12조6248억')
-  const { out, rows, told, judged, answer: posted } = await turn(r3Rows, ask, answer)
+  const { out, rows, judged, answer: posted } = await turn(r3Rows, ask, answer)
   expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001', 'https://news.mt.co.kr/mtview.php?no=2026111700002', 'https://biz.heraldcorp.com/article/10000003', 'https://www.chosun.com/economy/2026/11/16/x'])
   expect(out).toBe(r3Rows)
   expect(judged).toBe(0)
-  expect(told).toContain('When the results say how many of the asked number are here, that is the count: list them, and when it is fewer the lead says in one plain clause how many there are, in your own words.')
   expect(posted).toBe(answer)
 })
 
-test('c9a H6: the same rows with three asked; the aggregate figure reaches the model like any row, the note says it is no item, and the answer written is the answer posted', async () => {
+test('c9a H6: the same rows with three asked; the aggregate figure reaches the model like any row, and the answer written is the answer posted', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘'
   const answer = ["'의료로봇 스타트업' 메디인테크가 11월 17일 338억 원 규모 시리즈C 투자를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)", '',
     '정부가 2030년까지 기업가치 1조 원 이상의 AI 스타트업 20곳을 육성하겠다고 11월 11일 발표했어요. [헤럴드경제](https://biz.heraldcorp.com/article/10000003)', '',
     '올해 1~3분기 국내 벤처투자액이 12조6248억 원으로 역대 최대를 기록했어요. [머니투데이](https://news.mt.co.kr/mtview.php?no=2026111700002)'].join('\n')
   expect(answer).toContain('https://news.mt.co.kr/mtview.php?no=2026111700002')
-  const { out, rows, told, answer: posted } = await turn(r3Rows, ask, answer)
+  const { out, rows, answer: posted } = await turn(r3Rows, ask, answer)
   expect(rows).toHaveLength(4)
   expect(out).toContain('벤처투자 12조6248억')
   expect(out).not.toContain('of these rows are from the period asked')
-  expect(told).toContain('a statistic, a plan or an opinion piece that only touches the topic is not one')
   expect(posted).toBe(answer)
 })
 
@@ -69,7 +73,6 @@ test('c9a R3: five rows for five asked reach the model whole, the trend row amon
   expect(all.rows).toContain('https://e.example/5')
   expect(all.judged).toBe(0)
   expect(all.answer).toBe(answer)
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('map(tool => keepRead(skipWalls(tool), laneRead))')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(COLLEAGUE_CORE_RULE).toContain('with the address copied exactly from what a tool returned')
 })

@@ -25,8 +25,6 @@ export const emptyRetryNote = (words: readonly string[], others: readonly string
 
 type Deps = Parameters<typeof runComet>[0]
 type Native = NonNullable<Parameters<typeof runComet>[2]>['native']
-export const laneSearches = new Map<string, { query: string; found: string }>()
-const sameWords = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase()
 export const memberLane = (channel: string, id: string): string => `${channel}~team-${id}`
 const laneMember = (lane: string): RegExpExecArray | null => /^(bot-[^~]+)~team-(m\d+)$/.exec(lane)
 export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
@@ -171,11 +169,10 @@ export function teamRunner(deps: {
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
         if (search) {
           begun()
-          const held = laneSearches.get(leadChannel), task = prompt
+          const task = prompt
           const founds: (FirstSearch & { found: string; own?: boolean })[] = []
           for (const one of firstSearches(me, goal)) {
-            const already = held && sameWords(held.query, one.query) ? held.found : undefined, args = { query: one.query, ...(one.news ? { kind: 'news' } : {}) }
-            const raw = menu.find(tool => tool.name === 'search_web')!, found = await (already !== undefined ? boxed({ ...raw, run: async () => already }) : search).run(args, { task, signal: control.signal }).catch(() => '')
+            const found = await search.run({ query: one.query, ...(one.news ? { kind: 'news' } : {}) }, { task, signal: control.signal }).catch(() => '')
             if (/^results for "/.test(found)) founds.push({ ...one, ...(one.maker ? makerFirst(found, one.maker) : { found }) })
           }
           if (founds.length) { read = true; prompt += firstFound(founds) }

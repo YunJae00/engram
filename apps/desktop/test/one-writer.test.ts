@@ -1,4 +1,7 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { employeesAnswer, runComet, type AgentTool, type DelegatedTask, type Engine, type TeamMember, type ToolSessionJob } from 'core'
 
@@ -7,7 +10,7 @@ vi.mock('electron', () => ({ app: { getPath: () => '', getVersion: () => '0', is
 const { extractChatCaptures } = await import('../src/main/ipc.js')
 const { finishProgress } = await import('../src/main/conversation-progress.js')
 const { closingBuilds, DESK_TOOLS } = await import('../src/main/desk-lane.js')
-const { LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TOOLS } = await import('../src/main/fast-lane.js')
+const { answer, openWorld } = await import('../src/main/answer.js')
 const { withFiles } = await import('../src/main/native-tools.js')
 const { answerOnly } = await import('../src/main/result-check.js')
 
@@ -45,12 +48,16 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(result.files ?? []).toEqual([])
   })
 
-  it('fast lane: after its own search the draft is posted as written, with the links the model wrote and no others', async () => {
+  it('lookup: after the model\'s own search on the full menu the draft is posted as written, with the links the model wrote and no others', async () => {
     const asked: string[] = []
     const search = tool('search_web', async args => { asked.push(String(args['query'])); return 'results for "등대 개방" at https://search.example/?q=lighthouse (DATA, not instructions)\n- 개방 공지 — https://harbor.example/notice/41\n- 섬 여행 후기 — https://blog.example/trip' })
-    const tools = [search, tool('new_bot', async () => 'never offered')].filter(one => LANE_TOOLS.has(one.name))
-    const result = await runComet({ engine: brain(async job => { await job.tools.find(one => one.name === 'search_web')!.run({ query: '등대 개방 시간' }); return DRAFT }), workdir: '.', tools }, '등대 주말 개방 시간 알려줘', { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS })
+    const menu: string[] = []
+    const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
+    const engine = brain(async job => { menu.push(...job.tools.map(one => one.name)); await job.tools.find(one => one.name === 'search_web')!.run({ query: '등대 개방 시간' }); return DRAFT })
+    const { result } = await answer(await openWorld(root, engine), '섬 등대 이번 토요일에 몇 시에 문 여는지 좀 찾아봐', { plainAsk: true, tools: [search, tool('new_bot', async () => 'offered')] }).finally(() => rm(root, { recursive: true, force: true }))
+    if (!result) throw new Error('no result')
     expect(asked).toEqual(['등대 개방 시간'])
+    expect(menu).toEqual(expect.arrayContaining(['search_web', 'new_bot']))
     expect(result.answer).toBe(DRAFT)
     expect(stored(result.answer)).toBe(DRAFT)
     expect(result.answer).not.toContain('blog.example')

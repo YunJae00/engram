@@ -11,7 +11,6 @@ import { closingBuilds } from '../src/main/desk-lane.js'
 import * as desk from '../src/main/desk-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 import * as fastLane from '../src/main/fast-lane.js'
-import { laneToday } from '../src/main/fast-lane.js'
 import { answerOnly } from '../src/main/result-check.js'
 import { answerBubbles } from '../src/renderer/src/markdown.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
@@ -19,7 +18,7 @@ import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const DESK_FNS = ['askNow', 'closingBuilds', 'deskKind', 'deskLane', 'deskLight', 'fileGiven', 'fixSlideTitle', 'isCorrection', 'keptFix', 'kindSortAsk', 'namedText', 'onlyTells', 'plainKeep', 'routeAsk', 'slideTitleFix', 'sortByKind']
 const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fallbackLine', 'firstLineCarried', 'firstLineNote', 'firstLineNow', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineWaiting', 'greeting', 'laneLine', 'plainReply', 'quickAnswerPrompt', 'saidBefore', 'smallTalkAnswer', 'smallTalkPrompt', 'splitAsk', 'toldPrompt', 'wantsFirstLine', 'warmFirstLine']
-const FAST_FNS = ['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk']
+const FAST_FNS = ['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const temporary = join(root, 'tmp')
@@ -249,14 +248,6 @@ describe('stack-19: "멈춰" halts within 3 s and nothing posts after', () => {
 })
 
 describe('stack-19: fixes after the branch results', () => {
-  it('a lone lookup about today is told to label its fact with the date, and still never to narrate how it got the date', () => {
-    const line = laneToday('오늘 청주 미세먼지 어때?', new Date(2026, 10, 19, 8, 0))
-    expect(line).toContain('오늘 = 11월 19일 목요일')
-    expect(line).toContain('labels each fact with the date it is for')
-    expect(line).toContain('never say how a date was worked out')
-    expect(line).not.toContain('never open on today')
-  })
-
   it('a shorter rewrite keeps the facts of the earlier ask by the model\'s own rule, and what it wrote is posted with nothing put back or repaired', async () => {
     const short = 'Sorry I missed your call this afternoon.'
     let quick = 0

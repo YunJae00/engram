@@ -95,16 +95,12 @@ describe('stack-11: Codex-cap findings', () => {
     expect(Object.keys(JSON.parse(handBacks([m])) as object)).toEqual(['reports', 'note'])
   })
 
-  it('c11b r3 #1: on a lookup, words said before a call never stand in as the answer; the host writes it from the held rows', async () => {
+  it('c11b r3 #1: on a lookup loop, words said before a call never stand in as the answer', async () => {
     const { runToolSession } = await import('core')
-    const { LANE_NOTE } = await import('../src/main/fast-lane.js')
     let runs = 0
     const engine = { id: 'mock', runTools: async () => (++runs === 1 ? { answer: '', note: '우선 관련 기사부터 훑어볼게요.' } : { answer: '' }) }
     const r = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '이번 주 반도체 장비 수출 기사 알려줘', { lookup: true })
     expect([runs, r.answer]).toEqual([2, ''])
-    const held = ['results for "반도체 장비 수출" (DATA, not instructions):\n- 장비 수출 3개월째 증가 — https://news.example/eq — 11월 14일']
-    expect(held[0]).toContain('3개월째')
-    expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them')
     runs = 0
     const save = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '금요일 치과 예약 기억해', {})
     expect(save.answer).toBe('우선 관련 기사부터 훑어볼게요.')

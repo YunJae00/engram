@@ -167,7 +167,7 @@ import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { answerOnly, asksForCheck, checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
-import { canLearnTurn, dropHeldDraft, holdTaskResult } from './task-result-state.js'; import { laneSearches, leadOf, teamRunner } from './team-runner.js'
+import { canLearnTurn, dropHeldDraft, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { taskNotices, surfaceComet } from './task-notify.js'
 import { isKorean, keepStopMark } from './task-closing.js'
@@ -179,10 +179,10 @@ import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { firstLineSaw, firstLineSpoke, firstLineWaiting } from './first-line.js'
-import { beginAnswer, laneChanged, lastReplyOf, type Answering } from './answer.js'
+import { beginAnswer, lastReplyOf, type Answering } from './answer.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
-import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
+import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { PROOF_MS } from './office-agent.js'
@@ -924,7 +924,6 @@ export function registerIpc(ctx: VaultContext): void {
   })
   registerAsideIpc({
     paths,
-    changed: laneChanged,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
     followUp: followUpFor,
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
@@ -2284,8 +2283,6 @@ export function registerIpc(ctx: VaultContext): void {
           remembered,
           shared: personMemory.facts.map(fact => fact.text),
           earlierOutputs,
-          warm: () => void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`)),
-          searched: found => { if (found) laneSearches.set(channel, found); else laneSearches.delete(channel) },
           context: () => [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n'),
           tokenBudget: turn?.tokenBudget,
           onUsage: tokens => { tokensUsed += tokens },

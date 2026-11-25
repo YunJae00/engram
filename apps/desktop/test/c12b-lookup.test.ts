@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { keepRead, runComet, skipWalls, type AgentTool, type Engine, type ToolSessionJob } from 'core'
+import { runComet, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import * as lane from '../src/main/fast-lane.js'
 
-async function turn(page: string, ask: string, draft: string, quick = vi.fn(async () => ''), opening = '') {
-  let out = '', told = ''
+async function turn(page: string, ask: string, draft: string, quick = vi.fn(async () => '')) {
+  let out = ''
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page }
-  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
-  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: lane.LANE_SOLO_CALLS, deadlineMs: lane.LANE_SOLO_SOFT_MS, attachmentContext: [lane.LANE_NOTE, opening].filter(Boolean).join('\n\n') })
-  return { out, told, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
+  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
+  const result = await runComet({ engine, workdir: '.' as never, tools: [search] }, ask, { guided: false })
+  return { out, answer: result.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
 }
 
 const FINTECH = '요즘 국내 핀테크 스타트업 투자 유치 기사 4개만'
@@ -24,29 +24,13 @@ const rows = [
 describe('the rows go to the writing model as they came; no item verdict stands between the search and the model', () => {
   it('a second report of one funding round and a hackathon both reach the model, with the asked count as the search said it; the reply is posted as written', async () => {
     const draft = '네 건을 찾으셨는데 투자 유치는 두 건이에요.\n\n1. 페이플로우가 300억 원 시리즈B를 받았어요. 11월 12일 [기사](https://hk.example/a1)\n2. 렌딧랩이 프리A로 40억 원을 받았어요. 11월 14일 [기사](https://bl.example/a4)'
-    const { out, rows: kept, judged, told, answer } = await turn(page(rows), FINTECH, draft)
+    const { out, rows: kept, judged, answer } = await turn(page(rows), FINTECH, draft)
     expect(judged).toBe(0)
     expect(kept).toEqual(['https://hk.example/a1', 'https://et.example/a2', 'https://ms.example/a3', 'https://bl.example/a4'])
     expect(out).toBe(page(rows))
     expect(out).toContain('They asked for 4: list')
     expect(out).not.toContain('of these rows are from the period asked')
-    expect(told).toContain('never two items about the same event')
     expect(answer).toBe(draft)
-  })
-
-  it('through the host\'s first search: the task opens with every row, the model writes from that opening, and the lane asks it for no second round', async () => {
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => page(rows) }
-    const first = await lane.firstSearch(FINTECH, search)
-    expect(first.opening).toContain('https://hk.example/a1')
-    expect(first.opening).toContain('https://ms.example/a3')
-    expect(first.opening.endsWith(page(rows))).toBe(true)
-    expect(first.calls).toBe(lane.LANE_SOLO_CALLS - 1)
-    const draft = '투자 유치는 페이플로우와 렌딧랩 두 곳이에요. [기사](https://hk.example/a1)'
-    const written = await turn(page(rows), FINTECH, draft, undefined, first.opening)
-    expect(written.told).toContain(first.opening)
-    expect(written.answer).toBe(draft)
-    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).not.toMatch(/recheck: async/)
   })
 
   it('a quick model that never answers holds nothing up: it is not asked, and the rows reach the model as they came', async () => {
@@ -77,7 +61,6 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     expect(three.out).toContain('They asked for 4: list')
     expect(three.judged).toBe(0)
     expect(three.answer).toBe(draft)
-    expect(three.told).toContain('as many items as they asked for, each a different event that is what they asked for')
     expect('withoutOff' in lane).toBe(false)
   })
 
@@ -88,13 +71,13 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     expect(handed.rows).toEqual(['https://p.example/1', 'https://q.example/2', 'https://r.example/3'])
     expect(handed.answer).toBe(draft)
     for (const gone of ['itemCheck', 'itemVerdicts', 'judgeItems', 'offLinks', 'listGap']) expect(gone in lane, gone).toBe(false)
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
   })
 
-  it('ipc gives the lone lookup its search rows unjudged, and no link check or citation step runs after writing', () => {
+  it('ipc gives a lookup its search rows unjudged, and no link check or citation step runs after writing', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     const at = (text: string): number => { const i = ipc.indexOf(text); expect(i, text).toBeGreaterThan(-1); return i }
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/keepRead|skipWalls|LANE_TOOLS/)
     expect(at('await begun!.run({')).toBeLessThan(at('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`'))
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(ipc).not.toMatch(/listShortfall|itemsOff/)

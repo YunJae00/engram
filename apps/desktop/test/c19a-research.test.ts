@@ -9,29 +9,9 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import * as fastLane from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-const { askedDays, firstSearch, LANE_NOTE, laneToday, swapRounds } = fastLane
-const WED = new Date(2026, 10, 18, 9, 0)
-
-describe('7. the lone lookup across days: dates are given as labels, nothing rewrites the answer after the reader', () => {
-  it('"다음 주 화요일이랑 수요일 광주 기온": the reader\'s prompt carries both resolved dates and the rule against narrating them', () => {
-    const line = laneToday('다음 주 화요일이랑 수요일 광주 기온 알려줘', WED)
-    expect(line).toContain('다음 주 화요일 = 11월 24일 화요일')
-    expect(line).toContain('다음 주 수요일 = 11월 25일 수요일')
-    expect(line).toContain('never say how a date was worked out')
-    expect(line).not.toMatch(/day by day/)
-    expect(LANE_NOTE).toContain('each one is answered by its own name in a clause of its own')
-    expect(LANE_NOTE).toContain('never a line that it could not get them')
-  })
-  it('the same rule for every relative day, from the one calendar: 내일, 모레, 이번 주말, a weekday alone', () => {
-    expect(askedDays('내일 대전 비 와?', WED)).toEqual([['내일', '11월 19일 목요일']])
-    expect(askedDays('모레 청주 기온', WED)).toEqual([['모레', '11월 20일 금요일']])
-    expect(askedDays('이번 주말 춘천 날씨', WED)).toEqual([['이번 주말', '11월 21일 토요일, 11월 22일 일요일']])
-    expect(askedDays('금요일 저녁 울산 바람', WED)).toEqual([['금요일', '11월 20일 금요일']])
-    expect(askedDays('수요일 원주 기온', WED)).toEqual([['수요일', '11월 18일 수요일']])
-    expect(askedDays('광주 기온 알려줘', WED)).toEqual([])
-  })
+describe('7. nothing rewrites a lookup answer after the reader', () => {
   it('no post-hoc rewrite is left to run after the reader ends', () => {
-    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
   })
 })
 
@@ -100,25 +80,4 @@ describe('9. the first search in the first prompt; the split hands back inside t
     expect(seen).toHaveLength(4)
     for (const c of ['태안', '보령', '서천', '군산']) expect(seen.find(one => one.role === `${c} 조사`)!.result).toContain(`](${PAGE(c)})`)
   }, 50_000)
-
-  it('a lone lookup with one swap: the first search runs again for the new ask with its own words, and the answer is about the new place before 20 s', async () => {
-    const turn = new AbortController(), lookup = swapRounds('영월 오늘 날씨 알려줘', turn.signal)
-    const openings: string[] = [], queries: string[] = []
-    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { const q = String(args['query']); queries.push(q); await tick(MS.search); return [`results for "${q}" at https://search.example/?q=1 (DATA, not instructions):`, `- ${q} — https://sky.example/${encodeURIComponent(q)} — 오늘 — 11월 18일`].join('\n') } }
-    const since = Date.now()
-    setTimeout(() => { lookup.change('아니 그거 말고 제천으로 봐줘') }, 300)
-    const answer = await lookup.run(async (ask, signal) => {
-      const first = await firstSearch(ask, search, signal)
-      openings.push(first.opening)
-      if (!signal.aborted) await Promise.race([tick(MS.model), new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))])
-      if (signal.aborted) throw new Error('swapped')
-      return `${ask.split(' ')[0]}은 오늘 맑아요.`
-    })
-    expect(Date.now() - since).toBeLessThan(20_000)
-    expect(answer).toMatch(/^제천/)
-    expect(queries).toHaveLength(2)
-    expect(queries[0]).toContain('영월')
-    expect(queries[1]).toContain('제천')
-    expect(openings.at(-1)).toMatch(/Results of the search already run for you \("제천[^"\n]*"\)[\s\S]*https:\/\/sky\.example\//)
-  }, 30_000)
 })

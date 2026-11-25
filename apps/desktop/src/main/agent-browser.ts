@@ -471,10 +471,6 @@ async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> 
   }
 }
 
-export async function agentContext(): Promise<Ctx> {
-  return ensureContext()
-}
-
 export function agentBrowserRunning(): boolean { return context !== null || opening !== null || closing !== null }
 
 export function agentBrowserAvailable(): boolean {

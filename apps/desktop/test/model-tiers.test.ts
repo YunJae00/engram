@@ -297,8 +297,8 @@ describe('instant first line', () => {
     expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
     expect(turn).toContain('const note = firstLineNote(channel)')
     expect(turn).not.toMatch(/await firstLine/)
-    expect(turn).toContain("const notes = [context?.(), laneNote, searched?.opening, deskNote, changedNote, note].filter(Boolean).join('\\n\\n')")
-    expect(turn).toContain('const hold = lane || !!firstLineNote(channel)')
+    expect(turn).toContain("const notes = [context?.(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\\n\\n')")
+    expect(turn).toContain('const hold = !!firstLineNote(channel)')
     expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))
   })
 
@@ -763,11 +763,11 @@ describe('Claude command sandbox', () => {
 })
 
 describe('stack-5: low effort stays on the turns it was given to', () => {
-  it('a team turn is low unless it writes a result from hand-backs, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team or lookup turn', () => {
+  it('a team turn is low unless it writes a result from hand-backs, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team turn', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).not.toContain('koreanLead(')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
@@ -789,12 +789,10 @@ describe('s1a: the team lane\'s model does the team\'s work', () => {
     expect(chat).toContain("takesCompanyLane(request.message, { staff: staff.map(one => one.name), gone: employees(await loadArchivedBots(paths)).map(one => one.name), chief, scheduled: request.scheduled === true, kept: everyone.flatMap(one => one.tasks ?? []), lastReply: lastReplyOf(savedHistory) })")
     expect(chat).toContain('.filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))')
   })
-  it('effort is set by lane: a team turn that is not a report turn is low effort on the smart tier, whatever it says; the fast lane, the desk lane and the report turn keep their options', () => {
+  it('effort is set by lane: a team turn that is not a report turn is low effort on the smart tier, whatever it says; the desk lane and the report turn keep their options', () => {
     const team = "...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),"
     expect(chat).toContain(team)
     expect(team).not.toMatch(/request|message|routed|ask/)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("return lead(laneAsk, roundSignal, solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS } : {})")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(chat).toContain("const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)\n        && (turn?.report === true || takesCompanyLane(")
   })

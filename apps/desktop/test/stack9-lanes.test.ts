@@ -1,27 +1,20 @@
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { firstSearches, handBacks, isSearchPage, keepRead, runComet, searchWords, skipWalls, type AgentTool, type Engine, type TeamMember, type ToolSessionJob } from 'core'
-import { LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, swapRounds, swappedAsk, teamAsk } from '../src/main/fast-lane.js'
+import { firstSearches, handBacks, isSearchPage, searchWords, type AgentTool, type Engine, type TeamMember, type ToolSessionJob } from 'core'
+import { teamAsk } from '../src/main/fast-lane.js'
+import { answer as answerAsk, openWorld } from '../src/main/answer.js'
 
 const source = (file: string) => readFileSync(fileURLToPath(new URL(`../src/main/${file}`, import.meta.url)), 'utf8')
 const ipc = source('ipc.ts'), runner = source('team-runner.ts')
 
-it('stack-9: a replacement aborts only a solo lookup', async () => {
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')")
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('solo = lane && !teamAsk(message)')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('if (solo && !fixed) laneChanges.set(channel, said => {')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').match(/laneChanges\.set\(/g)).toHaveLength(1)
-  expect(ipc).not.toContain('laneChanges')
-  for (const ask of ['봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜']) expect(teamAsk(ask), ask).toBe(true)
-  expect(swappedAsk('서울 날씨 알려줘', '아 대구도 추가해')).toBeUndefined()
-  const turn = new AbortController(), lookup = swapRounds('엔비디아 오늘 주가 알려줘', turn.signal)
-  const asks: string[] = []
-  const done = lookup.run((ask, signal) => { asks.push(ask); return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))) })
-  turn.abort()
-  expect(lookup.change('그냥 애플로 바꿔')).toBe(true)
-  await expect(done).rejects.toThrow('aborted')
-  expect(asks).toEqual(['엔비디아 오늘 주가 알려줘'])
+it('stack-9: a replacement stops no round of its own; a split ask is still seen as a split', () => {
+  const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
+  for (const file of [own, ipc]) expect(file).not.toMatch(/laneChanges|swapRounds|solo = /)
+  for (const ask of ['봇 두 개 만들어서 강릉이랑 속초 숙소 따로 알아봐', '팀원들한테 판교 점심 맛집 각각 조사 맡겨']) expect(teamAsk(ask), ask).toBe(true)
 })
 
 it('stack-9: one first-search helper, at most three searches, no words twice, run in sequence', () => {
@@ -61,23 +54,22 @@ it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 �
   expect(foundNothing('12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.')).toBe(false)
 })
 
-it('stack-9 (c9a Codex r3): the statistic row reaches the model with the rest and is its to leave out by the note; the host adds nothing after the answer and cuts nothing from it', async () => {
+it('stack-9 (c9a Codex r3): the statistic row reaches the model with the rest; the host adds nothing after the answer and cuts nothing from it', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', names = ['메디인테크', '업스테이지', '뤼튼', '리벨리온', '아크']
   const held = [`results for "x" at https://search.naver.com/search.naver?query=x (DATA, not instructions):`,
     ...names.map((name, i) => `- ${name}, 100억 원 투자 유치 — https://news.example/${i} — 투자 — 11월 ${i + 1}일`), '- 올해 벤처투자 역대 최대 — https://news.example/bg — 통계 — 11월 9일'].join('\n')
   const answer = ['요즘 투자 소식 네 개예요.', '', ...names.slice(0, 4).map((name, i) => `${i + 1}. ${name}가 100억 원을 유치했어요. [기사](https://news.example/${i})`), '', '더 찾으면 알려드릴게요.'].join('\n')
   expect(answer).toContain('더 찾으면')
   const quick = vi.fn(async () => '')
-  let out = '', told = ''
+  let out = ''
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => held }
-  const engine = { id: 'claude', quick, runTools: async (job: ToolSessionJob) => { told = `${job.system}\n${job.prompt}`; out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer } } } as unknown as Engine
-  const result = await runComet({ engine, workdir: '.' as never, tools: [keepRead(skipWalls(search), [])] }, ask, { guided: false, modelHint: 'smart', lookup: true, maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: LANE_NOTE })
+  const engine = { id: 'claude', quick, detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer } } } as unknown as Engine
+  const dir = await mkdtemp(join(tmpdir(), 'stack9-'))
+  const result = await answerAsk(await openWorld(dir, engine), ask, { tools: [search], plainAsk: false, ack: { interactive: false } }).finally(() => rm(dir, { recursive: true, force: true }))
   expect(out).toBe(held)
   expect(out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)![1])).toEqual([...names.map((_, i) => `https://news.example/${i}`), 'https://news.example/bg'])
   expect(quick).not.toHaveBeenCalled()
-  expect(told).toContain('a statistic, a plan or an opinion piece that only touches the topic is not one')
-  expect(told).toContain('nothing after the last item: no closing paragraph, no remark on an item')
-  expect(result.answer).toBe(answer)
+  expect(result.result?.answer).toBe(answer)
 })
 
 it('stack-9: a teammate\'s line on how many there are is handed to the lead once, in the teammate\'s own words, with nothing written over it', () => {

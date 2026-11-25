@@ -7,7 +7,6 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, namedText, PREREAD_MAX, routeAsk } from '../src/main/desk-lane.js'
 import { namedBy } from '../src/main/file-work.js'
-import { fastLane } from '../src/main/fast-lane.js'
 
 describe('desk lane', () => {
   it('takes the everyday asks that were slow on the work model', () => {
@@ -25,7 +24,6 @@ describe('desk lane', () => {
       '기억해\n그리고 보고서도 써줘', `기억해 ${'가'.repeat(200)}`, '/plan', '',
     ]) expect(deskLane(ask, true), ask).toBe(false)
     expect(deskLane('나 누구랑 일하지?', false)).toBe(false)
-    expect(fastLane('엔비디아 오늘 주가 알려줘', true)).toBe(true)
   })
 
   it('tells the turn to act at once, keep memory silent and end a tidy-up with what went where', () => {
@@ -37,14 +35,13 @@ describe('desk lane', () => {
 
   it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const kind = !company && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,')
     expect(ipc).toContain('...(native && !company ? { native } : {}),')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native && !lane ? { native } : {}),')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native ? { native } : {}),')
   })
 })
 

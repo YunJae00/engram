@@ -108,7 +108,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(fallbackLine(T3, true)).toBe(laneFirstLine(T3, true))
     for (const ask of ['fixtures/inbox-dump 폴더 파일들 종류별로 나눠서 정리해줘', '회의록 요약해줘']) expect(splitAsk(ask), ask).toBe(false)
     expect(source('ipc.ts')).toContain('bare: !!(request.attachments?.length || (turn?.context && !turn.learned))')
-    expect(source('answer.ts')).toContain('...(bare ? {} : fastLane(message, true) ? { line: laneFirstLine(message, korean) }')
+    expect(source('answer.ts')).toContain('...(bare ? {} : { told: onlyTells(message, lastReplyOf(earlier ?? world.history)), whole: quickQuestion(message) })')
   })
 })
 

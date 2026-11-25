@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { answer, beginAnswer, openWorld } from '../src/main/answer.js'
-import { LANE_NOTE, LANE_SOLO_CALLS } from '../src/main/fast-lane.js'
 
 const scratch: string[] = []
 const temp = async () => { const dir = await mkdtemp(join(tmpdir(), 'answer-test-')); scratch.push(dir); return dir }
@@ -93,35 +92,35 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.error).toBe('서가 정리 중')
   })
 
-  it('shows the ack before a lookup\'s first search comes back, and the lone lookup\'s own call limit reaches the engine', async () => {
-    const shown: number[] = [], started = performance.now()
-    let calls = 0
-    const engine = fake(async job => { calls = job.maxCalls; return '부산은 지금 11도예요.' }, async () => '부산 기온부터 볼게요.')
-    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => { await wait(400); return 'results for "부산 기온"\n1. 부산 11도' } }
-    await answer(await openWorld(await temp(), engine), '부산 지금 기온 몇 도야?', { ack: { show: () => { shown.push(performance.now() - started) } }, tools: [search], maxCalls: 9 })
-    expect(shown).toHaveLength(1)
-    expect(shown[0]!).toBeLessThan(400)
-    expect(calls).toBe(LANE_SOLO_CALLS - 1)
-  })
-
-  it('picks the lane inside answer: a lookup asked through answer gets the lane note, the first search\'s rows and only the lane\'s tools', async () => {
-    let told = '', menu: string[] = []
-    const engine = fake(async job => { told = [job.system, job.opening, job.prompt].join('\n'); menu = job.tools.map(tool => tool.name); return '제주는 지금 맑아요.' })
-    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => 'results for "제주 날씨"\n1. 제주 맑음 14도' }
+  it('gives a lookup ask the same menu and call shape as any other ask, and runs no search before the model', async () => {
+    const jobs: { tools: string[]; maxCalls: number; modelHint?: string; effort?: string; searchedBefore: number }[] = []
+    let searches = 0
+    const engine = fake(async job => { jobs.push({ tools: job.tools.map(tool => tool.name), maxCalls: job.maxCalls, ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}), searchedBefore: searches }); return '알아봤어요.' })
+    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => { searches++; return 'results for "x"\n1. x' } }
+    const open: AgentTool = { name: 'open_page', description: 'opens a page', argsSchema: { type: 'object' }, run: async () => 'page' }
     const shelf: AgentTool = { name: 'shelf_lookup', description: 'finds a book on the shelf', argsSchema: { type: 'object' }, run: async () => '3층 서가' }
-    const { result } = await answer(await openWorld(await temp(), engine), '제주 지금 날씨 어때?', { plainAsk: true, tools: [search, shelf] })
-    expect(told).toContain(LANE_NOTE)
-    expect(told).toContain('제주 맑음 14도')
-    expect(menu).toEqual(['search_web'])
-    expect(result?.answer).toBe('제주는 지금 맑아요.')
+    for (const ask of ['오사카 이번 주말 비 소식 좀 찾아봐 줄래', '어제 나스닥 마감 시세랑 엔화 환율 알아봐 줘', '봇 두 개 써서 성수동 팝업이랑 연남동 전시 따로 조사해줘', '탕비실 커피머신 세척 순서 정리해 볼래'])
+      await answer(await openWorld(await temp(), engine), ask, { plainAsk: true, tools: [search, open, shelf], maxCalls: 12 })
+    expect(searches).toBe(0)
+    expect(jobs).toHaveLength(4)
+    for (const job of jobs) expect(job).toEqual(jobs[3])
+    expect(jobs[0]!.tools.slice(0, 3)).toEqual(['search_web', 'open_page', 'shelf_lookup'])
+    expect(jobs[0]!.maxCalls).toBe(12)
   })
 
-  it('ipc picks no lane and runs no search of its own; the lane\'s first search runs inside answer\'s rounds, after the ack has started', () => {
+  it('gives a lookup ask the quick model\'s own ack, like any other ask', async () => {
+    const shown: string[] = []
+    const engine = fake(async () => '오사카는 토요일 오후에 비가 와요.', async prompt => prompt.includes('first line') ? '오사카 주말 예보부터 볼게요.' : 'NONE')
+    const { trace } = await answer(await openWorld(await temp(), engine), '오사카 이번 주말 비 소식 좀 찾아봐 줄래', { ack: { show: line => { shown.push(line) } } })
+    expect(shown).toEqual(['오사카 주말 예보부터 볼게요.'])
+    expect(trace.first?.text).toBe('오사카 주말 예보부터 볼게요.')
+  })
+
+  it('keeps no lane, first search or swap round in answer or ipc', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
-    expect(ipc).not.toMatch(/searchFor|firstSearch|fastLane\(|deskKind\(|swapRounds/)
+    for (const file of [ipc, own]) expect(file).not.toMatch(/fastLane|firstSearch|swapRounds|laneToday|\bLANE_|laneSearches|laneChanged|searchFor|keepRead|skipWalls|lookup: true/)
     expect(own.indexOf('beginFirstLine({')).toBeLessThan(own.indexOf('const run = async'))
-    expect(own).toMatch(/lookup\.run\(async \(laneAsk, roundSignal, again\) => \{[^]*?searched = await searchFor\(/)
   })
 
   it('ipc makes a bot\'s answer through answer, with no runComet call of its own', () => {

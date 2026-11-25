@@ -35,10 +35,9 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
     expect(await posted(draft, meant)).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
   })
-  it('in the turn, the meaning reaches the model as a note of the turn; no judge, page read, helpers\' writer or lead check reads it after the answer, and the rounds keep the plain words', () => {
+  it('in the turn, the meaning reaches the model as a note of the turn; no judge, page read, helpers\' writer or lead check reads it after the answer, and the turn keeps the plain words', () => {
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const meant = askNow(message, world.history)')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const changedNote = meant !== message ? `What the person asks for now: ${meant}` : \'\'')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const lookup = swapRounds(message, turn)')
     const from = ipc.indexOf('await begun!.run({')
     expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })

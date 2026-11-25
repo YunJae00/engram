@@ -4,9 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { runComet, type Engine } from 'core'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 import * as desk from '../src/main/desk-lane'
-import { isCorrection } from '../src/main/desk-lane'
 import * as lane from '../src/main/fast-lane'
-import { fastLane } from '../src/main/fast-lane'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
 const reply = '엔비디아는 지금 182.3달러예요. [네이버 증권](https://finance.naver.com)'
@@ -14,10 +12,10 @@ const posted = async (ask: string, draft: string, quick = vi.fn(async () => ''),
 
 describe('stack-10: the c10c desk paths and the c10a lane paths never share a turn', () => {
   it('the desk folder sort needs a desk kind, which needs no lane; the lane has no tidy and no shaping step left to run anywhere', () => {
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const kind = !company && !lane && deskLane\(/)
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const kind = !company && deskLane\(/)
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/const sorted = kind === 'tidy'/)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'askedDays', 'fastLane', 'firstSearch', 'laneFirstLine', 'laneQuery', 'laneToday', 'quickQuestion', 'shortAsk', 'shortQuestion', 'swapRounds', 'swappedAsk', 'teamAsk'])
+    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8').split('sortByKind(').length - 1).toBe(1)
     expect(ipc).not.toContain('sortByKind(')
   })
@@ -38,16 +36,11 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     expect(await posted('방금 답 절반 길이로 다시 써봐', 'YES', yes)).toBe('YES')
     expect(yes).not.toHaveBeenCalled()
   })
-  it('"엔비디아 말고 애플" after a lookup is a lane ask or a correction, not a reshape', () => {
-    for (const message of ['엔비디아 말고 애플 주가', '테슬라 말고 애플로 알려줘']) expect(fastLane(message, true) || isCorrection(message), message).toBe(true)
-  })
 })
 
-describe('stack-10 (c10a run L1, "today\'s date missing"): a weather answer keeps its date, said plainly', async () => {
-  const { LANE_NOTE } = await import('../src/main/fast-lane')
-  it('a date in brackets after a day word is posted as the model wrote it; the note asks for the date, never in brackets, before it writes', async () => {
-    for (const draft of ['오늘(12월 3일, 수)은 눈 오고 -2.0도예요.', '내일(1월 9일)은 맑대요.']) expect(await posted('속초 지금 눈 와?', draft, undefined, { lookup: true, maxCalls: 4, attachmentContext: LANE_NOTE })).toBe(draft)
-    expect(LANE_NOTE).toContain('opening on the day it is for with its date said plainly, never in brackets')
+describe('stack-10 (c10a run L1, "today\'s date missing"): a weather answer keeps its date, said plainly', () => {
+  it('a date in brackets after a day word is posted as the model wrote it; the shared rule asks for the date, never in brackets, before it writes', async () => {
+    for (const draft of ['오늘(12월 3일, 수)은 눈 오고 -2.0도예요.', '내일(1월 9일)은 맑대요.']) expect(await posted('강릉 경포대 쪽 지금 바람 세게 불어?', draft, undefined, { maxCalls: 4 })).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('a day is said with its date in plain words, never in brackets')
   })
 })
