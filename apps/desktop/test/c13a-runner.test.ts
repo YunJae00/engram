@@ -20,10 +20,11 @@ const teammate = (plan: Record<string, number | 'stall'>, calls: string[]): Run 
   const at = plan[who]!
   return new Promise((resolve, reject) => {
     options.signal!.addEventListener('abort', () => reject(new Error('aborted')))
-    if (at !== 'stall') setTimeout(() => resolve({ answer: said(who), steps: [], fellBack: false }), Math.max(0, started + at * S - Date.now()))
+    if (at !== 'stall') setTimeout(() => { back[who] = Date.now(); resolve({ answer: said(who), steps: [], fellBack: false }) }, Math.max(0, started + at * S - Date.now()))
   })
 }
 let started = 0
+const back: Record<string, number> = {}
 
 async function world(plan: Record<string, number | 'stall'>, parts: [string, string, string?][]) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -48,7 +49,8 @@ async function world(plan: Record<string, number | 'stall'>, parts: [string, str
 it('teammates back at 22 s and 26 s of a 28 s deadline both reach the one result step, each with its own answer as written, when the last is in', async () => {
   const w = await world({ 하람: 22, 이든: 26 }, [['하람', '배추'], ['이든', '무']])
   await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
-  expect(w.reported[0]! - started).toBeLessThan(MS)
+  expect(w.reported[0]!).toBeGreaterThanOrEqual(back['이든']!)
+  expect(w.reported[0]! - back['이든']!).toBeLessThan(5 * S)
   expect(w.reported[0]! - started).toBeGreaterThanOrEqual(25 * S)
   const backs = handed(await w.task())
   expect(backs.map(r => [r.who, r.part, r.state])).toEqual([['하람', '배추', 'done'], ['이든', '무', 'done']])
