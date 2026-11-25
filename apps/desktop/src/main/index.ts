@@ -22,7 +22,7 @@ import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { closeCodexSessions } from './engine-codex.js'
 import { autoImportSession } from './browser-import.js'
-import { flog } from './flog.js'
+import { flog, initLog } from './flog.js'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { quitGuard } from './quit-guard.js'
 import { logResponsiveness, watchResponsiveness } from './performance-health.js'
@@ -61,6 +61,7 @@ import { recordStalls } from './stall-recorder.js'
 import { markFirstSetup } from './first-setup.js'
 
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
+initLog(join(app.getPath('userData'), 'logs'))
 
 if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('dev.engram.app')
 

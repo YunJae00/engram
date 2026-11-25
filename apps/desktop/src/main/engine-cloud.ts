@@ -3,7 +3,7 @@ import { ProcessClient } from './process-client.js'
 import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyEngineError, setCloudEngineFactory, type Engine, type EngineDetection, type EngineErrorKind } from 'core'
+import { classifyEngineError, setCloudEngineFactory, traced, traceFolder, type Engine, type EngineDetection, type EngineErrorKind } from 'core'
 import { ClaudeEngine } from './engine-claude.js'
 import { CodexEngine } from './engine-codex.js'
 import { installedClaudeBinary } from './claude-runtime.js'
@@ -185,7 +185,8 @@ export function cloudEngine(id: CloudEngineId, profile = activeAccountProfile(id
   const key = `${id}:${profile}`
   let engine = instances.get(key)
   if (!engine) {
-    engine = gateModelCalls(id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile))
+    const trace = process.env['ENGRAM_TRACE']?.trim()
+    engine = traced(gateModelCalls(id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile)), trace ? traceFolder(trace) : undefined)
     instances.set(key, engine)
   }
   return engine

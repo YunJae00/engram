@@ -2,7 +2,6 @@ import { beforeEach, expect, it, vi } from 'vitest'
 
 const fs = vi.hoisted(() => ({ mkdir: vi.fn(), stat: vi.fn(), rename: vi.fn(), appendFile: vi.fn() }))
 vi.mock('node:fs/promises', () => fs)
-vi.mock('electron', () => ({ app: { getPath: () => '/test-userdata' } }))
 
 beforeEach(() => {
   vi.resetModules()
@@ -16,7 +15,8 @@ beforeEach(() => {
 it('returns immediately while the asynchronous log write is blocked', async () => {
   let release!: () => void
   fs.appendFile.mockReturnValueOnce(new Promise<void>((resolve) => { release = resolve }))
-  const { flog } = await import('../src/main/flog.js')
+  const { flog, initLog } = await import('../src/main/flog.js')
+  initLog('/test-userdata/logs')
   flog('first', 'one')
   flog('second', 'two')
   await vi.waitFor(() => expect(fs.appendFile).toHaveBeenCalledTimes(1))
@@ -27,7 +27,8 @@ it('returns immediately while the asynchronous log write is blocked', async () =
 })
 
 it('bounds both queued lines and individual entries during a diagnostic burst', async () => {
-  const { flog } = await import('../src/main/flog.js')
+  const { flog, initLog } = await import('../src/main/flog.js')
+  initLog('/test-userdata/logs')
   for (let index = 0; index < 1000; index++) flog('burst', 'x'.repeat(20_000))
   await vi.waitFor(() => expect(fs.appendFile).toHaveBeenCalledTimes(128))
   expect(fs.appendFile.mock.calls[0]?.[1]).toContain('872 lines omitted')
@@ -37,7 +38,8 @@ it('bounds both queued lines and individual entries during a diagnostic burst', 
 it('rotates the log and continues after a failed write', async () => {
   fs.stat.mockResolvedValue({ size: 1_000_001 })
   fs.appendFile.mockRejectedValueOnce(new Error('File temporarily locked'))
-  const { flog } = await import('../src/main/flog.js')
+  const { flog, initLog } = await import('../src/main/flog.js')
+  initLog('/test-userdata/logs')
   flog('failed-write', 'first')
   flog('next-write', 'second')
   await vi.waitFor(() => expect(fs.appendFile).toHaveBeenCalledTimes(2))
