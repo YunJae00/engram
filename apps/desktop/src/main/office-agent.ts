@@ -91,7 +91,7 @@ async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<strin
 
 type BuildOp = 'ppt.build' | 'word.write'
 
-export function officeComposer(outputs: OfficeOutputs | undefined, personal: string, assertActive: () => void, proofread?: Proofread): (op: BuildOp, args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown> {
+function officeComposer(outputs: OfficeOutputs | undefined, personal: string, assertActive: () => void, proofread?: Proofread): (op: BuildOp, args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown> {
   const composed = new Map<string, unknown>()
   const own = new Set<string>()
   return async (op, args, signal) => {
@@ -105,7 +105,8 @@ export function officeComposer(outputs: OfficeOutputs | undefined, personal: str
   }
 }
 
-export function officeBuildTools(compose: ReturnType<typeof officeComposer>): AgentTool[] {
+export function officeBuildTools(outputs: OfficeOutputs | undefined, personal: string, assertActive: () => void, proofread?: Proofread): AgentTool[] {
+  const compose = officeComposer(outputs, personal, assertActive, proofread)
   return officeTools({ run: async (op, args, signal) => {
     if (op !== 'ppt.build' && op !== 'word.write') throw new Error(`${op} needs the Office app, which is not part of this tool set.`)
     return compose(op, args, signal)

@@ -194,7 +194,7 @@ import { appFileHost, registerArtifactIpc } from './file-host.js'
 import { noteSearch, toolKit } from './tool-kit.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
-import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
+import { assertDesktopChatEngine, assertDesktopTurnNotStopped, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
 import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
@@ -1963,11 +1963,7 @@ export function registerIpc(ctx: VaultContext): void {
     const { channel, engine, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
     await loadBrainConnections()
     const composed = new Set<string>(), turnId = randomUUID()
-    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) : undefined, input.named), ...desktopAgentTools(channel)], {
-      enabled: async () => (await loadSettings()).computerUse === true,
-      enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
-      ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
-    }) : []
+    const desk = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true
     const changed = () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }
     const kit = toolKit({
       paths,
@@ -2011,9 +2007,15 @@ export function registerIpc(ctx: VaultContext): void {
         },
       },
       retrieve: noteSearch(ctx.store, meaning, flog),
+      ...(desk ? { office: { outputs: taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), personal: input.named ?? '', assertActive: () => assertDesktopTurnNotStopped(channel), ...(engine.quick ? { proofread: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) } : {}) } } : {}),
       ...(channel.startsWith('bot-') ? { bot: { schedule: cometSchedule(channel.slice('bot-'.length), input.chief === true), chief: input.chief === true, changed, said: () => turnGoals.get(channel) ?? '', kept: (added: number) => broadcast({ type: 'comet:remembered', channel, botId: channel.slice('bot-'.length), added, touched: 0 }) } } : {}),
       ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? { files: { readable: [...attachments.paths, ...earlierOutputs.map((output) => output.path)], workFolder: native?.cwd ?? await workFolderFor(paths, channel), consent: { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }, host: appFileHost } } : {}),
     })
+    const appTools = desk ? desktopOptIn([...officeAgentTools(channel, kit.office), ...desktopAgentTools(channel)], {
+      enabled: async () => (await loadSettings()).computerUse === true,
+      enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
+      ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
+    }) : []
     return [...kit.web, ...workEvidenceTools(paths, channel), ...attachments.tools,
     ...kit.team, ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,

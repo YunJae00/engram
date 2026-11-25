@@ -5,7 +5,6 @@ import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { bindDesktopForLane } from './desktop-access.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
-import { officeComposer, type OfficeOutputs, type Proofread } from './office-agent.js'
 
 async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {
   assertActive?.()
@@ -23,12 +22,10 @@ export async function showOfficePreview(lane: string, op: OfficeOp, window?: str
   catch {}
 }
 let workQueue: Promise<unknown> = Promise.resolve()
-export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread, personal = ''): AgentTool[] {
+export function officeAgentTools(lane: string, builds: AgentTool[]): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
-  const compose = officeComposer(outputs, personal, () => assertDesktopTurnNotStopped(lane), proofread)
   const tools = officeTools({ run: async (op, args, signal) => {
-    if (op === 'ppt.build' || op === 'word.write') return compose(op, args, signal)
     const run = async () => {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
@@ -51,7 +48,7 @@ export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofrea
     workQueue = next.catch(() => undefined)
     return next
   } })
-  return tools.filter((tool) => {
+  return tools.flatMap(tool => tool.name === 'word_write' || tool.name === 'ppt_build' ? builds.filter(build => build.name === tool.name) : [tool]).filter((tool) => {
     if (tool.name.startsWith('excel_')) return apps.excel
     if (tool.name.startsWith('outlook_')) return apps.outlook
     if (tool.name.startsWith('word_')) return apps.word

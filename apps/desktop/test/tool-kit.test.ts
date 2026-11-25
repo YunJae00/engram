@@ -52,7 +52,7 @@ function kitFor(how: 'app' | 'plain', ask: Ask = async () => 'approve', chief = 
   })
 }
 
-const appOffice = () => officeAgentTools('bot-orchard', taskOutputs(paths, async () => work, new Set(), 't-1')).filter(tool => tool.name === 'word_write' || tool.name === 'ppt_build')
+const appOffice = (kit: ReturnType<typeof kitFor>) => officeAgentTools('bot-orchard', kit.office).filter(tool => tool.name === 'word_write' || tool.name === 'ppt_build')
 
 const facts = (text: string) => JSON.parse(text.split(root).join('<root>').replace(/[0-9a-f]{64}/g, '<sha>').replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/g, '<id>')) as unknown
 
@@ -69,7 +69,7 @@ describe('the tool kit built from plain inputs', () => {
     }
     expect(kitFor('plain').team.map(tool => tool.name)).toEqual(['schedule', 'new_bot'])
     expect(kitFor('plain', undefined, true).team.map(tool => tool.name)).toEqual(['schedule', 'agents', 'agents_now'])
-    expect(shape(kitFor('plain').office)).toEqual(shape(appOffice()))
+    expect(shape(kitFor('plain').office)).toEqual(shape(appOffice(kitFor('app'))))
     expect(kitFor('plain').web.map(tool => tool.name)).toEqual(expect.arrayContaining(['search_web', 'open_page', 'search_memory']))
   })
 
@@ -80,6 +80,19 @@ describe('the tool kit built from plain inputs', () => {
     const order = ['const kit = toolKit({', 'return [...kit.web, ...workEvidenceTools(paths, channel), ...attachments.tools,', '...kit.team, ...team.tools(', 'deskActivityTool,', '...kit.learning,', 'helpersTool({', 'resultCheckTool(', '...kit.files, ...appTools]'].map(at)
     expect(order).toEqual([...order].sort((a, b) => a - b))
     for (const gone of ['cometTools(', 'cometFileTools(', 'learningTools(', 'scheduleTool(', 'teamTool(', 'staffTool(']) expect(set).not.toContain(gone)
+    expect(at('office: { outputs:')).toBeLessThan(at('officeAgentTools(channel, kit.office)'))
+    expect(ipc).not.toMatch(/officeBuildTools\(|officeComposer\(/)
+  })
+
+  it('puts the kit\'s own document builders into the app\'s office menu and builds no second pair', () => {
+    const kit = kitFor('plain')
+    const menu = officeAgentTools('bot-orchard', kit.office)
+    const builders = menu.filter(tool => tool.name === 'word_write' || tool.name === 'ppt_build')
+    expect(builders).toHaveLength(2)
+    for (const tool of builders) expect(kit.office).toContain(tool)
+    expect(menu.length).toBeGreaterThan(builders.length)
+    const bare = officeAgentTools('bot-orchard', [])
+    expect(bare.map(tool => tool.name)).toEqual(menu.map(tool => tool.name).filter(name => name !== 'word_write' && name !== 'ppt_build'))
   })
 
   it('moves, reads and builds with the same returned facts as the app wiring', async () => {
@@ -98,7 +111,8 @@ describe('the tool kit built from plain inputs', () => {
       expect(bytes).toBeGreaterThan(1000)
       return [...[read, moved, sheet].map(facts), stamped]
     }
-    const app = await runAll(kitFor('app'), appOffice())
+    const appKit = kitFor('app')
+    const app = await runAll(appKit, appOffice(appKit))
     const plain = await runAll(kitFor('plain'), kitFor('plain').office)
     expect(plain).toEqual(app)
     expect((plain[1] as { moved: number }).moved).toBe(1)

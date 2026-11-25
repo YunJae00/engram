@@ -3,7 +3,7 @@ import { availableMemory } from './available-memory.js'
 import { cometFileTools, type FileHost, type ReadConsent } from './file-work.js'
 import { learningTools } from './learning-wiring.js'
 import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
-import { officeBuildTools, officeComposer, type OfficeOutputs, type Proofread } from './office-agent.js'
+import { officeBuildTools, type OfficeOutputs, type Proofread } from './office-agent.js'
 
 export interface ToolKitInputs {
   paths: VaultPaths
@@ -32,7 +32,7 @@ export function toolKit(inputs: ToolKitInputs): ToolKit {
     team: bot ? [scheduleTool(bot.schedule), ...(bot.chief ? [staffTool(paths, bot.changed), companyStatusTool(paths)] : [teamTool(paths, bot.changed)])] : [],
     learning: bot ? learningTools(paths, channel, bot.said, bot.kept) : [],
     files: files ? cometFileTools(paths, channel, files.readable, [files.workFolder], files.consent, files.host) : [],
-    office: office ? officeBuildTools(officeComposer(office.outputs, office.personal, office.assertActive, office.proofread)) : [],
+    office: office ? officeBuildTools(office.outputs, office.personal, office.assertActive, office.proofread) : [],
   }
 }
 

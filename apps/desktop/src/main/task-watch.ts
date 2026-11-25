@@ -30,7 +30,7 @@ export async function peekWatch(watch: TaskWatch): Promise<{ key: string; id?: s
   if (settings.computerUse !== true) return null
   const app = watch.tool.split('_')[0] ?? ''
   if (settings.appsOff.some(one => one.app.includes(app) || one.label.toLowerCase().includes(app))) return null
-  const tool = officeAgentTools('standing-watch').find(one => one.name === watch.tool)
+  const tool = officeAgentTools('standing-watch', []).find(one => one.name === watch.tool)
   if (!tool) return null
   return watchKeys(await tool.run(watch.args, { task: 'Look for new items', signal: AbortSignal.timeout(LOOK_MS) }))
 }

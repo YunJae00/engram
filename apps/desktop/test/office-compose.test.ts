@@ -10,8 +10,9 @@ vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: 
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.bind }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn(), officeWorkPreview: () => fake.preview }))
 vi.mock('../src/main/application-work.js', () => ({ applicationWork: () => ({ signal: undefined, show: vi.fn() }), clearApplicationWork: vi.fn() }))
-import { proofFixes } from '../src/main/office-agent.js'
+import { officeBuildTools, proofFixes, type OfficeOutputs, type Proofread } from '../src/main/office-agent.js'
 import { officeAgentTools } from '../src/main/office-live.js'
+const officeFor = (lane: string, outputs?: OfficeOutputs, proofread?: Proofread) => officeAgentTools(lane, officeBuildTools(outputs, '', () => {}, proofread))
 import { createRequire } from 'node:module'
 const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 import { taskOutputs } from '../src/main/file-work.js'
@@ -28,7 +29,7 @@ beforeEach(async () => {
 })
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
-const tools = () => officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task))
+const tools = () => officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task))
 const slides = [{ title: '4분기 출시 계획' }, { title: '일정', bullets: ['12월 3일 출시', '랜딩 페이지 금요일 공유'] }]
 
 it('builds a deck headlessly into the task outputs, linked in the chat, without opening PowerPoint', async () => {
@@ -60,7 +61,7 @@ it('writes a Word document the same way, without opening Word', async () => {
 it('replaces this turn\'s own file when a second input is built under its name, and shows only the last', async () => {
   const { outputCards } = await import('../../../packages/core/src/agent-session-result.js')
   for (const [name, ext, input] of [['word_write', 'docx', (text: string) => ({ title: 'report', blocks: [{ kind: 'paragraph', text }], theme: THEME })], ['ppt_build', 'pptx', (text: string) => ({ slides: [{ title: text }], saveAs: 'report.pptx', theme: THEME })]] as const) {
-    const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, `turn-${ext}`)).find(t => t.name === name)!
+    const tool = officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, `turn-${ext}`)).find(t => t.name === name)!
     const run = async (text: string) => { const args = input(text), observation = await tool.run(args, { task: '보고서' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { markdownLink: string; artifact: string; taskPath: string; path: string } } }
     const sales = await run('sales'), costs = await run('costs')
     expect(sales.receipt.markdownLink).toMatch(new RegExp(`^\\[report\\.${ext}\\]\\(engram-artifact:`))
@@ -81,9 +82,9 @@ it('replaces this turn\'s own file when a second input is built under its name, 
 })
 
 it('keeps the file an earlier turn made when a later turn builds under its name', async () => {
-  const first = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-1')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
+  const first = JSON.parse(await officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-1')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
   const before = await readFile(first.taskPath)
-  const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-2')).find(t => t.name === 'ppt_build')!
+  const tool = officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-2')).find(t => t.name === 'ppt_build')!
   const later = JSON.parse(await tool.run({ slides: [{ title: '4분기 계획' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
   expect(later.artifact).not.toBe(first.artifact)
   expect(later.markdownLink).toMatch(/^\[3분기 실적 보고-2\.pptx\]/)
@@ -127,7 +128,7 @@ it('says a built deck is done and lists its slides; refuses the garbled stored s
 it('builds a deck with the garbled words the proofreader names already fixed, in one file', async () => {
   const asked: string[] = []
   const proofread = async (prompt: string): Promise<string> => { asked.push(prompt); return '회으록 => 회의록\n- "담당쟈" → 담당자\n없는말 => 아무말\n2023년 => 2024년\n예산 => 이번 분기 전체 예산 계획' }
-  const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!
+  const tool = officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!
   const deck = [{ title: '주간 회으록' }, { title: '할 일', bullets: ['담당쟈: 민수, 2023년 예산 확인'] }]
   const receipt = JSON.parse(await tool.run({ slides: deck, saveAs: '주간 회의.pptx', theme: THEME }, { task: '회의 PPT' }))
   expect(asked).toHaveLength(1)
@@ -142,7 +143,7 @@ it('builds a deck with the garbled words the proofreader names already fixed, in
 
 it('builds the deck as written when the proofreader fails or says nothing is garbled', async () => {
   for (const proofread of [async () => { throw new Error('late') }, async () => 'NONE']) {
-    const receipt = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '분기 계획' }], theme: THEME }, { task: 'PPT' }))
+    const receipt = JSON.parse(await officeFor('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '분기 계획' }], theme: THEME }, { task: 'PPT' }))
     expect(receipt.titles).toEqual(['분기 계획'])
   }
 })
@@ -176,7 +177,7 @@ it('hands in one file when the same deck is built again seconds later (built byt
 })
 
 it('refuses to compose where no outputs are kept instead of writing to Documents', async () => {
-  const tool = officeAgentTools('standing-watch').find(t => t.name === 'ppt_build')!
+  const tool = officeFor('standing-watch').find(t => t.name === 'ppt_build')!
   await expect(tool.run({ slides, theme: THEME }, { task: 'Build slides' })).rejects.toThrow('keeps its outputs')
   await expect(stat(join(fake.home, 'Engram'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
