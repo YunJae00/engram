@@ -84,10 +84,10 @@ describe('three tiers', () => {
 
   it('counts a live voice as one warm runtime under the cap', async () => {
     const trim = vi.spyOn(SessionPool.prototype, 'trim')
-    trimWarm(claudeInputs.sessions)
+    trimWarm(claudeInputs)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1)
     await claudeEngine('system').quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })
-    trimWarm(claudeInputs.sessions)
+    trimWarm(claudeInputs)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target)
   })
 })
@@ -657,7 +657,7 @@ describe('instant first line', () => {
     const lane = (one: number): Promise<{ closed: boolean }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
     const trim = vi.spyOn(SessionPool.prototype, 'trim')
     await engine.warmQuick(WORKDIR)
-    trimWarm(claudeInputs.sessions)
+    trimWarm(claudeInputs)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1 - 2)
     const second = await lane(1)
     expect(second.closed).toBe(false)

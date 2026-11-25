@@ -79,7 +79,7 @@ describe('text runtime desktop isolation boundary', () => {
   })
   it('does not spend model discovery timeout waiting for the first session', async () => {
     vi.useFakeTimers()
-    forgetClaudeModels()
+    forgetClaudeModels(claudeInputs)
     try {
       fixture.ready.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 45_000)))
       fixture.query.mockImplementationOnce(() => ({ supportedModels: async () => {
@@ -89,7 +89,7 @@ describe('text runtime desktop isolation boundary', () => {
       const pending = fetchClaudeModels(claudeInputs, 'system')
       await vi.advanceTimersByTimeAsync(75_000)
       expect(await pending).toEqual([expect.objectContaining({ value: 'fixture' })])
-    } finally { forgetClaudeModels(); vi.useRealTimers() }
+    } finally { forgetClaudeModels(claudeInputs); vi.useRealTimers() }
   })
   it('forwards explicit effort to both runtimes instead of the fast hint', async () => {
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', modelHint: 'fast', effort: 'high' }))

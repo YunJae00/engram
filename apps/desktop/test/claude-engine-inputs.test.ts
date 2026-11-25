@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EngineCwd, ToolSessionJob } from 'core'
-import { ClaudeEngine, type ClaudeInputs } from '../src/main/engine-claude.js'
+import { ClaudeEngine, closeVoices, fetchClaudeModels, forgetClaudeModels, type ClaudeInputs } from '../src/main/engine-claude.js'
 import { SessionPool } from '../src/main/engine-claude-session.js'
 import { workerPool } from '../src/main/worker-pool.js'
 
@@ -8,7 +8,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 interface Seen { prompt: AsyncIterable<{ message: { content: string } }>; options: Record<string, unknown> }
 
-function world(binary: string | null = 'orchard-runtime') {
+function world(binary: string | null = 'orchard-runtime', grower = 'picked') {
   const order: string[] = []
   const seen: Seen[] = []
   const said: string[][] = []
@@ -23,11 +23,12 @@ function world(binary: string | null = 'orchard-runtime') {
         yield { type: 'system', subtype: 'init', model: 'orchard-model' }
         for await (const message of params.prompt) {
           heard.push(message.message.content)
-          yield { type: 'result', subtype: 'success', result: `picked ${heard.length}` }
+          yield { type: 'result', subtype: 'success', result: `${grower} ${heard.length}` }
         }
       }
-      const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown> }
+      const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown>; supportedModels(): Promise<unknown[]> }
       stream.interrupt = async () => undefined
+      stream.supportedModels = async () => [{ value: grower, displayName: grower, description: `kept by ${grower}` }]
       return stream
     },
   }
@@ -134,5 +135,27 @@ describe('the Claude engine built from plain inputs', () => {
     expect(await engine.login()).toEqual({ ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' })
     expect(w.inputs.binary).toHaveBeenCalled()
     expect(w.inputs.loadConnections).not.toHaveBeenCalled()
+  })
+
+  it('keeps quick answers apart for two input sets that share a runtime path, profile and folder', async () => {
+    const north = world('orchard-runtime', 'north'), south = world('orchard-runtime', 'south')
+    try {
+      expect(await new ClaudeEngine(north.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toBe('north 1')
+      expect(await new ClaudeEngine(south.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toBe('south 1')
+      expect(south.seen[0]!.options['env']).toEqual({ ORCHARD_PROFILE: 'grove' })
+      expect(south.inputs.sdk).toHaveBeenCalled()
+    } finally { closeVoices(north.inputs); closeVoices(south.inputs) }
+  })
+
+  it('lists models from each input set even when the profile is the same', async () => {
+    const north = world('orchard-runtime', 'north'), south = world('orchard-runtime', 'south')
+    try {
+      expect((await fetchClaudeModels(north.inputs, 'grove')).map(row => row.value)).toEqual(['north'])
+      expect((await fetchClaudeModels(south.inputs, 'grove')).map(row => row.value)).toEqual(['south'])
+      expect(south.inputs.sdk).toHaveBeenCalledOnce()
+      forgetClaudeModels(north.inputs)
+      expect((await fetchClaudeModels(south.inputs, 'grove')).map(row => row.value)).toEqual(['south'])
+      expect(south.inputs.sdk).toHaveBeenCalledOnce()
+    } finally { forgetClaudeModels(north.inputs); forgetClaudeModels(south.inputs) }
   })
 })

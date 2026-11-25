@@ -2570,7 +2570,7 @@ export function registerEngineIpc(): void {
   registerConnectionIpc(async (provider) => {
     if (provider === 'decision') return
     cloudEngine(provider).forgetStatus?.()
-    if (provider === 'claude') forgetClaudeModels(); else forgetCodexModels()
+    if (provider === 'claude') forgetClaudeModels(claudeInputs); else forgetCodexModels()
     await onEnginesChanged?.()
     broadcast({ type: 'engines:changed', engines: await engineStates() })
   })
@@ -2582,7 +2582,7 @@ export function registerEngineIpc(): void {
     const result = await connectEngine(cloudId(id), chosenProfile)
     if (result.ok) {
       markEngineOk(cloudId(id), chosenProfile)
-      if (id === 'claude') forgetClaudeModels()
+      if (id === 'claude') forgetClaudeModels(claudeInputs)
       else forgetCodexModels()
       broadcast({ type: 'models:changed' })
     }
@@ -2591,7 +2591,7 @@ export function registerEngineIpc(): void {
   })
   ipcMain.handle('engines:disconnect', async (_e, id: unknown) => {
     await disconnectEngine(cloudId(id))
-    if (id === 'claude') forgetClaudeModels()
+    if (id === 'claude') forgetClaudeModels(claudeInputs)
     else forgetCodexModels()
     broadcast({ type: 'models:changed' })
     await onEnginesChanged?.()

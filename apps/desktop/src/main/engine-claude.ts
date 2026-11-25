@@ -67,19 +67,31 @@ interface ClaudeModelChoice {
   detail: string
   efforts?: import('core').ReasoningEffort[]
 }
-const catalogs = new Map<string, { rows?: ClaudeModelChoice[]; pending?: Promise<ClaudeModelChoice[]> }>()
-let modelsGeneration = 0
 const MODELS_TIMEOUT_MS = 60_000
 
+interface ClaudeState {
+  catalogs: Map<string, { rows?: ClaudeModelChoice[]; pending?: Promise<ClaudeModelChoice[]> }>
+  generation: number
+  voices: (VoiceSession | undefined)[]
+  voiceKeys: string[]
+}
+const states = new WeakMap<ClaudeInputs, ClaudeState>()
+function stateOf(inputs: ClaudeInputs): ClaudeState {
+  const state = states.get(inputs) ?? { catalogs: new Map(), generation: 0, voices: [], voiceKeys: [] }
+  states.set(inputs, state)
+  return state
+}
+
 export function fetchClaudeModels(inputs: ClaudeInputs, profile: string): Promise<ClaudeModelChoice[]> {
-  const catalog = catalogs.get(profile) ?? {}
-  catalogs.set(profile, catalog)
+  const state = stateOf(inputs)
+  const catalog = state.catalogs.get(profile) ?? {}
+  state.catalogs.set(profile, catalog)
   if (catalog.rows?.length) return Promise.resolve(catalog.rows)
   if (catalog.pending) return catalog.pending
   const env = inputs.env(profile)
   const binary = inputs.binary()
   if (!binary) return Promise.resolve([])
-  const generation = modelsGeneration
+  const generation = state.generation
   const pending = (async () => {
     const abort = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -100,7 +112,7 @@ export function fetchClaudeModels(inputs: ClaudeInputs, profile: string): Promis
         handle.supportedModels(),
         new Promise<never>((_, reject) => abort.signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true })),
       ])
-      if (generation !== modelsGeneration) return []
+      if (generation !== state.generation) return []
       catalog.rows = rows.map((row) => ({ value: row.value, label: row.displayName, detail: row.description, efforts: row.supportsEffort === false ? [] : row.supportedEffortLevels ?? [] }))
       return catalog.rows
     } catch (err) {
@@ -109,21 +121,23 @@ export function fetchClaudeModels(inputs: ClaudeInputs, profile: string): Promis
     } finally {
       clearTimeout(timer)
       abort.abort()
-      if (modelsGeneration === generation) catalog.pending = undefined
+      if (state.generation === generation) catalog.pending = undefined
     }
   })()
   catalog.pending = pending
   return pending
 }
 
-export function forgetClaudeModels(): void {
-  catalogs.clear()
-  modelsGeneration++
+export function forgetClaudeModels(inputs: ClaudeInputs): void {
+  const state = stateOf(inputs)
+  state.catalogs.clear()
+  state.generation++
 }
 
 export class ClaudeEngine implements CloudEngine {
   private get env(): NodeJS.ProcessEnv { return this.inputs.env(this.accountProfile) }
-  constructor(private readonly inputs: ClaudeInputs, readonly accountProfile: string) {}
+  private readonly state: ClaudeState
+  constructor(private readonly inputs: ClaudeInputs, readonly accountProfile: string) { this.state = stateOf(inputs) }
   readonly id = 'claude' as const
   readonly label = 'Claude'
   readonly desktopToolIsolation = true
@@ -137,13 +151,13 @@ export class ClaudeEngine implements CloudEngine {
     let lane: number | undefined
     try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes()) }
     catch (error) {
-      const voice = lane === undefined ? undefined : voices[lane]
+      const voice = lane === undefined ? undefined : this.state.voices[lane]
       if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir, lane).catch(() => undefined) }
       throw error
     }
     finally {
       metric.end()
-      if (lane !== undefined && voices[lane]?.spent) void this.voiceFor(options.workdir, lane).catch(() => undefined)
+      if (lane !== undefined && this.state.voices[lane]?.spent) void this.voiceFor(options.workdir, lane).catch(() => undefined)
     }
   }
   private async voiceFor(workdir: string, lane = 0): Promise<VoiceSession | undefined> {
@@ -152,9 +166,9 @@ export class ClaudeEngine implements CloudEngine {
     if (!binary) return undefined
     const spec = { sdk: await this.sdk(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
     const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
-    const voice = voices[lane]
-    if (!voice || voice.closed || voice.spent || voiceKeys[lane] !== key) { voice?.close(); voices[lane] = new VoiceSession(spec); voiceKeys[lane] = key }
-    return voices[lane]
+    const voice = this.state.voices[lane]
+    if (!voice || voice.closed || voice.spent || this.state.voiceKeys[lane] !== key) { voice?.close(); this.state.voices[lane] = new VoiceSession(spec); this.state.voiceKeys[lane] = key }
+    return this.state.voices[lane]
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
 
@@ -256,7 +270,7 @@ export class ClaudeEngine implements CloudEngine {
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
       lease.end()
-      trimWarm(this.inputs.sessions)
+      trimWarm(this.inputs)
       metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
@@ -273,7 +287,7 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([this.sdk(), tier('work', chosenModel(job.modelHint), job.modelHint), this.inputs.loadConnections()]).then(([sdk, model]) => { this.inputs.logTools(job); return withLease(lease, () => this.inputs.sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env, started: this.inputs.started })) }).finally(() => { lease.end(); trimWarm(this.inputs.sessions); metric.end() })
+    return Promise.all([this.sdk(), tier('work', chosenModel(job.modelHint), job.modelHint), this.inputs.loadConnections()]).then(([sdk, model]) => { this.inputs.logTools(job); return withLease(lease, () => this.inputs.sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env, started: this.inputs.started })) }).finally(() => { lease.end(); trimWarm(this.inputs); metric.end() })
   }
 
   async warm(job: ToolSessionJob): Promise<void> {
@@ -290,12 +304,10 @@ export class ClaudeEngine implements CloudEngine {
   private async sdk(): Promise<SessionSdk> { return (await this.inputs.sdk()) as SessionSdk }
 }
 
-export function trimWarm(sessions: SessionPool): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
+export function trimWarm(inputs: ClaudeInputs): void { inputs.sessions.trim(workerPool.target + 1 - stateOf(inputs).voices.filter(voice => voice && !voice.closed).length) }
 
-export function closeVoices(): void {
-  for (const voice of voices) voice?.close()
+export function closeVoices(inputs: ClaudeInputs): void {
+  for (const voice of stateOf(inputs).voices) voice?.close()
 }
 const QUICK_LANES = 3, WARM_LANES = 2, EXTRA_VOICE_IDLE_MS = 2 * 60_000
 const quickLanes = (): number => Math.max(WARM_LANES, Math.min(QUICK_LANES, workerPool.target))
-const voices: (VoiceSession | undefined)[] = []
-const voiceKeys: string[] = []

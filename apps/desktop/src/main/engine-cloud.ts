@@ -88,8 +88,6 @@ export interface CloudEngine extends Engine {
 
 
 const claudeSessions = new SessionPool()
-setInterval(() => { claudeSessions.sweep(); trimWarm(claudeSessions) }, 60_000).unref()
-workerPool.onTarget(() => trimWarm(claudeSessions))
 
 export const claudeInputs: ClaudeInputs = {
   binary: claudeBinary,
@@ -104,6 +102,8 @@ export const claudeInputs: ClaudeInputs = {
   afterFirstSession: afterFirstClaudeSession,
   sessions: claudeSessions,
 }
+setInterval(() => { claudeSessions.sweep(); trimWarm(claudeInputs) }, 60_000).unref()
+workerPool.onTarget(() => trimWarm(claudeInputs))
 
 export function claudeEngine(profile = activeAccountProfile('claude')): ClaudeEngine {
   return new ClaudeEngine(claudeInputs, profile)
@@ -115,7 +115,7 @@ export function closeClaudeSession(key: string): void {
 
 export function closeClaudeSessions(): void {
   claudeSessions.closeAll()
-  closeVoices()
+  closeVoices(claudeInputs)
 }
 
 const instances = new Map<string, CloudEngine>()
