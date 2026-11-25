@@ -57,10 +57,20 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.first?.text).toBe('열람실은 밤 9시까지예요.')
   })
 
-  it('streams the lead\'s words as the first text when the ack has nothing to say', async () => {
-    const engine = fake(async job => { await wait(30); job.onToken?.('반가워요, 오늘도 잘 부탁드려요.'); await wait(30); return '반가워요, 오늘도 잘 부탁드려요.' }, async () => 'NONE')
+  it('shows the waiting line the app shows when the quick voice is slow, and holds the lead\'s words behind it', async () => {
+    const shown = vi.fn(), held: boolean[] = []
+    const engine = fake(async job => { await wait(1500); job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, async () => { await wait(1450); return '신간 목록부터 볼게요.' })
+    const { trace } = await answer(await openWorld(await temp(), engine), '이번 주 신간 몇 권이야?', { ack: { show: shown }, onToken: (_, hold) => { held.push(hold) } })
+    expect(shown).toHaveBeenCalledOnce()
+    expect(trace.first?.text).toBe(shown.mock.calls[0]![0])
+    expect(trace.first!.ms).toBeLessThan(1450)
+    expect(held).toEqual([true])
+  })
+
+  it('streams the lead\'s words as the first text when no ack is wanted', async () => {
+    const engine = fake(async job => { await wait(30); job.onToken?.('반가워요, 오늘도 잘 부탁드려요.'); await wait(30); return '반가워요, 오늘도 잘 부탁드려요.' }, async () => '사서 업무부터 볼게요.')
     const held: boolean[] = []
-    const { trace } = await answer(await openWorld(await temp(), engine), '사서님 안녕하세요', { onToken: (_, hold) => { held.push(hold) } })
+    const { trace } = await answer(await openWorld(await temp(), engine), '사서님 안녕하세요', { ack: { interactive: false }, onToken: (_, hold) => { held.push(hold) } })
     expect(held).toEqual([false])
     expect(trace.first?.text).toBe('반가워요, 오늘도 잘 부탁드려요.')
     expect(trace.first!.ms).toBeLessThan(trace.final.ms)

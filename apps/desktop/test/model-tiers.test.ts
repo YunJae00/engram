@@ -424,8 +424,7 @@ describe('instant first line', () => {
     for (const message of ['아 지민호 말고 민호야', '나 누구랑 일하지?', '정리한 폴더에 PDF 몇 개야?']) expect(fallbackLine(message, true)).not.toMatch(/[A-Za-z]|알겠|네,/)
     expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('names the first concrete thing')
     expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('Do not restate the request')
-    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain('fallback: said => fallbackLine(request.message, threadKorean(request.message, request.history ?? []), said), show:')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('fallback: said => fallbackLine(message, korean, said),')
   })
 
   it('drops a line that misses the budget', async () => {

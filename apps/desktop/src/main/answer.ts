@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { addBotTask, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineNow, firstLineReady, firstLineSpoke, smallTalkAnswer } from './first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSpoke, smallTalkAnswer } from './first-line.js'
 import { taskRoot } from './file-work.js'
 import { fetchPlainPage } from './plain-page.js'
 import { addStudyOffer } from './study-offers.js'
@@ -86,7 +86,7 @@ export async function answer(world: World, message: string, options: AnswerOptio
   const turn = signal ?? new AbortController().signal
   let streamed = '', firstLine = false, result: AgentLoopResult | undefined, failure: unknown
   beginFirstLine({
-    interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => engine,
+    interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => engine, fallback: said => fallbackLine(message, korean, said),
     ...asked,
     channel, message, korean, workdir: engineCwd(paths), signal: turn,
     show: line => { trace.first ??= { text: line, ms: ms() }; asked.show?.(line) },
