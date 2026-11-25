@@ -123,6 +123,19 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(prompts.join('\n')).not.toContain('설거지 담당 민서')
   })
 
+  it('a statement that asks for nothing reaches the lead with the same rules as a remember ask, which say it gets a warm reaction and no word about keeping it', async () => {
+    const systems: string[] = []
+    const engine = fake(async job => { systems.push(job.system); return job.prompt.includes('강아지') ? '첫 산책이라니 신났겠어요. 사진 있으면 보고 싶어요.' : '기억해 둘게요.' })
+    const world = await openWorld(await temp(), engine)
+    const told = await answer({ ...world, history: [] }, '우리 집 강아지가 어제 처음 동네 한 바퀴 돌았어', { plainAsk: false })
+    await answer({ ...world, history: [] }, '내 자전거 보관함 번호 412번이야, 기억해 줘', { plainAsk: false })
+    expect(systems).toHaveLength(2)
+    expect(systems[0]).toBe(systems[1])
+    expect(systems[0]).toContain('what they only tell you gets one or two warm sentences reacting to it, never a word about keeping it')
+    expect(systems[0]).not.toContain('When they tell you something to remember')
+    expect(told.trace.final.text).toBe('첫 산책이라니 신났겠어요. 사진 있으면 보고 싶어요.')
+  })
+
   it('gives a lookup ask the quick model\'s own ack, like any other ask', async () => {
     const shown: string[] = []
     const engine = fake(async () => '오사카는 토요일 오후에 비가 와요.', async prompt => prompt.includes('first line') ? '오사카 주말 예보부터 볼게요.' : 'NONE')
