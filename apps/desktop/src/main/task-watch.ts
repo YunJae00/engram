@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { TaskWatch } from 'core'
 import { peekToasts } from './notification-watch.js'
-import { officeAgentTools } from './office-agent.js'
+import { officeAgentTools } from './office-live.js'
 import { loadSettings } from './settings.js'
 
 export const WATCHABLE = ['notifications', 'outlook_mail', 'outlook_calendar']

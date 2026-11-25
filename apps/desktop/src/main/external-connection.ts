@@ -7,13 +7,14 @@ import { app, dialog } from 'electron'
 import { askOwner } from './dialog-owner.js'
 import { fromJSONSchema } from 'zod'
 import { addRoutine, appendBotTurn, callMemoryTool, cometTools, createBot, listRoutines, MEMORY_MCP_TOOLS, officeArithmeticFault, officeWriteUnverified, routineTask, routineTaskPrompt, type AgentLoopStep, type AgentTool } from 'core'
-import { agentCourier } from './agent-courier.js'
+import { appCourier } from './app-courier.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { evidenceFault } from 'core'
 import { resetLane } from './agent-browser.js'
-import { officeAgentTools } from './office-agent.js'
+import { officeAgentTools } from './office-live.js'
 import { clearApplicationWork } from './application-work.js'
 import { cometFileTools, taskOutputs } from './file-work.js'
+import { appFileHost } from './file-host.js'
 import { loadSettings } from './settings.js'
 import { broadcast } from './engine-health.js'
 import type { VaultContext } from './vault.js'
@@ -48,8 +49,8 @@ const KEEP = { name: 'engram_keep', description: 'After engram_finish, ask the p
 
 function availableTools(ctx: VaultContext, lane: string, office: boolean): AgentTool[] {
   return [
-    ...cometTools({ paths: ctx.paths, skillNotes: () => ctx.store.getAll(), retrieve: async () => [], courier: agentCourier({ lane, awaitCompletion: true }) }).filter(tool => !['search_memory', 'run_procedure', 'ask_person'].includes(tool.name)),
-    ...workEvidenceTools(ctx.paths, lane), ...cometFileTools(ctx.paths, lane), ...(office ? officeAgentTools(lane, taskOutputs(ctx.paths)) : []),
+    ...cometTools({ paths: ctx.paths, skillNotes: () => ctx.store.getAll(), retrieve: async () => [], courier: appCourier({ lane, awaitCompletion: true }) }).filter(tool => !['search_memory', 'run_procedure', 'ask_person'].includes(tool.name)),
+    ...workEvidenceTools(ctx.paths, lane), ...cometFileTools(ctx.paths, lane, [], [], {}, appFileHost), ...(office ? officeAgentTools(lane, taskOutputs(ctx.paths)) : []),
   ]
 }
 

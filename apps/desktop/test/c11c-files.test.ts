@@ -12,8 +12,10 @@ vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn(), office
 vi.mock('../src/main/application-work.js', () => ({ applicationWork: () => ({ signal: undefined, show: vi.fn() }), clearApplicationWork: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { mistypedWords, officeAgentTools } from '../src/main/office-agent.js'
+import { mistypedWords } from '../src/main/office-agent.js'
+import { officeAgentTools } from '../src/main/office-live.js'
 import { artifactDirectory, cometFileTools, placeInTask, saveOutput, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { appFileHost } from '../src/main/file-host.js'
 import { fixSlideTitle } from '../src/main/desk-lane.js'
 import { deliverOutputs, withFiles } from '../src/main/native-tools.js'
 import { outputCards } from '../../../packages/core/src/agent-session-result.js'
@@ -37,7 +39,7 @@ afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
 const turnTools = (turn: string, attached: string[] = [], personal = '') => {
   const made = new Set<string>()
-  return [...officeAgentTools('bot-sales', taskOutputs(paths(), async () => task, made, turn), undefined, personal), ...cometFileTools(paths(), 'bot-sales', attached, [task], { turn, made })]
+  return [...officeAgentTools('bot-sales', taskOutputs(paths(), async () => task, made, turn), undefined, personal), ...cometFileTools(paths(), 'bot-sales', attached, [task], { turn, made }, appFileHost)]
 }
 const use = async (tools: ReturnType<typeof turnTools>, name: string, args: Record<string, unknown>) => JSON.parse(await tools.find(tool => tool.name === name)!.run(args, { task: 'x' })) as Record<string, unknown> & { path: string; taskPath: string; artifact: string; sha256: string }
 const files = async (ext: string) => (await readdir(task)).filter(file => file.endsWith(ext)).sort()

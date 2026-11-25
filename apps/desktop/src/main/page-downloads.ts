@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import { existsSync } from 'node:fs'
 import { extname, basename, join } from 'node:path'
 import type { Download, Page } from 'playwright-core'
@@ -7,11 +6,11 @@ import { flog } from './flog.js'
 const saved = new Map<string, string[]>()
 const watched = new WeakSet<Page>()
 
-export function watchDownloads(laneOf: (page: Page) => string | null): (page: Page) => void {
+export function watchDownloads(laneOf: (page: Page) => string | null, folder: () => string): (page: Page) => void {
   return (page) => {
     if (watched.has(page)) return
     watched.add(page)
-    page.on('download', (download) => void keep(download, laneOf(page)))
+    page.on('download', (download) => void keep(download, laneOf(page), folder))
   }
 }
 
@@ -21,9 +20,9 @@ export function takeDownloads(lane: string): string[] {
   return files
 }
 
-async function keep(download: Download, lane: string | null): Promise<void> {
+async function keep(download: Download, lane: string | null, folder: () => string): Promise<void> {
   try {
-    const target = freeName(app.getPath('downloads'), download.suggestedFilename() || 'download')
+    const target = freeName(folder(), download.suggestedFilename() || 'download')
     await download.saveAs(target)
     flog('page-download', target)
     if (lane) saved.set(lane, [...(saved.get(lane) ?? []), target])

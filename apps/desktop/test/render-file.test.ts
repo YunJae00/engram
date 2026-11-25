@@ -29,10 +29,11 @@ vi.mock('electron', async () => {
 })
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
 import { cometFileTools } from '../src/main/file-work.js'
+import { appFileHost } from '../src/main/file-host.js'
 import { requestAllowed } from '../src/main/render-file.js'
 
 let root: string, paths: VaultPaths, cwd: string
-const render = () => cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'render_file')!
+const render = () => cometFileTools(paths, 'bot-x', [], [cwd], {}, appFileHost).find(tool => tool.name === 'render_file')!
 const context = { task: 'Make a PDF.' }
 beforeEach(async () => {
   await mkdir('tmp', { recursive: true })

@@ -1,16 +1,15 @@
-import { app, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { EventEmitter } from 'node:events'
 import { ProcessClient } from './process-client.js'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { fileURLToPath } from 'node:url'
 import type { Browser, BrowserContext, Page } from 'playwright-core'
 import { flog } from './flog.js'
 
 let owner: BrowserWindow | null = null
+let home: NativeHome | null = null
 let running: NativeBrowser | null = null
 const nativeContexts = new WeakSet<BrowserContext>()
 const targets = new WeakMap<Page, Promise<string>>()
@@ -21,7 +20,8 @@ export function nativeBrowserEnabled(): boolean {
   return process.platform === 'win32' && process.env['ENGRAM_BROWSER_EXTERNAL'] !== '1'
 }
 
-export function setNativeBrowserOwner(window: BrowserWindow): void { owner = window }
+export interface NativeHome { executable: string; profile: string }
+export function setNativeBrowserOwner(window: BrowserWindow, where: NativeHome): void { owner = window; home = where }
 export function isNativePage(page: Page): boolean { return nativeContexts.has(page.context()) }
 export function isNativeContext(context: BrowserContext): boolean { return nativeContexts.has(context) }
 export function nativeBrowserPid(): number | undefined { return running?.pid }
@@ -99,15 +99,13 @@ async function freePort(): Promise<number> {
 
 export async function openNativeBrowser(): Promise<BrowserContext> {
   if (running?.context) return running.context
-  if (!owner || owner.isDestroyed()) throw new Error('Open the main window before starting the embedded browser')
-  const executable = app.isPackaged
-    ? join(process.resourcesPath, 'bin', 'browser', 'EngramBrowser.exe')
-    : fileURLToPath(new URL('../../native-bin/browser/EngramBrowser.exe', import.meta.url))
+  if (!owner || owner.isDestroyed() || !home) throw new Error('Open the main window before starting the embedded browser')
+  const executable = home.executable
   if (!existsSync(executable)) throw new Error('Embedded browser is missing. Reinstall Engram or build the browser host.')
   const requestedPort = Number(process.env['ENGRAM_AGENT_CDP'])
   const port = Number.isInteger(requestedPort) && requestedPort >= 1024 && requestedPort <= 65535 ? requestedPort : await freePort()
   const handle = owner.getNativeWindowHandle().readBigUInt64LE().toString()
-  const helper = new NativeBrowser(new ProcessClient(executable, [handle, join(app.getPath('userData'), 'webview2-profile'), String(port)]))
+  const helper = new NativeBrowser(new ProcessClient(executable, [handle, home.profile, String(port)]))
   running = helper
   try {
     await helper.ready

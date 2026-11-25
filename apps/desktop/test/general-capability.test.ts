@@ -7,7 +7,9 @@ import { CHECK_SCRATCH, continuationPrompt, vaultPaths, type DelegatedTask, type
 const state = vi.hoisted(() => ({ home: '' }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => `${state.home}/${name}` }, dialog: { showMessageBox: vi.fn() }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: {}, nativeImage: {}, BrowserWindow: class {}, session: {} }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
-import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile, twinsFile } from '../src/main/file-work.js'
+import { artifactDirectory, checkedOutputs, cometFileTools as hostFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile, twinsFile } from '../src/main/file-work.js'
+import { appFileHost } from '../src/main/file-host.js'
+const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, {}, appFileHost)
 import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, withFiles, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
 import { checkResult, latestResultOutputs } from '../src/main/result-check.js'
 import { freshResultReadback } from '../src/main/task-result-state.js'

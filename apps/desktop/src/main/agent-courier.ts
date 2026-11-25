@@ -1,11 +1,9 @@
-import { net } from 'electron'
 import { markNewControls, type PageMove, type WebCourier, type WebPage } from 'core'
 import { armIdleClose, agentAbortable as withAbort, DEFAULT_LANE, ensureAgentPage, laneLastUrl, lanePage, NAV_TIMEOUT_MS, readPage } from './agent-browser.js'
 import { routineDriver } from './routine-driver.js'
 import { chooseOption, hoverOn, pressKey, pressOn, pressPoint, scrollPage, typeText, type Ask } from './page-actions.js'
 import { revealText } from './page-reveal.js'
 import { maskSecrets } from './page-mask.js'
-import { touchedAt } from './agent-view.js'
 import { readWhenReady } from './page-ready.js'
 import { flog } from './flog.js'
 import { fetchPlainPage, tabOrPlain } from './plain-page.js'
@@ -61,7 +59,7 @@ async function inTurnOn(lane: string, url: string, work: () => Promise<PageMove>
 const HANDS_STILL_MS = 4_000
 const ASIDE_AT_MOST_MS = 5 * 60_000
 
-async function stepAside(lane: string, signal: AbortSignal | undefined, say?: (phase: 'aside' | 'resume') => void): Promise<void> {
+async function stepAside(lane: string, touchedAt: (lane: string) => number, signal: AbortSignal | undefined, say?: (phase: 'aside' | 'resume') => void): Promise<void> {
   if (Date.now() - touchedAt(lane) >= HANDS_STILL_MS) return
   say?.('aside')
   const from = Date.now()
@@ -72,13 +70,26 @@ async function stepAside(lane: string, signal: AbortSignal | undefined, say?: (p
   say?.('resume')
 }
 
-export function agentCourier(
-  deps: { askBeforePress?: Ask; lane?: string; awaitCompletion?: boolean; onLook?: (url: string, covered: number) => void; onAside?: (phase: 'aside' | 'resume') => void } = {},
-): WebCourier {
+export interface WebNetwork {
+  fetch(url: string, init: RequestInit): Promise<Response>
+  follow(url: string, signal?: AbortSignal): Promise<string | null>
+}
+
+export interface CourierDeps {
+  network: WebNetwork
+  touchedAt(lane: string): number
+  askBeforePress?: Ask
+  lane?: string
+  awaitCompletion?: boolean
+  onLook?: (url: string, covered: number) => void
+  onAside?: (phase: 'aside' | 'resume') => void
+}
+
+export function agentCourier(deps: CourierDeps): WebCourier {
   const ask = deps.askBeforePress
   const lane = deps.lane ?? DEFAULT_LANE
   const ensurePage = () => ensureAgentPage(lane)
-  const aside = (signal?: AbortSignal) => stepAside(lane, signal, deps.onAside)
+  const aside = (signal?: AbortSignal) => stepAside(lane, deps.touchedAt, signal, deps.onAside)
   let seen: { at: string; names: Set<string> } | null = null
   const placeOf = (url: string) => { try { const parsed = new URL(url); return parsed.origin + parsed.pathname } catch { return url } }
   const markReading = (read: WebPage): WebPage => {
@@ -173,20 +184,10 @@ export function agentCourier(
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
     followRedirect(url, signal) {
-      return new Promise((resolve) => {
-        if (signal?.aborted) { resolve(null); return }
-        const request = net.request({ url, redirect: 'manual' })
-        const done = (target: string | null) => { signal?.removeEventListener('abort', stop); resolve(target); request.abort() }
-        const stop = () => done(null)
-        signal?.addEventListener('abort', stop, { once: true })
-        request.on('redirect', (_status, _method, target) => { try { done(new URL(target, url).href) } catch { done(null) } })
-        request.on('response', () => done(null))
-        request.on('error', () => done(null))
-        request.end()
-      })
+      return deps.network.follow(url, signal)
     },
     async fetchPage(url, signal) {
-      const got = await withAbort(tabOrPlain(ensurePage, /^https?:\/\//i.test(url) ? () => fetchPlainPage(url, signal, (to, init) => net.fetch(to, init)) : undefined, signal), signal)
+      const got = await withAbort(tabOrPlain(ensurePage, /^https?:\/\//i.test(url) ? () => fetchPlainPage(url, signal, deps.network.fetch) : undefined, signal), signal)
       if ('read' in got) { flog('browser', `read without a tab: ${new URL(url).host}`); return got.read }
       const page = got.tab
       armIdleClose()

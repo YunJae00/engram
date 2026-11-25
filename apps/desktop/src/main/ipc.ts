@@ -43,8 +43,8 @@ import {
   listCards,
   loadAliasGroups,
   addBotTask,
-  scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyNote, employees, takesCompanyLane, plainSteer, steerShaped, steerSplit, employeesAnswer, lateShown, lateOwed, handoffShown, updateTask, COMPANY_LANE_TOOLS, loadArchivedBots,
+  type ScheduleDeps,
+  companyNote, employees, takesCompanyLane, plainSteer, steerShaped, steerSplit, employeesAnswer, lateShown, lateOwed, handoffShown, updateTask, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -82,7 +82,6 @@ import {
   rejectCard,
   runComet,
   priorOutputLines,
-  cometTools,
   deriveSearchTemplate,
   fillSlots,
   parsePendingCall,
@@ -116,7 +115,6 @@ import {
   mergeMemory,
   PERSON_MEMORY,
   listTasks,
-  PROFILE_TYPE,
   syncPersonNote,
   removeRoutine,
   renameRoutine,
@@ -125,7 +123,6 @@ import {
   safeInboxName,
   spreadActivation,
   sweep,
-  toRetrievedNote,
   topicComponents,
   triggeredNotes,
   unionHits,
@@ -181,7 +178,6 @@ import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-j
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
 import { registerFirstSetupIpc } from './first-setup.js'
-import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -191,8 +187,11 @@ import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
-import { officeAgentTools, officeContext, PROOF_MS } from './office-agent.js'
-import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskOutputs, taskRoot } from './file-work.js'
+import { PROOF_MS } from './office-agent.js'
+import { officeAgentTools, officeContext } from './office-live.js'
+import { artifactDirectory, checkedOutputs, linkedOutputs, newestRevisions, taskOutputs, taskRoot } from './file-work.js'
+import { appFileHost, registerArtifactIpc } from './file-host.js'
+import { retrievedNotes, toolKit } from './tool-kit.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -204,7 +203,7 @@ import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 const lastReplyOf = (history?: readonly { role: string; text: string }[]): string | undefined => [...(history ?? [])].reverse().find(one => one.role === 'assistant')?.text
 const HANDED_BACK = 'Your teammates handed back their parts of this job. Write the one result for the person from what they handed back, as its note says.'
-import { agentCourier } from './agent-courier.js'
+import { appCourier } from './app-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { browserHistory, browserNavigate, browserResize } from './browser-navigation.js'
 import { bookmarkSources, importBookmarks, savedBookmarks } from './browser-bookmarks.js'
@@ -235,7 +234,7 @@ import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { externalOwns, stopExternalCalls, stopExternalLane } from './external-connection.js'
-import { cometIdentity } from './cometIdentity.js'
+import { cometIdentity, LEAD_ROLE } from './cometIdentity.js'
 import type { VaultContext } from './vault.js'
 
 function plainExcerpt(body: string): string {
@@ -976,22 +975,13 @@ export function registerIpc(ctx: VaultContext): void {
             availableMemory() > ROOM_FOR_EMBEDDER
               ? await semanticQuery(query, limit)
               : await semanticQueryIfLive(query, limit)
-          const closeness = new Map(semantic.map((one) => [one.id, one.score]))
           flog(
             'comet-retrieve',
             `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
           )
-          const hits = activationRerank(
-            hybridMerge(ctx.store.search(query), semantic, limit),
-            (id) => ctx.store.get(id),
-          )
-          return hits
-            .map((h) => ctx.store.get(h.id))
-            .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
-            .slice(0, limit)
-            .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
+          return retrievedNotes(ctx.store, query, semantic, limit)
         },
-        courier: agentBrowserAvailable() && freeAtStart >= webMinFree ? agentCourier() : null,
+        courier: agentBrowserAvailable() && freeAtStart >= webMinFree ? appCourier() : null,
       },
       goal,
       {
@@ -1965,7 +1955,7 @@ export function registerIpc(ctx: VaultContext): void {
     },
   }
 
-  const cometSchedule = (botId: string, chief = false) => scheduleTool({
+  const cometSchedule = (botId: string, chief = false): ScheduleDeps => ({
     list: async () => (await loadBots(paths)).flatMap(bot => bot.tasks ?? []),
     add: async (input) => { const task = await addBotTask(paths, botId, chief ? { ...input, chat: botId } : input); broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }); return task },
     remove: (id) => removeScheduled(paths, id),
@@ -1988,14 +1978,13 @@ export function registerIpc(ctx: VaultContext): void {
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
       ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
     }) : []
-    return [...cometTools({
+    const changed = () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }
+    const kit = toolKit({
       paths,
-      batchReads: process.env.ENGRAM_BATCH_READS !== '0',
-      ...(brainConnection('decision') ? { decidePage: (state: string, instructions: string, criteria: Record<string, string>, signal?: AbortSignal) => decideChoice(state, instructions, criteria, undefined, signal) } : {}),
-      onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
-      skillNotes: () => ctx.store.getAll(),
+      channel,
+      log: flog,
       courier: agentBrowserAvailable()
-        ? agentCourier({
+        ? appCourier({
             askBeforePress: unlessStudying(channel, team.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
             lane: channel,
             onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
@@ -2005,55 +1994,54 @@ export function registerIpc(ctx: VaultContext): void {
             },
           })
         : null,
-      wallMet: (url) => {
-        audit('wall', { url })
-        if (wallHolds.has(channel)) return
-        const release = holdAgentBrowser()
-        wallHolds.set(channel, release)
-        setTimeout(() => {
-          if (wallHolds.get(channel) === release) {
-            wallHolds.delete(channel)
-            release()
-          }
-        }, WALL_HOLD_MS).unref()
-      },
-      searchTemplate: async () => (await loadSettings()).searchTemplate || null,
-      runProcedure: (id, slots, signal, again) => recovery
-        ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
-        : runProcedureForComet(id, slots, again === true, channel, signal),
-      remembered: () => remembered,
-      guided,
-      learnSearch: async (template) => {
-        await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
+      web: {
+        batchReads: process.env.ENGRAM_BATCH_READS !== '0',
+        ...(brainConnection('decision') ? { decidePage: (state: string, instructions: string, criteria: Record<string, string>, signal?: AbortSignal) => decideChoice(state, instructions, criteria, undefined, signal) } : {}),
+        skillNotes: () => ctx.store.getAll(),
+        wallMet: (url) => {
+          audit('wall', { url })
+          if (wallHolds.has(channel)) return
+          const release = holdAgentBrowser()
+          wallHolds.set(channel, release)
+          setTimeout(() => {
+            if (wallHolds.get(channel) === release) {
+              wallHolds.delete(channel)
+              release()
+            }
+          }, WALL_HOLD_MS).unref()
+        },
+        searchTemplate: async () => (await loadSettings()).searchTemplate || null,
+        runProcedure: (id, slots, signal, again) => recovery
+          ? Promise.resolve('The saved replay already ran. Inspect the current page and continue only unfinished work; do not replay it again.')
+          : runProcedureForComet(id, slots, again === true, channel, signal),
+        remembered: () => remembered,
+        guided,
+        learnSearch: async (template) => {
+          await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
+        },
       },
       retrieve: async (query, limit) => {
         const semantic =
           availableMemory() > ROOM_FOR_EMBEDDER
             ? await semanticQuery(query, limit)
             : await semanticQueryIfLive(query, limit)
-        const closeness = new Map(semantic.map((one) => [one.id, one.score]))
         flog(
           'comet-retrieve',
           `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
         )
-        const hits = activationRerank(
-          hybridMerge(ctx.store.search(query), semantic, limit),
-          (id) => ctx.store.get(id),
-        )
-        return hits
-          .map((h) => ctx.store.get(h.id))
-          .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
-          .slice(0, limit)
-          .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
+        return retrievedNotes(ctx.store, query, semantic, limit)
       },
-    }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
+      ...(channel.startsWith('bot-') ? { bot: { schedule: cometSchedule(channel.slice('bot-'.length), input.chief === true), chief: input.chief === true, changed, said: () => turnGoals.get(channel) ?? '', kept: (added: number) => broadcast({ type: 'comet:remembered', channel, botId: channel.slice('bot-'.length), added, touched: 0 }) } } : {}),
+      ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? { files: { readable: [...attachments.paths, ...earlierOutputs.map((output) => output.path)], workFolder: native?.cwd ?? await workFolderFor(paths, channel), consent: { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }, host: appFileHost } } : {}),
+    })
+    return [...kit.web, ...workEvidenceTools(paths, channel), ...attachments.tools,
+    ...kit.team, ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
     ...(channel.startsWith('bot-') && !isHelperLane(channel) ? [teammateSettingsTool(paths, channel.slice('bot-'.length), () => broadcast({ type: 'bots:changed' }))] : []),
     ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => /[가-힣]/.test(turnGoals.get(channel) ?? ''))] : []),
-    ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
+    ...kit.learning,
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
       look: (question, index, lookSignal) => lookAsHelper({
         channel, engine, workdir: engineCwd(paths), guided,
@@ -2068,7 +2056,7 @@ export function registerIpc(ctx: VaultContext): void {
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
       standing: { guide: await workGuide(paths), request: turn.verification.goal ?? turnGoals.get(channel) ?? '' },
-    } : undefined)]), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
+    } : undefined)]), ...kit.files, ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2388,7 +2376,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             ...(resume ? { resume } : {}),
-            persona: cometIdentity(bot, 'a colleague who gets the task done'),
+            persona: cometIdentity(bot, LEAD_ROLE),
             guided,
             ...((handedBack || attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || changedNote || team.note(channel) || company) ? { attachmentContext: [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),

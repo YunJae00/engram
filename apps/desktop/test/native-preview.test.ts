@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 
 const fake = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>(), page: vi.fn(), send: vi.fn(), url: vi.fn() }))
-vi.mock('electron', () => ({ ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(name, handler), on: vi.fn() }, screen: {} }))
+vi.mock('electron', () => ({ app: { isPackaged: false, getPath: () => '' }, ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(name, handler), on: vi.fn() }, screen: {} }))
 vi.mock('../src/main/agent-browser.js', () => ({ lanePage: fake.page }))
 vi.mock('../src/main/native-browser.js', () => ({ focusNativeOwner: vi.fn(), isNativePage: () => true, nativeBrowserEnabled: () => true, nativeTarget: vi.fn(), placeNativePages: vi.fn(), setNativeBrowserOwner: vi.fn() }))
 import { attachNativeLayout } from '../src/main/native-layout.js'

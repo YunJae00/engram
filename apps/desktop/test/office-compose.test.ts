@@ -10,7 +10,8 @@ vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: 
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.bind }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn(), officeWorkPreview: () => fake.preview }))
 vi.mock('../src/main/application-work.js', () => ({ applicationWork: () => ({ signal: undefined, show: vi.fn() }), clearApplicationWork: vi.fn() }))
-import { officeAgentTools, proofFixes } from '../src/main/office-agent.js'
+import { proofFixes } from '../src/main/office-agent.js'
+import { officeAgentTools } from '../src/main/office-live.js'
 import { createRequire } from 'node:module'
 const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 import { taskOutputs } from '../src/main/file-work.js'

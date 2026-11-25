@@ -8,12 +8,12 @@ vi.mock('../src/main/native-browser.js', () => ({
   openNativeBrowser: native.open, createNativePage: native.create, closeNativeBrowser: native.close,
   nativeOpener: async () => null,
 }))
-vi.mock('../src/main/native-layout.js', () => ({ nativePagesVisible: () => false }))
-vi.mock('../src/main/available-memory.js', () => ({ availableMemory: () => 8e9 }))
 vi.mock('../src/main/memory-plan.js', () => ({ reserveRoom: () => () => {} }))
 vi.mock('../src/main/stalled-scripts.js', () => ({ watchStalledScripts: () => {} }))
 vi.mock('../src/main/page-downloads.js', () => ({ watchDownloads: () => () => {}, takeDownloads: () => [] }))
-import { addAgentPage, agentBrowserPids, agentBrowserRunning, closeAgentBrowser, ensureAgentPage, laneOf } from '../src/main/agent-browser.js'
+import { addAgentPage, agentBrowserPids, agentBrowserRunning, closeAgentBrowser, ensureAgentPage, initAgentBrowser, laneOf } from '../src/main/agent-browser.js'
+
+initAgentBrowser({ profileDir: 'unused-profile', downloads: 'unused-downloads', freeMemory: () => 8e9 })
 
 const page = () => Object.assign(new EventEmitter(), { isClosed: () => false, url: () => 'about:blank' }) as unknown as Page
 afterEach(async () => { await closeAgentBrowser({ force: true }); vi.useRealTimers(); vi.clearAllMocks() })

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   notifications: vi.fn(),
 }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: mocks.settings }))
-vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: mocks.tools }))
+vi.mock('../src/main/office-live.js', () => ({ officeAgentTools: mocks.tools }))
 vi.mock('../src/main/notification-watch.js', () => ({ peekToasts: mocks.notifications }))
 
 beforeEach(() => {

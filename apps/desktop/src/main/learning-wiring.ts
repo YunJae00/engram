@@ -1,8 +1,7 @@
 import { forgetFactText, installSkill, keepHowToTool, keepInMindTool, loadBotMemory, loadBots, PERSON_MEMORY, readBotTranscript, readSkillsLedger, recordFacts, searchChatsTool, skillContentHash, skillSlug, syncPersonNote, withoutSecrets, type AgentTool, type VaultPaths } from 'core'
 import { replacedLines } from 'core/src/bot-memory'
-import { broadcast } from './engine-health.js'
 
-export function learningTools(paths: VaultPaths, channel: string, said: () => string): AgentTool[] {
+export function learningTools(paths: VaultPaths, channel: string, said: () => string, kept?: (added: number) => void): AgentTool[] {
   const botId = channel.startsWith('bot-') ? channel.slice('bot-'.length) : ''
   return [
     keepInMindTool({
@@ -14,7 +13,7 @@ export function learningTools(paths: VaultPaths, channel: string, said: () => st
         for (const line of await held(botId)) await forgetFactText(paths, botId, line)
         if (own) await recordFacts(paths, botId, clean)
         if (!own || gone.length) await syncPersonNote(paths, new Date(), clean, gone)
-        if (botId) broadcast({ type: 'comet:remembered', channel, botId, added: facts.length, touched: 0 })
+        if (botId) kept?.(facts.length)
       },
     }),
     keepHowToTool({

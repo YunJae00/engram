@@ -6,7 +6,7 @@ vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: fake.show, offi
 vi.mock('../src/main/office-host.js', () => ({}))
 vi.mock('../src/main/desktop-control.js', () => ({}))
 vi.mock('../src/main/application-work.js', () => ({}))
-import { showOfficePreview } from '../src/main/office-agent.js'
+import { showOfficePreview } from '../src/main/office-live.js'
 it.each([['outlook.mail', 'Outlook', undefined], ['excel.workbooks', 'Excel', undefined], ['word.read', 'Word', ''], ['ppt.read', 'PowerPoint', '']] as const)('binds %s for a read-only window preview', async (op, app, window) => {
   const binding = { lane: 'one', name: app }
   fake.bind.mockResolvedValueOnce(binding)

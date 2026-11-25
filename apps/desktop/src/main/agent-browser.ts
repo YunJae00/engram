@@ -1,12 +1,9 @@
-import { availableMemory } from './available-memory.js'
 import { classifyWall } from './page-wall.js'
 import type { WebPage } from 'core'
-import { app } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { autoImportSession } from './browser-import.js'
 import { flog } from './flog.js'
 import { watchStalledScripts } from './stalled-scripts.js'
 import { markAgentProfile } from './agent-profile.js'
@@ -15,7 +12,6 @@ import { observationOf, readFrames } from './page-reader.js'
 import { createWindowPage } from './browser-window-page.js'
 import { BrowserLanes } from './browser-lanes.js'
 import { closeNativeBrowser, createNativePage, isNativeContext, isNativePage, nativeBrowserEnabled, nativeBrowserPid, nativeOpener, openNativeBrowser } from './native-browser.js'
-import { nativePagesVisible } from './native-layout.js'
 import { resizePreview } from './page-preview.js'
 import { takeDownloads, watchDownloads } from './page-downloads.js'
 
@@ -28,6 +24,21 @@ const LAUNCH_MIN_FREE = 1.2e9
 const BLOCKED_RESOURCES = new Set(['media'])
 
 const VIEW_WIDTH = 1280
+
+export interface BrowserHost {
+  profileDir: string
+  downloads: string
+  freeMemory(): number
+  importSession?(executablePath: string): Promise<void>
+  pagesShown?(): boolean
+}
+let host: BrowserHost | null = null
+export function initAgentBrowser(next: BrowserHost): void { host = next }
+function hostOf(): BrowserHost {
+  if (!host) throw new Error('The agent browser was not set up before use.')
+  return host
+}
+const availableMemory = (): number => hostOf().freeMemory()
 
 export function webTwin(env: NodeJS.ProcessEnv = process.env): { file: string; update: boolean } | undefined {
   const file = env['ENGRAM_WEB_TWIN'], mode = env['ENGRAM_WEB_TWIN_MODE']
@@ -229,7 +240,7 @@ export async function resetLane(lane: string): Promise<void> {
   await Promise.all(pages.filter((page) => !page.isClosed()).map((page) => page.close().catch(() => undefined)))
 }
 
-const pageWatchers = new Set<(page: Page, lane: string | null) => void>([watchDownloads(laneOf)])
+const pageWatchers = new Set<(page: Page, lane: string | null) => void>([watchDownloads(laneOf, () => hostOf().downloads)])
 
 export function watchAgentPages(watcher: (page: Page, lane: string | null) => void): () => void {
   pageWatchers.add(watcher)
@@ -305,8 +316,8 @@ async function ensureContext(): Promise<Ctx> {
     const executablePath = await findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
     const { chromium } = await import('playwright-core')
-    await autoImportSession(executablePath).catch(() => undefined)
-    const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
+    await hostOf().importSession?.(executablePath).catch(() => undefined)
+    const profileDir = hostOf().profileDir
     await markAgentProfile(profileDir).catch(() => undefined)
     flog('agent-browser', `launching ${executablePath}`)
     const ctx = await launchPatiently(() =>
@@ -486,7 +497,7 @@ export { withAbort as agentAbortable }
 
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
   if (closing) return closing
-  if (nativePagesVisible() && !options.force) return
+  if (host?.pagesShown?.() && !options.force) return
   if (idleHolds > 0 && !options.force) return
   if (idleTimer) {
     clearTimeout(idleTimer)

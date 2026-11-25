@@ -14,7 +14,7 @@ const shown = vi.hoisted(() => ({ visible: true, window: { isDestroyed: () => fa
 vi.mock('electron', () => ({ app: { getPath: () => fake.data }, dialog: { showMessageBox: fake.approve }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [shown.window] } }))
 vi.mock('../src/main/agent-courier.js', () => ({ agentCourier: () => ({}) }))
 vi.mock('../src/main/agent-browser.js', () => ({ resetLane: async () => {} }))
-vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: () => [] }))
+vi.mock('../src/main/office-live.js', () => ({ officeAgentTools: () => [] }))
 vi.mock('../src/main/application-work.js', () => ({ clearApplicationWork: fake.clearWork }))
 vi.mock('../src/main/file-work.js', () => ({ cometFileTools: () => [] }))
 vi.mock('../src/main/work-evidence.js', () => ({ workEvidenceTools: () => [] }))

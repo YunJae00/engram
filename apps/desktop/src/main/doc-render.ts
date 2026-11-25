@@ -1,6 +1,5 @@
-import { shell } from 'electron'
 import type { OfficeTheme } from 'core'
-import { officeOutputName, saveOfficeOutput } from './office-output.js'
+import { officeOutputName } from './office-output.js'
 import { AlignmentType, BorderStyle, Document, Footer, HeadingLevel, LevelFormat, Packer, PageNumber, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from 'docx'
 
 interface DocTable { rows: (string | number)[][] }
@@ -10,11 +9,7 @@ interface DocBlock {
   items?: string[]
   table?: DocTable
 }
-interface DocSpec { title?: string; subject?: string; blocks: DocBlock[]; saveAs?: string; theme: OfficeTheme }
-
-function sanitize(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'document'
-}
+export interface DocSpec { title?: string; subject?: string; blocks: DocBlock[]; saveAs?: string; theme: OfficeTheme }
 
 function tableRows(table: DocTable, t: OfficeTheme): TableRow[] {
   return table.rows.map((row, r) =>
@@ -61,13 +56,7 @@ export async function buildDoc(spec: DocSpec): Promise<{ name: string; data: Buf
   return { name: officeOutputName(spec.title ?? '', '.docx', spec.saveAs, 'document'), data: await Packer.toBuffer(composeDoc(spec)), blocks: spec.blocks.length }
 }
 
-export async function renderDoc(spec: DocSpec, open = true, signal?: AbortSignal, assertActive?: () => void): Promise<{ path: string; blocks: number }> {
-  const path = await saveOfficeOutput(sanitize(spec.title ?? 'document'), '.docx', await Packer.toBuffer(composeDoc(spec)), spec.saveAs, signal, assertActive)
-  if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
-  return { path, blocks: spec.blocks.length }
-}
-
-function composeDoc(spec: DocSpec): Document {
+export function composeDoc(spec: DocSpec): Document {
   const t = spec.theme
   const children: (Paragraph | Table)[] = []
   for (const one of spec.blocks) { const made = block(one, t); if (Array.isArray(made)) children.push(...made); else children.push(made) }

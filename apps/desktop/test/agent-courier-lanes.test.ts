@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { agentCourier } from '../src/main/agent-courier.js'
+import { agentCourier as courierWith, type CourierDeps } from '../src/main/agent-courier.js'
 import { handOn, pressOn, pressPoint } from '../src/main/page-actions.js'
 import { readWhenReady } from '../src/main/page-ready.js'
 
@@ -18,7 +18,6 @@ vi.mock('../src/main/agent-browser.js', () => ({
   NAV_TIMEOUT_MS: 15000,
   agentAbortable: <T>(work: Promise<T>) => work,
 }))
-vi.mock('../src/main/agent-view.js', () => ({ touchedAt: () => 0 }))
 vi.mock('../src/main/page-actions.js', () => ({
   handOn: vi.fn(async (page: { hand: unknown }) => ({ hand: page.hand })),
   chooseOption: vi.fn(), hoverOn: vi.fn(), pressKey: vi.fn(), pressOn: vi.fn(),
@@ -27,6 +26,9 @@ vi.mock('../src/main/page-actions.js', () => ({
 vi.mock('../src/main/page-reveal.js', () => ({ revealText: vi.fn() }))
 vi.mock('../src/main/page-mask.js', () => ({ maskSecrets: vi.fn() }))
 vi.mock('../src/main/page-ready.js', () => ({ readWhenReady: vi.fn() }))
+
+const offline = { fetch: () => Promise.reject(new Error('offline')), follow: async () => null }
+const agentCourier = (deps: Partial<CourierDeps> = {}) => courierWith({ network: offline, touchedAt: () => 0, ...deps })
 
 function fixture() {
   const click = vi.fn().mockResolvedValue(undefined)

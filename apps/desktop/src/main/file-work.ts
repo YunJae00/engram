@@ -1,14 +1,10 @@
-import { app, ipcMain, nativeImage, shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { appendFile, link, lstat, mkdir, open, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, fileWorkTools, renameWithRetry, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
-import { assertDesktopTurnNotStopped } from './desktop-control.js'
-import { fitImage } from './image-fit.js'
+import { artifactHref, fileWorkTools, renameWithRetry, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool } from 'core'
 import { flog } from './flog.js'
-import { renderTool } from './render-file.js'
-import type { ArtifactViewDto } from '../shared/types.js'
+import type { renderTool } from './render-file.js'
 import type { Ask } from './page-actions.js'
 import { READ_CARD } from './read-card.js'
 import { fileMoveTool } from './file-move.js'
@@ -24,9 +20,9 @@ const REVISION = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
 export const taskRoot = (paths: VaultPaths) => join(paths.workspace, 'tasks')
 export const OUTPUT_BYTES = 50_000_000
 export const OUTPUT_EXTENSIONS: ReadonlySet<string> = new Set('.pdf .docx .xlsx .pptx .csv .tsv .md .txt .json .html .png .jpg .jpeg .svg .gif .py .js .ts .sh .ps1 .zip'.split(' '))
-const CORE_OUTPUTS = new Set(['.txt', '.md', '.json', '.csv', '.tsv', '.docx', '.pptx', '.xlsx'])
+export const CORE_OUTPUTS: ReadonlySet<string> = new Set(['.txt', '.md', '.json', '.csv', '.tsv', '.docx', '.pptx', '.xlsx'])
 const TEXT_OUTPUTS = new Set(['.html', '.svg', '.py', '.js', '.ts', '.sh', '.ps1'])
-const kindOf = (name: string) => extname(name).toLowerCase()
+export const kindOf = (name: string) => extname(name).toLowerCase()
 const exists = (error: unknown) => (error as NodeJS.ErrnoException).code === 'EEXIST'
 
 function outputName(value: unknown): string {
@@ -174,7 +170,7 @@ export async function resolveOutput(directory: string, value: unknown): Promise<
   return path
 }
 const storedArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
-const findArtifact = (directory: string, id: unknown) => storedArtifact(directory, id).catch(async error => {
+export const findArtifact = (directory: string, id: unknown) => storedArtifact(directory, id).catch(async error => {
   const rows = (await readFile(replacedFile(join(dirname(directory), 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
   let now = id
   for (let hops = 0; hops < 50; hops += 1) { const next = rows.filter(row => row[0] === now).at(-1)?.[1]; if (!next) break; now = next }
@@ -243,9 +239,17 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
   }
 }
 
-interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
+export interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
 
-export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
+export interface FileHost {
+  app: { getPath(name: typeof USER_FOLDERS[number]): string }
+  assertDesktopTurnNotStopped(lane: string): void
+  fitImage?(image: { data: string; mimeType: string }): { data: string; mimeType: string }
+  renderTool?: typeof renderTool
+}
+
+export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}, host: FileHost) {
+  const { app, assertDesktopTurnNotStopped, fitImage, renderTool } = host
   const approved = new Set(attachedPaths)
   const directory = artifactDirectory(paths), folder = handInRoots[0]
   const active = () => assertDesktopTurnNotStopped(lane)
@@ -307,10 +311,10 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       approved.add(path)
       return true
     },
-  }), workbookTool(directory, active), ...(folder ? [fileMoveTool(paths, active), renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
+  }), workbookTool(directory, active), ...(folder ? [fileMoveTool(paths, active), ...(renderTool ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
     const outcome = await tool.runRich!(args, context)
-    return outcome.image ? { ...outcome, image: fitImage(outcome.image) } : outcome
+    return outcome.image && fitImage ? { ...outcome, image: fitImage(outcome.image) } : outcome
   } } : {}), run: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
     if (tool.name === 'file_create_copy' && folder && typeof args.name === 'string' && OUTPUT_EXTENSIONS.has(kindOf(args.name)) && !CORE_OUTPUTS.has(kindOf(args.name))) return createWide(args)
@@ -323,45 +327,4 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path), { ...placement(tool.name, args), artifact: basename(output.path) }) }) }
     catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return result }
   } }))
-}
-
-const VIEWABLE = new Set(['.md', '.txt', '.csv', '.tsv', '.json', '.html', '.svg', '.py', '.js', '.ts', '.sh', '.ps1'])
-const THUMBS = new Set(['.png', '.jpg', '.jpeg', '.gif'])
-const VIEW_BYTES = 2_000_000
-const OPENABLE = new Set(['.xlsx', '.docx', '.pptx', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.hwpx', '.zip'])
-
-export function registerArtifactIpc(paths: VaultPaths): void {
-  ipcMain.removeHandler('artifact:read')
-  ipcMain.handle('artifact:read', async (_event, id: unknown): Promise<ArtifactViewDto> => {
-    const path = await findArtifact(artifactDirectory(paths), id)
-    const name = basename(path).replace(/^[0-9a-f-]{36}-/, '')
-    if (!VIEWABLE.has(kindOf(path)) || (await stat(path)).size > VIEW_BYTES) return { name, text: null }
-    const wide = !CORE_OUTPUTS.has(kindOf(path))
-    const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), basename(path))
-    if (wide && !basename(path).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
-    return { name, text: data.length > VIEW_BYTES ? null : data.toString('utf8') }
-  })
-  ipcMain.removeHandler('artifact:reveal')
-  ipcMain.handle('artifact:reveal', async (_event, id: unknown) => {
-    const path = await findArtifact(artifactDirectory(paths), id)
-    shell.showItemInFolder(path)
-  })
-  ipcMain.removeHandler('artifact:open')
-  ipcMain.handle('artifact:open', async (_event, id: unknown) => {
-    const path = await findArtifact(artifactDirectory(paths), id)
-    if (VIEWABLE.has(kindOf(path)) && kindOf(path) !== '.html') throw new Error('Shown in the thread.')
-    if (!OPENABLE.has(kindOf(path))) { shell.showItemInFolder(path); return }
-    const failed = await shell.openPath(path)
-    if (failed) throw new Error(failed)
-  })
-  ipcMain.removeHandler('artifact:info')
-  ipcMain.handle('artifact:info', async (_event, id: unknown): Promise<{ size: number; previous: string[]; thumb?: { data: Uint8Array; mime: string } }> => {
-    const path = await findArtifact(artifactDirectory(paths), id)
-    const { size } = await stat(path), previous = await previousVersions(paths, basename(path))
-    try {
-      if (THUMBS.has(kindOf(path))) return { size, previous, thumb: { data: (await nativeImage.createThumbnailFromPath(path, { width: 480, height: 320 })).toPNG(), mime: 'image/png' } }
-      if (kindOf(path) === '.svg' && size <= 1_000_000) return { size, previous, thumb: { data: await readFile(path), mime: 'image/svg+xml' } }
-    } catch {}
-    return { size, previous }
-  })
 }

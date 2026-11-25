@@ -1,5 +1,7 @@
 import { isUntitledBotName } from 'core'
 
+export const LEAD_ROLE = 'a colleague who gets the task done'
+
 export function cometIdentity(bot: { name?: unknown; purpose?: unknown }, role: string, charterRule = ''): string {
   const name = typeof bot.name === 'string' ? bot.name.trim() : ''
   const who = name !== '' && !isUntitledBotName(name)

@@ -16,8 +16,9 @@ import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
 import { semanticNotesChanged, startSemantic, stopSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
-import { agentBrowserRunning, closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
-import { attachNativeLayout } from './native-layout.js'
+import { agentBrowserRunning, closeAgentBrowser, initAgentBrowser, setAgentBrowser } from './agent-browser.js'
+import { attachNativeLayout, nativePagesVisible } from './native-layout.js'
+import { availableMemory } from './available-memory.js'
 import { nativeBrowserEnabled, nativeBrowserRunning } from './native-browser.js'
 import { closeClaudeSessions } from './engine-claude.js'
 import { closeCodexSessions } from './engine-codex.js'
@@ -62,6 +63,7 @@ import { markFirstSetup } from './first-setup.js'
 
 if (process.env['ENGRAM_USERDATA']) app.setPath('userData', process.env['ENGRAM_USERDATA'])
 initLog(join(app.getPath('userData'), 'logs'))
+initAgentBrowser({ profileDir: join(app.getPath('userData'), 'agent-browser-profile'), downloads: app.getPath('downloads'), freeMemory: availableMemory, importSession: autoImportSession, pagesShown: nativePagesVisible })
 
 if (process.platform === 'win32' && app.isPackaged) app.setAppUserModelId('dev.engram.app')
 

@@ -7,7 +7,10 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools, linkedOutputs, placeInTask, previousVersions, registerArtifactIpc, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { cometFileTools as fileTools, linkedOutputs, placeInTask, previousVersions, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { appFileHost, registerArtifactIpc } from '../src/main/file-host.js'
+
+const hostFileTools = (paths: Parameters<typeof fileTools>[0], lane: string, attached?: string[], handIn?: string[], consent?: Parameters<typeof fileTools>[4]) => fileTools(paths, lane, attached, handIn, consent, appFileHost)
 
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
 

@@ -32,12 +32,14 @@ await symlink(join(root, 'apps/desktop/out/main/process-worker.js'), join(run, '
 await build({
   stdin: { contents: `
 import { app, BrowserWindow } from 'electron';
-import { agentCourier } from './apps/desktop/src/main/agent-courier.ts';
-import { closeAgentBrowser, ensureAgentPage } from './apps/desktop/src/main/agent-browser.ts';
+import { appCourier } from './apps/desktop/src/main/app-courier.ts';
+import { closeAgentBrowser, ensureAgentPage, initAgentBrowser } from './apps/desktop/src/main/agent-browser.ts';
+import { availableMemory } from './apps/desktop/src/main/available-memory.ts';
 import { desktopAgentTools } from './apps/desktop/src/main/desktop-agent.ts';
 import { closeDesktopAccess } from './apps/desktop/src/main/desktop-access.ts';
 import { closeWorkPreview } from './apps/desktop/src/main/work-preview.ts';
 app.setPath('userData', ${JSON.stringify(join(run, 'userdata'))});
+initAgentBrowser({ profileDir: ${JSON.stringify(join(run, 'userdata', 'agent-browser-profile'))}, downloads: app.getPath('downloads'), freeMemory: availableMemory });
 app.whenReady().then(async () => {
 const win = new BrowserWindow({width: 600, height: 360, title: 'Engram foreground typing fixture', webPreferences: {contextIsolation: true}});
 await win.loadURL('data:text/html,<html><body style="font:20px system-ui;padding:30px"><h2>Engram foreground typing fixture</h2><textarea id="typing" autofocus style="width:100%;height:120px"></textarea></body></html>');
@@ -50,7 +52,7 @@ globalThis.backgroundTool = async (name,args) => {
  const context={task:'Read and edit the owned fixture draft without sending anything'};
  return await (tool.runRich ? tool.runRich(args,context) : tool.run(args,context));
 };
-globalThis.backgroundBrowser = (lane = 'bot-background-fixture') => agentCourier({lane}).fetchPage(${JSON.stringify(browserUrl)});
+globalThis.backgroundBrowser = (lane = 'bot-background-fixture') => appCourier({lane}).fetchPage(${JSON.stringify(browserUrl)});
 globalThis.backgroundPopup = async () => {
  const page = await ensureAgentPage('bot-background-fixture');
  const waiting = page.waitForEvent('popup');

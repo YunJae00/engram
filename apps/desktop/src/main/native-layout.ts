@@ -1,4 +1,6 @@
-import { BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { NativeSurfaceDto } from '../shared/types.js'
 import { lanePage } from './agent-browser.js'
 import { focusNativeOwner, isNativePage, nativeBrowserEnabled, nativeTarget, placeNativePages, setNativeBrowserOwner } from './native-browser.js'
@@ -65,7 +67,12 @@ async function layout(requested: unknown): Promise<void> {
 export function attachNativeLayout(win: BrowserWindow): void {
   registerNativeLayout()
   window = win
-  setNativeBrowserOwner(win)
+  setNativeBrowserOwner(win, {
+    executable: app.isPackaged
+      ? join(process.resourcesPath, 'bin', 'browser', 'EngramBrowser.exe')
+      : fileURLToPath(new URL('../../native-bin/browser/EngramBrowser.exe', import.meta.url)),
+    profile: join(app.getPath('userData'), 'webview2-profile'),
+  })
   if (process.defaultApp && process.env['ENGRAM_HIDDEN'] === '1') Object.assign(globalThis, { __engramNativePlacer: (next?: typeof placeNativePages) => { place = next ?? placeNativePages } })
   const hide = () => { visible = false; ++revision; void place([]).catch(() => undefined) }
   win.on('hide', hide)

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ directory: '' }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.directory } }))
-import { saveOfficeOutput } from '../src/main/office-output.js'
+import { saveOfficeOutput } from '../src/main/office-render.js'
 
 beforeEach(async () => {
   const root = resolve('tmp')

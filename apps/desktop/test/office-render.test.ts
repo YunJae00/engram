@@ -5,8 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ directory: '', open: vi.fn(async () => '') }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.directory }, shell: { openPath: fake.open } }))
-import { renderDeck } from '../src/main/deck-render.js'
-import { renderDoc } from '../src/main/doc-render.js'
+import { renderDeck, renderDoc } from '../src/main/office-render.js'
 import { resolveTheme } from 'core'
 
 const THEME = resolveTheme({ field: '1F3B5B', accent: 'C0603B', fonts: { title: 'Georgia', body: 'Segoe UI' } })!

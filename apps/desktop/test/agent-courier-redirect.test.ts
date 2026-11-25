@@ -16,10 +16,10 @@ vi.mock('electron', () => ({
 vi.mock('../src/main/agent-browser.js', () => ({ DEFAULT_LANE: 'default', NAV_TIMEOUT_MS: 15000, agentAbortable: <T>(work: Promise<T>) => work }))
 vi.mock('../src/main/agent-view.js', () => ({ touchedAt: () => 0 }))
 
-const { agentCourier } = await import('../src/main/agent-courier.js')
+const { appCourier } = await import('../src/main/app-courier.js')
 
 it('reads where a redirector leads from its first hop, and gives nothing for an answer, a failure or a stop', async () => {
-  const courier = agentCourier()
+  const courier = appCourier()
   fake.answer = (request) => request.emit('redirect', 302, 'GET', '/landing?id=1', {})
   expect(await courier.followRedirect!('https://www.engine.test/goto?url=CAES1')).toBe('https://www.engine.test/landing?id=1')
   fake.answer = (request) => request.emit('redirect', 302, 'GET', 'https://www.catch.co.kr/Recruit/1', {})
