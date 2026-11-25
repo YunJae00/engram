@@ -181,7 +181,7 @@ import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { firstLineSaw, firstLineSpoke, firstLineWaiting, plainReply } from './first-line.js'
-import { answer } from './answer.js'
+import { beginAnswer, type Answering } from './answer.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -1913,14 +1913,15 @@ export function registerIpc(ctx: VaultContext): void {
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
     const memoryWait = !request.scheduled && !savedRoutine && !turn?.quiet ? turnRunning() : undefined
+    const acks: Answering[] = []
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
-      return await withTurnPriority({ interactive: !request.scheduled && !savedRoutine && !turn?.quiet, korean: threadKorean(request.message, request.history ?? []), say: line => broadcast({ type: 'comet:step', channel: entry.channel, line }) }, () => withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn)))
+      return await withTurnPriority({ interactive: !request.scheduled && !savedRoutine && !turn?.quiet, korean: threadKorean(request.message, request.history ?? []), say: line => broadcast({ type: 'comet:step', channel: entry.channel, line }) }, () => withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, acks, recovery, savedRoutine, turn)))
     } finally {
       memoryWait?.()
       chatAborts.delete(entry)
       answering.delete(entry.channel)
-      turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
+      turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); for (const ack of acks) ack.end()
       afterTurn(entry.channel); void team.turnEnded(entry.channel).catch(error => flog('team', error))
       takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
@@ -2038,7 +2039,7 @@ export function registerIpc(ctx: VaultContext): void {
     } : undefined)]), ...kit.files, ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
-  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
+  async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, acks: Answering[], recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
     const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
@@ -2104,6 +2105,8 @@ export function registerIpc(ctx: VaultContext): void {
         return
       }
     }
+    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), ...(request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (await readBotTranscript(paths, bot.id, 8)).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
+    if (begun) acks.push(begun)
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory, ...(turn?.verification ? [{ role: 'assistant' as const, text: turn.verification.result }] : [])]) : []
@@ -2322,11 +2325,11 @@ export function registerIpc(ctx: VaultContext): void {
         laneSearches.delete(channel)
         const result: AgentLoopResult = fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
           : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await answer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, {
-          signal,
+          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await begun!.run({
           tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool,
           ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
-          ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), ...(request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (await readBotTranscript(paths, bot.id, 8)).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }), now: !!company && !turn?.report, reply: !(turn?.context || request.attachments?.length) },
+          now: !!company && !turn?.report,
+          reply: !(turn?.context || request.attachments?.length),
           held: lane,
           rounds: lead => lookup.run(async (laneAsk, roundSignal, again) => {
             if (again) flog('chat-phase', JSON.stringify({ channel, phase: 'lane-swap', ms: Date.now() - nativeSince }))
@@ -2489,7 +2492,7 @@ export function registerIpc(ctx: VaultContext): void {
       }
       if (resendAfterOutage && !signal.aborted) {
         broadcast({ type: 'chat:token', channel, text: '', reset: true })
-        return handleChatSend(request, signal, recovery, savedRoutine, turn)
+        return handleChatSend(request, signal, acks, recovery, savedRoutine, turn)
       }
       return
     }

@@ -39,7 +39,7 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
     expect(ipc).toContain('const meant = askNow(request.message, savedHistory)')
     expect(ipc).toContain('const changedNote = meant !== request.message ? `What the person asks for now: ${meant}` : \'\'')
     expect(ipc).toContain('const lookup = swapRounds(request.message, signal)')
-    const from = ipc.indexOf('await answer({')
+    const from = ipc.indexOf('await begun!.run({')
     expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
   })
 })

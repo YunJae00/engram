@@ -95,7 +95,7 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     const at = (text: string): number => { const i = ipc.indexOf(text); expect(i, text).toBeGreaterThan(-1); return i }
     expect(at('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(skipWalls(tool), laneRead)) : undefined')).toBeLessThan(at('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`'))
-    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(ipc).not.toMatch(/listShortfall|itemsOff/)
   })
 

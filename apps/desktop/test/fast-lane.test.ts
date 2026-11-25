@@ -112,7 +112,7 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday(request.message)}` :")
   expect(ipc).toContain("if (lane && !result.asked && result.stopped === 'calls' && !result.incomplete) delete result.stopped")
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
-  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
@@ -268,7 +268,7 @@ it('c7 L2: a slow first round whose search is refused still ends with an answer 
     expect(first.opening).toContain('155.26 USD 전일대비')
     expect(LANE_NOTE).toContain('While search results or opened pages are in hand, the answer is written from them, never a line that it could not get them.')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   } finally { vi.useRealTimers() }
 })
 
@@ -304,7 +304,7 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect(ipc).toContain("if (again || searchFirst) searched = await searchFor(laneAsk, roundSignal)")
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote].filter(Boolean).join")
-  expect(ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })
 
 it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held results, and the answer is still written from them', async () => {

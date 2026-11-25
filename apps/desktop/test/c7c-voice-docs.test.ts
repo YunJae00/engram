@@ -7,7 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import { DESK_NOTE, DESK_TOOLS } from '../src/main/desk-lane.js'
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await answer({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'

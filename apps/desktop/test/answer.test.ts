@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
-import { answer, openWorld } from '../src/main/answer.js'
+import { answer, beginAnswer, openWorld } from '../src/main/answer.js'
 
 const scratch: string[] = []
 const temp = async () => { const dir = await mkdtemp(join(tmpdir(), 'answer-test-')); scratch.push(dir); return dir }
@@ -108,7 +108,7 @@ describe('answer is the one entry the app and the runner share', () => {
 
   it('ipc runs the lane\'s first search inside the answer\'s rounds, after the ack has started', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    const call = ipc.indexOf('await answer({ paths, botId: bot.id')
+    const call = ipc.indexOf('await begun!.run({')
     expect(ipc.slice(0, call)).not.toMatch(/await searchFor\(/)
     expect(ipc.slice(call)).toMatch(/rounds: lead => [^]*?searched = await searchFor\(/)
   })
@@ -117,6 +117,31 @@ describe('answer is the one entry the app and the runner share', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/\brunComet\b/)
     expect(ipc).not.toMatch(/beginFirstLine|endFirstLine|firstLineReady/)
-    expect(ipc).toContain('await answer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine),')
+    expect(ipc).toContain('const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine),')
+    expect(ipc).toContain('await begun!.run({')
+  })
+
+  it('keeps the ack on screen through slow work the caller does between beginning and running, and the run keeps it as the first text', async () => {
+    const shown: number[] = [], started = performance.now()
+    const engine = fake(async () => '영수증은 달별로 나눠 뒀어요.', async () => '영수증부터 달별로 나눌게요.')
+    const world = await openWorld(await temp(), engine)
+    const begun = beginAnswer(world, '영수증 폴더 달별로 나눠줘', { ack: { show: () => { shown.push(performance.now() - started) } } })
+    await wait(450)
+    expect(shown).toHaveLength(1)
+    expect(shown[0]!).toBeLessThan(450)
+    const { trace, result } = await begun.run()
+    begun.end()
+    expect(trace.first?.text).toBe('영수증부터 달별로 나눌게요.')
+    expect(result?.answer).toBe('영수증은 달별로 나눠 뒀어요.')
+    expect(shown).toHaveLength(1)
+  })
+
+  it('ipc begins the answer before any setup or quick path that can take time, and ends it when the turn is released', () => {
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    const turn = ipc.slice(ipc.indexOf('async function handleChatSend('))
+    const begin = turn.indexOf('beginAnswer(')
+    for (const work of ['buildRetrievedContext(', 'readChatAttachments(', 'await cometToolSet({ channel, engine, settings, permission', 'await namedText(', 'keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skillShortlist(', 'await begun!.run({'])
+      expect(turn.indexOf(work), work).toBeGreaterThan(begin)
+    expect(ipc).toMatch(/for \(const ack of acks\) ack\.end\(\)/)
   })
 })
