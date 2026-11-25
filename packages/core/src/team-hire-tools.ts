@@ -397,7 +397,7 @@ export function dateLine(text: string, now = new Date()): string {
 export function calendarLine(now = new Date()): string {
   const days = Array.from({ length: 14 }, (_, i) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + i))
   const short = (at: Date, i: number): string => `${at.toLocaleDateString('sv-SE').slice(i ? 5 : 0)} ${at.toLocaleDateString('en-US', { weekday: 'short' })}`
-  return `Time zone ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Today and the next 13 days: ${days.map(short).join(', ')}. Named days come from this calendar; never say how a date was worked out.`
+  return `${Intl.DateTimeFormat().resolvedOptions().timeZone} calendar, today first: ${days.map(short).join(', ')}. Named days come from it; never say how a date was worked out.`
 }
 const RELATIVE_TIME = /(?<![가-힣])(?:(?:이번|다음|지난|저번)\s?주말?|금주|주말|요즘|요새|최근|오늘|내일|모레|어제|지금|현재|방금|실시간)(?:에는|[은는엔에도의])?(?![가-힣])/gu
 export const withoutRelativeTime = (words: string): string => words.replace(RELATIVE_TIME, ' ').replace(/\s+/g, ' ').trim()

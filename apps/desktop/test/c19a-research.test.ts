@@ -30,7 +30,9 @@ describe('7. relative days come from one calendar on every lead step; nothing re
         expect(prompt).not.toContain('01-22')
         expect(prompt).toContain('never say how a date was worked out')
       }
-      expect(calendarLine(new Date(2027, 0, 8)).length).toBeLessThanOrEqual(300)
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      expect(calendarLine(new Date(2027, 0, 8))).toMatch(new RegExp(`^${zone} calendar, today first: 2027-01-08 Fri, `))
+      expect(calendarLine(new Date(2027, 0, 8)).length - zone.length).toBeLessThanOrEqual(245)
       vi.setSystemTime(new Date(2027, 11, 29, 23, 30))
       told.length = 0
       await answer(world, '새해 첫 주 화요일 강릉 해돋이 시각', { ack: { bare: true } })
