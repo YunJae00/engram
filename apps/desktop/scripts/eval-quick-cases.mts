@@ -1,19 +1,4 @@
-export interface SiteLog { visits: string[]; posts: string[] }
-export interface CaseRun {
-  answers: string[]
-  site: SiteLog
-  offers: { what: string; state: string }[]
-  tasks: { schedule?: { hour?: number; days?: number[] } }[]
-}
-export interface EvalCase {
-  id: string
-  ask(url: string): string
-  page?(path: string): { html: string; status?: number } | null
-  aside?: { afterMs: number; text: string }
-  judged?: boolean
-  desk?: [string, string, number][]
-  grade(run: CaseRun): Record<string, boolean>
-}
+import type { CaseRun, EvalCase } from '../src/main/runner.js'
 
 const day = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString('en-CA')
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => `&#${ch.charCodeAt(0)};`)

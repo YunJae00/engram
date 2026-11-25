@@ -33,6 +33,7 @@
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run todo-scan && pnpm run comment-scan && pnpm run css-scan && pnpm run dead-scan && node scripts/check-rules-files.mjs",
     "check:quick": "node scripts/check-quick.mjs",
     "verify": "node scripts/check-quick.mjs && pnpm --filter desktop build && node scripts/e2e-affected.mjs",
+    "runner": "cd apps/desktop && node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/runner.mts",
     "eval:quick": "cd apps/desktop && node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/eval-quick.mts",
     "verify:release": "pnpm run check && pnpm run test:e2e",
     "test:e2e:fast": "pnpm --filter desktop test:e2e:fast",

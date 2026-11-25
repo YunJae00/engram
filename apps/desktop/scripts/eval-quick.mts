@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { execFileSync } from 'node:child_process'
-import { createServer, type Server } from 'node:http'
 import { appendFile, mkdir, mkdtemp, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron, type Page } from '@playwright/test'
 import { initVault } from 'core'
-import { CASES, type CaseRun, type EvalCase, type SiteLog } from './eval-quick-cases.mts'
+import { CASES } from './eval-quick-cases.mts'
+import { servePages, type CaseRun, type EvalCase, type SiteLog } from '../src/main/runner.js'
 
 const arg = (name: string) => process.argv.find(one => one.startsWith(`--${name}=`))?.slice(name.length + 3)
 const brains = (arg('brain') ?? 'both') === 'both' ? ['claude', 'codex'] : [arg('brain')!]
@@ -20,19 +20,6 @@ const out = await mkdtemp(join(repo, 'tmp', 'eval', `${new Date().toISOString().
 const codeRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8', windowsHide: true }).trim()
 const dirty = !!execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8', windowsHide: true }).trim()
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-async function serve(one: EvalCase, log: SiteLog): Promise<{ url: string; server: Server }> {
-  const server = createServer((req, res) => {
-    log.visits.push(`${req.method} ${req.url}`)
-    if (req.method === 'POST') { log.posts.push(req.url ?? ''); res.writeHead(303, { location: '/' }); res.end(); return }
-    const where = new URL(req.url ?? '/', 'http://x')
-    const page = one.page?.(`${where.pathname}${where.search}`)
-    res.writeHead(page ? page.status ?? 200 : 404, { 'content-type': 'text/html; charset=utf-8' })
-    res.end(page?.html ?? '<!doctype html><title>Not found</title><p>Not found</p>')
-  })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  return { url: `http://127.0.0.1:${(server.address() as any).port}/`, server }
-}
 
 async function seedDesk(paths: { workspace: string }): Promise<void> {
   const lines = cases.flatMap(one => one.desk ?? [])
@@ -64,7 +51,7 @@ async function turnEnds(win: Page, channel: string, answersBefore: number, deadl
 
 async function runCase(win: Page, brain: string, one: EvalCase, round: number): Promise<any> {
   const log: SiteLog = { visits: [], posts: [] }
-  const { url, server } = await serve(one, log)
+  const { url, server } = await servePages(one, log)
   const started = Date.now()
   let error = ''
   let laterSent = false
