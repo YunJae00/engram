@@ -125,6 +125,13 @@ describe('the tool kit built from plain inputs', () => {
     }
   })
 
+  it('leaves a group empty when its inputs are not given', () => {
+    const bare = toolKit({ paths, channel: 'lane-orchard', log: () => undefined, retrieve: async () => [], courier: null })
+    expect({ team: bare.team, learning: bare.learning, files: bare.files, office: bare.office }).toEqual({ team: [], learning: [], files: [], office: [] })
+    expect(bare.web.map(tool => tool.name)).toContain('search_memory')
+    expect(bare.web.map(tool => tool.name)).not.toContain('open_page')
+  })
+
   it('still returns the built file and its audit with no side-effect callbacks', async () => {
     const kit = kitFor('plain')
     const sheet = JSON.parse(await kit.files.find(tool => tool.name === 'file_create_workbook')!.run({ name: 'beds.xlsx', sheet: 'Beds', rows: [['bed', 'crop'], [1, 'kale']] }, { task: '화단표 만들어줘' })) as { path: string; completeReadback: boolean; taskPath: string }

@@ -1,6 +1,8 @@
-import { activationRerank, cometTools, companyStatusTool, hybridMerge, PROFILE_TYPE, scheduleTool, staffTool, teamTool, toRetrievedNote, type AgentTool, type CometToolDeps, type ErrandRetrievedNote, type Note, type NoteStore, type ScheduleDeps, type SemanticHit, type VaultPaths, type WebCourier } from 'core'
+import { activationRerank, cometTools, companyStatusTool, hybridMerge, PROFILE_TYPE, scheduleTool, staffTool, teamTool, toRetrievedNote, type AgentTool, type CometToolDeps, type Note, type NoteStore, type ScheduleDeps, type SemanticHit, type VaultPaths, type WebCourier } from 'core'
+import { availableMemory } from './available-memory.js'
 import { cometFileTools, type FileHost, type ReadConsent } from './file-work.js'
 import { learningTools } from './learning-wiring.js'
+import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { officeBuildTools, officeComposer, type OfficeOutputs, type Proofread } from './office-agent.js'
 
 export interface ToolKitInputs {
@@ -34,15 +36,27 @@ export function toolKit(inputs: ToolKitInputs): ToolKit {
   }
 }
 
-export function retrievedNotes(store: NoteStore, query: string, semantic: SemanticHit[], limit: number): ErrandRetrievedNote[] {
-  const closeness = new Map(semantic.map((one) => [one.id, one.score]))
-  const hits = activationRerank(
-    hybridMerge(store.search(query), semantic, limit),
-    (id) => store.get(id),
-  )
-  return hits
-    .map((h) => store.get(h.id))
-    .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
-    .slice(0, limit)
-    .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
+export type MeaningSearch = (query: string, limit: number) => Promise<SemanticHit[]>
+
+export function noteSearch(store: NoteStore, meaning: { full: MeaningSearch; live: MeaningSearch }, log: (tag: string, detail: unknown) => void): CometToolDeps['retrieve'] {
+  return async (query, limit) => {
+    const semantic =
+      availableMemory() > ROOM_FOR_EMBEDDER
+        ? await meaning.full(query, limit)
+        : await meaning.live(query, limit)
+    const closeness = new Map(semantic.map((one) => [one.id, one.score]))
+    log(
+      'comet-retrieve',
+      `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
+    )
+    const hits = activationRerank(
+      hybridMerge(store.search(query), semantic, limit),
+      (id) => store.get(id),
+    )
+    return hits
+      .map((h) => store.get(h.id))
+      .filter((n): n is Note => n !== null && n.front.status === 'current' && n.front.type !== 'routine' && n.front.type !== PROFILE_TYPE)
+      .slice(0, limit)
+      .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
+  }
 }

@@ -191,7 +191,7 @@ import { PROOF_MS } from './office-agent.js'
 import { officeAgentTools, officeContext } from './office-live.js'
 import { artifactDirectory, checkedOutputs, linkedOutputs, newestRevisions, taskOutputs, taskRoot } from './file-work.js'
 import { appFileHost, registerArtifactIpc } from './file-host.js'
-import { retrievedNotes, toolKit } from './tool-kit.js'
+import { noteSearch, toolKit } from './tool-kit.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -230,11 +230,10 @@ import type {
   SweepReportDto,
 } from '../shared/types.js'
 import { broadcast, engineDto, markEngineOk, noteEngineFailure, noteRunOutcome, revalidateEngines, tapBroadcast } from './engine-health.js'
-import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { externalOwns, stopExternalCalls, stopExternalLane } from './external-connection.js'
-import { cometIdentity, LEAD_ROLE } from './cometIdentity.js'
+import { cometIdentity } from './cometIdentity.js'
 import type { VaultContext } from './vault.js'
 
 function plainExcerpt(body: string): string {
@@ -839,6 +838,7 @@ let onFilingProbe: ((states: EngineStatusDto[]) => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
   tapBroadcast(firstLineSaw)
+  const meaning = { full: semanticQuery, live: semanticQueryIfLive }
   setDesktopEngineResolver(async () => {
     const current = await loadSettings()
     if (current.computerUse !== true) throw new Error('Enable computer use in Settings before using an app.')
@@ -970,17 +970,7 @@ export function registerIpc(ctx: VaultContext): void {
       {
         engine: ctx.engines[0]!,
         workdir: engineCwd(paths),
-        retrieve: async (query, limit) => {
-          const semantic =
-            availableMemory() > ROOM_FOR_EMBEDDER
-              ? await semanticQuery(query, limit)
-              : await semanticQueryIfLive(query, limit)
-          flog(
-            'comet-retrieve',
-            `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
-          )
-          return retrievedNotes(ctx.store, query, semantic, limit)
-        },
+        retrieve: noteSearch(ctx.store, meaning, flog),
         courier: agentBrowserAvailable() && freeAtStart >= webMinFree ? appCourier() : null,
       },
       goal,
@@ -2020,17 +2010,7 @@ export function registerIpc(ctx: VaultContext): void {
           await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || template }))
         },
       },
-      retrieve: async (query, limit) => {
-        const semantic =
-          availableMemory() > ROOM_FOR_EMBEDDER
-            ? await semanticQuery(query, limit)
-            : await semanticQueryIfLive(query, limit)
-        flog(
-          'comet-retrieve',
-          `"${query.slice(0, 40)}" free=${(availableMemory() / 1e9).toFixed(1)}GB byMeaning=${semantic.length}${semantic[0] ? ` top=${semantic[0].score.toFixed(2)}` : ''}`,
-        )
-        return retrievedNotes(ctx.store, query, semantic, limit)
-      },
+      retrieve: noteSearch(ctx.store, meaning, flog),
       ...(channel.startsWith('bot-') ? { bot: { schedule: cometSchedule(channel.slice('bot-'.length), input.chief === true), chief: input.chief === true, changed, said: () => turnGoals.get(channel) ?? '', kept: (added: number) => broadcast({ type: 'comet:remembered', channel, botId: channel.slice('bot-'.length), added, touched: 0 }) } } : {}),
       ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? { files: { readable: [...attachments.paths, ...earlierOutputs.map((output) => output.path)], workFolder: native?.cwd ?? await workFolderFor(paths, channel), consent: { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }, host: appFileHost } } : {}),
     })
@@ -2376,7 +2356,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             ...(resume ? { resume } : {}),
-            persona: cometIdentity(bot, LEAD_ROLE),
+            persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
             ...((handedBack || attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || changedNote || team.note(channel) || company) ? { attachmentContext: [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),

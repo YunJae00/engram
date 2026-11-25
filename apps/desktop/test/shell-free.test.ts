@@ -1,15 +1,52 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { afterAll, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 const DESKTOP = resolve(__dirname, '..')
 const PACKAGES = resolve(DESKTOP, '../../packages')
 const SHELL = 'electron'
+const TOOL_KIT = [
+  'src/main/tool-kit.ts',
+  'src/main/agent-courier.ts',
+  'src/main/agent-browser.ts',
+  'src/main/file-work.ts',
+  'src/main/learning-wiring.ts',
+  'src/main/office-agent.ts',
+  'src/main/agent-profile.ts',
+  'src/main/available-memory.ts',
+  'src/main/browser-lanes.ts',
+  'src/main/browser-window-page.ts',
+  'src/main/deck-render.ts',
+  'src/main/doc-render.ts',
+  'src/main/file-move.ts',
+  'src/main/memory-plan.ts',
+  'src/main/native-browser.ts',
+  'src/main/office-output.ts',
+  'src/main/page-actions.ts',
+  'src/main/page-downloads.ts',
+  'src/main/page-frame-room.ts',
+  'src/main/page-listeners.ts',
+  'src/main/page-mask.ts',
+  'src/main/page-preview.ts',
+  'src/main/page-reader.ts',
+  'src/main/page-ready.ts',
+  'src/main/page-reveal.ts',
+  'src/main/page-scroll.ts',
+  'src/main/page-target.ts',
+  'src/main/page-wall.ts',
+  'src/main/plain-page.ts',
+  'src/main/preview-pool.ts',
+  'src/main/process-client.ts',
+  'src/main/read-card.ts',
+  'src/main/routine-driver.ts',
+  'src/main/serial-work.ts',
+  'src/main/stalled-scripts.ts',
+]
 
 function runtimeImports(source: string): string[] {
   const found: string[] = []
   for (const match of source.matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]/gm)) if (!match[1]) found.push(match[2]!)
-  for (const match of source.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g)) found.push(match[1]!)
+  for (const match of source.matchAll(/\bimport\(\s*(?:\/\*[^*]*\*\/\s*)?['"]([^'"]+)['"]\s*\)/g)) found.push(match[1]!)
   return found
 }
 
@@ -18,7 +55,7 @@ function resolved(from: string, spec: string): string | null {
   if (spec.startsWith('core/')) return join(PACKAGES, `${spec}.ts`)
   if (!spec.startsWith('.')) return null
   const base = resolve(dirname(from), spec)
-  for (const file of [base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'), `${base}.ts`, join(base, 'index.ts')]) if (existsSync(file)) return file
+  for (const file of [base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'), base, `${base}.ts`, join(base, 'index.ts')]) if (existsSync(file) && file.match(/\.[mc]?[jt]sx?$/)) return file
   return null
 }
 
@@ -52,6 +89,12 @@ it('keeps the tool schema builder free of the desktop shell', () => {
 
 it('keeps the model call trace free of the desktop shell', () => {
   expect(shellPath('../../packages/core/src/engine/trace.ts')).toBeNull()
+})
+
+describe('the tool kit and the files it builds from', () => {
+  it.each(TOOL_KIT)('%s never reaches the shell through its imports', file => {
+    expect(shellPath(file)).toBeNull()
+  })
 })
 
 it('reports a file that still reaches the shell', () => {
