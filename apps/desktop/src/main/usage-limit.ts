@@ -1,4 +1,4 @@
-import { parseRetryAfterMs } from 'core'
+import { classifyEngineError, parseRetryAfterMs, type EngineErrorKind } from 'core'
 
 export function claudeRetryAfterMs(text: string, now = Date.now()): number | undefined {
   const generic = parseRetryAfterMs(text, now)
@@ -30,4 +30,10 @@ export function threadKorean(message: string, history: { text: string }[]): bool
   if (/[가-힣]/.test(message)) return true
   if (/[A-Za-z]/.test(message)) return false
   return history.slice(-6).some(turn => /[가-힣]/.test(turn.text))
+}
+
+export function cloudErrorKind(message: string): EngineErrorKind {
+  if (/not logged in|not authenticated|log ?in|sign ?in|invalid api key|unauthorized|\b40[13]\b/i.test(message)) return 'auth'
+  if (/rate limit|too many requests|\b429\b|quota|usage limit|(?:insufficient|exhausted|not enough|out of) credits?/i.test(message)) return 'quota'
+  return classifyEngineError(message)
 }

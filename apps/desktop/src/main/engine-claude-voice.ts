@@ -1,5 +1,4 @@
-import type { SdkUserMessage, SessionSdk } from './engine-claude-session.js'
-import { textOf } from './engine-claude.js'
+import { textOf, type SdkUserMessage, type SessionSdk } from './engine-claude-session.js'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
@@ -16,12 +15,10 @@ export class VoiceSession {
   private idle: NodeJS.Timeout | undefined
   private readonly abort = new AbortController()
   closed = false
-  readonly key: string
   private readonly idleMs: number
 
   constructor(spec: VoiceSpec) {
     this.idleMs = spec.idleMs ?? IDLE_MS
-    this.key = JSON.stringify([spec.binary, spec.model, spec.workdir])
     const stream = spec.sdk.query({
       prompt: this.questions(),
       options: {

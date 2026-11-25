@@ -1,7 +1,6 @@
 import { type NativeTools, type ToolSessionCall, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { nativeOptions } from './engine-claude-native.js'
 import { allowedToolNames, shapeOf, TOOL_SERVER } from './engine-claude-tools.js'
-import { claudeSessionStarted } from './claude-runtime.js'
 import { dirname } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
@@ -40,6 +39,7 @@ interface SessionSpec {
   binary: string
   workdir: string
   model: string
+  started?: () => void
 }
 
 const IDLE_MS = 60 * 60_000
@@ -47,7 +47,7 @@ export const STEP_IDLE_MS = 25_000
 const RETRY_STEP = 'Your last request got no reply in time and was cut. Carry on from exactly where you were: the tool calls already made have their results above, so do not make them again.'
 export const PRELOADED_TOOLS_MAX = 16
 
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
@@ -229,7 +229,7 @@ class WarmSession {
           continue
         }
         if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
-          claudeSessionStarted()
+          this.spec.started?.()
           flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}; startup_ms=${Math.round(performance.now() - this.startedAt)}`)
           continue
         }

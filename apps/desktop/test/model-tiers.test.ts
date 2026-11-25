@@ -16,7 +16,7 @@ vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: async () => undefined, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/engine-cloud.js', async original => ({ ...await original<typeof import('../src/main/engine-cloud.js')>(), claudeBinary: fixture.binary }))
 vi.mock('../src/main/engine-claude-voice.js', () => ({
-  VoiceSession: class { closed = false; spent = false; ready = true; key = ''; ask = async () => 'fixture line'; close(): void { this.closed = true } },
+  VoiceSession: class { closed = false; spent = false; ready = true; ask = async () => 'fixture line'; close(): void { this.closed = true } },
 }))
 vi.mock('../src/main/setup-connection.js', () => ({ verifySetupConnection: async () => undefined }))
 vi.mock('core', async original => ({ ...await original<typeof import('core')>(), createEngine: (id: string) => {
@@ -24,7 +24,8 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
   return { id, detect: async () => ({ installed: true, loggedIn: true }), async *run() { yield { type: 'result', text: 'OK' } } }
 } }))
 
-import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
+import { chosenModel, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
+import { claudeEngine, claudeInputs, closeClaudeSessions } from '../src/main/engine-cloud.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
 import { beginFirstLine, cleanLine, endFirstLine, fallbackLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLinePrompt, firstLineNote, firstLineNow, firstLineReady, firstLineWaiting, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
@@ -59,7 +60,7 @@ describe('three tiers', () => {
   })
 
   it('ignores a stored model and logs each call purpose with its resolved model', async () => {
-    const engine = new ClaudeEngine('system')
+    const engine = claudeEngine('system')
     await drain(engine.run({ prompt: 'file this', workdir: WORKDIR, model: 'stored', modelHint: 'smart' }))
     expect(fixture.query.mock.calls[0]![0].options.model).toBe('sonnet')
     await drain(engine.run({ prompt: 'file this', workdir: WORKDIR, modelHint: 'fast' }))
@@ -83,10 +84,10 @@ describe('three tiers', () => {
 
   it('counts a live voice as one warm runtime under the cap', async () => {
     const trim = vi.spyOn(SessionPool.prototype, 'trim')
-    trimWarm()
+    trimWarm(claudeInputs.sessions)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1)
-    await new ClaudeEngine('system').quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })
-    trimWarm()
+    await claudeEngine('system').quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })
+    trimWarm(claudeInputs.sessions)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target)
   })
 })
@@ -628,7 +629,7 @@ describe('instant first line', () => {
   })
 
   it('replaces a voice whose answer never came, so the next line finds a fresh one', async () => {
-    const engine = new ClaudeEngine('profile-late')
+    const engine = claudeEngine('profile-late')
     const voiceOf = (): Promise<{ closed: boolean; ready: boolean; ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string): Promise<never> }).voiceFor(WORKDIR)
     const stuck = await voiceOf()
     stuck.ask = async () => { stuck.ready = false; throw new Error('The voice took too long.') }
@@ -640,7 +641,7 @@ describe('instant first line', () => {
   })
 
   it('opens a fresh voice ahead once one has answered, so no quick call reads an earlier one', async () => {
-    const engine = new ClaudeEngine('profile-once')
+    const engine = claudeEngine('profile-once')
     const voiceOf = (): Promise<{ closed: boolean; spent: boolean; ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string): Promise<never> }).voiceFor(WORKDIR)
     const used = await voiceOf()
     used.ask = async () => { used.spent = true; return '빵집 영업시간부터 볼게요.' }
@@ -652,11 +653,11 @@ describe('instant first line', () => {
   })
 
   it('opens two quick voices ahead, so a turn\'s two quick calls both land on a warm one', async () => {
-    const engine = new ClaudeEngine('profile-two')
+    const engine = claudeEngine('profile-two')
     const lane = (one: number): Promise<{ closed: boolean }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
     const trim = vi.spyOn(SessionPool.prototype, 'trim')
     await engine.warmQuick(WORKDIR)
-    trimWarm()
+    trimWarm(claudeInputs.sessions)
     expect(trim).toHaveBeenLastCalledWith(workerPool.target + 1 - 2)
     const second = await lane(1)
     expect(second.closed).toBe(false)
@@ -664,7 +665,7 @@ describe('instant first line', () => {
   })
 
   it('gives a turn\'s two quick calls a voice each even when memory is short', async () => {
-    const engine = new ClaudeEngine('profile-short')
+    const engine = claudeEngine('profile-short')
     const lane = (one: number): Promise<{ ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string, l: number): Promise<never> }).voiceFor(WORKDIR, one)
     const target = workerPool.target
     workerPool.target = 1
@@ -680,7 +681,7 @@ describe('instant first line', () => {
 
   it('keeps one voice per Claude account, so a switch never answers from the old one', async () => {
     const opened: unknown[] = []
-    const a = new ClaudeEngine('profile-a'), b = new ClaudeEngine('profile-b')
+    const a = claudeEngine('profile-a'), b = claudeEngine('profile-b')
     await a.warmQuick(WORKDIR)
     opened.push(await (a as unknown as { voiceFor(w: string): Promise<unknown> }).voiceFor(WORKDIR))
     opened.push(await (a as unknown as { voiceFor(w: string): Promise<unknown> }).voiceFor(WORKDIR))

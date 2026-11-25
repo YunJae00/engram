@@ -3,7 +3,6 @@ import type { SdkUserMessage } from '../src/main/engine-claude-session.js'
 
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('../src/main/process-client.js', () => ({ spawnRuntime: () => undefined }))
-vi.mock('../src/main/engine-claude.js', () => ({ textOf: (content: unknown) => String(content) }))
 
 import { VoiceSession } from '../src/main/engine-claude-voice.js'
 

@@ -1,19 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { currentModelCallContext, modelCall } from './model-call-metrics.js'
-import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
-import { SessionPool, type SessionSdk } from './engine-claude-session.js'
-import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
+import { textOf, type SessionPool, type SessionSdk } from './engine-claude-session.js'
+import type { CloudEngine } from './engine-cloud.js'
+import { LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudLoginOptions } from './run-text.js'
 import { flog } from './flog.js'
 import { withLease, workerPool } from './worker-pool.js'
-import { claudeRetryAfterMs } from './usage-limit.js'
-import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
+import { claudeRetryAfterMs, cloudErrorKind } from './usage-limit.js'
 import { CLAUDE_RUNTIME_VERSION, workModelFor } from './claude-runtime-version.js'
 import { spawnRuntime } from './process-client.js'
 import { VoiceSession } from './engine-claude-voice.js'
-import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
-import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
 export function chosenModel(hint?: string, runtimeVersion = CLAUDE_RUNTIME_VERSION): string {
   const forced = process.env['ENGRAM_CLAUDE_MODEL']?.trim()
@@ -41,12 +38,18 @@ type SdkMessage =
   | { type: 'result'; subtype: string; is_error?: boolean; result?: string; errors?: string[]; structured_output?: unknown; api_error_status?: number | null }
   | { type: string }
 
-export function textOf(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((block) => (block && typeof block === 'object' && (block as { type?: string }).type === 'text' ? String((block as { text?: unknown }).text ?? '') : ''))
-    .join('')
+export interface ClaudeInputs {
+  binary(): string | null
+  sdk(): Promise<unknown>
+  env(profile: string): NodeJS.ProcessEnv
+  loadConnections(): Promise<unknown>
+  hasConnection(profile: string): boolean
+  clearConnection(profile: string): Promise<void>
+  probeConnection(profile: string): Promise<{ ok: boolean; status: number }>
+  logTools(job: ToolSessionJob): void
+  started(): void
+  afterFirstSession(): Promise<void>
+  sessions: SessionPool
 }
 
 export function readAuthStatus(out: string): EngineDetection {
@@ -68,22 +71,22 @@ const catalogs = new Map<string, { rows?: ClaudeModelChoice[]; pending?: Promise
 let modelsGeneration = 0
 const MODELS_TIMEOUT_MS = 60_000
 
-export function fetchClaudeModels(profile = activeAccountProfile('claude')): Promise<ClaudeModelChoice[]> {
+export function fetchClaudeModels(inputs: ClaudeInputs, profile: string): Promise<ClaudeModelChoice[]> {
   const catalog = catalogs.get(profile) ?? {}
   catalogs.set(profile, catalog)
   if (catalog.rows?.length) return Promise.resolve(catalog.rows)
   if (catalog.pending) return catalog.pending
-  const env = accountEnvironment('claude', profile)
-  const binary = claudeBinary()
+  const env = inputs.env(profile)
+  const binary = inputs.binary()
   if (!binary) return Promise.resolve([])
   const generation = modelsGeneration
   const pending = (async () => {
     const abort = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      await afterFirstClaudeSession()
+      await inputs.afterFirstSession()
       timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
-      const sdk = await sdkModule()
+      const sdk = (await inputs.sdk()) as SessionSdk
       abort.signal.throwIfAborted()
       const silent = (async function* () {
         await new Promise<never>(() => {})
@@ -119,8 +122,8 @@ export function forgetClaudeModels(): void {
 }
 
 export class ClaudeEngine implements CloudEngine {
-  private get env(): NodeJS.ProcessEnv { return accountEnvironment('claude', this.accountProfile) }
-  constructor(readonly accountProfile = activeAccountProfile('claude')) {}
+  private get env(): NodeJS.ProcessEnv { return this.inputs.env(this.accountProfile) }
+  constructor(private readonly inputs: ClaudeInputs, readonly accountProfile: string) {}
   readonly id = 'claude' as const
   readonly label = 'Claude'
   readonly desktopToolIsolation = true
@@ -144,10 +147,10 @@ export class ClaudeEngine implements CloudEngine {
     }
   }
   private async voiceFor(workdir: string, lane = 0): Promise<VoiceSession | undefined> {
-    await loadBrainConnections()
-    const binary = claudeBinary()
+    await this.inputs.loadConnections()
+    const binary = this.inputs.binary()
     if (!binary) return undefined
-    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
+    const spec = { sdk: await this.sdk(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
     const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
     const voice = voices[lane]
     if (!voice || voice.closed || voice.spent || voiceKeys[lane] !== key) { voice?.close(); voices[lane] = new VoiceSession(spec); voiceKeys[lane] = key }
@@ -157,10 +160,10 @@ export class ClaudeEngine implements CloudEngine {
 
   detect(): Promise<EngineDetection> {
     return this.status.read(async () => {
-      const binary = claudeBinary()
+      const binary = this.inputs.binary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
-      await loadBrainConnections()
-      if (hasBrainConnection('claude', this.accountProfile)) { const probe = await probeConnection('claude', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
+      await this.inputs.loadConnections()
+      if (this.inputs.hasConnection(this.accountProfile)) { const probe = await this.inputs.probeConnection(this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
       return readAuthStatus(out)
@@ -168,7 +171,7 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async login(options?: CloudLoginOptions): Promise<{ ok: boolean; message?: string }> {
-    const binary = claudeBinary()
+    const binary = this.inputs.binary()
     if (!binary) return { ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' }
     const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, this.env as Record<string, string>, options)
     options?.signal?.throwIfAborted()
@@ -176,7 +179,7 @@ export class ClaudeEngine implements CloudEngine {
     else this.status.forget()
     const status = await this.detect()
     if (status.loggedIn) {
-      claudeSessionStarted()
+      this.inputs.started()
       return { ok: true }
     }
     flog('engine-claude', `login did not complete (exit ${code ?? 'timeout'})`)
@@ -184,21 +187,21 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async logout(): Promise<void> {
-    await loadBrainConnections()
-    if (hasBrainConnection('claude', this.accountProfile)) { await clearBrainConnection('claude', this.accountProfile); this.status.forget(); return }
-    const binary = claudeBinary()
+    await this.inputs.loadConnections()
+    if (this.inputs.hasConnection(this.accountProfile)) { await this.inputs.clearConnection(this.accountProfile); this.status.forget(); return }
+    const binary = this.inputs.binary()
     if (binary) await runText(binary, ['auth', 'logout'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
     this.status.forget()
   }
 
   async *run(job: EngineJobInput): AsyncIterable<EngineEvent> {
-    await loadBrainConnections()
-    const binary = claudeBinary()
+    await this.inputs.loadConnections()
+    const binary = this.inputs.binary()
     if (!binary) {
       yield { type: 'error', message: 'Install the Claude runtime in Settings → AI before connecting.', kind: 'crash' }
       return
     }
-    const sdk = (await loadClaudeSdk()) as AgentSdk
+    const sdk = (await this.inputs.sdk()) as AgentSdk
     const lease = await workerPool.lease(job.signal)
     if (!lease) return
     const abort = new AbortController()
@@ -253,7 +256,7 @@ export class ClaudeEngine implements CloudEngine {
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
       lease.end()
-      trimWarm()
+      trimWarm(this.inputs.sessions)
       metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
@@ -261,7 +264,7 @@ export class ClaudeEngine implements CloudEngine {
   }
 
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
-    const binary = claudeBinary()
+    const binary = this.inputs.binary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
     job = forSandbox(job)
     const lease = await workerPool.lease(job.signal)
@@ -270,40 +273,29 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([sdkModule(), tier('work', chosenModel(job.modelHint), job.modelHint), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); trimWarm(); metric.end() })
+    return Promise.all([this.sdk(), tier('work', chosenModel(job.modelHint), job.modelHint), this.inputs.loadConnections()]).then(([sdk, model]) => { this.inputs.logTools(job); return withLease(lease, () => this.inputs.sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env, started: this.inputs.started })) }).finally(() => { lease.end(); trimWarm(this.inputs.sessions); metric.end() })
   }
 
   async warm(job: ToolSessionJob): Promise<void> {
     if (job.signal?.aborted) return
-    const binary = claudeBinary()
+    const binary = this.inputs.binary()
     if (!binary || !job.native) return
     job = forSandbox(job)
-    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(), loadBrainConnections()])
+    const [sdk, model] = await Promise.all([this.sdk(), chosenModel(), this.inputs.loadConnections()])
     if (job.signal?.aborted) return
-    sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env }, job)
+    this.inputs.sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env, started: this.inputs.started }, job)
   }
-  spareReady(): boolean { return sessions.spareReady }
-  claimWorkFolder(channel: string, fallback: string): string { return sessions.claimWorkFolder(channel, fallback) }
+  spareReady(): boolean { return this.inputs.sessions.spareReady }
+  claimWorkFolder(channel: string, fallback: string): string { return this.inputs.sessions.claimWorkFolder(channel, fallback) }
+  private async sdk(): Promise<SessionSdk> { return (await this.inputs.sdk()) as SessionSdk }
 }
 
-const sessions = new SessionPool()
-export function trimWarm(): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
-setInterval(() => { sessions.sweep(); trimWarm() }, 60_000).unref()
-workerPool.onTarget(() => trimWarm())
+export function trimWarm(sessions: SessionPool): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
 
-export function closeClaudeSession(key: string): void {
-  sessions.closeMatching(key)
-}
-
-export function closeClaudeSessions(): void {
-  sessions.closeAll()
+export function closeVoices(): void {
   for (const voice of voices) voice?.close()
 }
 const QUICK_LANES = 3, WARM_LANES = 2, EXTRA_VOICE_IDLE_MS = 2 * 60_000
 const quickLanes = (): number => Math.max(WARM_LANES, Math.min(QUICK_LANES, workerPool.target))
 const voices: (VoiceSession | undefined)[] = []
 const voiceKeys: string[] = []
-
-async function sdkModule(): Promise<SessionSdk> {
-  return (await loadClaudeSdk()) as SessionSdk
-}

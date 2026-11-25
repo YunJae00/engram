@@ -5,7 +5,8 @@ import { join, resolve } from 'node:path'
 const fake = vi.hoisted(() => ({ data: '', handlers: new Map<string, (...args: unknown[]) => unknown>(), run: vi.fn(), enabled: true }))
 vi.mock('electron', () => ({ app: { isPackaged: false, getAppPath: () => fake.data, getPath: () => fake.data, once: () => {} }, ipcMain: { handle: (name: string, callback: (...args: unknown[]) => unknown) => fake.handlers.set(name, callback) } }))
 vi.mock('node:os', () => ({ homedir: () => fake.data }))
-vi.mock('../src/main/engine-cloud.js', () => ({ claudeBinary: () => 'claude-runtime', codexBinary: () => 'codex-runtime', runText: fake.run }))
+vi.mock('../src/main/engine-cloud.js', () => ({ claudeBinary: () => 'claude-runtime', codexBinary: () => 'codex-runtime' }))
+vi.mock('../src/main/run-text.js', () => ({ runText: fake.run }))
 vi.mock('../src/main/external-connection.js', () => ({ externalInfoPath: () => join(fake.data, 'external-connection.json'), externalStatus: () => ({ enabled: fake.enabled }), setExternalEnabled: async () => {}, stopExternalCalls: () => {} }))
 import { registerMcpIpc } from '../src/main/mcp-connect.js'
 afterEach(() => vi.unstubAllEnvs())

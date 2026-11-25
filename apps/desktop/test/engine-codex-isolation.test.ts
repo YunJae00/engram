@@ -18,12 +18,13 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
   ...await original<typeof import('../src/main/engine-cloud.js')>(),
   codexBinary: fixture.binary,
   claudeBinary: fixture.binary,
-  runText: fixture.catalog,
   withHelpersOnPath: () => ({ PATH: 'fixture-runtime-path' }),
 }))
+vi.mock('../src/main/run-text.js', async (original) => ({ ...await original<typeof import('../src/main/run-text.js')>(), runText: fixture.catalog }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
 import { CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides, forgetCodexCatalog } from '../src/main/engine-codex.js'
 import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
+import { claudeEngine, claudeInputs } from '../src/main/engine-cloud.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
 async function collect(events: AsyncIterable<EngineEvent>): Promise<EngineEvent[]> {
@@ -58,7 +59,7 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.providerConfig.mock.calls.every(call => call[0] === 'system')).toBe(true)
   })
   it.each([ClaudeEngine, CodexEngine])('does not prepare a canceled spare (%s)', async Engine => {
-    await new Engine().warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, signal: AbortSignal.abort(), native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
+    await (Engine === ClaudeEngine ? claudeEngine() : new CodexEngine()).warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, signal: AbortSignal.abort(), native: { cwd: 'C:/work/task', decide: async () => ({ behavior: 'allow' }) } })
     expect(fixture.binary).not.toHaveBeenCalled()
     expect(fixture.catalog).not.toHaveBeenCalled()
   })
@@ -85,7 +86,7 @@ describe('text runtime desktop isolation boundary', () => {
         await new Promise(resolve => setTimeout(resolve, 30_000))
         return [{ value: 'fixture', displayName: 'Fixture', description: 'Test model' }]
       } }))
-      const pending = fetchClaudeModels()
+      const pending = fetchClaudeModels(claudeInputs, 'system')
       await vi.advanceTimersByTimeAsync(75_000)
       expect(await pending).toEqual([expect.objectContaining({ value: 'fixture' })])
     } finally { forgetClaudeModels(); vi.useRealTimers() }
@@ -93,7 +94,7 @@ describe('text runtime desktop isolation boundary', () => {
   it('forwards explicit effort to both runtimes instead of the fast hint', async () => {
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', modelHint: 'fast', effort: 'high' }))
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ modelReasoningEffort: 'high' }))
-    await collect(new ClaudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', effort: 'medium' }))
+    await collect(claudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'fixture', effort: 'medium' }))
     expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ effort: 'medium' }) }))
   })
   it('uses explicit per-job models, including Auto, instead of the global model', async () => {
@@ -101,7 +102,7 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'conversation-model' }))
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: '' }))
     expect(fixture.threadOptions.mock.lastCall?.[0]).not.toHaveProperty('model')
-    await collect(new ClaudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'filing-model' }))
+    await collect(claudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'filing-model' }))
     expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ model: 'opus' }) }))
     expect(fixture.settings).not.toHaveBeenCalled()
   })
@@ -111,7 +112,7 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.run).toHaveBeenCalledWith([{ type: 'text', text: 'Read this chart' }, { type: 'local_image', path: image }], expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
   it('bars inherited MCP and built-in tools in an isolated plain-text request', async () => {
-    const engine = new ClaudeEngine()
+    const engine = claudeEngine()
     expect(engine.desktopToolIsolation).toBe(true)
     const events = await collect(engine.run({ prompt: 'Read the supplied observation', workdir: WORKDIR, disallowTools: true, requireToolIsolation: true }))
     expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])

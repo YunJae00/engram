@@ -8,7 +8,7 @@ vi.mock('../src/main/account-profiles.js', () => ({ activeAccountProfile: () => 
 vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), decisionConnectionState: () => ({ available: false }), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), connectionEnvironment: () => ({}) }))
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: async () => undefined, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => fakeLoop() }))
 
-const { ClaudeEngine, closeClaudeSessions } = await import('../src/main/engine-claude.js')
+const { claudeEngine, closeClaudeSessions } = await import('../src/main/engine-cloud.js')
 const { workerPool } = await import('../src/main/worker-pool.js')
 
 interface Seen { prompt: AsyncIterable<{ message: { content: string } }>; options: Record<string, unknown> }
@@ -51,7 +51,7 @@ afterEach(() => { closeClaudeSessions(); vi.unstubAllEnvs(); vi.restoreAllMocks(
 
 describe('the Claude engine on the accepted base', () => {
   it('hands the vendor loop the tool server, model, effort and fixed session options', async () => {
-    await new ClaudeEngine('kiln').runTools(job({ modelHint: 'smart', effort: 'medium' }))
+    await claudeEngine('kiln').runTools(job({ modelHint: 'smart', effort: 'medium' }))
     const options = (fixture.query.mock.calls[0]![0] as Seen).options
     expect(options).toMatchObject({
       cwd: '/pottery', systemPrompt: 'You keep the kiln firing log.', model: 'sonnet', effort: 'medium', maxTurns: 400,
@@ -63,7 +63,7 @@ describe('the Claude engine on the accepted base', () => {
   })
 
   it('keeps one session per key and rules, sends the opening once, and opens another when the rules change', async () => {
-    const engine = new ClaudeEngine('kiln')
+    const engine = claudeEngine('kiln')
     expect((await engine.runTools(job())).answer).toBe('fired 1')
     expect((await engine.runTools(job({ prompt: 'And the tenmoku jars?' }))).answer).toBe('fired 2')
     expect(fixture.query).toHaveBeenCalledOnce()
@@ -75,7 +75,7 @@ describe('the Claude engine on the accepted base', () => {
 
   it('runs the installed runtime with the account environment under one worker lease', async () => {
     const lease = vi.spyOn(workerPool, 'lease')
-    await new ClaudeEngine('kiln').runTools(job())
+    await claudeEngine('kiln').runTools(job())
     const options = (fixture.query.mock.calls[0]![0] as Seen).options
     expect(options['env']).toEqual({ CLAUDE_CONFIG_DIR: 'kiln-config' })
     expect(options['pathToClaudeCodeExecutable']).toBe('kiln-claude')
@@ -86,7 +86,7 @@ describe('the Claude engine on the accepted base', () => {
   it('says the runtime is missing without asking for a worker', async () => {
     fixture.binary.mockReturnValue(null)
     const lease = vi.spyOn(workerPool, 'lease')
-    expect((await new ClaudeEngine('kiln').runTools(job())).error).toBeTruthy()
+    expect((await claudeEngine('kiln').runTools(job())).error).toBeTruthy()
     expect(lease).not.toHaveBeenCalled()
     expect(fixture.query).not.toHaveBeenCalled()
   })

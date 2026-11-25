@@ -1,13 +1,17 @@
 import { gateModelCalls } from './model-call-gate.js'
-import { ProcessClient } from './process-client.js'
 import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyEngineError, setCloudEngineFactory, traced, traceFolder, type Engine, type EngineDetection, type EngineErrorKind } from 'core'
-import { ClaudeEngine } from './engine-claude.js'
+import { setCloudEngineFactory, traced, traceFolder, type Engine } from 'core'
+import { ClaudeEngine, closeVoices, trimWarm, type ClaudeInputs } from './engine-claude.js'
+import { SessionPool } from './engine-claude-session.js'
 import { CodexEngine } from './engine-codex.js'
-import { installedClaudeBinary } from './claude-runtime.js'
-import { activeAccountProfile } from './account-profiles.js'
+import { afterFirstClaudeSession, claudeSessionStarted, installedClaudeBinary, loadClaudeSdk } from './claude-runtime.js'
+import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
+import { clearBrainConnection, hasBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
+import { logSessionTools } from './session-diagnostics.js'
+import { workerPool } from './worker-pool.js'
+import type { CloudLoginOptions } from './run-text.js'
 
 export type CloudEngineId = 'claude' | 'codex'
 
@@ -64,12 +68,6 @@ export function codexBinary(): string | null {
   return existsSync(path) ? path : null
 }
 
-export interface RunText {
-  code: number | null
-  out: string
-  err: string
-}
-
 export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const helpers = join(dirname(dirname(binary)), 'codex-path')
   const out: Record<string, string> = {}
@@ -77,95 +75,6 @@ export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = proce
   const key = Object.keys(out).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
   out[key] = out[key] ? `${helpers}${delimiter}${out[key]}` : helpers
   return out
-}
-
-export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>, login?: CloudLoginOptions): Promise<RunText> {
-  login?.signal?.throwIfAborted()
-  return new Promise((resolve) => {
-    let out = ''
-    let err = ''
-    let done = false
-    const finish = (code: number | null): void => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      login?.signal?.removeEventListener('abort', cancel)
-      resolve({ code, out, err })
-    }
-    let child: ProcessClient
-    try {
-      child = new ProcessClient(binary, args, { env })
-      child.stdin.end()
-    } catch (error) {
-      resolve({ code: null, out: '', err: error instanceof Error ? error.message : String(error) })
-      return
-    }
-    const timer = setTimeout(() => {
-      child.kill()
-      finish(null)
-    }, timeoutMs)
-    const cancel = (): void => { child.kill(); finish(null) }
-    login?.signal?.addEventListener('abort', cancel, { once: true })
-    const receive = (stream: 'out' | 'err') => (chunk: Buffer): void => {
-      const next = (stream === 'out' ? out : err) + chunk.toString()
-      if (stream === 'out') out = next.slice(-65536)
-      else err = next.slice(-65536)
-      if (login?.onUrl) for (const url of chunk.toString().match(/https:\/\/[\w./?=&%+~:#@!-]+/g) ?? []) login.onUrl(url)
-    }
-    child.stdout?.on('data', receive('out'))
-    child.stderr?.on('data', receive('err'))
-    child.on('error', (error) => {
-      err += error.message
-      finish(null)
-    })
-    child.on('close', (code) => finish(code))
-  })
-}
-
-export function commandText(result: RunText): string {
-  return `${result.out ?? ''}${result.err ?? ''}`
-}
-
-export function cloudErrorKind(message: string): EngineErrorKind {
-  if (/not logged in|not authenticated|log ?in|sign ?in|invalid api key|unauthorized|\b40[13]\b/i.test(message)) return 'auth'
-  if (/rate limit|too many requests|\b429\b|quota|usage limit|(?:insufficient|exhausted|not enough|out of) credits?/i.test(message)) return 'quota'
-  return classifyEngineError(message)
-}
-
-export const LOGIN_TIMEOUT_MS = 5 * 60_000
-export const STATUS_TIMEOUT_MS = 15_000
-export const STATUS_TTL_MS = 60_000
-
-export class StatusCache {
-  private probing: Promise<EngineDetection> | null = null
-  private known: { at: number; detection: EngineDetection } | null = null
-  private generation = 0
-
-  async read(probe: () => Promise<EngineDetection>, now = Date.now()): Promise<EngineDetection> {
-    if (this.known && this.known.detection.installed && this.known.detection.conclusive !== false && now - this.known.at < STATUS_TTL_MS) return this.known.detection
-    if (this.probing) return this.probing
-    const generation = this.generation
-    const pending = probe().then(detection => {
-      if (generation !== this.generation) return this.known?.detection ?? { installed: detection.installed, loggedIn: false, conclusive: false }
-      this.known = { at: now, detection }
-      return detection
-    }).finally(() => {
-      if (this.probing === pending) this.probing = null
-    })
-    this.probing = pending
-    return pending
-  }
-
-  forget(): void {
-    this.known = null
-    this.probing = null
-    this.generation++
-  }
-
-  set(detection: EngineDetection, now = Date.now()): void {
-    this.forget()
-    this.known = { at: now, detection }
-  }
 }
 
 export interface CloudEngine extends Engine {
@@ -177,7 +86,37 @@ export interface CloudEngine extends Engine {
   confirmAuth?(): void
 }
 
-export interface CloudLoginOptions { signal?: AbortSignal; onUrl?: (url: string) => void }
+
+const claudeSessions = new SessionPool()
+setInterval(() => { claudeSessions.sweep(); trimWarm(claudeSessions) }, 60_000).unref()
+workerPool.onTarget(() => trimWarm(claudeSessions))
+
+export const claudeInputs: ClaudeInputs = {
+  binary: claudeBinary,
+  sdk: loadClaudeSdk,
+  env: profile => accountEnvironment('claude', profile),
+  loadConnections: loadBrainConnections,
+  hasConnection: profile => hasBrainConnection('claude', profile),
+  clearConnection: profile => clearBrainConnection('claude', profile),
+  probeConnection: profile => probeConnection('claude', undefined, profile),
+  logTools: job => logSessionTools('claude', job),
+  started: claudeSessionStarted,
+  afterFirstSession: afterFirstClaudeSession,
+  sessions: claudeSessions,
+}
+
+export function claudeEngine(profile = activeAccountProfile('claude')): ClaudeEngine {
+  return new ClaudeEngine(claudeInputs, profile)
+}
+
+export function closeClaudeSession(key: string): void {
+  claudeSessions.closeMatching(key)
+}
+
+export function closeClaudeSessions(): void {
+  claudeSessions.closeAll()
+  closeVoices()
+}
 
 const instances = new Map<string, CloudEngine>()
 
@@ -186,7 +125,7 @@ export function cloudEngine(id: CloudEngineId, profile = activeAccountProfile(id
   let engine = instances.get(key)
   if (!engine) {
     const trace = process.env['ENGRAM_TRACE']?.trim()
-    engine = traced(gateModelCalls(id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile)), trace ? traceFolder(trace) : undefined)
+    engine = traced(gateModelCalls(id === 'claude' ? claudeEngine(profile) : new CodexEngine(profile)), trace ? traceFolder(trace) : undefined)
     instances.set(key, engine)
   }
   return engine

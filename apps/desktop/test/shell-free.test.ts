@@ -97,6 +97,12 @@ describe('the tool kit and the files it builds from', () => {
   })
 })
 
+describe('the model engine and the files it builds from', () => {
+  it.each(['src/main/engine-claude.ts', 'src/main/engine-claude-session.ts', 'src/main/engine-claude-voice.ts', 'src/main/run-text.ts', 'src/main/usage-limit.ts'])('%s never reaches the shell through its imports', file => {
+    expect(shellPath(file)).toBeNull()
+  })
+})
+
 it('reports a file that still reaches the shell', () => {
   expect(shellPath('src/main/engine-cloud.ts')?.length).toBeGreaterThan(1)
 })

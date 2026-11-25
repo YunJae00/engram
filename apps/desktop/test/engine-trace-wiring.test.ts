@@ -6,7 +6,7 @@ import type { EngineCwd, ToolSessionJob } from 'core'
 const built = vi.hoisted(() => ({ engines: [] as object[] }))
 vi.mock('electron', () => ({ app: { getPath: () => `${process.cwd()}/tmp/trace-wiring-missing` }, net: {} }))
 vi.mock('../src/main/account-profiles.js', () => ({ activeAccountProfile: () => 'default' }))
-vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: () => null }))
+vi.mock('../src/main/claude-runtime.js', () => ({ installedClaudeBinary: () => null, loadClaudeSdk: async () => ({}), claudeSessionStarted: () => {}, afterFirstClaudeSession: async () => undefined }))
 vi.mock('../src/main/engine-codex.js', () => ({ CodexEngine: class {} }))
 vi.mock('../src/main/engine-claude.js', () => ({
   ClaudeEngine: class {
@@ -18,6 +18,8 @@ vi.mock('../src/main/engine-claude.js', () => ({
       return { answer: `found ${String(seen)}` }
     }
   },
+  trimWarm: () => {},
+  closeVoices: () => {},
 }))
 
 const { cloudEngine } = await import('../src/main/engine-cloud.js')

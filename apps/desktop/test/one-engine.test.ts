@@ -31,7 +31,8 @@ vi.mock('../src/renderer/src/lib/accountProfiles.js', () => ({ useAccountProfile
 vi.mock('../src/renderer/src/lib/accountUsage.js', () => ({ useAccountUsage: () => [], useAccountUsageChecking: () => false, refreshAccountUsage: async () => undefined }))
 vi.mock('../src/renderer/src/components/BotAvatar.js', () => ({ BotAvatar: () => null, useAvatarTheme: () => 'light' }))
 
-import { chosenModel, ClaudeEngine } from '../src/main/engine-claude.js'
+import { chosenModel } from '../src/main/engine-claude.js'
+import { claudeEngine } from '../src/main/engine-cloud.js'
 import { loadSettings } from '../src/main/settings.js'
 import { ModelPicker } from '../src/renderer/src/components/ModelPicker.js'
 import { TopBar } from '../src/renderer/src/components/TopBar.js'
@@ -70,7 +71,7 @@ describe('one engine, no knobs', () => {
     await mkdir(resolve('tmp'), { recursive: true })
     fixture.root = await mkdtemp(resolve('tmp/one-engine-run-'))
     await writeFile(resolve(fixture.root, 'settings.json'), JSON.stringify({ claudeModel: 'sonnet' }))
-    const engine = new ClaudeEngine()
+    const engine = claudeEngine()
     for await (const event of engine.run({ prompt: 'Hi', workdir: WORKDIR, model: 'sonnet' })) void event
     expect(fixture.query.mock.lastCall![0].options.model).toBe('opus')
     for await (const event of engine.run({ prompt: 'Hi', workdir: WORKDIR, modelHint: 'fast', model: 'opus' })) void event

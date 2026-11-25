@@ -156,7 +156,7 @@ import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall, turnRunning } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { isPersonSentence, preferencesChat } from './preferences-chat.js'
-import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
+import { fetchClaudeModels, forgetClaudeModels, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { brainConnection, connectionModels, loadBrainConnections } from './brain-connections.js'
@@ -165,7 +165,7 @@ import { registerConnectionIpc } from './brain-connection-ipc.js'
 import { connectEngine, disconnectEngine, engineLogins, cancelEngineLogin, reopenEngineLogin } from './engine-signin.js'
 import { engineStates } from './vault.js'
 import { registerAccountIpc } from './account-ipc.js'
-import { cloudEngine } from './engine-cloud.js'
+import { claudeInputs, closeClaudeSession, cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
@@ -2565,7 +2565,7 @@ export function registerEngineIpc(): void {
     if (['none', 'mock'].includes(process.env['ENGRAM_ENGINE'] ?? '')) return []
     if (!(await cloudEngine(provider, profile).detect()).loggedIn) return []
     if (brainConnection(provider, profile)) return connectionModels(provider, undefined, profile)
-    return provider === 'claude' ? fetchClaudeModels(profile) : fetchCodexModels(profile)
+    return provider === 'claude' ? fetchClaudeModels(claudeInputs, profile ?? activeAccountProfile('claude')) : fetchCodexModels(profile)
   })
   registerConnectionIpc(async (provider) => {
     if (provider === 'decision') return
