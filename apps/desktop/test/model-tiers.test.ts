@@ -297,7 +297,7 @@ describe('instant first line', () => {
     expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
     expect(turn).toContain('const note = firstLineNote(channel)')
     expect(turn).not.toMatch(/await firstLine/)
-    expect(turn).toContain("const notes = [context?.(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\\n\\n')")
+    expect(turn).toContain("const notes = [context?.(), calendarLine(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\\n\\n')")
     expect(turn).toContain('const hold = !!firstLineNote(channel)')
     expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))
   })

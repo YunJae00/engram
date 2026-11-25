@@ -2,14 +2,60 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createTask, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, updateTask, type AgentTool, type Engine, type ToolSessionJob, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import * as fastLane from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { answer, openWorld } from '../src/main/answer.js'
 
-describe('7. nothing rewrites a lookup answer after the reader', () => {
+const leadOnly = (lead: (job: ToolSessionJob) => Promise<string>): Engine => ({ id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob) => ({ answer: await lead(job) }) }) as unknown as Engine
+
+describe('7. relative days come from one calendar on every lead step; nothing rewrites a lookup answer after the reader', () => {
+  it('every ask, dated or not, gets today and the next 14 days with weekdays, so a named day resolves without the host reading the words', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(2027, 0, 8, 10, 0))
+      const told: string[] = []
+      const world = await openWorld(await mkdtemp(join(temporary, 'engram-c19a-days-')), leadOnly(async job => { told.push(job.prompt); return '알겠어요.' }))
+      for (const ask of ['다음 주 월요일이랑 목요일 춘천 미세먼지 알려줘', '모레 여수 바람 세기 좀 봐줄래', '탕비실 정수기 필터 갈아 끼우는 법 정리해줘']) await answer(world, ask, { ack: { bare: true } })
+      expect(told).toHaveLength(3)
+      for (const prompt of told) {
+        expect(prompt).toContain('Today is 2027-01-08 (Friday)')
+        expect(prompt).toContain('2027-01-10 Sun')
+        expect(prompt).toContain('2027-01-11 Mon')
+        expect(prompt).toContain('2027-01-14 Thu')
+        expect(prompt).toContain('2027-01-21 Thu')
+        expect(prompt).not.toContain('2027-01-22')
+        expect(prompt).toContain('never how the date was worked out')
+      }
+      vi.setSystemTime(new Date(2027, 11, 29, 23, 30))
+      told.length = 0
+      await answer(world, '새해 첫 주 화요일 강릉 해돋이 시각', { ack: { bare: true } })
+      expect(told[0]).toContain('Today is 2027-12-29 (Wednesday)')
+      expect(told[0]).toContain('2028-01-04 Tue')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('a place changed while the lead\'s search runs reaches that same turn, and the one answer is about the new place, well inside the lookup cap', async () => {
+    const queries: string[] = [], waiting: string[] = []
+    const search: AgentTool = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async args => { const q = String(args['query']); queries.push(q); if (queries.length === 1) waiting.push('아 목포 말고 순천으로 봐줘'); await tick(MS.search); return `results for "${q}"\n- ${q} — ${PAGE(q)}` } }
+    const engine = leadOnly(async job => {
+      const first = await job.tools.find(tool => tool.name === 'search_web')!.run({ query: '목포 오늘 일몰' })
+      const text = typeof first === 'string' ? first : first.text
+      if (!text.includes('순천')) return '목포는 오늘 17시 31분에 해가 져요.'
+      await job.tools.find(tool => tool.name === 'search_web')!.run({ query: '순천 오늘 일몰' })
+      return `순천은 오늘 17시 29분에 해가 져요. [일몰 시각](${PAGE('순천 오늘 일몰')})`
+    })
+    const since = Date.now()
+    const { result } = await answer(await openWorld(await mkdtemp(join(temporary, 'engram-c19a-swap-')), engine), '목포 오늘 해 지는 시각 알려줘', { tools: [search], ack: { bare: true }, takeSteer: () => waiting.splice(0) })
+    expect(Date.now() - since).toBeLessThan(20_000)
+    expect(queries).toEqual(['목포 오늘 일몰', '순천 오늘 일몰'])
+    expect(result?.answer).toMatch(/^순천/)
+    expect(result?.answer).not.toContain('목포')
+  })
+
   it('no post-hoc rewrite is left to run after the reader ends', () => {
     expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'laneFirstLine', 'quickQuestion', 'shortAsk', 'shortQuestion', 'teamAsk'])
   })

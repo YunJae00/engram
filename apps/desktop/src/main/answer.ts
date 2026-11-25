@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { addBotTask, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
+import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
 import { closingBuilds, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, keptFix, namedText, onlyTells, plainKeep, routeAsk, askNow, slideTitleFix, sortByKind, TOLD_NOTE } from './desk-lane.js'
 import { quickQuestion, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from './fast-lane.js'
 import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSpoke, plainReply, smallTalkAnswer } from './first-line.js'
@@ -151,7 +151,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
       const talked = host || reply === false ? undefined : await smallTalkAnswer(channel)
       const note = firstLineNote(channel)
       const shortlist = host || talked || !skills ? undefined : await skills()
-      const notes = [context?.(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\n\n')
+      const notes = [context?.(), calendarLine(), laneNote, deskNote, changedNote, note].filter(Boolean).join('\n\n')
       result = host ?? (talked ? { answer: talked, steps: [], fellBack: false } : await runComet({ engine, workdir: engineCwd(paths), tools: deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name))) : everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,

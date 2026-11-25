@@ -394,6 +394,11 @@ export function dateLine(text: string, now = new Date()): string {
   const named = periodsIn(text, now)
   return `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}).${named.length ? ` Here ${named.map(([name, means]) => `${name} = ${means}`).join('; ')}: search and answer for that period, and say a year that is not this one.` : ''}`
 }
+export function calendarLine(now = new Date()): string {
+  const days = Array.from({ length: 14 }, (_, i) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + i))
+  const short = (at: Date): string => `${at.toLocaleDateString('sv-SE')} ${at.toLocaleDateString('en-US', { weekday: 'short' })}`
+  return `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}), time zone ${Intl.DateTimeFormat().resolvedOptions().timeZone}. The next 14 days: ${days.map(short).join(', ')}. Take any day the person names from this calendar and write a fact about a particular day with its date or weekday, never how the date was worked out.`
+}
 const RELATIVE_TIME = /(?<![가-힣])(?:(?:이번|다음|지난|저번)\s?주말?|금주|주말|요즘|요새|최근|오늘|내일|모레|어제|지금|현재|방금|실시간)(?:에는|[은는엔에도의])?(?![가-힣])/gu
 export const withoutRelativeTime = (words: string): string => words.replace(RELATIVE_TIME, ' ').replace(/\s+/g, ' ').trim()
 export function datedQuery(query: string, about: string, now = new Date()): string {
