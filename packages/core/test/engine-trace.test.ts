@@ -115,3 +115,19 @@ it('keeps a method it does not record, and that method still acts on the engine'
   expect(wrapped.openVents()).toBe(1)
   expect(engine.vents).toBe(1)
 })
+
+it('hands the caller the answer even when the trace sink breaks while writing', async () => {
+  const { engine } = greenhouse([{ tool: 'soil', args: { bed: 'west' } }])
+  const wrapped = traced(engine, () => { throw new Error('ledger is full') })
+  expect((await wrapped.runTools!(job())).answer).toBe('Tomatoes need water.')
+  expect(await wrapped.quick!('hail warning', { workdir: '/fixture', timeoutMs: 300 })).toBe('a line about hail warning')
+})
+
+it('times the first token and keeps usage when the caller passes no stream or usage callbacks', async () => {
+  const records: TraceRecord[] = []
+  const { engine } = greenhouse([])
+  await traced(engine, record => records.push(record)).runTools!(job())
+  const record = jobRecord(records)
+  expect(record.firstTokenMs).toBeGreaterThanOrEqual(0)
+  expect(record.usage).toEqual([310, 55])
+})

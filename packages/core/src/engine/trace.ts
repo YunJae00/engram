@@ -22,6 +22,7 @@ const clock = (): (() => number) => { const began = performance.now(); return ()
 
 export function traced<T extends Engine>(engine: T, sink?: TraceSink): T {
   if (!sink) return engine
+  const write = (record: () => TraceRecord): void => { try { sink(record()) } catch { return } }
   const runTools = engine.runTools?.bind(engine)
   if (runTools) engine.runTools = async job => {
     const at = new Date().toISOString(), since = clock()
@@ -49,21 +50,21 @@ export function traced<T extends Engine>(engine: T, sink?: TraceSink): T {
       result = await runTools({
         ...job,
         tools,
-        ...(job.onToken ? { onToken: (text: string) => { firstTokenMs ??= since(); job.onToken?.(text) } } : {}),
-        ...(job.onUsage ? { onUsage: (tokens: number) => { usage.push(tokens); job.onUsage?.(tokens) } } : {}),
+        onToken: text => { firstTokenMs ??= since(); job.onToken?.(text) },
+        onUsage: tokens => { usage.push(tokens); job.onUsage?.(tokens) },
       })
       return result
     } catch (thrown) {
       error = messageOf(thrown)
       throw thrown
     } finally {
-      sink({
+      write(() => ({
         kind: 'job', at, sessionKey: job.sessionKey, modelHint: job.modelHint, effort: job.effort,
         system: job.system, systemHash: hashOf(job.system), opening: job.opening, prompt: job.prompt,
         menu: job.tools.map(tool => ({ name: tool.name, description: tool.description.length, schema: JSON.stringify(tool.argsSchema).length })),
         maxCalls: job.maxCalls, calls, firstTokenMs, endMs: since(), usage, answer: result?.answer.length ?? 0,
         error: error ?? result?.error, note: result?.note,
-      })
+      }))
     }
   }
   const quick = engine.quick?.bind(engine)
@@ -76,7 +77,7 @@ export function traced<T extends Engine>(engine: T, sink?: TraceSink): T {
     } catch (thrown) {
       error = messageOf(thrown)
       throw thrown
-    } finally { sink({ kind: 'quick', at, prompt, endMs: since(), answer: answer.length, error }) }
+    } finally { write(() => ({ kind: 'quick', at, prompt, endMs: since(), answer: answer.length, error })) }
   }
   return engine
 }
