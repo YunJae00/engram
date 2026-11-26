@@ -167,7 +167,7 @@ describe('instant first line', () => {
     expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
     expect(turn).toContain('const up = firstLineState(channel)')
     expect(turn).not.toMatch(/await firstLine/)
-    expect(turn).toContain("const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}), ...(decided ? { brief: decided.brief } : {}) }")
+    expect(turn).toContain("const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}) }")
     expect(turn).toContain("const now = firstLineState(channel), hold = !!now && 'pending' in now")
     expect(turn.indexOf('const decided = await quick')).toBeLessThan(turn.indexOf("lead('work'"))
     expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))

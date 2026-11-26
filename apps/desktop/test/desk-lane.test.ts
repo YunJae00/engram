@@ -44,7 +44,7 @@ describe('desk lane', () => {
 
   it('runs every turn on the caller\'s full tool list with no model hint and no light effort, and keeps the shell', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(answerSource()).toContain("result = await lead('work', notes, [...everyTool, escalate], handed.signal)")
+    expect(answerSource()).toContain("await lead('work', notes, [...everyTool, escalate], handed.signal)")
     for (const gone of ['deskLane', 'deskKind', 'DESK_TOOLS', 'closingBuilds', 'modelHint', 'light: true']) expect(answerSource(), gone).not.toContain(gone)
     expect(ipc).toContain('...(native && !company ? { native } : {}),')
     expect(answerSource()).toContain('...(native ? { native } : {}),')

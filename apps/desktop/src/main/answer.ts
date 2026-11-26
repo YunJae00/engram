@@ -24,6 +24,7 @@ export interface AnswerTrace {
   first?: { text: string; ms: number }
   steps: { line: string; ms: number }[]
   final: { text: string; ms: number }
+  brief?: string
   escalated?: { why: string; said: string; ms: number }
   end: 'done' | 'stop'
   error?: string
@@ -145,12 +146,13 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
       const decided = await quick
       if (decided && 'answer' in decided) result = { answer: decided.answer, steps: [], fellBack: false }
       else {
+        if (decided) trace.brief = decided.brief
         shortlist = skills ? await skills() : undefined
         const up = firstLineState(channel)
-        const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}), ...(decided ? { brief: decided.brief } : {}) }
+        const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}) }
         const handed = new AbortController()
         const escalate: AgentTool = { ...ESCALATE_TOOL, run: async args => { trace.escalated = { why: String(args['why'] ?? ''), said: streamed.trim() || said, ms: ms() }; handed.abort(); return 'Passed on.' } }
-        try { result = await lead('work', notes, [...everyTool, escalate], handed.signal) }
+        try { result = loop.role === 'deep' ? await lead('deep', notes, everyTool) : await lead('work', notes, [...everyTool, escalate], handed.signal) }
         catch (cause) {
           const passed = trace.escalated
           if (!passed || signal?.aborted) throw cause

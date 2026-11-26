@@ -37,7 +37,7 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.final.text).toBe('반납일은 금요일이에요.')
   })
 
-  it('shows the quick tier\'s first line before the work lead starts, and the lead gets the line and the brief', async () => {
+  it('shows the quick tier\'s first line before the work lead starts; the lead is told the line and works from the person\'s own words, and the brief goes only to the trace', async () => {
     let told = ''
     const shown = vi.fn()
     const engine = fake(async job => { told = job.system + job.opening + job.prompt; await wait(80); job.onToken?.('대출 기록을 보니 반납일은 금요일이에요.'); return '대출 기록을 보니 반납일은 금요일이에요.' }, async () => ({ text: '대출 기록부터 볼게요.', handOff: '빌린 책 반납일 확인' }))
@@ -45,7 +45,9 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.first?.text).toBe('대출 기록부터 볼게요.')
     expect(shown).toHaveBeenCalledExactlyOnceWith('대출 기록부터 볼게요.')
     expect(told).toContain('The person has already been shown this first line from you: "대출 기록부터 볼게요."')
-    expect(told).toContain('wrote this brief for it: "빌린 책 반납일 확인"')
+    expect(told).not.toContain('빌린 책 반납일 확인')
+    expect(told).toContain('빌린 책 반납일 언제야?')
+    expect(trace.brief).toBe('빌린 책 반납일 확인')
     expect(trace.final.text).toBe('대출 기록을 보니 반납일은 금요일이에요.')
   })
 
@@ -247,6 +249,16 @@ describe('three tiers: the work lead can pass a hard job to the deep tier', () =
     expect(trace.escalated).toMatchObject({ why: '예산 다섯 개를 맞춰 계획까지 세워야 해서', said: '다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요.' })
     expect(trace.final.text).toBe('사내 동호회 다섯 곳 예산을 맞춰 보니 등산회부터 줄이면 돼요.')
     expect(result?.answer).toBe(trace.final.text)
+  })
+
+  it('a turn its caller already runs on the deep tier keeps the smart model and is offered no escalate', async () => {
+    const jobs: ToolSessionJob[] = []
+    const engine = fake(async job => { jobs.push(job); return '봉사 동아리 일정은 셋이 나눠 맡았어요.' })
+    const { trace } = await answer(await openWorld(await temp(), engine), '봉사 동아리 이번 달 일정 셋이 나눠서 정리해줘', { role: 'deep' })
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.modelHint).toBe('smart')
+    expect(jobs[0]!.tools.map(one => one.name)).not.toContain('escalate')
+    expect(trace.escalated).toBeUndefined()
   })
 
   it('a stop during the work step never starts the deep step', async () => {

@@ -60,7 +60,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(own).not.toMatch(/changedNote|askNow|routeAsk|What the person asks for now/)
-    expect(own).toContain("const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}), ...(decided ? { brief: decided.brief } : {}) }")
+    expect(own).toContain("const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}) }")
     expect(own).toContain('context: notes,')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
   })
@@ -113,7 +113,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
   it('the model reads the meaning from the thread and the named file with its own call; no route or pre-read is left in answer or ipc', () => {
     for (const gone of ['namedText', 'namedBy', 'askNow', 'routeAsk', 'fileGiven', 'const meant', 'deskLane', 'deskKind', 'deskLight']) expect(own).not.toContain(gone)
     expect(ipc.split('\n').filter(line => /\brouted\b|\bdeskLane\(|\bdeskKind\(|\brouteAsk\(/.test(line))).toEqual([])
-    expect(own).toContain("result = await lead('work', notes, [...everyTool, escalate], handed.signal)")
+    expect(own).toContain("await lead('work', notes, [...everyTool, escalate], handed.signal)")
     expect(ipc).toMatch(/await deliverAnswer\(\s*result\.asked \? askText\(result\.answer, result\.options\) : result\.answer,/)
   })
   it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', async () => {

@@ -170,14 +170,13 @@ function sessionRules(flags: SessionFlags): string {
 export const HELPER_PERSONA = 'You are a helper looking into one question for a colleague who does the rest of the work. Only read. Bring back what you found, briefly, with the addresses it came from, and say plainly what you could not find.'
 const HANDED_BACK = 'Your teammates handed back their parts of this job. Write the one result for the person from what they handed back, as its note says.'
 const ASK_MAX = 2000
-const BRIEF = 'You took this over from your own first reply, which wrote this brief for it: '
 const QUIET = 'Write nothing before your first tool call and nothing between tool calls: no opening line, no note of what you will read, check or do next. Your next words to the person are the answer itself.'
 
 export type PromptRole = 'quick' | 'work' | 'deep'
 export const MODEL_TIER: Record<PromptRole, 'fast' | 'smart' | undefined> = { quick: 'fast', work: undefined, deep: 'smart' }
 export type FirstLine = { shown: string } | { pending: true }
 export interface QuickInput { message: string; korean: boolean; said?: readonly string[]; history?: AgentLoopOptions['history']; calendar?: string }
-export interface PromptContext { company?: string; handedBack?: string; attachments?: string; recovery?: string; turn?: string; team?: string; outputs?: string; plan?: boolean; calendar?: string; firstLine?: FirstLine; brief?: string; escalated?: string }
+export interface PromptContext { company?: string; handedBack?: string; attachments?: string; recovery?: string; turn?: string; team?: string; outputs?: string; plan?: boolean; calendar?: string; firstLine?: FirstLine; escalated?: string }
 export interface PromptInput {
   task: string
   flags: SessionFlags
@@ -216,7 +215,7 @@ function firstLineNote(line?: FirstLine): string {
 }
 
 export function contextText(context: PromptContext = {}): string {
-  return [context.company, context.handedBack ? `${HANDED_BACK}\n${context.handedBack}` : '', context.attachments, context.recovery, context.turn, context.team, context.outputs, context.plan ? PLAN_RULE : '', context.calendar, context.brief ? `${BRIEF}${JSON.stringify(context.brief)}` : '', firstLineNote(context.firstLine), escalateLine(context.escalated)].filter(Boolean).join('\n\n')
+  return [context.company, context.handedBack ? `${HANDED_BACK}\n${context.handedBack}` : '', context.attachments, context.recovery, context.turn, context.team, context.outputs, context.plan ? PLAN_RULE : '', context.calendar, firstLineNote(context.firstLine), escalateLine(context.escalated)].filter(Boolean).join('\n\n')
 }
 
 export function promptFor(role: 'quick', input: QuickInput): string

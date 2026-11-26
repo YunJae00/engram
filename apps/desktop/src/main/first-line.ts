@@ -77,6 +77,7 @@ export async function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voi
       return { answer: reply.text.trim() }
     }
     const line = cleanLine(reply.text, ACK_MAX)
+    log({ channel: ask.channel, outcome: 'handed', brief: reply.handOff, ms: Date.now() - started })
     if (line && !turn.line) { clearTimeout(timer); say(line, 'voiced') }
     return { brief: reply.handOff }
   } catch (error) {
