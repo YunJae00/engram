@@ -81,8 +81,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
     const aside = source('aside-ipc.ts')
-    expect(aside).toContain('asideVoice(')
-    expect(aside).not.toContain('heldRounds')
+    expect(aside).not.toMatch(/asideVoice|heldRounds|quick\(/)
   })
 
   it('the safety line and a tool call: it stays as the acknowledgement bubble, like a line the voice wrote', async () => {
@@ -295,7 +294,6 @@ describe('short asks, statements and corrections', () => {
       expect(job.modelHint, asks[at]).toBeUndefined()
       expect(job.effort, asks[at]).toBeUndefined()
     }
-    expect(source('fast-lane.ts')).not.toMatch(/SHORT_QUESTION_NOTE|shortAsk|shortQuestion/)
   })
 
   it('takes a correction to the lead as typed, with the ask before it in the history and no host note on what is asked now', async () => {

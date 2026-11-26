@@ -1,11 +1,9 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
-import * as laneModule from '../src/main/fast-lane.js'
-import { teamAsk } from '../src/main/fast-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 async function turn(page: string, ask: string, draft: string) {
@@ -20,14 +18,6 @@ async function turn(page: string, ask: string, draft: string) {
   } finally { await rm(root, { recursive: true, force: true }) }
 }
 
-const LANE = [
-  '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘',
-  '봇 3개 만들어서 서울 부산 제주 날씨 조사해줘',
-  '아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜',
-  '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘',
-  '오늘 서울 날씨 어때?', '엔비디아 오늘 주가 알려줘', '이번 주말 부산 비 와?', '원달러 환율 지금 얼마야?',
-  'Have three bots research the weather in Seoul, Busan and Jeju', "What's the weather in Seoul today?",
-]
 it('gives a short question and a short job the same call, and the host asks neither to be brief', async () => {
   const jobs: { told: string; tools: string[]; maxCalls: number; modelHint?: string; effort?: string }[] = []
   const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push({ told: [job.system, job.opening, job.prompt].join('\n'), tools: job.tools.map(one => one.name), maxCalls: job.maxCalls, ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}) }); return { answer: '네.' } } } as unknown as Engine
@@ -46,8 +36,8 @@ it('gives a lookup the shell and the full menu like any turn, and hands mid-turn
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
   expect(ipc).toContain('...(native && !company ? { native } : {}),')
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native ? { native } : {}),')
-  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
-  expect(ipc).toContain('voice: () => chatEngine(ctx.engines),')
+  expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }, steered: signal => followUpSaid(channel, signal)')
+  expect(ipc).not.toMatch(/steerReplied|voice: \(\) => chatEngine/)
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
@@ -56,10 +46,8 @@ it('gives a lookup the shell and the full menu like any turn, and hands mid-turn
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/smallTalkAnswer|talked/)
 })
 
-it('tells a team ask from a lone one, and a lone lookup gets the quick model\'s ack like any ask', () => {
-  for (const message of LANE.slice(0, 3)) expect(teamAsk(message), message).toBe(true)
-  for (const message of LANE.slice(3, 8)) expect(teamAsk(message), message).toBe(false)
-  expect(readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')).not.toMatch(/laneFirstLine|FIRST_STEPS/)
+it('a lone lookup gets the quick model\'s ack like any ask, and no lane file is left to pick it out', () => {
+  expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
@@ -102,9 +90,6 @@ it('posts a lookup\'s answer as written, a failure report included, and no host 
   const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
   for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '토트넘 어젯밤 경기 점수 몇 대 몇이야?', answer)).answer, answer).toBe(answer)
-  expect(Object.keys(laneModule).filter(key => typeof (laneModule as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
-  const lane = readFileSync(new URL('../src/main/fast-lane.ts', import.meta.url), 'utf8')
-  expect(lane.match(/^export (?:async )?function \w+/gm)).toEqual(['export function asideShape'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
 })

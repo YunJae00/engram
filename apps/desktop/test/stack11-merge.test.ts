@@ -70,9 +70,7 @@ describe('stack-11 merge: words said mid-split', () => {
 })
 
 describe('stack-11 merge: one helper each', () => {
-  const src = (file: string): string => readFileSync(new URL(file, import.meta.url), 'utf8')
   it('"is a search page" is core\'s isSearchPage for the lone lookup and the team alike', async () => {
-    expect(src('../src/main/fast-lane.ts')).not.toMatch(/const SEARCH_PAGE\s*=/)
     for (const url of ['https://search.daum.net/search?q=x', 'https://m.search.naver.com/search.naver?query=x', 'https://www.google.com/search?q=x', 'https://shop.example.com/list?search=chair']) expect(isSearchPage(url), url).toBe(true)
     expect(isSearchPage('https://www.hankyung.com/article/2026111712345')).toBe(false)
     const asked: string[] = []

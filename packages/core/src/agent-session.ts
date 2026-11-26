@@ -38,12 +38,9 @@ function summarizeArgs(args: Record<string, unknown>): string {
   return typeof first === 'string' ? first.slice(0, 80) : ''
 }
 
-export function withSteer(text: string, said: string[], replied = false): string {
+export function withSteer(text: string, said: string[]): string {
   if (!said.length) return text
-  const words = `The person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}.`
-  return replied
-    ? `${text}\n\n${words} They were already told in one short line that you got it: do not acknowledge, repeat or answer it again, and write nothing before your next step. Take it in now: when it adds to the job, do the added part too and give one answer that covers everything; when it replaces the job, do the new one only and leave the replaced one out of the answer; when it is only a remark (a complaint, thanks), go on unchanged. If it asked a question that one line could not have answered, answer it in your answer.`
-    : `${text}\n\n${words} First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
+  return `${text ? `${text}\n\n` : ''}The person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
 }
 
 export const ANSWER_NOW = 'Call no more tools. Answer now from what you already have, in the person\'s language: what you found, each fact with the address it came from, and in one plain clause what is not out yet or could not be found. Do not mention time, limits, turns, attempts or tools, do not apologize, and do not ask whether to try again or look further.'
@@ -55,8 +52,8 @@ const RECHECK_CALLS = 2
 const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
 const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
 const theirLanguage = (text: string, task: string): boolean => !/[가-힣]/.test(task) || /[가-힣]/.test(text) && !(text.match(/[A-Za-z]+/g) ?? []).some(word => !task.toLowerCase().includes(word.toLowerCase()))
-function lateSteer(draft: string, said: string[], replied = false): string {
-  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
+function lateSteer(draft: string, said: string[]): string {
+  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
 }
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
@@ -73,6 +70,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (!runTools) throw new Error('this brain has no tool session')
   const steps: AgentLoopStep[] = []
   let liveSteer: ((said: string[]) => Promise<boolean>) | null = null
+  const unread: string[] = []
+  const takeSteer = (): string[] => [...unread.splice(0), ...(options.takeSteer?.() ?? [])]
+  let nudge: (() => void) | undefined
+  const ready = (): void => { const go = nudge; nudge = undefined; go?.() }
   const compactPage = pageDelta()
   const plan = taskPlan(steps)
   const collection = collectionProgress(steps)
@@ -121,8 +122,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!closing) { composing = true; release() }
       const late = options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs
       if (options.lookup && !renewed && (late || startedCalls + 1 > allowance())) {
-        const waiting = options.takeSteer?.() ?? []
-        if (waiting.length) { renew(); return withSteer('That call was not run.', waiting, options.steerReplied) }
+        const waiting = takeSteer()
+        if (waiting.length) { renew(); return withSteer('That call was not run.', waiting) }
       }
       if (late) {
         exhausted = true
@@ -193,7 +194,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ]
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
-      const said = options.takeSteer?.() ?? []
+      const said = takeSteer()
       if (said.length) renew()
       if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
         closeLines.push(observation)
@@ -201,7 +202,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         const mark = startedCalls
         setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)
       } else release()
-      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said, options.steerReplied)
+      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
   }))
@@ -214,7 +215,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       try { return await call.run(args) } finally { running.delete(active) }
     }
     const outcome = planned ? toolTail.then(run) : run()
-    const settled = outcome.finally(() => { queued = Math.max(0, queued - 1) })
+    const settled = outcome.finally(() => { queued = Math.max(0, queued - 1); if (!queued) ready() })
     if (planned) toolTail = settled.then(() => undefined, () => undefined)
     return settled
   } }))
@@ -272,7 +273,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ...options.native,
       decide: async (name, input, signal) => {
         queued++; deciding++
-        try { return await options.native!.decide(name, input, signal) } finally { deciding--; queued = Math.max(0, queued - 1) }
+        try { return await options.native!.decide(name, input, signal) } finally { deciding--; queued = Math.max(0, queued - 1); if (!queued) ready() }
       },
       onCall: (name, input) => {
         if (signal.aborted) return
@@ -286,7 +287,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
         const active = [...running].find(call => call.native && call.name === name)
         if (!active) return
         if (active.step) active.step.observation = ok ? 'Native action completed.' : 'that did not work: Native action did not report success; it may have partly happened. Inspect the current state and do not repeat it.'
-        running.delete(active); queued = Math.max(0, queued - 1); options.native!.onResult?.(name, ok)
+        running.delete(active); queued = Math.max(0, queued - 1); if (!queued) ready(); options.native!.onResult?.(name, ok)
       },
     } } : {}),
     tools: sessionCalls,
@@ -294,7 +295,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onStart: () => { working = Date.now(); options.onStart?.() },
     maxCalls: options.maxCalls ?? (browser ? CALL_CEILING : planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (!text || closed !== undefined) return; if (held) held.push(() => options.onToken?.(text)); else options.onToken?.(text) },
-    onSteerable: (steer) => { liveSteer = steer; options.onSteerable?.(steer) },
+    onSteerable: (steer) => { liveSteer = steer; if (steer) ready(); options.onSteerable?.(steer) },
     ...(options.onReset ? { onReset: (...args: Parameters<NonNullable<typeof options.onReset>>) => { if (closed !== undefined) return; if (held) held.push(() => options.onReset!(...args)); else options.onReset!(...args) } } : {}),
     signal,
   }
@@ -305,6 +306,20 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal.addEventListener('abort', end, { once: true })
     if (signal.aborted) end()
   })
+  const heard = new AbortController()
+  const listening = AbortSignal.any([signal, heard.signal])
+  const hear = async (): Promise<void> => {
+    while (options.steered && !listening.aborted) {
+      await options.steered(listening)
+      while (!listening.aborted && (!liveSteer || queued > 0)) await new Promise<void>(go => { nudge = go; listening.addEventListener('abort', () => go(), { once: true }) })
+      if (listening.aborted) return
+      const said = takeSteer()
+      if (!said.length) continue
+      if (await liveSteer!([withSteer('', said)]).catch(() => false)) renew()
+      else unread.push(...said)
+    }
+  }
+  void hear()
   try {
     signal.throwIfAborted()
     const run = runTools.call(deps.engine, job)
@@ -314,12 +329,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     const takeLate = async (): Promise<boolean> => {
       let took = false
       while (lateLeft > 0 && closed === undefined && !signal.aborted && !session.error && !asked) {
-        const late = options.takeSteer?.() ?? []
+        const late = takeSteer()
         if (!late.length) break
         lateLeft--; took = true
         options.onReset?.(true)
         exhausted = false; extended = false; startedCalls = 0; working = Date.now()
-        session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
+        session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late)}` }), ended])
       }
       return took
     }
@@ -345,6 +360,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     const short = closed === undefined && !signal.aborted && !session.error && !asked && session.answer.trim() ? options.shortfall?.(session.answer) : undefined
     if (short) session = { ...session, answer: `${session.answer.trimEnd()}\n\n${short}` }
   } finally {
+    heard.abort()
     options.onSteerable?.(null)
     clearInterval(watchdog)
     unfinishedCalls = queued > 0

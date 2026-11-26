@@ -80,7 +80,6 @@ describe('decisions and tasks are said once (D1)', () => {
     expect(answerSetInTurn(ipc)).toBe(1)
     expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('result.asked ? askText(result.answer, result.options) : result.answer,'))
     expect(source('first-line.ts')).not.toMatch(/saidBefore|laneLine|FILE_WORK/)
-    expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })
 })
 
@@ -108,7 +107,6 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
   })
   it('leaves the repeat to the voice: no host code reads the earlier lines', () => {
     expect(source('first-line.ts')).not.toMatch(/saidBefore|endedTwice|FROM_FRAME|lineTail/)
-    expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })
 })
 
@@ -131,7 +129,6 @@ describe('a pick comes with its reason, recommendations with what they went by (
   it('keeps the rules Q2-Q4 and H2 ride on in the prompts still sent, with no short-ask note left', () => {
     for (const said of ['text they asked for in another language, which you hand over unchanged after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
     expect(COLLEAGUE_RULE).toContain('naming in it any convention it rests on (a common year, a 30-day month)')
-    expect(source('fast-lane.ts')).not.toContain('SHORT_QUESTION_NOTE')
   })
   it('keeps a recommendation\'s lead and every pick under it: nothing is taken off a short answer', async () => {
     const picks = '아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.\n\n1. 제주 가시면 해안도로 드라이브가 좋아요.\n2. 오설록 티뮤지엄은 실내라 편해요.\n3. 함덕 해변 카페에서 쉬어 가세요.'

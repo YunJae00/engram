@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { runComet, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
-import * as lane from '../src/main/fast-lane.js'
-import { asideShape } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8')
@@ -30,7 +28,7 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
       expect(result.answer, answer).toBe(answer)
     }
     expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     const ipc = src('ipc.ts')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
@@ -40,7 +38,6 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
     for (const gone of ['withoutWorkNote(', 'koreanLead(', 'asState(', 'newsItems(', 'shortSaid(', 'listOnly(']) expect(src('ipc.ts')).not.toContain(gone)
     expect(voice).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
     expect(voice).not.toMatch(/같이 일하고 계세요|살고 계세요/)
-    for (const gone of ['SHORT_QUESTION_NOTE', 'shortAsk', 'shortQuestion']) expect(src('fast-lane.ts')).not.toContain(gone)
   })
 })
 
@@ -132,18 +129,20 @@ describe('a counted list\'s rows go to the writing model as the search gave them
   })
 })
 
-describe('words said mid-work: a remark goes on, a change needs a named thing (H6/T1/T2 class)', () => {
+describe('words said mid-work reach the running model as typed, and the model judges them (H6/T1/T2 class)', () => {
   const ask = '이번 달 반도체 수출 뉴스 3개 찾아줘'
-  it('takes complaints, questions about the wait and thanks as remarks, in any wording', () => {
-    for (const said of ['아 진짜 오래 걸리네', '아직이야?', '하 답답하다 진짜', '이거 왜 안 끝나', '아직도야?', '수고했어 고마워', '반도체 아직이야?'])
-      expect(asideShape(said, ask), said).toBe('remark')
-  })
-  it('takes a new subject as a replacement and a new scope as an addition', () => {
-    expect(asideShape('그냥 테슬라로 해', ask)).toBe('replace')
-    expect(asideShape('광주도 넣어', '서울 부산 날씨 알려줘')).toBe('add')
-    expect(asideShape('고마워, 디스플레이 넣어줘', ask)).not.toBe('remark')
-    expect(asideShape('표로 보여줘', ask)).toBe('other')
-    expect(asideShape('표로 해줘', ask)).not.toBe('replace')
+  it('hands a complaint, a thanks, a replacement and an addition over the same way, with no host reading of the wording', async () => {
+    const said = ['아 진짜 오래 걸리네', '수고했어 고마워', '그냥 디스플레이로 해', '광주 것도 넣어', '표로 보여줘']
+    const prompts: string[] = []
+    let left = [...said]
+    const search: AgentTool = { name: 'search_web', description: 'search', argsSchema: { type: 'object', properties: {} }, run: async () => 'rows' }
+    const engine = { id: 'claude', runTools: async (job: ToolSessionJob) => { for (let i = 0; i < said.length; i++) prompts.push(String(await job.tools.find(one => one.name === 'search_web')!.run({}))); return { answer: '찾았어요.' } } } as unknown as Engine
+    await runComet({ engine, workdir: '.' as EngineCwd, tools: [search] }, ask, { guided: false, takeSteer: () => left.splice(0, 1) })
+    left = []
+    const tails = prompts.map((prompt, at) => prompt.replace(JSON.stringify(said[at]), 'X'))
+    expect(new Set(tails).size).toBe(1)
+    for (const [at, prompt] of prompts.entries()) expect(prompt).toContain(JSON.stringify(said[at]))
+    expect(tails[0]).toContain('First answer them in one short line')
   })
 })
 
@@ -160,9 +159,8 @@ it('c11b r2, r3: a row dated outside the asked period reaches the writer with it
 })
 
 it('c13b (c11b r3): no host line goes under a delivered list: the shortfall line is gone, and nothing is appended after the link check', () => {
-  expect('listShortfall' in lane).toBe(false)
-  expect('withoutOff' in lane).toBe(false)
+  expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/listShortfall|withoutOff|itemsOff|딱 맞는 건|확인된 건/)
-  expect('LANE_NOTE' in lane).toBe(false)
+  expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
 })

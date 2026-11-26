@@ -49,6 +49,7 @@ export interface AgentLoopOptions {
   waitingForPerson?(): boolean
   onToolStart?(name: string): void
   takeSteer?(): string[]
+  steered?(signal: AbortSignal): Promise<void>
   onSteerable?(steer: ((messages: string[]) => Promise<boolean>) | null): void
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
@@ -74,7 +75,6 @@ export interface AgentLoopOptions {
   short?: boolean
   deadlineMs?: number
   onStart?(): void
-  steerReplied?: boolean
   recheck?(answer: string): string | undefined | Promise<string | undefined>
   shortfall?(answer: string): string | undefined
 }

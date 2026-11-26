@@ -928,7 +928,6 @@ export function registerIpc(ctx: VaultContext): void {
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
     setOffersAside,
     stop: stopChat,
-    voice: () => chatEngine(ctx.engines),
   })
 
   const ERRAND_MIN_FREE = 1.5e9
@@ -2246,7 +2245,7 @@ export function registerIpc(ctx: VaultContext): void {
           onToolStart: () => { toolStarted = true },
           skills: async () => company ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
           ...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),
-          ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
+          ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }, steered: signal => followUpSaid(channel, signal) }),
           compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
           onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
           ...(resume ? { resume } : {}),

@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { runComet, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import * as lane from '../src/main/fast-lane.js'
 
 async function turn(page: string, ask: string, draft: string, quick = vi.fn(async () => '')) {
   let out = ''
@@ -61,7 +60,7 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     expect(three.out).toContain('They asked for 4: list')
     expect(three.judged).toBe(0)
     expect(three.answer).toBe(draft)
-    expect('withoutOff' in lane).toBe(false)
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('a same-event group reaches the model whole; neither the old answer-side verdict nor a row-side one is left', async () => {
@@ -70,8 +69,8 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     const handed = await turn(three, '대전 행사 2개', draft)
     expect(handed.rows).toEqual(['https://p.example/1', 'https://q.example/2', 'https://r.example/3'])
     expect(handed.answer).toBe(draft)
-    for (const gone of ['itemCheck', 'itemVerdicts', 'judgeItems', 'offLinks', 'listGap']) expect(gone in lane, gone).toBe(false)
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('ipc gives a lookup its search rows unjudged, and no link check or citation step runs after writing', () => {

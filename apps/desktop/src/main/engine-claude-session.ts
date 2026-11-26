@@ -73,6 +73,8 @@ interface Turn {
   onContextReset?: () => void
   onUsage?: (tokens: number) => void
   calls: Set<string>
+  steers: string[]
+  unsteer(): void
   idle?: ReturnType<typeof setTimeout>
   stalled?: boolean
   retried?: boolean
@@ -234,6 +236,15 @@ class WarmSession {
           continue
         }
         if (message.type !== 'result') continue
+        if (this.turn?.steers.length) {
+          this.turn.stalled = false
+          this.turn.calls.clear()
+          this.queue.push(...this.turn.steers.splice(0).map((content): SdkUserMessage => ({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })))
+          this.wake?.()
+          this.wake = null
+          this.watch()
+          continue
+        }
         if (this.turn?.stalled && (message as { subtype?: string }).subtype !== 'success') {
           this.turn.stalled = false
           this.turn.retried = true
@@ -282,6 +293,18 @@ class WarmSession {
     }, STEP_IDLE_MS)
   }
 
+  private steer(turn: Turn, said: string[]): Promise<boolean> {
+    if (this.turn !== turn || turn.calls.size) return Promise.resolve(false)
+    const first = !turn.steers.length
+    turn.steers.push(...said)
+    if (!first) return Promise.resolve(true)
+    turn.answer = ''
+    turn.onReset?.(true)
+    void this.query?.interrupt().catch(() => undefined)
+    flog('input-delivery', JSON.stringify({ engine: 'claude', messages: said.length, accepted: true }))
+    return Promise.resolve(true)
+  }
+
   private noteBeforeCall(): void { if (this.turn?.answer) { this.turn.note = this.turn.answer; this.turn.answer = '' } }
   private finish(result: ToolSessionResult): void {
     const turn = this.turn
@@ -291,6 +314,7 @@ class WarmSession {
     this.native = undefined
     this.resetNative()
     turn.detachAbort()
+    turn.unsteer()
     turn.resolve(result)
   }
 
@@ -311,9 +335,10 @@ class WarmSession {
       }
       const onAbort = (): void => cut('canceled')
       const now = performance.now()
-      const turn: Turn = { calls: new Set(), lease: currentLease(), resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
+      const turn: Turn = { calls: new Set(), steers: [], unsteer: () => job.onSteerable?.(null), lease: currentLease(), resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       turn.onUsage = job.onUsage
+      job.onSteerable?.((said) => this.steer(turn, said))
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()

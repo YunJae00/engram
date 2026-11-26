@@ -1,11 +1,10 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, dateLine, handBacks, keptItems, LATE_CEILING_MS, LOOKUP_RULE, memberTask, partOutcome, TEAM_ANSWER_MS, settleMember, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { teamAsk } from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
@@ -24,8 +23,8 @@ const handed = (members: TeamMember[]): { reports: Report[]; note: string } => J
 describe('stack-12 merge: one item judge', () => {
   it('no item judge reads a draft or a hand-back: no check file is left in core, the teammate\'s own search lives in its own file and is wired only in the team runner, and a teammate\'s lines reach the lead as written', () => {
     expect(readdirSync(new URL('../../../packages/core/src/', import.meta.url)).filter(file => /check/.test(file)).sort()).toEqual(CHECK_FILES)
-    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing/)
-    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toContain('checkedSearch')
+    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/team-runner.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toMatch(/Judge each item by what it is|Keep every item that is the kind of thing/)
+    for (const file of ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/ipc.ts']) expect(src(file), file).not.toContain('checkedSearch')
     expect(src('../src/main/team-runner.ts')).toContain("tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {")
     expect(LOOKUP_RULE).toContain('When they hold what the brief asks, report at once from them, each fact with the address of the result it came from')
     const lines = ['진주 남강 유등 전시가 12월 6일에 열려요. https://a.example/lantern', '진주 국악 한마당이 12월 13일에 열려요. https://c.example/gugak'].join('\n')
@@ -47,7 +46,7 @@ describe('stack-12 merge: time and the anonymous helpers', () => {
     expect(runner).not.toMatch(/const structured/)
     expect(runner).toContain('settleMember(m, { ...outcome, ')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/\bsolo\b|teamAsk/)
-    expect(teamAsk('봇 2개 만들어서 대전 광주 미세먼지 알아보고 합쳐줘')).toBe(true)
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   })
 })
 

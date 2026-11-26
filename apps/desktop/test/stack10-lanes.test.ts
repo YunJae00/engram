@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { runComet, type Engine } from 'core'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
-import * as lane from '../src/main/fast-lane'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
 const reply = '엔비디아는 지금 182.3달러예요. [네이버 증권](https://finance.naver.com)'
@@ -14,7 +13,7 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/hostable|plainAsk|sortByKind/)
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/deskKind|deskLane|kind === 'tidy'/)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-    expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     expect(ipc).not.toContain('sortByKind(')
   })
   it('no turn is reshaped by a second model: a lookup, a team ask, a handed or company turn and a desk turn all post the one draft, and another form is the model\'s to write', () => {

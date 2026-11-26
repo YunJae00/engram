@@ -9,15 +9,15 @@ it('hands words sent mid-turn to the brain with the next tool result, once, and 
   expect(text).toContain('First answer them in one short line')
 })
 
-it('tells the brain the person was already answered when the host replied, for an addition, a replacement and a remark', () => {
-  const text = withSteer('page read', ['아 대구도 추가해'], true)
-  expect(text.startsWith('page read')).toBe(true)
-  expect(text).toContain('"아 대구도 추가해"')
-  expect(text).toContain('They were already told in one short line that you got it')
-  expect(text).toContain('write nothing before your next step')
-  expect(text).toContain('one answer that covers everything')
-  expect(text).toContain('leave the replaced one out of the answer')
-  expect(text).toContain('go on unchanged')
-  expect(text).not.toContain('First answer them')
-  expect(withSteer('page read', [], true)).toBe('page read')
+it('asks the brain itself to answer an addition, a replacement and a remark in one line, since no host line answers them, and opens with the words when there is no tool result', () => {
+  const said = ['목포도 끼워 줘', '그냥 여수로 해', '다들 고생이 많네']
+  const texts = said.map(one => withSteer('page read', [one]))
+  for (const [at, text] of texts.entries()) {
+    expect(text.startsWith('page read\n\n')).toBe(true)
+    expect(text).toContain(JSON.stringify(said[at]))
+    expect(text).toContain('First answer them in one short line')
+    expect(text).not.toContain('already told')
+  }
+  expect(new Set(texts.map((text, at) => text.replace(JSON.stringify(said[at]), 'X'))).size).toBe(1)
+  expect(withSteer('', ['목포도 끼워 줘']).startsWith('The person just wrote, while you work: "목포도 끼워 줘".')).toBe(true)
 })

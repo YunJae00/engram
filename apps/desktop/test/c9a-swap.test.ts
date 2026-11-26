@@ -1,10 +1,10 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
-import * as lane from '../src/main/fast-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 const engineOf = (lead: (job: ToolSessionJob, call: number) => Promise<string>): { engine: Engine; jobs: ToolSessionJob[] } => {
@@ -32,7 +32,7 @@ test('a replacement said mid-work reaches the running turn as the person said it
     expect(jobs[1]!.prompt).toContain('아 리스본 말고 포르투로 봐 줄래')
     expect(result?.answer).toBe(drafts[1])
   })
-  expect(Object.keys(lane).filter(key => typeof (lane as Record<string, unknown>)[key] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
+  expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
 })
 
 test.each([

@@ -1,20 +1,19 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
 import { firstSearches, handBacks, isSearchPage, searchWords, type AgentTool, type Engine, type TeamMember, type ToolSessionJob } from 'core'
-import { teamAsk } from '../src/main/fast-lane.js'
 import { answer as answerAsk, openWorld } from '../src/main/answer.js'
 
 const source = (file: string) => readFileSync(fileURLToPath(new URL(`../src/main/${file}`, import.meta.url)), 'utf8')
 const ipc = source('ipc.ts'), runner = source('team-runner.ts')
 
-it('stack-9: a replacement stops no round of its own; a split ask is still seen as a split', () => {
+it('stack-9: a replacement stops no round of its own, and no host table reads a split ask', () => {
   const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
   for (const file of [own, ipc]) expect(file).not.toMatch(/laneChanges|swapRounds|solo = /)
-  for (const ask of ['봇 두 개 만들어서 강릉이랑 속초 숙소 따로 알아봐', '팀원들한테 판교 점심 맛집 각각 조사 맡겨']) expect(teamAsk(ask), ask).toBe(true)
+  expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
 })
 
 it('stack-9: one first-search helper, at most three searches, no words twice, run in sequence', () => {

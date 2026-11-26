@@ -80,7 +80,7 @@ describe('stack-13 merge: one clock for the anonymous helpers\' hand-over', () =
 
 describe('stack-13 merge: no host process sentence on any path', () => {
   it('the templates that wrote who did what, how many, or what fit are gone from team, lone lookup and hire_members', () => {
-    const code = ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/fast-lane.ts', '../src/main/ipc.ts', '../src/main/team-runner.ts'].map(src).join('\n').split('\n').filter(line => !/^\s*(\/\/|\*|\/\*\*)/.test(line)).join('\n')
+    const code = ['../../../packages/core/src/company-tools.ts', '../../../packages/core/src/team-hire-tools.ts', '../src/main/ipc.ts', '../src/main/team-runner.ts'].map(src).join('\n').split('\n').filter(line => !/^\s*(\/\/|\*|\/\*\*)/.test(line)).join('\n')
     for (const gone of ['JOB_VERBS', 'jobForms', 'listShortfall', 'KOREAN_COUNT', '딱 맞는 건', '하나씩 맡아서', 'NEVER_CAME', '못 뽑았어요']) expect(code).not.toContain(gone)
   })
 })

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +7,6 @@ import { calendarLine, createTask, updateTask, type AgentTool, type Engine, type
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
-import * as fastLane from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
@@ -60,7 +60,7 @@ describe('7. relative days come from one calendar on every lead step; nothing re
   })
 
   it('no post-hoc rewrite is left to run after the reader ends', () => {
-    expect(Object.keys(fastLane).filter(name => typeof (fastLane as Record<string, unknown>)[name] === 'function').sort()).toEqual(['asideShape', 'teamAsk'])
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   })
 })
 

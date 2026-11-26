@@ -63,7 +63,7 @@ it('follow-up gets its own reply when no tool step takes it', async () => {
   await turn
   await h.idle('bot-one')
   expect(h.requests).toEqual(['First', 'And what is 3 times 7?'])
-  expect(await rows('one')).toEqual(['user First', 'user And what is 3 times 7?', 'assistant Covering that too.', 'assistant Reply: First', 'assistant Reply: And what is 3 times 7?'])
+  expect(await rows('one')).toEqual(['user First', 'user And what is 3 times 7?', 'assistant Reply: First', 'assistant Reply: And what is 3 times 7?'])
 })
 
 it('live-steered follow-up is answered separately, not appended', async () => {

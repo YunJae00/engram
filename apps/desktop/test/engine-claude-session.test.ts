@@ -414,3 +414,55 @@ it('keeps the live runtime beyond forty turns instead of discarding its context'
     expect(processes()).toBe(1)
   } finally { pool.closeAll() }
 })
+
+describe('a message said while the model is writing', () => {
+  it('interrupts the call under way and has the model read the message next, in the same turn', async () => {
+    let interrupts = 0, interrupted = (): void => {}
+    const stopped = new Promise<void>(go => { interrupted = go })
+    const users: string[] = []
+    const sdk: SessionSdk = {
+      createSdkMcpServer: (options) => options,
+      tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
+      query: ({ prompt }) => {
+        async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
+          for await (const message of prompt) {
+            users.push(String(message.message.content))
+            if (users.length === 1) {
+              yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '목록을 모으는 중' } } }
+              await stopped
+              yield { type: 'result', subtype: 'error_during_execution', result: '' }
+            } else {
+              yield { type: 'assistant', message: { content: [{ type: 'text', text: '통영도 넣었어요.' }] } }
+              yield { type: 'result', subtype: 'success', result: '통영도 넣었어요.' }
+            }
+          }
+        }
+        const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown> }
+        stream.interrupt = async () => { interrupts++; interrupted() }
+        return stream
+      },
+    }
+    const pool = new SessionPool(), resets: unknown[] = []
+    let steer: ((said: string[]) => Promise<boolean>) | null = null
+    try {
+      const result = pool.run(job('거제 캠핑장 찾아줘', { onToken: () => { void steer?.(['"통영도 같이"']) }, onSteerable: live => { steer = live }, onReset: drop => resets.push(drop) }), { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      expect(await result).toEqual({ answer: '통영도 넣었어요.' })
+      expect(interrupts).toBe(1)
+      expect(users).toEqual(['거제 캠핑장 찾아줘', '"통영도 같이"'])
+      expect(resets).toEqual([true])
+      expect(steer).toBeNull()
+    } finally { pool.closeAll() }
+  })
+
+  it('leaves a running tool call alone and says the message was not taken live', async () => {
+    let steer: ((said: string[]) => Promise<boolean>) | null = null
+    let answer: Promise<boolean> | undefined
+    const pool = new SessionPool()
+    const tools = [{ name: 'search_memory', description: 'search', argsSchema: { type: 'object', properties: {} }, run: async () => { answer = steer!(['"그만 찾아도 돼"']); return 'found' } }]
+    try {
+      const result = await pool.run(job('Task', { tools, onSteerable: live => { steer = live } }), { sdk: fakeSdk([]).sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      expect(await answer).toBe(false)
+      expect(result.answer).toBe('the tool said found')
+    } finally { pool.closeAll() }
+  })
+})

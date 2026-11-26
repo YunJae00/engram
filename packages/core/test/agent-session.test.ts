@@ -144,11 +144,11 @@ it('gives a lookup its time and calls again, once, when it takes words with a to
     seen.push(await search('테슬라 주가'))
     return { answer: '애플은 230달러예요.' }
   })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 3, deadlineMs: 200, steerReplied: true, takeSteer: () => waiting.splice(0, 1) })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 3, deadlineMs: 200, takeSteer: () => waiting.splice(0, 1) })
   expect(seen[1]).toContain('엔비디아 시간외 결과')
   expect(seen[1]).toContain('"그냥 애플로 바꿔"')
-  expect(seen[1]).toContain('They were already told in one short line that you got it')
-  expect(seen[1]).not.toContain('First answer them')
+  expect(seen[1]).toContain('First answer them in one short line')
+  expect(seen[1]).not.toContain('already told')
   expect(seen[2]).toBe('애플 주가 결과')
   expect(seen[3]).toBe('애플 시간외 결과')
   expect(seen[4]).toContain('"아니 다시 테슬라로"')
@@ -173,7 +173,7 @@ it('reads words waiting when a lookup is at its limit, before the old ask is ans
       seen.push(await search('애플 주가'))
       return { answer: '애플은 230달러예요.' }
     })
-    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, ...limit, steerReplied: true, takeSteer: () => waiting.splice(0) })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, ...limit, takeSteer: () => waiting.splice(0) })
     expect(seen[1]).toMatch(/^That call was not run\./)
     expect(seen[1]).toContain('"그냥 애플로 바꿔"')
     expect(seen[1]).not.toBe(ANSWER_NOW)

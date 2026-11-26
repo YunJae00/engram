@@ -91,7 +91,7 @@ it('c12b r2: words said while the draft is judged or while its extra round runs 
     return { answer: prompts.length === 1 ? '1. 전기차 보조금 개편 [a](https://a.example/1)' : prompts.length === 2 ? '1. 수소차 충전소 확대 [h](https://h.example/1)' : '1. 수소차 충전소 확대 [h](https://h.example/1)\n2. 수소버스 도입 [k](https://k.example/2)' }
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '전기차 정책 기사 2개 찾아줘', {
-    lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
+    lookup: true, takeSteer: () => waiting.splice(0),
     recheck: async answer => {
       judged.push(answer)
       if (judged.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('아 전기차 말고 수소차로'); return 'They asked for 2.' }
@@ -124,7 +124,7 @@ it('c12b r3 → k1: words said while the answer is being written rewrite it, and
     if (prompts.length === 1) waiting.push('망원 말고 연남동 빵집으로 찾아줘')
     return { answer: prompts.length === 1 ? first : second }
   })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '망원동 빵집 하나 알려줘', { lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0) })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '망원동 빵집 하나 알려줘', { lookup: true, takeSteer: () => waiting.splice(0) })
   expect(prompts).toHaveLength(2)
   expect(prompts[1]).toContain('망원 말고 연남동 빵집으로 찾아줘')
   expect(prompts[1]).toContain(first)

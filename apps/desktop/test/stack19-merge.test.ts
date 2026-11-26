@@ -10,13 +10,11 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import * as firstLine from '../src/main/first-line.js'
-import * as fastLane from '../src/main/fast-lane.js'
 import { answerBubbles } from '../src/renderer/src/markdown.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
-const FAST_FNS = ['asideShape', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const temporary = join(root, 'tmp')
@@ -60,7 +58,7 @@ describe('stack-19: no judgement gate is left on the research path', () => {
     const out = await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer }), quick: async () => { calls++; return '{"notes":[1]}' } } as never, workdir: '/x', tools: [] }, '청주 육거리시장 오늘 몇 시까지 해?', { lookup: true })
     expect(out.answer).toBe(answer)
     expect(calls).toBe(0)
-    expect(fns(fastLane)).toEqual(FAST_FNS)
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
 })
