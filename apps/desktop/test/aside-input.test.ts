@@ -264,6 +264,36 @@ it('waits for something new after the engine declines a landed tool result live,
   } finally { dropFollowUps(channel); await done() }
 })
 
+it('tells the model when a call it was told is still running fails after the person was answered, instead of finishing as if it worked', async () => {
+  const { paths, done } = await tempPaths('aside-slow-fail-')
+  const channel = 'bot-slow-fail'
+  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  const search = slowSearch()
+  const prompts: string[] = []
+  const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
+    prompts.push(job.prompt)
+    if (prompts.length > 1) return { answer: '시세를 못 불러왔어요. 다시 찾아볼게요.' }
+    job.onSteerable?.(async () => false)
+    await job.tools[0]!.run({})
+    job.onSteerable?.(null)
+    return { answer: '확인하고 있어요.' }
+  }
+  try {
+    const run = runToolSession(sessionDeps(runTools, [search.tool]), '대구 소형 SUV 렌트비 알아봐줘', {
+      takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal),
+      onMetric: metric => { if (metric.kind === 'tool') throw new Error('usage log unavailable') },
+    })
+    await search.started
+    await handlers.get('chat:say')!({}, channel, '주말 요금으로 봐 줘요')
+    search.release()
+    const result = await run
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('The search_web call that was still running has finished:\nthat did not work: usage log unavailable')
+    expect(prompts[1]).not.toContain('렌터카 세 곳')
+    expect(result.answer).toBe('시세를 못 불러왔어요. 다시 찾아볼게요.')
+  } finally { dropFollowUps(channel); await done() }
+})
+
 it('answers words said mid-work in one short line written by the running model, with no quick voice and no fixed line from the host', async () => {
   const aside = await import('../src/main/aside-ipc.js')
   expect(Object.keys(aside).sort()).toEqual(['STOP_WORDS', 'noteStopped', 'registerAsideIpc'])
