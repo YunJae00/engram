@@ -235,18 +235,29 @@ it('finishes a blocked collection once without rewriting it as incomplete', asyn
   expect(result.stopped).toBeUndefined()
 })
 
-it('ends a blocked collection in the words the model wrote after it, and the finish result leaves the next step to the model', async () => {
+it('shows a blocked collection as the barrier the model reported, followed by what the model wrote after it', async () => {
   let receipt = ''
   const engine = sessionBrain(async job => {
     await job.tools.find(tool => tool.name === 'open_page')!.run({})
-    receipt = String(await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: 'warehouse ledger returns 503 on every route', evidenceStep: 1 }))
-    return { answer: '창고 장부 페이지가 계속 열리지 않아요. 평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.' }
+    receipt = String(await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: '창고 장부 페이지가 계속 열리지 않아요.', evidenceStep: 1 }))
+    return { answer: '평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.' }
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'that did not work: HTTP 503' }] }, '창고 재고 장부 정리해줘')
-  expect(result.answer).toBe('창고 장부 페이지가 계속 열리지 않아요. 평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.')
+  expect(result.answer).toBe('창고 장부 페이지가 계속 열리지 않아요.\n\n평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.')
   expect(result.answer).not.toContain('503')
+  expect(result.answer).not.toContain('Unverified')
   expect(result.asked).toBe(true)
   expect(JSON.parse(receipt.split('\n')[0]!).next).not.toMatch(/\bstop\b/i)
+})
+
+it('still asks the person what the blocked finish reported when the model writes nothing after it', async () => {
+  const engine = sessionBrain(async job => {
+    await job.tools.find(tool => tool.name === 'open_page')!.run({})
+    await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: '도서관 대출 기록은 로그인해 주시면 이어서 볼게요.', evidenceStep: 1 })
+    return { answer: '' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'HTTP 401: sign in to see loans' }] }, '도서관 대출 기록 확인해줘')
+  expect(result).toMatchObject({ asked: true, answer: '도서관 대출 기록은 로그인해 주시면 이어서 볼게요.' })
 })
 
 const cardLinks = (steps: unknown[], answer: string, cwd?: string) => outputCards(steps as Parameters<typeof outputCards>[0], answer, cwd).map(card => `[${card.name}](engram-artifact:${card.href})`)
