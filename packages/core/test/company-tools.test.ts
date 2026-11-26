@@ -4,7 +4,7 @@ import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript
 import { employees, writesFromHandover, employeesAnswer, isPartsAsk, jobTitle, teamName, companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane, teamRecord, TEAM_MEMORY } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { changeSidebarLayout, readSidebarLayout } from '../src/sidebar-layout.js'
-import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
+import { MEMBER_BLOCKED, TAKEN_OFF } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 
@@ -281,7 +281,7 @@ async function office(work: (member: TeamMember) => { answer: string; asked?: bo
   await c.run({ add: [{ name: '지민', role: '리서치 담당', how: '자료를 찾아 출처와 함께 정리한다' }, { name: '서연', role: '카피 담당' }] })
   const task = { id: 't1', goal: '경쟁사 조사', botId: c.chief.id, state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [] } as DelegatedTask
   const later: string[][] = [], attached: unknown[] = []
-  let attach = false
+  let attach = false, steerable = false
   const finish = (ids: string[]) => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) settleMember(m, work(m), '2026-11-16T01:00:00.000Z') }
   const host: AssignHost = {
     self: null, load: async () => task, change: async change => change(task),
@@ -289,11 +289,38 @@ async function office(work: (member: TeamMember) => { answer: string; asked?: bo
     release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
     live: () => false, tokensLeft: async () => 100_000, personSaid: () => '',
     later: async ids => { later.push(ids) },
+    running: async () => steerable ? { change: host.change, later: host.later, release: host.release } : undefined,
     attach: async (botId, then) => { attached.push({ botId, then }); return attach },
   }
   const tool = assignTool(c.paths, host, c.changed)
-  return { ...c, task, later, attached, finish, tool, assign: (args: Record<string, unknown>) => tool.run(args, { task: '' }), attachable: (on: boolean) => { attach = on } }
+  return { ...c, task, later, attached, finish, tool, assign: (args: Record<string, unknown>) => tool.run(args, { task: '' }), attachable: (on: boolean) => { attach = on }, steerable: (on: boolean) => { steerable = on } }
 }
+
+test('steer changes handed-off work that is still running even after its turn ended: a new name joins it, a taken-off part keeps no result', async () => {
+  const o = await office()
+  await o.assign({ wait: false, to: [{ who: '지민', brief: '광주 맛집 찾아줘', topic: '광주' }, { who: '서연', brief: '전주 맛집 찾아줘', topic: '전주' }] })
+  o.task.state = 'waiting'
+  for (const m of o.task.team!.members) { m.state = 'working'; m.result = '반쯤 찾은 목록' }
+  o.steerable(true)
+  expect(await o.assign({ wait: false, steer: true, to: [{ who: '하린', brief: '여수 맛집 찾아줘', topic: '여수' }], stop: ['전주'] })).toBe('하린은 새로 넣고, 전주 말고 여수로 바꿀게요.')
+  const members = o.task.team!.members
+  expect(members.map(m => [m.role, m.topic, m.state, !!m.background])).toEqual([['지민', '광주', 'working', true], ['서연', '전주', 'released', true], ['하린', '여수', 'hired', true]])
+  expect(members[1]).toMatchObject({ review: { ok: false, note: TAKEN_OFF } })
+  expect(members[1]!.result).toBeUndefined()
+  expect(o.later.at(-1)).toEqual(['m3'])
+  expect(o.task.state).toBe('waiting')
+})
+
+test('steer never starts work of its own: with nothing handed off still running, or a stop that matches no running part, it changes nothing and says why', async () => {
+  const o = await office()
+  await expect(o.assign({ wait: false, steer: true, to: [{ who: '지민', brief: '울산 날씨 봐줘', topic: '울산' }] })).rejects.toThrow(/No work handed off earlier is still running/)
+  expect(o.task.team).toBeUndefined()
+  await o.assign({ wait: false, to: [{ who: '지민', brief: '울산 날씨 봐줘', topic: '울산' }] })
+  for (const m of o.task.team!.members) m.state = 'working'
+  o.steerable(true)
+  await expect(o.assign({ wait: false, steer: true, to: [{ who: '서연', brief: '창원 날씨 봐줘', topic: '창원' }], stop: ['김해'] })).rejects.toThrow('Nothing still running matches stop. Running now: 지민 (울산).')
+  expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['울산', 'working']])
+})
 
 test('assign runs each agent as a member of their own, adds an unknown name on the spot and hands back one attributed answer', async () => {
   const o = await office()

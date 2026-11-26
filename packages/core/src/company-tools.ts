@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn, readBotTranscript } from './bots.js'
 import { logTask, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type MemberData, type TeamMember } from './delegated-tasks.js'
-import { datedQuery, pointQueries, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
+import { datedQuery, pointQueries, sourceName, TAKEN_OFF, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { scheduleWordsKo } from './schedule-tools.js'
 
@@ -429,6 +429,7 @@ const ymd = (day: Date): string => `${day.getFullYear()}-${String(day.getMonth()
 
 export interface AssignHost extends TeamHost {
   later(ids: string[]): Promise<void>
+  running(): Promise<Pick<AssignHost, 'change' | 'later' | 'release'> | undefined>
   attach(botId: string, then: NonNullable<TeamMember['then']>): Promise<boolean>
   write?: ReportWriter
 }
@@ -545,22 +546,26 @@ const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member
 export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => void): AgentTool {
   return {
     name: 'assign',
-    closes: args => args['wait'] === false,
-    description: `Hand work to agents on the person's team by name; each does their part as themselves, with their own role and memory, side by side. ONE call for the whole sentence, 1 to ${ASSIGN_MAX} parts, no question and no confirmation. to: who (the agent's name as it is on the team: "지민이는" names 지민), brief (their whole part, complete on its own, at most 3 short lines; only what the person asked for), topic (the name of their part in the person's own words, a word or two: "노션"). Someone named who is not on the team yet is added by this same call: give their role (a few words from the sentence, or that fit the part: "리니어 조사 담당"). then {who, brief}: when who finishes, their result goes to this second agent, who does brief with it ("지민이 다 찾으면 서연한테 건네서 ...", or "지민이 날씨를 보면 서연이 그걸 받아 문구 써줘": to [{who 지민, brief the weather part, then {who 서연, brief the copy part}}]); leave the first brief out to hand over the work that agent is on now or last finished. make true only for a part that creates or changes a file or acts on a page; otherwise the part is a fast read-only lookup. wait false when the person just hands the job off ("맡겨", "시켜 놔"): the reply is shown to the person as your answer and ends the turn, and the result comes back here by itself when the work is done. wait true when they want the result in this answer ("찾아서 알려줘"): it returns what every agent handed back, and you write the one merged answer from that.`,
+    closes: args => args['wait'] === false || args['steer'] === true,
+    description: `Hand work to agents on the person's team by name; each does their part as themselves, with their own role and memory, side by side. ONE call for the whole sentence, 1 to ${ASSIGN_MAX} parts, no question and no confirmation. to: who (the agent's name as it is on the team: "지민이는" names 지민), brief (their whole part, complete on its own, at most 3 short lines; only what the person asked for), topic (the name of their part in the person's own words, a word or two: "노션"). Someone named who is not on the team yet is added by this same call: give their role (a few words from the sentence, or that fit the part: "리니어 조사 담당"). then {who, brief}: when who finishes, their result goes to this second agent, who does brief with it ("지민이 다 찾으면 서연한테 건네서 ...", or "지민이 날씨를 보면 서연이 그걸 받아 문구 써줘": to [{who 지민, brief the weather part, then {who 서연, brief the copy part}}]); leave the first brief out to hand over the work that agent is on now or last finished. make true only for a part that creates or changes a file or acts on a page; otherwise the part is a fast read-only lookup. wait false when the person just hands the job off ("맡겨", "시켜 놔"): the reply is shown to the person as your answer and ends the turn, and the result comes back here by itself when the work is done. wait true when they want the result in this answer ("찾아서 알려줘"): it returns what every agent handed back, and you write the one merged answer from that. steer true when the person changes work you handed off earlier that is still running: the parts in to join that work and its one result, and stop lists the parts of it taken off (their topic, or the agent's name).`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['to', 'wait'],
       properties: {
-        to: { type: 'array', minItems: 1, maxItems: ASSIGN_MAX, items: { type: 'object', additionalProperties: false, required: ['who'], properties: { who, brief: who, topic: who, role: who, make: { type: 'boolean' }, then: { type: 'object', additionalProperties: false, required: ['who', 'brief'], properties: { who, brief: who, role: who } } } } },
-        wait: { type: 'boolean' },
+        to: { type: 'array', maxItems: ASSIGN_MAX, items: { type: 'object', additionalProperties: false, required: ['who'], properties: { who, brief: who, topic: who, role: who, make: { type: 'boolean' }, then: { type: 'object', additionalProperties: false, required: ['who', 'brief'], properties: { who, brief: who, role: who } } } } },
+        wait: { type: 'boolean' }, steer: { type: 'boolean' }, stop: { type: 'array', items: who },
       },
     },
     async run(args, context) {
-      const wait = args['wait'] !== false
+      const steer = args['steer'] === true, wait = !steer && args['wait'] !== false
+      const stop = steer && Array.isArray(args['stop']) ? args['stop'].map(one => said(one, 60)).filter(Boolean) : []
+      const job = steer ? await host.running() : undefined
+      if (steer && !job) throw new Error('No work handed off earlier is still running in this thread; call assign without steer.')
+      const on = job ?? host
       const parts = rows(args['to']).map(row => {
         const next = typeof row['then'] === 'object' && row['then'] !== null ? row['then'] as Record<string, unknown> : undefined
         return { who: said(row['who'], 60), brief: String(row['brief'] ?? '').trim().slice(0, 1500), topic: said(row['topic'], 30), title: said(row['role'], BOT_LABEL_CHARS), make: row['make'] === true, ...(next ? { then: { who: said(next['who'], 60), brief: String(next['brief'] ?? '').trim().slice(0, 1500), title: said(next['role'], BOT_LABEL_CHARS) } } : {}) }
       })
-      if (!parts.length || parts.length > ASSIGN_MAX) throw new Error(`to needs 1 to ${ASSIGN_MAX} parts, each with who and brief.`)
+      if ((!parts.length && !stop.length) || parts.length > ASSIGN_MAX) throw new Error(`to needs 1 to ${ASSIGN_MAX} parts, each with who and brief.`)
       if (parts.some(part => !part.who || (!part.brief && !part.then) || (part.then && (!part.then.who || !part.then.brief)))) throw new Error('Each part needs who and brief; then needs who and brief.')
       const active = await loadBots(paths), gone = await loadArchivedBots(paths)
       const staff = new Map(active.filter(bot => !bot.primary).map(bot => [bot.name.trim(), bot]))
@@ -600,22 +605,34 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         if (!last) return [...lines, `${josa(bot.name, '이', '가')} 끝낸 일이 아직 없어서 넘길 게 없어요.`].join(' ')
         wanted.push({ bot: staff.get(next!.who)!, brief: handoffBrief(next!.brief, bot.name, last.result!, last.brief), topic: part.topic, make: part.make, from: bot.name, ...(!part.make && writesFromHandover(next!.brief) ? { writer: true as const } : {}) })
       }
-      if (!wanted.length) return lines.join(' ')
-      const out = await host.change((task): { refuse: string } | { ids: string[] } => {
+      if (!wanted.length && !stop.length) return lines.join(' ')
+      const out = await on.change((task): { refuse: string } | { missing: string } | { ids: string[]; off: TeamMember[] } => {
         const team = task.team ?? { members: [], hires: 0, maxHires: TEAM_MAX_HIRES, maxDepth: TEAM_MAX_DEPTH, big: false }
-        if (task.state !== 'running' || team.hires + wanted.length > team.maxHires) return { refuse: '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.' }
+        if ((task.state !== 'running' && !steer) || team.hires + wanted.length > team.maxHires) return { refuse: '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.' }
+        const off = team.members.filter(m => m.parentId === null && atWork(m) && stop.some(one => one === m.id || one === m.topic || one === m.role))
+        if (stop.length && !off.length) return { missing: `Nothing still running matches stop. Running now: ${team.members.filter(m => m.parentId === null && atWork(m)).map(m => `${m.role}${m.topic ? ` (${m.topic})` : ''}`).join(', ')}.` }
         task.team = team
         const at = new Date().toISOString()
         const ids = wanted.map(one => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, ...(voiceOf(one.bot) ? { voice: voiceOf(one.bot)! } : {}), title: jobTitle(one.brief), ...(one.topic || topicOf(one.brief) ? { topic: one.topic || topicOf(one.brief) } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const, ...(searchWords(one.brief, undefined, context.task) ? { query: searchWords(one.brief, undefined, context.task)! } : {}) }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: null, depth: 1, ...(team.lateTold && !team.lateDone ? { late: true as const } : {}), role: one.bot.name, brief: one.brief, botId: one.bot.id, ...(voiceOf(one.bot) ? { voice: voiceOf(one.bot)! } : {}), title: jobTitle(one.brief), ...(one.topic || topicOf(one.brief) ? { topic: one.topic || topicOf(one.brief) } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const, ...(searchWords(one.brief, undefined, context.task) ? { query: searchWords(one.brief, undefined, context.task)! } : {}) }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += ids.length
-        logTask(task, `Assigned ${wanted.map(one => one.bot.name).join(', ')}`)
-        return { ids }
+        logTask(task, steer ? `Changed while working: added ${wanted.map(one => one.bot.name).join(', ') || 'nobody'}, took off ${off.map(m => m.role).join(', ') || 'nothing'}` : `Assigned ${wanted.map(one => one.bot.name).join(', ')}`)
+        return { ids, off: structuredClone(off) }
       })
+      if (out && 'missing' in out) throw new Error(out.missing)
       if (!out || 'refuse' in out) return [...lines, out?.refuse ?? '지금은 맡길 수 없어요. 다시 말해 주세요.'].join(' ')
+      if (steer) {
+        if (out.ids.length) await on.later(out.ids)
+        const offIds = out.off.map(m => m.id)
+        await on.release(offIds)
+        await on.change(task => { for (const m of task.team?.members ?? []) if (offIds.includes(m.id)) { m.review = { ok: false, note: TAKEN_OFF }; delete m.result; delete m.data } })
+        const added = listed(wanted.map(one => one.topic || one.bot.name)), taken = listed(out.off.map(m => m.topic || m.role))
+        const line = added && taken ? `${taken} 말고 ${ro(added)} 바꿀게요.` : added ? `${added}도 넣을게요.` : `${josa(taken, '은', '는')} 뺄게요.`
+        return [...lines, joined ? `${josa(joined, '은', '는')} 새로 넣고, ${line}` : line].join(' ')
+      }
       if (!wait) {
         await host.later(out.ids)
         const names = [...new Set(wanted.map(one => one.bot.name))], only = wanted.length === 1 ? wanted[0]! : undefined

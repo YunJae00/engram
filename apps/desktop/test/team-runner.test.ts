@@ -401,6 +401,48 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
 
   const trelloJira = { wait: false, to: ['트렐로', '지라'].map((topic, i) => ({ who: ['지민', '서연'][i]!, brief: `이번 주 ${topic} 새 기능 좀 찾아봐줘`, topic })) }
 
+  it('a change to handed-off work while teammates still work it: an added part joins the one result, a part taken off is stopped and hands nothing back', async () => {
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found(`${/(\S+) 최근 업데이트/.exec(turn.prompt)?.[1]} 쪽 소식이에요.`, `https://cad.example/${turn.role === '지민' ? 'k' : 'p'}`))) }))
+    const part = (who: string, topic: string) => ({ who, brief: `${topic} 최근 업데이트 정리해줘`, topic })
+    expect(await w.assign({ wait: false, to: [part('지민', '블렌더'), part('서연', '스케치업')] })).toBe('지민, 서연한테 나눠 맡겼어요.')
+    await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    await w.team.turnEnded('bot-b1')
+    const tool = w.team.tools('bot-b1', w.kit, () => undefined).find(one => one.name === 'assign')!
+    expect(tool.closes instanceof Function && tool.closes({ steer: true })).toBe(true)
+    expect(await w.assign({ wait: false, steer: true, to: [part('지민', '라이노')] })).toBe('라이노도 넣을게요.')
+    expect(await w.assign({ wait: false, steer: true, to: [part('서연', '오토캐드')], stop: ['스케치업'] })).toBe('스케치업 말고 오토캐드로 바꿀게요.')
+    await expect(w.assign({ wait: false, steer: true, to: [], stop: ['포토샵'] })).rejects.toThrow(/Nothing still running matches stop/)
+    await vi.waitFor(async () => expect((await w.members()).map(m => [m.role, m.topic, m.state])).toEqual([['지민', '블렌더', 'working'], ['서연', '스케치업', 'released'], ['지민', '라이노', 'working'], ['서연', '오토캐드', 'working']]))
+    expect(w.reported).toEqual([])
+    go()
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(w.reported).toEqual([`bot-b1 ${w.id}`])
+    const back = backs(employeesAnswer(await w.task())!)
+    expect(back.map(one => `${one.who}: ${one.part}`)).toEqual(['지민: 블렌더', '지민: 라이노', '서연: 오토캐드'])
+    expect(back.map(one => /https:\/\/cad\.example\/[kp]/.exec(one.result)?.[0])).toEqual(['https://cad.example/k', 'https://cad.example/k', 'https://cad.example/p'])
+    expect(JSON.stringify(back)).not.toContain('스케치업')
+    await expect(w.assign({ wait: false, steer: true, to: [part('서연', '퓨전')] })).rejects.toThrow(/No work handed off earlier is still running/)
+  })
+
+  it('a part taken off alone leaves the rest of the handed-off work to finish into the one result', async () => {
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found(`${/(\S+) 요금 비교/.exec(turn.prompt)?.[1]} 요금이에요.`, 'https://fare.example/x'))) }))
+    const part = (who: string, topic: string) => ({ who, brief: `${topic} 요금 비교해줘`, topic })
+    await w.assign({ wait: false, to: [part('지민', '고속버스'), part('서연', '기차'), part('지민', '항공')] })
+    await vi.waitFor(async () => expect((await w.members()).every(m => m.state === 'working')).toBe(true))
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    await w.team.turnEnded('bot-b1')
+    expect(await w.assign({ wait: false, steer: true, to: [], stop: ['서연'] })).toBe('기차는 뺄게요.')
+    go()
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
+    expect(backs(employeesAnswer(await w.task())!).map(one => `${one.who}: ${one.part}`)).toEqual(['지민: 고속버스', '지민: 항공'])
+  })
+
   it('at the cap the result step gets what is back and the slow part as still working, and that part\'s hand-back alone when it lands', async () => {
     const { lateShown } = await import('core')
     let go!: () => void

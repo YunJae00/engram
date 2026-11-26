@@ -40,7 +40,7 @@ test('R2 → k1: assign with wait hands the lead each teammate\'s price and date
     self: null, load: async () => task, change: async work => work(task),
     run: async ids => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) settleMember(m, { answer: answers[m.role]![0], sources: [answers[m.role]![1]] }, '2026-11-17T05:00:00.000Z', true) },
     release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
-    live: () => false, tokensLeft: async () => 100_000, personSaid: () => '', later: async () => undefined, attach: async () => false,
+    live: () => false, tokensLeft: async () => 100_000, personSaid: () => '', later: async () => undefined, running: async () => undefined, attach: async () => false,
   }
   const tool = assignTool(paths, host, () => undefined)
   const out = back(await tool.run({ wait: true, to: [{ who: '하늘', brief: '데크 오븐 가격과 출시일 조사', topic: '데크 오븐' }, { who: '바다', brief: '스파이럴 반죽기 가격과 출시일 조사', topic: '반죽기' }, { who: '마루', brief: '발효기 가격과 출시일 조사', topic: '발효기' }] }, { task: '' }))
