@@ -69,6 +69,7 @@ export interface DelegatedTask {
   approvals: TaskApproval[]
   result?: string
   log: { at: string; line: string }[]
+  unshown?: string
   team?: TaskTeam
   awaitingEmployees?: boolean
 }

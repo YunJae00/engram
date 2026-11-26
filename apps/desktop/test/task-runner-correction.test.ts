@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { listTasks } from 'core'
+import { createTask, listTasks, updateTask } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
 
@@ -28,7 +28,7 @@ it('posts after the report a re-check that confirms in words the report lacks', 
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([confirmed])
+  expect(t.delivered).toEqual(['Saved. [Report](engram-artifact:report.md)', confirmed])
 })
 it.each([
   ['Rows match.', 'Rows differ.'],
@@ -36,7 +36,7 @@ it.each([
 ])('posts through the runner "%s" after "%s" though the re-check calls the report unchanged', async (answer, report) => {
   const t = await unchanged(`${report} [Report](engram-artifact:report.md)`, `${answer} [Report](engram-artifact:report.md)`)
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([`${answer} [Report](engram-artifact:report.md)`])
+  expect(t.delivered).toEqual([`${report} [Report](engram-artifact:report.md)`, `${answer} [Report](engram-artifact:report.md)`])
 })
 it('still reports what a re-check changed', async () => {
   const fixed = 'Fixed one row. [Report](engram-artifact:report.md)'
@@ -45,7 +45,7 @@ it('still reports what a re-check changed', async () => {
     : { ...done(fixed, 2), check: { accepted: true, issues: [] }, trail: [{ tool: 'file_create_copy', args: {}, observation: '{}' }, { tool: 'read_open_page', args: {}, observation: 'Read back' }] })
   await t.chat('Save the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done' })
-  expect(t.delivered.slice(1)).toEqual([fixed])
+  expect(t.delivered).toEqual(['Saved. [Report](engram-artifact:report.md)', fixed])
 })
 
 it('posts a re-check that passes a requirement the delivered report had left failed, though it changed no file', async () => {
@@ -56,7 +56,7 @@ it('posts a re-check that passes a requirement the delivered report had left fai
     : { ...done(corrected, 1), check: { accepted: true, issues: [], report: verdict('pass') }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
   await t.chat('Save the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([corrected])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', corrected])
 })
 it('posts a re-check that hands over a different file than the report did', async () => {
   const other = 'The checked file is this one. [Final](engram-artifact:final.md)'
@@ -64,19 +64,19 @@ it('posts a re-check that hands over a different file than the report did', asyn
     ? { ...done('Saved. [Report](engram-artifact:report.md)', 1), check: { accepted: false, issues: ['Row count not read back'] } }
     : { ...done(other, 1), check: { accepted: true, issues: [] }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([other])
+  expect(t.delivered).toEqual(['Saved. [Report](engram-artifact:report.md)', other])
 })
 it('posts a confirming re-check in its own words that links the same file under its saved-copy id', async () => {
   const confirmed = 'All rows match. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)'
   const t = await unchanged('Saved. [Report](engram-artifact:report.md)', confirmed)
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([confirmed])
+  expect(t.delivered).toEqual(['Saved. [Report](engram-artifact:report.md)', confirmed])
 })
 it('posts a re-check that repeats the report with the file under its saved-copy id', async () => {
   const answer = 'Saved. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)'
   const t = await unchanged('Saved. [Report](engram-artifact:report.md)', answer)
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([answer])
+  expect(t.delivered).toEqual(['Saved. [Report](engram-artifact:report.md)', answer])
 })
 
 const passed = { checks: [{ requirement: 'Total matches the source', status: 'pass' as const, basis: 'Compared with the source' }], grounding: { status: 'pass' as const, basis: 'Read the source' }, sources: [] }
@@ -89,13 +89,13 @@ it('posts a re-check that corrects a statement of a passing report without chang
   const t = await recheck(corrected, false)
   await t.chat('Save the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([corrected])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', corrected])
 })
 it('posts a passing re-check that does not say the report is unchanged', async () => {
   const again = 'Checked again. [Report](engram-artifact:report.md)'
   const t = await recheck(again)
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([again])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', again])
 })
 it('posts after the report a confirm-only re-check that affirms the report is unchanged in words of its own', async () => {
   const confirmed = 'Checked again; the total is 12. [Report](engram-artifact:report.md)'
@@ -103,7 +103,7 @@ it('posts after the report a confirm-only re-check that affirms the report is un
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([confirmed])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', confirmed])
 })
 it('posts after the report a re-check that restates only part of the report and affirms it is unchanged', async () => {
   const part = 'The total is 12. [Report](engram-artifact:report.md)'
@@ -111,7 +111,7 @@ it('posts after the report a re-check that restates only part of the report and 
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([part])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', part])
 })
 it('posts after the report a re-check that repeats the report, rewrapped, though it affirms it is unchanged', async () => {
   const rewrapped = 'Saved; the total\nis 12.\n\n[Report](engram-artifact:report.md)\n'
@@ -119,7 +119,7 @@ it('posts after the report a re-check that repeats the report, rewrapped, though
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([rewrapped])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', rewrapped])
 })
 it('posts after the report a re-check that repeats the report, rewrapped and emphasised, though it affirms it is unchanged', async () => {
   const emphasised = '**Saved;** the total\nis ~~12~~.\n\n[Report](engram-artifact:report.md)'
@@ -127,7 +127,7 @@ it('posts after the report a re-check that repeats the report, rewrapped and emp
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([emphasised])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', emphasised])
 })
 
 it.each([
@@ -138,7 +138,7 @@ it.each([
   const t = await recheck(answer, true)
   await t.chat('Save the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered.slice(1)).toEqual([answer])
+  expect(t.delivered).toEqual(['Saved; the total is 12. [Report](engram-artifact:report.md)', answer])
 })
 it('reads whether a re-check answer adds anything to the delivered report', () => {
   const report = 'Saved; the total is 12 for `sales.csv`. [Report](engram-artifact:report.md)'
@@ -217,7 +217,7 @@ it.each([
 ])('posts through the runner "%s" after "%s" though the re-check calls the report unchanged', async (answer, report) => {
   const t = await unchanged(`${report} [Report](engram-artifact:report.md)`, `${answer} [Report](engram-artifact:report.md)`)
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([`${answer} [Report](engram-artifact:report.md)`])
+  expect(t.delivered).toEqual([`${report} [Report](engram-artifact:report.md)`, `${answer} [Report](engram-artifact:report.md)`])
 })
 it('stays silent on a verbatim repeat that carries a correction word of the report itself', () => {
   const report = 'The file was not changed; nothing is wrong. 수정 없음.'
@@ -234,7 +234,7 @@ it('posts through the runner a swap the re-check calls unchanged', async () => {
     ? { ...done('A: 12; B: 14. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: ['Row count not read back'], report: passed } }
     : { ...done(swapped, 1), check: { accepted: true, issues: [], report: passed, reportUnchanged: true }, trail: readback })
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([swapped])
+  expect(t.delivered).toEqual(['A: 12; B: 14. [Report](engram-artifact:report.md)', swapped])
 })
 
 it('posts a re-check that changes a status word the delivered report has', () => {
@@ -264,7 +264,7 @@ it('posts through the runner a status change the re-check calls unchanged', asyn
     ? { ...done('Status: passed. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: ['Row count not read back'], report: passed } }
     : { ...done(failed, 1), check: { accepted: true, issues: [], report: passed, reportUnchanged: true }, trail: readback })
   await t.chat('Save the report')
-  expect(t.delivered.slice(1)).toEqual([failed])
+  expect(t.delivered).toEqual(['Status: passed. [Report](engram-artifact:report.md)', failed])
 })
 
 it('posts the re-check\'s answer after the report when it rewords it', async () => {
@@ -274,7 +274,7 @@ it('posts the re-check\'s answer after the report when it rewords it', async () 
   expect(t.sent).toHaveLength(2)
   expect(t.sent[0]?.extra?.verification).toBeUndefined()
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, result: final })
-  expect(t.delivered.slice(1)).toEqual([final])
+  expect(t.delivered).toEqual([draft, final])
 })
 
 it('still posts the waiting report when its re-check ends without an answer', async () => {
@@ -296,6 +296,19 @@ it('posts the report the moment it is written, so a restart during its re-check 
   await next.runner.resume()
   expect(next.delivered).toEqual([])
   expect((await listTasks(next.paths))[0]).toMatchObject({ state: 'waiting' })
+})
+it('posts once, on resume, a draft an older version saved off screen while its re-check ran', async () => {
+  const draft = '분기 출장비는 4건, 합계 86만 원이에요. [정산표](engram-artifact:trips.xlsx)'
+  const first = await setup(async () => undefined, false)
+  const task = await createTask(first.paths, '분기 출장비 정산해줘', 'bot-1')
+  await updateTask(first.paths, task.id, x => { x.state = 'running'; x.unshown = draft })
+  const next = await setup(async () => undefined, false, undefined, undefined, first.paths)
+  await next.runner.resume()
+  expect(next.delivered).toEqual([draft])
+  expect((await listTasks(next.paths))[0]).toMatchObject({ state: 'waiting' })
+  expect((await listTasks(next.paths))[0]?.unshown).toBeUndefined()
+  await next.runner.resume()
+  expect(next.delivered).toEqual([draft])
 })
 it('posts once an answer whose task then waits', async () => {
   const report = 'Merged both leads.'

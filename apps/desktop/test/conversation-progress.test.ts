@@ -85,14 +85,15 @@ it('keeps interim words in a Korean thread whatever language they are in', async
   expect((await readBotTranscript(paths, 'z')).map(t => [t.text, !!t.progress])).toEqual([['Q3 shipping totals: 4 of 9 sheets read', true]])
 })
 
-it('an interrupted turn gets the usage line once and no host closing in the thread', async () => {
+it('an interrupted turn shows and stores the usage line once, and no other host closing', async () => {
   for (const asked of ['Tell me more', '더 알려줘']) {
     const t = await setup(async () => undefined)
     await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: asked, at: 'a' })
     await t.chat(asked)
     await t.settle('failed')
-    expect((await readBotTranscript(t.paths, 'bot-1')).map(turn => turn.role)).toEqual(['user'])
-    expect(t.events.filter(e => e.type === 'chat:error')).toHaveLength(1)
+    const shown = t.events.flatMap(e => e.type === 'chat:error' ? [e.message] : [])
+    expect(shown).toHaveLength(1)
+    expect((await readBotTranscript(t.paths, 'bot-1')).map(turn => [turn.role, turn.text])).toEqual([['user', asked], ['assistant', shown[0]]])
     expect(t.events.filter(e => e.type === 'chat:done')).toEqual([])
   }
 })

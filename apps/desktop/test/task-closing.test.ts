@@ -18,7 +18,7 @@ describe('a task that ends without the model answering', () => {
     expect(await assistant(t.paths)).toEqual([])
   })
 
-  it('shows the usage line in the thread language when the task is over its limit before a model runs, and stores nothing', async () => {
+  it('shows and stores the usage line once, in the thread language, when the task is over its limit before a model runs', async () => {
     for (const [asked, line] of [['이 순서로 진행해', 'AI 사용 한도에 도달했어요'], ['Go in this order', 'AI usage limit reached']] as const) {
       const t = await setup(async () => done('never'))
       const task = await createTask(t.paths, asked, 'bot-1')
@@ -29,37 +29,49 @@ describe('a task that ends without the model answering', () => {
       expect((await listTasks(t.paths)).at(-1)!.state).toBe('failed')
       expect(texts(t.events, 'chat:error')).toEqual([expect.stringContaining(line)])
       expect(texts(t.events, 'chat:done')).toEqual([])
-      expect(await assistant(t.paths)).toEqual([])
+      expect((await assistant(t.paths)).map(turn => turn.text)).toEqual([expect.stringContaining(line)])
     }
   })
 
-  it('shows an engine error as the error, once, with no host closing around it', async () => {
-    const t = await setup(async () => { throw new Error('Provider unavailable') })
-    await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '견적서 비교해줘', at: new Date().toISOString() })
-    await expect(t.chat('견적서 비교해줘')).rejects.toThrow('Provider unavailable')
-    expect(texts(t.events, 'chat:error')).toEqual(['Provider unavailable'])
-    expect(await assistant(t.paths)).toEqual([])
+  it('a Korean thread whose engine throws an English error shows and keeps the Korean usage line, never the raw error', async () => {
+    const t = await setup(async () => { throw new Error('Upstream gateway closed the stream') })
+    await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '택배 송장 번호 모아줘', at: new Date().toISOString() })
+    await expect(t.chat('택배 송장 번호 모아줘')).rejects.toThrow('Upstream gateway')
+    const shown = texts(t.events, 'chat:error')
+    expect(shown).toEqual([expect.stringMatching(/^AI 사용 한도에 도달했어요/)])
+    expect(shown.join('')).not.toMatch(/[A-Za-z]{4,}/)
+    expect((await assistant(t.paths)).map(turn => turn.text)).toEqual(shown)
     expect((await listTasks(t.paths)).at(-1)!.state).toBe('failed')
   })
 
-  it('shows the usage line, never an empty bubble, when a turn ends with no text at all', async () => {
+  it('a sign-in error ends the task with the sign-in line in the thread language', async () => {
+    const t = await setup(async () => { throw new Error('401 Unauthorized: invalid api key') })
+    await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '주간 회의 안건 뽑아줘', at: new Date().toISOString() })
+    await expect(t.chat('주간 회의 안건 뽑아줘')).rejects.toThrow('Unauthorized')
+    expect(texts(t.events, 'chat:error')).toEqual([expect.stringMatching(/^AI가 아직 연결되지 않았어요/)])
+    expect((await assistant(t.paths)).map(turn => turn.text)).toEqual(texts(t.events, 'chat:error'))
+  })
+
+  it('shows and stores the usage line, never an empty bubble, when a turn ends with no text at all', async () => {
     const t = await setup(async () => done(''))
     await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '출장비 영수증 합쳐줘', at: new Date().toISOString() })
     await t.chat('출장비 영수증 합쳐줘')
     await t.settle('failed')
     expect(texts(t.events, 'chat:error')).toEqual([expect.stringContaining('AI 사용 한도에 도달했어요')])
     expect(texts(t.events, 'chat:done')).toEqual([])
-    expect(await assistant(t.paths)).toEqual([])
+    expect((await assistant(t.paths)).map(turn => turn.text)).toEqual(texts(t.events, 'chat:error'))
+    await t.runner.resume()
+    expect((await assistant(t.paths)).map(turn => turn.text)).toEqual(texts(t.events, 'chat:error'))
   })
 
-  it('shows the error raised before the task exists as it is', async () => {
+  it('an error raised before the task exists shows the Korean usage line in a Korean thread, not the English host error', async () => {
     const t = await setup(async () => done('never'))
     const task = await createTask(t.paths, '다른 작업', 'bot-1')
     await updateTask(t.paths, task.id, x => { x.state = 'running' })
     await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '회의실 예약 바꿔줘', at: new Date().toISOString() })
     await expect(t.chat('회의실 예약 바꿔줘')).rejects.toThrow('still working')
-    expect(texts(t.events, 'chat:error')).toEqual([expect.stringContaining('still working')])
-    expect(await assistant(t.paths)).toEqual([])
+    expect(texts(t.events, 'chat:error')).toEqual([expect.stringMatching(/^AI 사용 한도에 도달했어요/)])
+    expect((await assistant(t.paths)).map(turn => turn.text)).toEqual(texts(t.events, 'chat:error'))
   })
 
   it('after a restart the task waits with no host question, and the next message carries it on without being learned', async () => {

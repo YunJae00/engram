@@ -378,6 +378,7 @@ export function taskRunner(deps: {
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
+      for (const task of tasks) if (task.unshown !== undefined) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), [], undefined, task.goal); await edit(task.id, t => { delete t.unshown }) }
       for (const task of tasksToResume(tasks)) {
         const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))
         if (mine()) continue
