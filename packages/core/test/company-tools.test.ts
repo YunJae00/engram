@@ -1279,7 +1279,7 @@ test('s1a: one path: the lane model\'s first step calls agents, assign without w
       await job.tools.find(tool => tool.name === name)!.run(args)
       return new Promise<never>(() => undefined)
     } } as never
-    return (await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: menu }, message, { guided: false, modelHint: 'smart', light: true })).answer
+    return (await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: menu }, message, { guided: false, role: 'deep', light: true })).answer
   }
   expect(await turn('다온 새로 뽑아, 숙소 담당', 'agents', { add: [{ name: '다온', role: '숙소 담당' }] })).toBe('다온을 숙소 담당으로 추가했어요.')
   expect(await turn('이안을 채용해줘요. 통역 담당이에요', 'agents', { add: [{ name: '이안', role: '통역 담당' }] })).toBe('이안을 통역 담당으로 추가했어요.')

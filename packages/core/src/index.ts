@@ -80,7 +80,7 @@ export { addRoutine, fillSlots, listRoutines, markRoutineRun, removeRoutine, ren
 export { parsePendingCall, type AgentLoopResult, type AgentLoopStep, type AgentTool, type FileCard } from './agent-loop.js'
 export { runComet, runToolSession, ANSWER_NOW } from './agent-session.js'
 export { sessionShape } from './agent-session-shape.js'
-export { promptFor, PLAN_RULE, CHOICE_RULE, WORK_REPLY_RULE, REPLIES_RULE, type PromptContext, type FirstLine } from './prompt.js'
+export { promptFor, HELPER_PERSONA, MODEL_TIER, HAND_OFF_TOOL, ESCALATE_TOOL, PLAN_RULE, CHOICE_RULE, WORK_REPLY_RULE, REPLIES_RULE, type PromptContext, type PromptRole, type FirstLine, type QuickInput } from './prompt.js'
 export { RESUME_FIELDS, resumeCheckpoint } from './agent-resume.js'
 export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type SidebarChange, type SidebarKind } from './sidebar-layout.js'
 export { recordBotSites } from './bots.js'

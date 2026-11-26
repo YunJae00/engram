@@ -1,11 +1,10 @@
-import { promptFor, type Engine, type EngineCwd, type FirstLine } from 'core'
+import { calendarLine, promptFor, type Engine, type EngineCwd, type FirstLine, type QuickInput } from 'core'
 import { flog } from './flog.js'
 
-export const FIRST_LINE_BUDGET_MS = 1500
-export const FIRST_LINE_FALLBACK_MS = 1300
+export const FIRST_LINE_BUDGET_MS = 3000
+export const FIRST_LINE_FALLBACK_MS = 1500
 export const ACK_MAX = 60
 export const SAFETY_LINE = { ko: '바로 확인해 볼게요.', en: 'Checking now.' }
-const NONE = /^none\.?$/i
 const LINE_MAX = 140
 
 export interface FirstLineAsk {
@@ -16,9 +15,11 @@ export interface FirstLineAsk {
   studying: boolean
   limited: boolean
   secret: boolean
+  history?: QuickInput['history']
 }
+export type QuickTurn = { answer: string } | { brief: string } | undefined
 type Voice = Pick<Engine, 'id' | 'quick'>
-interface Pending { open: boolean; ready: boolean; quiet?: boolean; line?: string; shown?: boolean; carried?: boolean; show?: (line: string) => void; hide?: () => void }
+interface Pending { open: boolean; ready: boolean; line?: string; shown?: boolean; carried?: boolean; show?: (line: string) => void; hide?: () => void }
 const turns = new Map<string, Pending>()
 const log = (fields: Record<string, unknown>): void => flog('first-line', JSON.stringify(fields))
 
@@ -34,14 +35,14 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
 
 export function cleanLine(raw: string, max = LINE_MAX): string | undefined {
   const line = raw.trim().replace(/^(["'“‘])([^]*)(["'”’])$/, '$2').trim()
-  if (!line || NONE.test(line) || line.includes('\n') || line.includes('```') || [...line].length > max) return undefined
+  if (!line || line.includes('\n') || line.includes('```') || [...line].length > max) return undefined
   return line
 }
 
-export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | undefined>; workdir: EngineCwd; signal: AbortSignal; show(line: string): void; hide?(): void; said?(): Promise<readonly string[]> }): void {
+export async function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | undefined>; workdir: EngineCwd; signal: AbortSignal; show(line: string): void; hide?(): void; said?(): Promise<readonly string[]> }): Promise<QuickTurn> {
   endFirstLine(ask.channel)
   const skip = wantsFirstLine(ask)
-  if (skip) return log({ channel: ask.channel, outcome: 'skipped', reason: skip })
+  if (skip) { log({ channel: ask.channel, outcome: 'skipped', reason: skip }); return undefined }
   const turn: Pending = { open: true, ready: false, show: ask.show, ...(ask.hide ? { hide: ask.hide } : {}) }
   turns.set(ask.channel, turn)
   const started = Date.now()
@@ -60,18 +61,28 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
   const timer = setTimeout(() => say(ask.korean ? SAFETY_LINE.ko : SAFETY_LINE.en, 'fallback'), FIRST_LINE_FALLBACK_MS)
   timer.unref?.()
   ask.signal.addEventListener('abort', () => close('dropped', 'stopped'), { once: true })
-  void (async () => {
+  try {
     const engine = await ask.engine()
-    if (!turn.open) return
-    if (engine?.id !== 'claude' || !engine.quick) { clearTimeout(timer); return close('skipped', 'engine') }
+    if (ask.signal.aborted) return undefined
+    if (engine?.id !== 'claude' || !engine.quick) { clearTimeout(timer); close('skipped', 'engine'); return undefined }
     const said = await ask.said?.().catch(() => []) ?? []
-    if (!turn.open) return
-    const line = cleanLine(await engine.quick(promptFor('ack', { message: ask.message, korean: ask.korean, said }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS }), ACK_MAX)
-    if (!turn.open || turn.line) return
-    if (!line) { turn.quiet = true; return log({ channel: ask.channel, outcome: 'silent', reason: 'none', ms: Date.now() - started }) }
-    clearTimeout(timer)
-    say(line, 'voiced')
-  })().catch(() => undefined)
+    if (ask.signal.aborted) return undefined
+    const reply = await engine.quick(promptFor('quick', { message: ask.message, korean: ask.korean, said, ...(ask.history ? { history: ask.history } : {}), calendar: calendarLine() }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
+    if (ask.signal.aborted) return undefined
+    if (reply.handOff === undefined) {
+      if (!reply.text.trim()) { log({ channel: ask.channel, outcome: 'silent', ms: Date.now() - started }); return undefined }
+      clearTimeout(timer)
+      turn.open = false
+      log({ channel: ask.channel, outcome: 'answered', ms: Date.now() - started })
+      return { answer: reply.text.trim() }
+    }
+    const line = cleanLine(reply.text, ACK_MAX)
+    if (line && !turn.line) { clearTimeout(timer); say(line, 'voiced') }
+    return { brief: reply.handOff }
+  } catch (error) {
+    log({ channel: ask.channel, outcome: 'failed', reason: error instanceof Error ? error.message : String(error), ms: Date.now() - started })
+    return undefined
+  }
 }
 
 function reveal(channel: string, turn: Pending, started?: number): void {
@@ -103,7 +114,7 @@ export function firstLineState(channel: string): FirstLine | undefined {
   const turn = turns.get(channel)
   if (!turn) return undefined
   if (turn.shown && turn.line) return { shown: turn.line }
-  return turn.open && !turn.quiet ? { pending: true } : undefined
+  return turn.open ? { pending: true } : undefined
 }
 
 export function firstLineSaw(event: { type: string; channel?: string; reset?: boolean }): void {

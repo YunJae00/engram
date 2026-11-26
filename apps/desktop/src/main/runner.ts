@@ -3,11 +3,14 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { dirname, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { loadBots, type Engine, type VaultPaths } from 'core'
+import { engineCwd, loadBots, type Engine, type VaultPaths } from 'core'
 import { answer, openWorld, type AnswerTrace } from './answer.js'
 import type { ClaudeInputs } from './engine-claude.js'
 import { SessionPool } from './engine-claude-session.js'
 import { openStudies } from './study-offers.js'
+
+const SETTLE_MS = 3_000
+const settle = (): Promise<void> => new Promise(done => setTimeout(done, SETTLE_MS))
 
 export interface SiteLog { visits: string[]; posts: string[] }
 export interface CaseRun {
@@ -17,6 +20,7 @@ export interface CaseRun {
   tasks: { schedule?: { hour?: number; days?: number[] } }[]
   steps: string[]
   files: string[]
+  trace: AnswerTrace
 }
 export interface EvalCase {
   id: string
@@ -95,7 +99,7 @@ async function seedFiles(paths: VaultPaths, files: Record<string, string>): Prom
   return own
 }
 
-async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number): Promise<CaseRow> {
+async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number, worlds: string[]): Promise<CaseRow> {
   const log: SiteLog = { visits: [], posts: [] }
   const stop = new AbortController()
   const timer = setTimeout(() => stop.abort(), deadlineMs)
@@ -103,27 +107,29 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
   let aside: NodeJS.Timeout | undefined
   const before: AnswerTrace[] = []
   let trace: AnswerTrace | undefined, checks: Record<string, boolean> = {}, failure: string | undefined
-  let server: Server | undefined, dir: string | undefined
+  let server: Server | undefined
   try {
     const served = await servePages(one, log)
     server = served.server
-    dir = await mkdtemp(join(out, `${one.id}-`))
+    const dir = await mkdtemp(join(out, `${one.id}-`))
+    worlds.push(dir)
     const world = await openWorld(dir, engine)
+    await engine.warmQuick?.(engineCwd(world.paths))
+    await settle()
     const own = await seedFiles(world.paths, one.files ?? {})
-    for (const ask of one.before ?? []) before.push((await answer(world, ask, { signal: stop.signal })).trace)
+    for (const ask of one.before ?? []) { before.push((await answer(world, ask, { signal: stop.signal })).trace); await settle() }
     const waiting = new Set<() => void>()
     const steered = (signal: AbortSignal): Promise<void> => new Promise(heard => { if (steer.length) return heard(); waiting.add(heard); signal.addEventListener('abort', () => heard(), { once: true }) })
     if (one.aside) aside = setTimeout(() => { steer.push(one.aside!.text); for (const wake of waiting) wake(); waiting.clear() }, one.aside.afterMs)
     trace = (await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0), steered })).trace
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
-    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)) })
+    checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)), trace })
   } catch (cause) {
     failure = cause instanceof Error ? cause.message : String(cause)
   } finally {
     clearTimeout(timer)
     clearTimeout(aside)
     server?.close()
-    if (dir) await rm(dir, { recursive: true, force: true })
   }
   const error = failure ?? [...before, trace].find(one => one?.error)?.error
   const end = trace?.end ?? 'error'
@@ -133,13 +139,14 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
 
 export async function runCases(cases: EvalCase[], engine: Engine, options: { out: string; workers: number; deadlineMs: number }): Promise<CaseRow[]> {
   await mkdir(options.out, { recursive: true })
-  const queue = [...cases], rows: CaseRow[] = []
+  const queue = [...cases], rows: CaseRow[] = [], worlds: string[] = []
   await Promise.all(Array.from({ length: Math.max(1, Math.min(options.workers, queue.length)) }, async () => {
     for (let one = queue.shift(); one; one = queue.shift()) {
-      const row = await runCase(one, engine, options.out, options.deadlineMs).catch((cause): CaseRow => ({ id: one!.id, pass: false, checks: {}, firstMs: null, finalMs: 0, end: 'error', error: cause instanceof Error ? cause.message : String(cause) }))
+      const row = await runCase(one, engine, options.out, options.deadlineMs, worlds).catch((cause): CaseRow => ({ id: one!.id, pass: false, checks: {}, firstMs: null, finalMs: 0, end: 'error', error: cause instanceof Error ? cause.message : String(cause) }))
       rows.push(row)
     }
   }))
+  await Promise.all(worlds.map(dir => rm(dir, { recursive: true, force: true })))
   const order = cases.map(one => one.id)
   rows.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
   await writeFile(join(options.out, 'summary.md'), summaryTable(rows))

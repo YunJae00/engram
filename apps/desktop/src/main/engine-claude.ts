@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { currentModelCallContext, modelCall } from './model-call-metrics.js'
 import { askInTurn } from './voice-line.js'
-import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { ENGINE_BUDGETS, MODEL_TIER, type QuickReply, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { textOf, type SessionPool, type SessionSdk } from './engine-claude-session.js'
 import type { CloudEngine } from './engine-cloud.js'
 import { LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudLoginOptions } from './run-text.js'
@@ -142,9 +142,9 @@ export class ClaudeEngine implements CloudEngine {
   forgetStatus(): void { this.status.forget() }
 
   async warmQuick(workdir: string): Promise<void> { await Promise.all(Array.from({ length: WARM_LANES }, (_, lane) => this.voiceFor(workdir, lane))) }
-  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
+  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply> {
     const metric = modelCall('claude', prompt.length, 'low')
-    tier('first-line', chosenModel('fast'), 'fast')
+    tier('quick', chosenModel(MODEL_TIER.quick), MODEL_TIER.quick)
     let lane: number | undefined
     try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes()) }
     catch (error) {
@@ -154,15 +154,15 @@ export class ClaudeEngine implements CloudEngine {
     }
     finally {
       metric.end()
-      if (lane !== undefined && this.state.voices[lane]?.spent) void this.voiceFor(options.workdir, lane).catch(() => undefined)
+      if (lane !== undefined && (this.state.voices[lane]?.spent || this.state.voices[lane]?.closed)) void this.voiceFor(options.workdir, lane).catch(() => undefined)
     }
   }
   private async voiceFor(workdir: string, lane = 0): Promise<VoiceSession | undefined> {
     await this.inputs.loadConnections()
     const binary = this.inputs.binary()
     if (!binary) return undefined
-    const spec = { sdk: await this.sdk(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
-    const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
+    const spec = { sdk: await this.sdk(), binary, env: this.env, workdir, model: chosenModel(MODEL_TIER.quick), ...(lane >= WARM_LANES ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
+    const key = JSON.stringify([spec.binary, spec.model, this.accountProfile])
     const voice = this.state.voices[lane]
     if (!voice || voice.closed || voice.spent || this.state.voiceKeys[lane] !== key) { voice?.close(); this.state.voices[lane] = new VoiceSession(spec); this.state.voiceKeys[lane] = key }
     return this.state.voices[lane]

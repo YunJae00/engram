@@ -9,7 +9,7 @@ import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine
 import { checkOfficeResult } from './office-verification.js'
 import type { WebPage } from './errand.js'
 import type { HarnessMetric } from './harness-metrics.js'
-import { contextText, HELPER_PERSONA, type PromptContext, type PromptRole } from './prompt.js'
+import { contextText, type PromptContext, type PromptRole } from './prompt.js'
 
 export interface AgentToolContext {
   task: string
@@ -56,7 +56,7 @@ export interface AgentLoopOptions {
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
   context?: PromptContext
-  role?: Exclude<PromptRole, 'ack'>
+  role?: Exclude<PromptRole, 'quick'>
   persona?: string
   history?: { role: 'user' | 'assistant'; text: string; at?: string; attachments?: string[] }[]
   memory?: string
@@ -71,7 +71,6 @@ export interface AgentLoopOptions {
   onToken?(text: string): void
   onReset?(dropDraft?: boolean, tool?: string): void
   maxCalls?: number
-  modelHint?: 'fast' | 'smart'
   lookup?: boolean
   light?: boolean
   short?: boolean
@@ -247,7 +246,7 @@ async function followRead(
 }
 
 export async function runAgentLoop(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
-  return checkOfficeResult(await agentLoop(deps, task, options.role === 'helper' ? { ...options, persona: HELPER_PERSONA } : options))
+  return checkOfficeResult(await agentLoop(deps, task, options))
 }
 
 async function agentLoop(

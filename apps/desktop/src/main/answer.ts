@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type PromptContext, type VaultPaths, type WebCourier } from 'core'
+import { addBotTask, calendarLine, createBot, engineCwd, ESCALATE_TOOL, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type PromptContext, type VaultPaths, type WebCourier } from 'core'
 import { beginFirstLine, endFirstLine, firstLineReady, firstLineSpoke, firstLineState } from './first-line.js'
 import { taskRoot } from './file-work.js'
 import { fetchPlainPage } from './plain-page.js'
@@ -24,6 +24,7 @@ export interface AnswerTrace {
   first?: { text: string; ms: number }
   steps: { line: string; ms: number }[]
   final: { text: string; ms: number }
+  escalated?: { why: string; said: string; ms: number }
   end: 'done' | 'stop'
   error?: string
 }
@@ -96,48 +97,68 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   const channel = asked.channel ?? `bot-${botId}`
   const korean = asked.korean ?? threadKorean(message, world.history)
   const turn = signal ?? new AbortController().signal
-  beginFirstLine({
+  const quick = beginFirstLine({
     interactive: true, studying: false, limited: false, secret: false, engine: async () => engine,
     ...asked,
-    channel, message, korean, workdir: engineCwd(paths), signal: turn,
+    channel, message, korean, history: world.history, workdir: engineCwd(paths), signal: turn,
     show: line => { trace.first ??= { text: line, ms: ms() }; asked.show?.(line) },
   })
   firstLineReady(channel)
   const run = async (options: Omit<AnswerOptions, 'signal' | 'ack'> = {}): Promise<Answered> => {
     const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, skills, native, ...loop } = options
-    let streamed = '', firstLine = false, result: AgentLoopResult | undefined, failure: unknown
+    let streamed = '', said = '', spoke = false, firstLine = false, result: AgentLoopResult | undefined, failure: unknown
     const everyTool = tools ?? worldTools(world, message, signal)
-    try {
-      const said = firstLineState(channel)
-      const shortlist = skills ? await skills() : undefined
-      const ran = await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
+    let shortlist: LoopOptions['skills']
+    const lead = (role: 'work' | 'deep', notes: PromptContext, menu: AgentTool[], stop?: AbortSignal): Promise<AgentLoopResult> => {
+      const ended = stop && signal ? AbortSignal.any([signal, stop]) : stop ?? signal
+      return runComet({ engine, workdir: engineCwd(paths), tools: menu, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,
         history: world.history,
         ...loop,
         ...(shortlist ? { skills: shortlist } : {}),
+        role,
+        ...(role === 'deep' ? { session: `${loop.session ?? botId}:deep` } : {}),
         ...(native ? { native } : {}),
-        ...(signal ? { signal } : {}),
+        ...(ended ? { signal: ended } : {}),
         ...(takeSteer ? { takeSteer } : {}),
-        context: { ...context?.(), calendar: calendarLine(), ...(said ? { firstLine: said } : {}) },
+        context: notes,
         onStep: line => { trace.steps.push({ line, ms: ms() }); onStep?.(line) },
         onToken: text => {
-          const hold = !!firstLineState(channel)
+          const now = firstLineState(channel), hold = !!now && 'pending' in now
           if (!hold) {
             firstLineSpoke(channel)
             streamed += text
             const shown = streamed.trim()
-            if (shown && !firstLine) {
-              trace.first ??= { text: '', ms: ms() }
-              trace.first.text = shown.split('\n')[0]!
+            if (shown && (!trace.first || spoke) && !firstLine) {
+              spoke = true
+              trace.first = { text: shown.split('\n')[0]!, ms: trace.first?.ms ?? ms() }
               firstLine = shown.includes('\n')
             }
           }
           onToken?.(text, hold)
         },
-        onReset: (drop, tool) => { streamed = ''; onReset?.(drop, tool) },
+        onReset: (drop, tool) => { said = streamed.trim() || said; streamed = ''; onReset?.(drop, tool) },
       })
-      result = ran.answer.trim() ? ran : { ...ran, answer: streamed.trim() }
+    }
+    try {
+      const decided = await quick
+      if (decided && 'answer' in decided) result = { answer: decided.answer, steps: [], fellBack: false }
+      else {
+        shortlist = skills ? await skills() : undefined
+        const up = firstLineState(channel)
+        const notes: PromptContext = { ...context?.(), calendar: calendarLine(), ...(up ? { firstLine: up } : {}), ...(decided ? { brief: decided.brief } : {}) }
+        const handed = new AbortController()
+        const escalate: AgentTool = { ...ESCALATE_TOOL, run: async args => { trace.escalated = { why: String(args['why'] ?? ''), said: streamed.trim() || said, ms: ms() }; handed.abort(); return 'Passed on.' } }
+        try { result = await lead('work', notes, [...everyTool, escalate], handed.signal) }
+        catch (cause) {
+          const passed = trace.escalated
+          if (!passed || signal?.aborted) throw cause
+          streamed = ''
+          result = await lead('deep', { ...notes, ...(passed.said ? { firstLine: { shown: passed.said } } : {}), escalated: passed.why }, everyTool)
+        }
+        result = result.answer.trim() ? result : { ...result, answer: streamed.trim() }
+      }
       trace.final = { text: result.answer, ms: ms() }
     } catch (cause) {
       failure = cause

@@ -24,7 +24,7 @@ function greenhouse(steps: { tool: string; args: Record<string, unknown> }[]): {
       job.onToken?.('need water.')
       return { answer: 'Tomatoes need water.', note: 'read two beds' }
     },
-    quick: async prompt => `a line about ${prompt}`,
+    quick: async prompt => ({ text: `a line about ${prompt}`, ...(prompt.includes('frost') ? {} : { handOff: prompt }) }),
   }
   return { engine, seen }
 }
@@ -87,9 +87,13 @@ it('marks a throwing tool as thrown and still hands the error to the caller', as
 
 it('records one quick call', async () => {
   const records: TraceRecord[] = []
-  const answer = await traced(greenhouse([]).engine, record => records.push(record)).quick!('frost tonight', { workdir: '/fixture', timeoutMs: 300 })
-  expect(answer).toBe('a line about frost tonight')
-  expect(records).toEqual([expect.objectContaining({ kind: 'quick', prompt: 'frost tonight', answer: answer.length })])
+  const engine = traced(greenhouse([]).engine, record => records.push(record))
+  const answer = await engine.quick!('frost tonight', { workdir: '/fixture', timeoutMs: 300 })
+  expect(answer).toEqual({ text: 'a line about frost tonight' })
+  const handed = await engine.quick!('water the beds', { workdir: '/fixture', timeoutMs: 300 })
+  expect(handed).toEqual({ text: 'a line about water the beds', handOff: 'water the beds' })
+  expect(records).toEqual([expect.objectContaining({ kind: 'quick', prompt: 'frost tonight', answer: answer.text.length }), expect.objectContaining({ kind: 'quick', prompt: 'water the beds', handOff: 'water the beds' })])
+  expect(records[0]).not.toHaveProperty('handOff')
 })
 
 it('gives the caller the same answer, streamed text and tool results with or without the trace', async () => {
@@ -120,7 +124,7 @@ it('hands the caller the answer even when the trace sink breaks while writing', 
   const { engine } = greenhouse([{ tool: 'soil', args: { bed: 'west' } }])
   const wrapped = traced(engine, () => { throw new Error('ledger is full') })
   expect((await wrapped.runTools!(job())).answer).toBe('Tomatoes need water.')
-  expect(await wrapped.quick!('hail warning', { workdir: '/fixture', timeoutMs: 300 })).toBe('a line about hail warning')
+  expect(await wrapped.quick!('hail warning', { workdir: '/fixture', timeoutMs: 300 })).toEqual({ text: 'a line about hail warning', handOff: 'hail warning' })
 })
 
 it('times the first token and keeps usage when the caller passes no stream or usage callbacks', async () => {

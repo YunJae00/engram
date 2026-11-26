@@ -20,7 +20,7 @@ it('stack-8: a slide title for a teammate goes to the team lane, and no slide or
 })
 
 it('stack-8: light effort is the team lane\'s own step only; a deck build, a deck cut and a lookup on the desk get the same call as any ask', async () => {
-  expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
+  expect(ipc).toContain("...(company ? { role: 'deep' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
   expect(ipc.match(/light: true/g)).toHaveLength(1)
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/light: true|modelHint/)
   const dir = await mkdtemp(join(tmpdir(), 'stack8-'))
@@ -31,13 +31,13 @@ it('stack-8: light effort is the team lane\'s own step only; a deck build, a dec
     for (const ask of ['다음 분기 채용 계획 PPT 4장 만들어줘', '그 덱에서 부록 슬라이드는 지워줘', '엔비디아 오늘 주가 알려줘'])
       await answer(await openWorld(dir, engine), ask, { tools })
     expect(jobs).toHaveLength(3)
-    for (const job of jobs) expect(job).toEqual({ tools: ['ppt_build', 'file_read', 'file_edit_package', 'search_web'] })
+    for (const job of jobs) expect(job).toEqual({ tools: ['ppt_build', 'file_read', 'file_edit_package', 'search_web', 'escalate'] })
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
 it('stack-8 (c8c run D1): a Han shorthand in a note summary is the model\'s to avoid by rule; what it writes is posted as written, shorthand or not', async () => {
   for (const draft of ['신규 온보딩 화면 시안 확정 (B안 선호 의견 多)', '多 and 少']) {
-    const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '회의 메모 한 줄로 정리해줘', { guided: false, modelHint: 'smart' })
+    const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '회의 메모 한 줄로 정리해줘', { guided: false, role: 'deep' })
     expect(result.answer).toBe(draft)
   }
   expect(COLLEAGUE_CORE_RULE).toContain('no Chinese-character shorthand (多, 約, 等)')

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { COLLEAGUE_RULE } from '../../../packages/core/src/prompt.js'
 import { openRuleLines } from '../../../packages/core/test/rules.js'
 import { SAFETY_LINE } from '../src/main/first-line.js'
-import { ackPrompt } from './ack-prompt.js'
+import { quickPrompt } from './ack-prompt.js'
 import { errorLine } from '../src/renderer/src/components/ErrorAnswer.js'
 import { teamKo } from '../src/renderer/src/i18n-ko-team.js'
 import { pendingStatus, stepLabel, workLabel } from '../src/renderer/src/lib/pendingStatus.js'
@@ -111,19 +111,19 @@ describe('how the bot is told to talk', () => {
   })
 
   it('asks for a first line that names the first step in -요 form, not an echo of the request', () => {
-    const prompt = ackPrompt('엔비디아 오늘 주가 알려줘', true)
+    const prompt = quickPrompt('엔비디아 오늘 주가 알려줘', true)
     expect(prompt).toContain('지금 시세 확인할게요.')
     expect(prompt).toMatch(/never -습니다/)
-    expect(prompt).toMatch(/Do not echo the request back/)
+    expect(prompt).toMatch(/does not restate or echo the request/)
     expect(prompt).toContain('네, 알겠습니다')
     expect(prompt).not.toMatch(/restates the job/)
   })
 
-  it('asks the same one prompt to return nothing for a greeting, a thanks or a one-step question, whatever the wording', () => {
+  it('asks the same one prompt to answer a greeting, a thanks or a one-step question in full itself and to hand off anything to look up or do, whatever the wording', () => {
     for (const said of ['오후도 힘내요', '덕분에 살았어요', '광년은 몇 킬로미터야?']) {
-      const prompt = ackPrompt(said, true)
-      expect(prompt).toMatch(/Reply with exactly NONE when the message is a greeting, a thanks, something the person only tells you/)
-      expect(prompt).toMatch(/a question the assistant answers in one reply from what it already knows/)
+      const prompt = quickPrompt(said, true)
+      expect(prompt).toMatch(/a greeting, a thanks, small talk, a complaint, something the person only tells you, a definition, a calculation, a well-known fact/)
+      expect(prompt).toMatch(/Everything else is handed off: anything to look up, read, open or check as it is now/)
       expect(prompt).toContain(JSON.stringify(said))
     }
   })

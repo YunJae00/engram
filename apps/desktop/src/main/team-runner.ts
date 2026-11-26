@@ -148,7 +148,7 @@ export function teamRunner(deps: {
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
       const left = (): number => (due - Date.now()) / scale
-      const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }).then(reply => reply.text) : undefined
       let opener: AgentTool | undefined
       const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {
         ask: () => me.brief, ...(quick ? { write: quick } : {}), due: () => due - reserveMs,
@@ -186,7 +186,7 @@ export function teamRunner(deps: {
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => { read = true; deps.step(leadChannel, line) },
-            ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: soft(), ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
+            ...(me.lookup ? { role: 'deep' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: soft(), ...drafted } : me.writer ? { role: 'deep' as const, ...drafted } : {}),
           })
           if (!round && me.lookup) flog('team', `first-step role=${role} ms=${Date.now() - stepAt} pages=${(prompt.match(/^The page at /gm) ?? []).length} answered=${!!result.answer.trim()}`)
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
@@ -205,7 +205,7 @@ export function teamRunner(deps: {
         }
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
       const turn = (task: string, roundTools: AgentTool[]) => (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools: roundTools }, task, {
-        signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), modelHint: 'smart' as const, ...drafted,
+        signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), role: 'deep' as const, ...drafted,
         ...(me.lookup ? { light: true } : {}),
         onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
       })
@@ -362,7 +362,7 @@ export function teamRunner(deps: {
           const jobKit = laterKits.get(job.id)
           return jobKit ? [{ parts: job.team?.members ?? [], change: <T>(work: (task: DelegatedTask) => T) => change(job.id, work), later: (ids: string[]) => later(job.id, leadChannel, ids, jobKit), release: (ids: string[]) => release(job.id, ids) }] : []
         }),
-        ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) } : {}),
+        ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }).then(reply => reply.text) } : {}),
         attach: async (botId, then) => {
           for (const [key, one] of live) {
             if (one.channel !== leadChannel) continue

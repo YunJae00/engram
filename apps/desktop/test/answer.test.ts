@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentTool, Engine, ToolSessionJob } from 'core'
+import type { AgentTool, Engine, QuickReply, ToolSessionJob } from 'core'
 import { answer, beginAnswer, openWorld } from '../src/main/answer.js'
 
 const scratch: string[] = []
@@ -11,7 +11,7 @@ const temp = async () => { const dir = await mkdtemp(join(tmpdir(), 'answer-test
 afterEach(async () => { await Promise.all(scratch.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
 
 const wait = (ms: number) => new Promise(done => setTimeout(done, ms))
-const fake = (lead: (job: ToolSessionJob) => Promise<string>, quick?: (prompt: string) => Promise<string>): Engine => ({
+const fake = (lead: (job: ToolSessionJob) => Promise<string>, quick?: (prompt: string) => Promise<QuickReply>): Engine => ({
   id: quick ? 'claude' : 'mock',
   desktopToolIsolation: true,
   ...(quick ? { quick } : {}),
@@ -37,38 +37,43 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.final.text).toBe('반납일은 금요일이에요.')
   })
 
-  it('shows the ack as the first text when it comes before the lead\'s answer, and the lead is told it is on screen', async () => {
+  it('shows the quick tier\'s first line before the work lead starts, and the lead gets the line and the brief', async () => {
     let told = ''
     const shown = vi.fn()
-    const engine = fake(async job => { told = job.system + job.opening + job.prompt; await wait(80); job.onToken?.('대출 기록을 보니 반납일은 금요일이에요.'); return '대출 기록을 보니 반납일은 금요일이에요.' }, async prompt => prompt.includes('first line') ? '대출 기록부터 볼게요.' : 'NONE')
+    const engine = fake(async job => { told = job.system + job.opening + job.prompt; await wait(80); job.onToken?.('대출 기록을 보니 반납일은 금요일이에요.'); return '대출 기록을 보니 반납일은 금요일이에요.' }, async () => ({ text: '대출 기록부터 볼게요.', handOff: '빌린 책 반납일 확인' }))
     const { trace } = await answer(await openWorld(await temp(), engine), '빌린 책 반납일 언제야?', { ack: { show: shown } })
     expect(trace.first?.text).toBe('대출 기록부터 볼게요.')
     expect(shown).toHaveBeenCalledExactlyOnceWith('대출 기록부터 볼게요.')
-    expect(told).toContain('A short first line from you saying what you are starting on is already on screen')
+    expect(told).toContain('The person has already been shown this first line from you: "대출 기록부터 볼게요."')
+    expect(told).toContain('wrote this brief for it: "빌린 책 반납일 확인"')
     expect(trace.final.text).toBe('대출 기록을 보니 반납일은 금요일이에요.')
   })
 
-  it('drops an ack that comes after the answer is done', async () => {
+  it('starts the work lead only once the quick tier has handed off, so its line is never dropped for the lead\'s words', async () => {
     const shown = vi.fn()
-    const engine = fake(async () => '열람실은 밤 9시까지예요.', async () => { await wait(150); return '운영 시간부터 볼게요.' })
+    let startedAt = 0
+    const begun = performance.now()
+    const engine = fake(async () => { startedAt = performance.now() - begun; return '열람실은 밤 9시까지예요.' }, async () => { await wait(150); return { text: '운영 시간부터 볼게요.', handOff: '열람실 운영 시간' } })
     const { trace } = await answer(await openWorld(await temp(), engine), '열람실 몇 시까지 열어?', { ack: { show: shown } })
-    await wait(250)
-    expect(shown).not.toHaveBeenCalled()
-    expect(trace.first?.text).toBe('열람실은 밤 9시까지예요.')
+    expect(startedAt).toBeGreaterThanOrEqual(140)
+    expect(shown).toHaveBeenCalledExactlyOnceWith('운영 시간부터 볼게요.')
+    expect(trace.first?.text).toBe('운영 시간부터 볼게요.')
+    expect(trace.final.text).toBe('열람실은 밤 9시까지예요.')
   })
 
-  it('shows the waiting line the app shows when the quick voice is slow, and holds the lead\'s words behind it', async () => {
+  it('shows the waiting line at 1.5 s when the quick tier is slow, and the lead\'s words stream after it', async () => {
     const shown = vi.fn(), held: boolean[] = []
-    const engine = fake(async job => { await wait(1500); job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, async () => { await wait(1450); return '신간 목록부터 볼게요.' })
+    const engine = fake(async job => { job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, async () => { await wait(1600); return { text: '신간 목록부터 볼게요.', handOff: '이번 주 신간 수' } })
     const { trace } = await answer(await openWorld(await temp(), engine), '이번 주 신간 몇 권이야?', { ack: { show: shown }, onToken: (_, hold) => { held.push(hold) } })
     expect(shown).toHaveBeenCalledOnce()
     expect(trace.first?.text).toBe(shown.mock.calls[0]![0])
-    expect(trace.first!.ms).toBeLessThan(1450)
-    expect(held).toEqual([true])
+    expect(trace.first!.ms).toBeGreaterThanOrEqual(1490)
+    expect(trace.first!.ms).toBeLessThan(1600)
+    expect(held).toEqual([false])
   })
 
   it('streams the lead\'s words as the first text when no ack is wanted', async () => {
-    const engine = fake(async job => { await wait(30); job.onToken?.('반가워요, 오늘도 잘 부탁드려요.'); await wait(30); return '반가워요, 오늘도 잘 부탁드려요.' }, async () => '사서 업무부터 볼게요.')
+    const engine = fake(async job => { await wait(30); job.onToken?.('반가워요, 오늘도 잘 부탁드려요.'); await wait(30); return '반가워요, 오늘도 잘 부탁드려요.' }, async () => ({ text: '사서 업무부터 볼게요.', handOff: '인사' }))
     const held: boolean[] = []
     const { trace } = await answer(await openWorld(await temp(), engine), '사서님 안녕하세요', { ack: { interactive: false }, onToken: (_, hold) => { held.push(hold) } })
     expect(held).toEqual([false])
@@ -76,36 +81,40 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.first!.ms).toBeLessThan(trace.final.ms)
   })
 
-  it('makes one quick call for the ack, shows nothing when it says NONE, and the lead\'s own words are the first text', async () => {
-    const quick = vi.fn(async () => 'NONE')
-    const engine = fake(async job => { await wait(30); job.onToken?.('한 시간은 3,600초예요.'); return '한 시간은 3,600초예요.' }, quick)
+  it('a quick reply with no hand-off is the whole answer: one quick call, no lead step, no line shown', async () => {
+    const quick = vi.fn(async () => ({ text: '한 시간은 3,600초예요.' }))
+    const lead = vi.fn(async () => '쓰이면 안 돼요.')
+    const engine = fake(lead, quick)
     const shown: string[] = []
     const { result, trace } = await answer(await openWorld(await temp(), engine), '한 시간은 몇 초야?', { ack: { show: line => { shown.push(line) } } })
     expect(quick).toHaveBeenCalledOnce()
+    expect(lead).not.toHaveBeenCalled()
     expect(shown).toEqual([])
     expect(result?.answer).toBe('한 시간은 3,600초예요.')
     expect(trace.first?.text).toBe('한 시간은 3,600초예요.')
+    expect(trace.steps).toEqual([])
   })
 
-  it('puts no host line in front of a lead that answers a recall from the thread before the safety time, after the quick call says NONE', async () => {
-    const quick = vi.fn(async () => { await wait(10); return 'NONE' })
-    const engine = fake(async job => { await wait(150); job.onToken?.('토요일 2시예요.'); return '토요일 2시예요.' }, quick)
+  it('a recall the thread already holds is answered whole by the quick tier, which sees the conversation, before the safety time', async () => {
+    const quick = vi.fn<(prompt: string) => Promise<QuickReply>>(async () => { await wait(10); return { text: '토요일 2시예요.' } })
+    const lead = vi.fn(async () => '쓰이면 안 돼요.')
+    const engine = fake(lead, quick)
     const world = { ...await openWorld(await temp(), engine), history: [{ role: 'user' as const, text: '치과 예약 금요일 3시야' }, { role: 'assistant' as const, text: '알겠어요.' }, { role: 'user' as const, text: '아 금요일 말고 토요일 2시로 옮겼어' }, { role: 'assistant' as const, text: '토요일 2시로 고쳤어요.' }] }
     const shown: string[] = []
     const { trace } = await answer(world, '치과 언제 가더라?', { ack: { show: line => { shown.push(line) } } })
     await wait(50)
-    expect(quick).toHaveBeenCalledOnce()
+    expect(quick.mock.calls[0]![0]).toContain('아 금요일 말고 토요일 2시로 옮겼어')
+    expect(lead).not.toHaveBeenCalled()
     expect(shown).toEqual([])
     expect(trace.first?.text).toBe('토요일 2시예요.')
-    expect(trace.first?.ms).toBeLessThan(1300)
+    expect(trace.first?.ms).toBeLessThan(1500)
   })
 
-  it('drops an ack that comes after the lead\'s first text', async () => {
-    const quick = vi.fn(async () => { await wait(200); return '도서 목록부터 볼게요.' })
-    const engine = fake(async job => { await wait(20); job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, quick)
+  it('a quick call that fails leaves the turn to the work lead, whose words are the first text', async () => {
+    const quick = vi.fn(async (): Promise<QuickReply> => { await wait(20); throw new Error('The voice closed.') })
+    const engine = fake(async job => { job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, quick)
     const shown: string[] = []
     const { trace } = await answer(await openWorld(await temp(), engine), '이번 주 들어온 신간 몇 권이야', { ack: { show: line => { shown.push(line) } } })
-    await wait(300)
     expect(shown).toEqual([])
     expect(trace.first?.text).toBe('신간은 세 권이에요.')
   })
@@ -145,7 +154,7 @@ describe('answer is the one entry the app and the runner share', () => {
     for (const ask of ['신입 교육 일정 슬라이드 다섯 장 만들어줘', 'kitchen-duty.md 요약해줘', 'budget-q4.csv에서 총합 얼마야?', '아니 그거 말고 엑셀로', '오늘 드디어 이사 끝냈어'])
       await answer({ ...world, history: [] }, ask, { tools: [reader, build], maxCalls: 12 })
     expect(jobs).toHaveLength(5)
-    for (const job of jobs) expect(job).toEqual({ tools: ['file_read', 'ppt_build'], maxCalls: 12, system: jobs[0]!.system })
+    for (const job of jobs) expect(job).toEqual({ tools: ['file_read', 'ppt_build', 'escalate'], maxCalls: 12, system: jobs[0]!.system })
     expect(prompts.join('\n')).not.toContain('설거지 담당 민서')
   })
 
@@ -166,7 +175,7 @@ describe('answer is the one entry the app and the runner share', () => {
 
   it('gives a lookup ask the quick model\'s own ack, like any other ask', async () => {
     const shown: string[] = []
-    const engine = fake(async () => '오사카는 토요일 오후에 비가 와요.', async prompt => prompt.includes('first line') ? '오사카 주말 예보부터 볼게요.' : 'NONE')
+    const engine = fake(async () => '오사카는 토요일 오후에 비가 와요.', async () => ({ text: '오사카 주말 예보부터 볼게요.', handOff: '오사카 주말 비 소식' }))
     const { trace } = await answer(await openWorld(await temp(), engine), '오사카 이번 주말 비 소식 좀 찾아봐 줄래', { ack: { show: line => { shown.push(line) } } })
     expect(shown).toEqual(['오사카 주말 예보부터 볼게요.'])
     expect(trace.first?.text).toBe('오사카 주말 예보부터 볼게요.')
@@ -189,7 +198,7 @@ describe('answer is the one entry the app and the runner share', () => {
 
   it('keeps the ack on screen through slow work the caller does between beginning and running, and the run keeps it as the first text', async () => {
     const shown: number[] = [], started = performance.now()
-    const engine = fake(async () => '영수증은 달별로 나눠 뒀어요.', async () => '영수증부터 달별로 나눌게요.')
+    const engine = fake(async () => '영수증은 달별로 나눠 뒀어요.', async () => ({ text: '영수증부터 달별로 나눌게요.', handOff: '영수증 달별 정리' }))
     const world = await openWorld(await temp(), engine)
     const begun = beginAnswer(world, '영수증 폴더 달별로 나눠줘', { ack: { show: () => { shown.push(performance.now() - started) } } })
     await wait(450)
@@ -212,6 +221,49 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(own).not.toMatch(/namedText|namedBy|fileGiven|deskLane|deskKind|deskLight|closingBuilds/)
     expect(own.indexOf('await skills()')).toBeGreaterThan(run)
     expect(ipc).toMatch(/for \(const ack of acks\) ack\.end\(\)/)
+  })
+})
+
+describe('three tiers: the work lead can pass a hard job to the deep tier', () => {
+  const escalate = (job: ToolSessionJob) => job.tools.find(one => one.name === 'escalate')!
+  it('a hard job streams one sentence, calls escalate, and the deep tier carries on in its own session on the smart model', async () => {
+    const jobs: ToolSessionJob[] = []
+    const engine = fake(async job => {
+      jobs.push(job)
+      if (jobs.length > 1) return '사내 동호회 다섯 곳 예산을 맞춰 보니 등산회부터 줄이면 돼요.'
+      job.onToken?.('다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요.')
+      job.onReset?.()
+      await escalate(job).run({ why: '예산 다섯 개를 맞춰 계획까지 세워야 해서' }).catch(() => undefined)
+      return ''
+    })
+    const { trace, result } = await answer(await openWorld(await temp(), engine), '사내 동호회 다섯 곳 올해 예산을 서로 비교해서 내년에 어디를 얼마씩 줄일지 단계별로 짜줘')
+    expect(jobs).toHaveLength(2)
+    expect(jobs[0]!.modelHint).toBeUndefined()
+    expect(jobs[1]!.modelHint).toBe('smart')
+    expect(jobs[1]!.sessionKey).toMatch(/:deep$/)
+    expect(jobs[1]!.tools.map(one => one.name)).not.toContain('escalate')
+    expect(jobs[1]!.prompt).toContain('This job was passed to you because it needs more thought: "예산 다섯 개를 맞춰 계획까지 세워야 해서"')
+    expect(jobs[1]!.prompt).toContain('The person has already been shown this first line from you: "다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요."')
+    expect(trace.escalated).toMatchObject({ why: '예산 다섯 개를 맞춰 계획까지 세워야 해서', said: '다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요.' })
+    expect(trace.final.text).toBe('사내 동호회 다섯 곳 예산을 맞춰 보니 등산회부터 줄이면 돼요.')
+    expect(result?.answer).toBe(trace.final.text)
+  })
+
+  it('a stop during the work step never starts the deep step', async () => {
+    const stop = new AbortController()
+    let calls = 0
+    const engine = fake(async job => {
+      calls++
+      job.onToken?.('창고 재고를 품목별로 다 맞춰 봐야 해서 조금 걸려요.')
+      stop.abort()
+      await escalate(job).run({ why: '품목이 많아서' }).catch(() => undefined)
+      return ''
+    })
+    const { trace } = await answer(await openWorld(await temp(), engine), '창고 재고 품목별로 다 맞춰 보고 다음 달 발주 계획 세워줘', { signal: stop.signal })
+    await wait(30)
+    expect(calls).toBe(1)
+    expect(trace.escalated).toBeUndefined()
+    expect(trace.end).toBe('stop')
   })
 })
 
@@ -267,6 +319,6 @@ describe('a correction, a file sort and a slide fix are the model\'s own tool ca
   it('answer.ts has no reply of its own', () => {
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
     expect(own).not.toMatch(/desk-lane|keptFix|plainKeep|slideTitleFix|fixSlideTitle|sortByKind|keepAsk|const host/)
-    expect(own).toContain('const ran = await runComet(')
+    expect(own).toContain("return runComet({ engine, workdir: engineCwd(paths), tools: menu, ...(imagePaths ? { imagePaths } : {}) }, message, {")
   })
 })

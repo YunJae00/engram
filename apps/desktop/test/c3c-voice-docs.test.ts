@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendBotTurn, initVault, readBotTranscript, type AgentTool, type Engine, type ToolSessionJob } from 'core'
+import { appendBotTurn, initVault, readBotTranscript, type AgentTool, type Engine, type QuickReply, type ToolSessionJob } from 'core'
 
 const bus = vi.hoisted(() => ({ sent: [] as { type: string; reset?: boolean; drop?: boolean; text?: string }[] }))
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
@@ -27,7 +27,7 @@ const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, imp
 const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/prompt.ts', import.meta.url), 'utf8')
 const tool = (name: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object' }, run: async () => '' })
 const MENU = ['keep_in_mind', 'search_memory', 'file_read', 'find_files', 'file_move', 'ppt_build', 'file_read_package', 'file_edit_package', 'search_web', 'open_page', 'ask_person', 'report_result_check'].map(tool)
-async function lead(message: string, history: { role: 'user' | 'assistant'; text: string }[] = [], quick: (prompt: string) => Promise<string> = async () => 'NONE') {
+async function lead(message: string, history: { role: 'user' | 'assistant'; text: string }[] = [], quick: (prompt: string) => Promise<QuickReply> = async () => ({ text: '', handOff: message })) {
   const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-')), jobs: ToolSessionJob[] = []
   try {
     const engine = { id: 'claude', desktopToolIsolation: true, quick, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '네, 그렇게 할게요.' } } } as unknown as Engine
@@ -39,17 +39,17 @@ const WORKDIR = { kind: 'vault' as const, path: 'C:/vault' } as never
 
 describe('the first line is a waiting line, not part of the answer', () => {
   const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, secret: false, ...patch })
-  const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
-  const start = (reply: string | ((prompt: string) => string), patch: Partial<FirstLineAsk> = {}, ms = 500) => {
-    const show = vi.fn(), hide = vi.fn(), quick = vi.fn((prompt: string) => later(typeof reply === 'string' ? reply : reply(prompt), ms)())
-    beginFirstLine({ ...ask(patch), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide })
+  const later = (reply: QuickReply, ms: number) => () => new Promise<QuickReply>(done => setTimeout(() => done(reply), ms))
+  const start = (line: string, patch: Partial<FirstLineAsk> = {}, ms = 500, whole = false) => {
+    const show = vi.fn(), hide = vi.fn(), quick = vi.fn(() => later(whole ? { text: line } : { text: line, handOff: 'the job' }, ms)())
+    const decided = beginFirstLine({ ...ask(patch), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide })
     firstLineReady('bot-1')
-    return { show, hide, quick }
+    return { show, hide, quick, decided }
   }
   beforeEach(() => { vi.useFakeTimers(); endFirstLine('bot-1'); bus.sent.length = 0 })
   afterEach(() => { endFirstLine('bot-1'); vi.useRealTimers() })
 
-  it('a voice too slow for 1.3 s and no tool call: the safety line is taken down when the answer is shown, once', async () => {
+  it('a voice too slow for the safety line and no tool call: the safety line is taken down when the answer is shown, once', async () => {
     const { show, hide } = start('', {}, 3000)
     await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
     expect(show).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
@@ -129,7 +129,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(hide).toHaveBeenCalledOnce()
   })
 
-  it('a short ask answered with no tool call leaves no line above the answer, still shows a waiting line at 1.3 s, and a turn with a tool keeps its line', async () => {
+  it('a short ask answered with no tool call leaves no line above the answer, still shows a waiting line at 1.5 s, and a turn with a tool keeps its line', async () => {
     const { show, hide } = start('', {}, 3000)
     await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
     expect(show).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
@@ -186,34 +186,34 @@ describe('the first line is a waiting line, not part of the answer', () => {
     }
   })
 
-  it('takes thanks, praise and goodbyes to the one quick call like any message, and a NONE from it gives no line and no note; the lead\'s words drop the safety line', async () => {
+  it('takes thanks, praise and goodbyes to the one quick call like any message, and the whole reply it writes is the answer: no line, no note and no safety line', async () => {
     for (const message of ['오늘 정말 애쓰셨어요', '덕분에 발표 잘 끝났어요', '내일 봬요!', '역시 믿고 맡길 만하네요']) {
       expect(wantsFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, secret: false }), message).toBeNull()
       endFirstLine('bot-1')
-      const { show, quick } = start('NONE', { message })
+      const { show, quick, decided } = start('별말씀을요.', { message }, 500, true)
       await vi.advanceTimersByTimeAsync(500)
       expect(quick, message).toHaveBeenCalledOnce()
+      expect(await decided, message).toEqual({ answer: '별말씀을요.' })
       expect(firstLineNote('bot-1')).toBe('')
-      firstLineSpoke('bot-1')
       await vi.advanceTimersByTimeAsync(3000)
       expect(show, message).not.toHaveBeenCalled()
     }
   })
 
-  it('takes something the person only told to the lead with the conversation in view, with no quick-voice reply of its own, and posts the lead\'s words as written', async () => {
+  it('takes something the person only told to the quick tier with the conversation in view, and posts its whole reply as written with no lead step', async () => {
     vi.useRealTimers()
     const said = '이번 토요일에 동생 결혼식이라 아침 일찍 대전 내려가'
     const asked: string[] = []
-    const { calls, posted, told } = await lead(said, [{ role: 'user', text: '주말에 뭐 할지 아직 몰라' }, { role: 'assistant', text: '천천히 정하셔도 돼요.' }], async prompt => { asked.push(prompt); return '축하드려요, 조심히 다녀오세요.' })
-    expect(calls).toBe(1)
-    expect(posted).toBe('네, 그렇게 할게요.')
-    expect(told).toContain('주말에 뭐 할지 아직 몰라')
-    expect(told).toContain(said)
-    expect(asked.some(prompt => prompt.includes('it asks for nothing'))).toBe(false)
+    const { calls, posted } = await lead(said, [{ role: 'user', text: '주말에 뭐 할지 아직 몰라' }, { role: 'assistant', text: '천천히 정하셔도 돼요.' }], async prompt => { asked.push(prompt); return { text: '축하드려요, 조심히 다녀오세요.' } })
+    expect(calls).toBe(0)
+    expect(posted).toBe('축하드려요, 조심히 다녀오세요.')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('주말에 뭐 할지 아직 몰라')
+    expect(asked[0]).toContain(said)
     expect(source('answer.ts')).not.toMatch(/told:|onlyTells|TOLD_NOTE/)
     expect(source('ipc.ts')).not.toMatch(/reply: !\(turn\?\.context/)
     expect(source('answer.ts')).not.toMatch(/talked|smallTalkAnswer/)
-    expect(source('answer.ts')).toContain('const ran = await runComet(')
+    expect(source('answer.ts')).toContain("if (decided && 'answer' in decided) result = { answer: decided.answer, steps: [], fellBack: false }")
   })
 })
 
@@ -221,30 +221,29 @@ describe('nothing is said before or between tool calls once the host has spoken'
   const streamed = async (pieces: string[], options: { ack?: string } = {}): Promise<{ text: string; held: boolean }[]> => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-'))
     try {
-      const engine = { id: options.ack ? 'claude' : 'mock', desktopToolIsolation: true, quick: async () => options.ack, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { onToken?(text: string): void }) => { await new Promise(done => setTimeout(done, 20)); for (const piece of pieces) job.onToken?.(piece); return { answer: pieces.at(-1)! } } } as unknown as Engine
+      const engine = { id: options.ack === undefined ? 'mock' : 'claude', desktopToolIsolation: true, quick: async () => ({ text: options.ack ?? '', handOff: 'the job' }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { onToken?(text: string): void }) => { await new Promise(done => setTimeout(done, 20)); for (const piece of pieces) job.onToken?.(piece); return { answer: pieces.at(-1)! } } } as unknown as Engine
       const seen: { text: string; held: boolean }[] = []
       await answer(await openWorld(root, engine), '분기 실적 슬라이드 정리해줘', { onToken: (text, held) => { seen.push({ text, held }) } })
       return seen
     } finally { await rm(root, { recursive: true, force: true }) }
   }
 
-  it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', async () => {
+  it('holds the lead\'s words while its first line is still on its way, and streams them as written once a line is up', async () => {
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
-      for (const options of [{ ack: '실적 표부터 볼게요.' }, { ack: '슬라이드 순서부터 훑어볼게요.' }]) {
-        const seen = await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], options)
-        expect(seen.map(one => one.held), narration).toEqual([true, true])
+      for (const ack of ['실적 표부터 볼게요.', '슬라이드 순서부터 훑어볼게요.']) {
+        const seen = await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], { ack })
+        expect(seen.map(one => one.held), narration).toEqual([false, false])
       }
+      expect((await streamed([narration, '3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.'], { ack: '' })).map(one => one.held), narration).toEqual([true, true])
     }
-    expect(source('answer.ts')).toContain('const hold = !!firstLineState(channel)')
+    expect(source('answer.ts')).toContain("const now = firstLineState(channel), hold = !!now && 'pending' in now")
   })
 
-  it('shows no round of a general turn as it comes, however long', async () => {
+  it('holds a long round of words of any language while no line is up yet, and shows a plain answer with no line on its way as it comes', async () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
       expect([...narration].length).toBeGreaterThan(200)
-      for (const options of [{ ack: '매출 파일부터 볼게요.' }, { ack: '분기 숫자부터 맞춰 볼게요.' }]) {
-        const seen = await streamed(narration.match(/.{1,40}/g)!, options)
-        expect(seen.every(one => one.held), narration.slice(0, 30)).toBe(true)
-      }
+      const seen = await streamed(narration.match(/.{1,40}/g)!, { ack: '' })
+      expect(seen.every(one => one.held), narration.slice(0, 30)).toBe(true)
     }
     expect((await streamed(['지금 1달러에 1,385원이에요.'])).map(one => one.held)).toEqual([false])
   })
@@ -318,7 +317,7 @@ describe('desk tool menus', () => {
       expect((await lead(message)).job!.tools.map(one => one.name), message).toEqual(expect.arrayContaining(MENU.map(one => one.name)))
     }
     const answerSource = source('answer.ts')
-    expect(answerSource).toContain('tools: everyTool,')
+    expect(answerSource).toContain('[...everyTool, escalate]')
     expect(answerSource).not.toMatch(/DESK_TOOLS|deskMenu|closingBuilds/)
   })
 

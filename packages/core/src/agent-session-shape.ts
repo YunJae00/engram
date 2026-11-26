@@ -15,7 +15,7 @@ export function sessionShape(deps: Pick<AgentLoopDeps, 'engine' | 'tools'>, opti
   const scoped = sessionMenu(desktopScopeTools(deps.tools))
   const tools = [...scoped, ...(browser ? [collectionProgress([]).tool] : []), ...(planned && desktop ? [taskPlan([]).tool] : [])]
   return {
-    system: promptFor('lead', { task: '', flags: { engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: scoped.some(tool => tool.name === 'page_steps'), pageDo: scoped.some(tool => tool.name === 'page_do'), native: options.native, tools: deps.tools.map(tool => tool.name) } }).system,
+    system: promptFor('work', { task: '', flags: { engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: scoped.some(tool => tool.name === 'page_steps'), pageDo: scoped.some(tool => tool.name === 'page_do'), native: options.native, tools: deps.tools.map(tool => tool.name) } }).system,
     tools: tools.map(tool => ({ name: tool.name, description: tool.description, argsSchema: tool.argsSchema })),
   }
 }

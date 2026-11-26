@@ -13,7 +13,7 @@ const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'fi
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import { cleanLine } from '../src/main/first-line.js'
-import { ackPrompt } from './ack-prompt.js'
+import { quickPrompt } from './ack-prompt.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
@@ -30,7 +30,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
   it('tells a document ask to make the document, not ask about it, on the one menu, and leaves the real gates where they are', () => {
     expect(COLLEAGUE_RULE).toContain('A document they ask for is made, not asked about')
     expect(COLLEAGUE_RULE).toContain('never offer a menu of options or ask how they want it when one reasonable choice exists')
-    expect(source('answer.ts')).toContain('tools: everyTool,')
+    expect(source('answer.ts')).toContain('[...everyTool, escalate]')
     expect(source('answer.ts')).not.toMatch(/DESK_TOOLS|deskKind/)
     expect(core('prompt.ts')).toContain('A control that would submit, save, send or buy is pressed like any other - the app stops there itself')
     expect(core('comet-page-tools.ts')).toContain('The page needs the person to sign in or pass a check.')
@@ -45,11 +45,11 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(ipc).toContain('context: () => ({ company, handedBack, attachments: attachments.context, recovery, turn: turn?.context, team: team.note(channel), outputs: priorOutputLines(earlierOutputs)')
   })
   it('opens a document turn with its first step and closes with what is in the file (D2, D4 judge)', () => {
-    const line = ackPrompt('위 회의록으로 워드 보고서 만들어줘', true)
+    const line = quickPrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(line).toContain('the step is the first thing done with what the request names, never the document plus "-해볼게요"')
     expect(line).toContain('"회의록 내용부터 추릴게요.", "매출 파일부터 볼게요."')
     expect(line).toContain('never "보고서 작성해볼게요.", "엑셀 파일 만들어볼게요."')
-    expect(ackPrompt('Make a report from the notes', false)).toContain('never "Making the report now."')
+    expect(quickPrompt('Make a report from the notes', false)).toContain('never "Making the report now."')
     expect(COLLEAGUE_RULE).toContain('never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요.")')
   })
 })
@@ -98,11 +98,13 @@ describe('a kept fact is corrected by the model\'s own keep_in_mind call (M2)', 
 })
 
 describe('small talk never sounds like a help desk (Q1)', () => {
-  it('a greeting goes to the lead, whose rule says never to ask or offer help, and the quick voice is asked for nothing on it; a line is shown as written', () => {
+  it('a greeting is answered whole by the quick tier, whose prompt says never to ask or offer help, like the lead\'s rule; a line is shown as written', () => {
     expect(COLLEAGUE_RULE).toContain('no asking or offering help in any wording')
-    expect(ackPrompt('주말 잘 보내셨어요?', true)).toContain('Reply with exactly NONE when the message is a greeting')
+    const prompt = quickPrompt('주말 잘 보내셨어요?', true)
+    expect(prompt).toContain('Answer it yourself, in full, when the reply needs nothing but this conversation and what anyone knows: a greeting')
+    expect(prompt).toContain('no offer of help in any wording ("뭐든 말씀해 주세요", "도와드릴까요")')
     for (const said of ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요! 오늘은 무엇을 도와드릴까요?', '좋은 아침이에요. 뭐 도와드릴까요?', '안녕하세요! 도와드릴 일 있으면 말씀하세요.', '반가워요. 필요하신 게 있으면 말씀해 주세요.', 'Hi there! How can I help you today?', '무엇을 도와드릴까요?']) expect(cleanLine(said), said).toBe(said)
-    for (const none of ['NONE', '  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()
+    for (const none of ['  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()
   })
   it('leaves a colleague\'s line as it is', async () => {
     for (const said of ['안녕하세요! 좋은 아침이에요.', '별말씀을요. 더 필요한 거 있으면 말씀하세요.', '회의록부터 읽어볼게요.', '거의 다 찾았어요, 금방 올릴게요.']) expect(cleanLine(said), said).toBe(said)

@@ -1,13 +1,13 @@
-export interface VoiceLike {
+export interface VoiceLike<T> {
   readonly closed: boolean
   readonly ready: boolean
-  ask(prompt: string, timeoutMs: number): Promise<string>
+  ask(prompt: string, timeoutMs: number): Promise<T>
 }
 
 const tails: Promise<unknown>[] = []
 const waiting: number[] = []
 
-export function askInTurn(voice: (lane: number) => Promise<VoiceLike | undefined>, prompt: string, timeoutMs: number, lanes = 1): Promise<string> {
+export function askInTurn<T>(voice: (lane: number) => Promise<VoiceLike<T> | undefined>, prompt: string, timeoutMs: number, lanes = 1): Promise<T> {
   const started = Date.now()
   let lane = 0
   for (let i = 1; i < lanes; i++) if ((waiting[i] ?? 0) < (waiting[lane] ?? 0)) lane = i

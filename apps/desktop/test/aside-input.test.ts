@@ -451,7 +451,7 @@ it('stack-7: a lookup\'s first line still live when the person speaks mid-work s
   try {
     vi.mocked(broadcast).mockClear()
     vi.mocked(broadcast).mockImplementation(event => { firstLineSaw(event as { type: string; channel?: string; reset?: boolean }) })
-    beginFirstLine({ host: false, channel: 'bot-rate', message: '오늘 엔화 환율 알려줘', korean: true, interactive: true, engine: async () => ({ id: 'claude' as const, quick: async () => '지금 환율 볼게요.' }) as never, workdir: '' as never, signal: new AbortController().signal, show: () => {} })
+    beginFirstLine({ host: false, channel: 'bot-rate', message: '오늘 엔화 환율 알려줘', korean: true, interactive: true, engine: async () => ({ id: 'claude' as const, quick: async () => ({ text: '지금 환율 볼게요.', handOff: '엔화 환율' }) }) as never, workdir: '' as never, signal: new AbortController().signal, show: () => {} })
     firstLineReady('bot-rate')
     await vi.waitFor(() => expect(firstLineCarried('bot-rate')).toBe('지금 환율 볼게요.'))
     await handlers.get('chat:say')!({}, 'bot-rate', '위안화도 같이요')

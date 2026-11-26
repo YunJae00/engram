@@ -31,7 +31,7 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const out = JSON.parse(await w.hire([{ role: '서울 조사', brief: '서울 오늘 날씨', lookup: true }, { role: '보고서', brief: '엑셀로 정리' }]))
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
-  expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS })
+  expect(lookup!.options).toMatchObject({ role: 'deep', maxCalls: LOOKUP_MAX_CALLS })
   expect(lookup!.options.deadlineMs).toBeGreaterThan(10_000)
   expect(lookup!.options.deadlineMs).toBeLessThanOrEqual(11_000)
   expect([TEAM_ANSWER_MS, LATE_CEILING_MS, LOOKUP_MAX_CALLS]).toEqual([28_000, 90_000, 4])
@@ -39,7 +39,7 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   expect(lookup!.options.native).toBeUndefined()
   expect(lookup!.options.persona).toContain('You only look things up')
   expect(work!.tools).toEqual(expect.arrayContaining(['excel_write', 'file_read', 'page_steps', 'hire_members']))
-  expect(work!.options.modelHint).toBeUndefined()
+  expect(work!.options.role).toBeUndefined()
   expect(work!.options.deadlineMs).toBeUndefined()
   expect(work!.options.native).toBeTruthy()
   expect(w.nativeFor).toHaveBeenCalledTimes(1)

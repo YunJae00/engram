@@ -2006,7 +2006,7 @@ export function registerIpc(ctx: VaultContext): void {
         },
       },
       retrieve: noteSearch(ctx.store, meaning, flog),
-      ...(desk ? { office: { outputs: taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), personal: input.named ?? '', assertActive: () => assertDesktopTurnNotStopped(channel), ...(engine.quick ? { proofread: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) } : {}) } } : {}),
+      ...(desk ? { office: { outputs: taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), personal: input.named ?? '', assertActive: () => assertDesktopTurnNotStopped(channel), ...(engine.quick ? { proofread: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }).then(reply => reply.text) } : {}) } } : {}),
       ...(channel.startsWith('bot-') ? { bot: { schedule: cometSchedule(channel.slice('bot-'.length), input.chief === true), chief: input.chief === true, changed, said: () => turnGoals.get(channel) ?? '', kept: (added: number) => broadcast({ type: 'comet:remembered', channel, botId: channel.slice('bot-'.length), added, touched: 0 }) } } : {}),
       ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? { files: { readable: [...attachments.paths, ...earlierOutputs.map((output) => output.path)], workFolder: native?.cwd ?? await workFolderFor(paths, channel), consent: { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }, host: appFileHost } } : {}),
     })
@@ -2242,7 +2242,7 @@ export function registerIpc(ctx: VaultContext): void {
           waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
           onToolStart: () => { toolStarted = true },
           skills: async () => company ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
-          ...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),
+          ...(company ? { role: 'deep' as const, ...(turn?.report ? {} : { light: true }) } : {}),
           ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }, steered: signal => followUpSaid(channel, signal) }),
           compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
           onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),

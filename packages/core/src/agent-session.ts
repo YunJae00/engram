@@ -7,7 +7,7 @@ import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
 import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
-import { promptFor } from './prompt.js'
+import { MODEL_TIER, promptFor } from './prompt.js'
 import { withoutSecrets } from './secrets.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { taskPlan } from './agent-plan.js'
@@ -250,7 +250,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     void back.finally(() => detached.delete(back))
     return withSteer(STILL_RUNNING, said)
   } }))
-  const built = promptFor(options.role ?? 'lead', { task, flags: { engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native, kind, tools: deps.tools.map(tool => tool.name) }, persona: options.persona, memory: options.memory, history: options.history, onScreen: options.onScreen, context: options.context, resume: options.resume, skills: options.skills })
+  const tier = MODEL_TIER[options.role ?? 'work']
+  const built = promptFor(options.role ?? 'work', { task, flags: { engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native, kind, tools: deps.tools.map(tool => tool.name) }, persona: options.persona, memory: options.memory, history: options.history, onScreen: options.onScreen, context: options.context, resume: options.resume, skills: options.skills })
   let checkedAt = Date.now()
   const watchdog = setInterval(() => {
     const elapsed = Date.now() - checkedAt
@@ -293,7 +294,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     prompt: built.prompt,
     ...(built.opening ? { opening: built.opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
-    ...(options.modelHint ? { modelHint: options.modelHint } : {}),
+    ...(tier ? { modelHint: tier } : {}),
     ...(options.lookup || options.light ? { effort: 'low' as const } : {}),
     ...(options.native ? { native: {
       ...options.native,

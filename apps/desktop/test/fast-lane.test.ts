@@ -33,7 +33,7 @@ it('gives a short question and a short job the same call, and the host asks neit
 
 it('gives a lookup the shell and the full menu like any turn, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("return runComet({ engine, workdir: engineCwd(paths), tools: menu, ...(imagePaths ? { imagePaths } : {}) }, message, {")
   expect(ipc).toContain('...(native && !company ? { native } : {}),')
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native ? { native } : {}),')
   expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }, steered: signal => followUpSaid(channel, signal)')
@@ -80,7 +80,7 @@ it('streams a lookup turn\'s words as they come, like any turn with no ack on sc
   } finally { await rm(root, { recursive: true, force: true }) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hold = !!firstLineState(channel)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const now = firstLineState(channel), hold = !!now && 'pending' in now")
   expect(ipc).toContain('onReset: (drop, tool) => { broadcast(')
 })
 

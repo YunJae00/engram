@@ -228,7 +228,7 @@ describe('c16a r2: review findings', () => {
   })
 
   it('#2: no host writer is left to give a due to: the written-report layer is gone from core and from the runner', () => {
-    expect(Object.keys(core).filter(key => /report|merg|helper|written/i.test(key)).sort()).toEqual(['MERGED_SHAPE', 'REPORT_WRITER_MS', 'helpersTool', 'hybridMerge', 'mergeBySubject', 'mergeInto', 'mergeMemory', 'mergeWorkspace', 'pageReport'])
+    expect(Object.keys(core).filter(key => /report|merg|helper|written/i.test(key)).sort()).toEqual(['HELPER_PERSONA', 'MERGED_SHAPE', 'REPORT_WRITER_MS', 'helpersTool', 'hybridMerge', 'mergeBySubject', 'mergeInto', 'mergeMemory', 'mergeWorkspace', 'pageReport'])
     expect(core.TEAM_ANSWER_MS).toBe(28_000)
     expect(Object.keys(core)).toContain('handBacks')
   })

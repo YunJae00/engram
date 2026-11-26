@@ -12,7 +12,7 @@ export type TraceRecord =
     menu: { name: string; description: number; schema: number }[]; maxCalls: number
     calls: TraceCall[]; firstTokenMs?: number; endMs: number; usage: number[]; answer: number; error?: string; note?: string
   }
-  | { kind: 'quick'; at: string; prompt: string; endMs: number; answer: number; error?: string }
+  | { kind: 'quick'; at: string; prompt: string; endMs: number; answer: number; handOff?: string; error?: string }
 
 export type TraceSink = (record: TraceRecord) => void
 
@@ -70,14 +70,16 @@ export function traced<T extends Engine>(engine: T, sink?: TraceSink): T {
   const quick = engine.quick?.bind(engine)
   if (quick) engine.quick = async (prompt, options) => {
     const at = new Date().toISOString(), since = clock()
-    let answer = '', error: string | undefined
+    let answer = '', handOff: string | undefined, error: string | undefined
     try {
-      answer = await quick(prompt, options)
-      return answer
+      const reply = await quick(prompt, options)
+      answer = reply.text
+      handOff = reply.handOff
+      return reply
     } catch (thrown) {
       error = messageOf(thrown)
       throw thrown
-    } finally { write(() => ({ kind: 'quick', at, prompt, endMs: since(), answer: answer.length, error })) }
+    } finally { write(() => ({ kind: 'quick', at, prompt, endMs: since(), answer: answer.length, ...(handOff === undefined ? {} : { handOff }), error })) }
   }
   return engine
 }

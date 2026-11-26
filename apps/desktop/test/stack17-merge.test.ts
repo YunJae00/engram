@@ -43,7 +43,7 @@ describe('stack-17: a correction after a lookup reaches the model as typed, with
   it('in the turn, no meaning is built by the host and no judge, page read, helpers\' writer or lead check reads the answer after it; the turn keeps the plain words', () => {
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
     expect(own).not.toMatch(/askNow|routeAsk|changedNote|What the person asks for now/)
-    expect(own).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
+    expect(own).toContain("return runComet({ engine, workdir: engineCwd(paths), tools: menu, ...(imagePaths ? { imagePaths } : {}) }, message, {")
     const from = ipc.indexOf('await begun!.run({')
     expect(ipc.slice(from, ipc.indexOf('afterAnswer = async () => {', from)).match(/result\.answer = /g)).toBeNull()
   })

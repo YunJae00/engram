@@ -1,4 +1,5 @@
 import type { CaseRun, EvalCase } from '../src/main/runner.js'
+import { SAFETY_LINE } from '../src/main/first-line.js'
 import { CASES as QUICK } from './eval-quick-cases.mts'
 
 const all = (run: CaseRun) => run.answers.join('\n')
@@ -12,6 +13,14 @@ const RECEIVED: Record<string, string> = {
   '받은자료/현장사진_창고.jpg': 'jpg 현장 창고',
   '받은자료/계약서_초안.docx': 'docx 계약서 초안',
   '받은자료/계약서_수정.docx': 'docx 계약서 수정',
+}
+const BAND_MS = 1500
+const realFirst = (run: CaseRun) => !!run.trace.first && run.trace.first.text !== SAFETY_LINE.ko && run.trace.first.ms <= BAND_MS
+const DELIVERIES = '# 11월 납품 일정\n\n| 날짜 | 거래처 | 품목 | 수량 |\n|---|---|---|---|\n| 11월 3일 | 대성기계 | 볼트 | 400 |\n| 11월 9일 | 한결물산 | 너트 | 250 |\n| 11월 17일 | 대성기계 | 와셔 | 900 |\n| 11월 24일 | 우진상사 | 볼트 | 120 |\n| 12월 2일 | 한결물산 | 너트 | 300 |\n'
+const BRANCHES: Record<string, string> = {
+  '지점자료/강남.csv': '월,방문객,매출(만원),직원수,평균대기(분)\n7,4200,6100,6,14\n8,4500,6500,6,17\n9,4700,6900,6,21\n10,5100,7400,6,26\n',
+  '지점자료/수원.csv': '월,방문객,매출(만원),직원수,평균대기(분)\n7,3100,4000,5,8\n8,3000,3900,5,7\n9,2900,3800,5,7\n10,2800,3700,5,6\n',
+  '지점자료/대전.csv': '월,방문객,매출(만원),직원수,평균대기(분)\n7,2500,3300,3,15\n8,2700,3600,3,18\n9,2900,3900,3,22\n10,3200,4300,3,27\n',
 }
 const kindOf = (name: string) => name.slice(name.lastIndexOf('.'))
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
@@ -67,6 +76,27 @@ export const CASES: EvalCase[] = [
     id: 'lookup-live',
     ask: () => '지금 도쿄 날씨 어때?',
     grade: run => ({ linked: /\]\(https?:\/\//.test(all(run)), degrees: /\d+(?:\.\d+)?\s*(?:°|도)/.test(all(run)) }),
+  },
+  {
+    id: 'tier-chat',
+    ask: () => '점심 맛있게 드셨어요? 저는 방금 국수 먹고 왔어요',
+    grade: run => ({ said: all(run).trim().length > 0, noStep: run.steps.length === 0, wholeInBand: run.trace.final.ms <= BAND_MS }),
+  },
+  {
+    id: 'tier-work',
+    files: { '납품일정.md': DELIVERIES },
+    ask: () => '납품일정.md 보고 11월 납품이 몇 건인지 알려줘',
+    grade: run => ({ count: /4\s*건/.test(all(run)), realFirstInBand: realFirst(run), lineBeforeFinal: !!run.trace.first && run.trace.first.ms < run.trace.final.ms && !run.trace.final.text.trim().startsWith(run.trace.first.text) }),
+  },
+  {
+    id: 'tier-hard',
+    files: BRANCHES,
+    ask: () => '지점자료/강남.csv, 지점자료/수원.csv, 지점자료/대전.csv 세 지점 넉 달 치를 서로 맞춰 보고, 내년 1분기에 어느 지점에 직원을 몇 명 더 둘지 근거를 대서 단계별 배치 계획 세워줘',
+    grade: run => {
+      const up = run.trace.escalated
+      const deep = up && run.trace.steps.find(step => step.ms > up.ms)
+      return { escalated: !!up, saidWhy: !!up?.said.trim(), whyBeforeDeep: !!up && up.said.trim().length > 0 && up.ms < (deep ?? run.trace.final).ms, planned: /강남|대전/.test(all(run)) }
+    },
   },
   {
     ...quick('mid-work-words'),

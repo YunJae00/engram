@@ -140,8 +140,8 @@ describe('the Claude engine built from plain inputs', () => {
   it('keeps quick answers apart for two input sets that share a runtime path, profile and folder', async () => {
     const north = world('orchard-runtime', 'north'), south = world('orchard-runtime', 'south')
     try {
-      expect(await new ClaudeEngine(north.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toBe('north 1')
-      expect(await new ClaudeEngine(south.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toBe('south 1')
+      expect(await new ClaudeEngine(north.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toEqual({ text: 'north 1' })
+      expect(await new ClaudeEngine(south.inputs, 'grove').quick('Which row ripens first?', { workdir: '/orchard', timeoutMs: 5_000 })).toEqual({ text: 'south 1' })
       expect(south.seen[0]!.options['env']).toEqual({ ORCHARD_PROFILE: 'grove' })
       expect(south.inputs.sdk).toHaveBeenCalled()
     } finally { closeVoices(north.inputs); closeVoices(south.inputs) }

@@ -3,10 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { promptFor, runComet, sessionShape, type AgentTool, type Engine, type NativeTools, type PromptContext, type ToolSessionJob } from 'core'
+import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, type PromptContext, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
+import { ESCALATE_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -24,7 +25,7 @@ const history = [{ role: 'user' as const, text: '다음 주 목요일에 부모�
 const shot = (job: ToolSessionJob) => ({ system: job.system, prompt: job.prompt, opening: job.opening ?? null })
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('lead, teammate, helper and ack prompts and the turn notes are byte-identical to the parent snapshot', async () => {
+  it('work, deep and helper prompts and the turn notes are byte-identical to the parent snapshot; the chat lead adds only the escalate rule, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -40,7 +41,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   await lead('lead-desk', 'claude', desk, 'fixtures 정리해줘', { native: native({ workspace: '/vault/workspace', mode: 'once' }), history })
   await lead('lead-codex', 'codex', desk.slice(0, 5), '보고서 고쳐줘', { native: native({ mode: 'each' }) })
   await lead('lead-plan', 'claude', desk.slice(0, 4), '계획만 세워줘', { native: native({ mode: 'plan', workspace: '/vault/workspace' }), short: true })
-  await lead('teammate', 'claude', web.slice(0, 3), '서울 날씨 찾아줘', { role: 'teammate', persona: 'You are 도윤, on the team. Bring back what you found.', lookup: true, session: 'member-1' })
+  await lead('teammate', 'claude', web.slice(0, 3), '서울 날씨 찾아줘', { role: 'deep', persona: 'You are 도윤, on the team. Bring back what you found.', lookup: true, session: 'member-1' })
   out['warm'] = sessionShape({ engine: { id: 'claude' } as Engine, tools: desk }, { native: native({ workspace: '/vault/workspace' }) }).system
   out['warm-bare'] = sessionShape({ engine: { id: 'codex' } as Engine, tools: web }).system
 
@@ -48,13 +49,10 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   await lookAsHelper({ channel: 'bot-1', engine: recorder('claude', helperJobs), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '부산 날씨', 0)
   out['helper'] = shot(helperJobs[0]!)
 
-  out['ack-ko'] = promptFor('ack', { message: '엔비디아 오늘 주가 알려줘', korean: true })
-  out['ack-en'] = promptFor('ack', { message: '  check the weather in Tokyo  ', korean: false, said: ['Checking now.', 'Looking it up.', 'On it.'] })
-  out['ack-ko-said'] = promptFor('ack', { message: '보고서 만들어줘', korean: true, said: ['지금 시세 확인할게요.'] })
 
   const quiet = new AbortController()
   let resolve: (line: string) => void = () => {}
-  const engine = { id: 'claude', quick: () => new Promise<string>(done => { resolve = done }) } as unknown as Engine
+  const engine = { id: 'claude', quick: () => new Promise<{ text: string; handOff: string }>(done => { resolve = line => done({ text: line, handOff: '날씨' }) }) } as unknown as Engine
   beginFirstLine({ channel: 'bot-a', message: '날씨 봐줘', korean: true, interactive: true, studying: false, limited: false, secret: false, engine: async () => engine, workdir: { root: '/tmp/w' } as never, signal: quiet.signal, show: () => {} })
   await new Promise(done => setTimeout(done, 20))
   out['note-pending'] = firstLineNote('bot-a')
@@ -74,10 +72,17 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     scratch.push(dir)
     const world = await openWorld(dir, recorder('mock', jobs))
     await answer(world, '날씨 정리해줘', { tools: web.slice(0, 2), context: () => context })
-    out[name] = shot(jobs[0]!)
+    const job = shot(jobs[0]!)
+    expect(job.system, name).toContain(ESCALATE_RULE)
+    out[name] = { ...job, system: job.system.replace(`${ESCALATE_RULE}\n`, '') }
   }
-  expect(Object.keys(out)).toEqual(Object.keys(parent))
-  for (const key of Object.keys(parent)) expect(out[key], key).toEqual(parent[key])
+  const kept = Object.keys(parent).filter(key => !key.startsWith('ack-'))
+  expect(Object.keys(out)).toEqual(kept)
+  const raced = `\n\n${parent['note-pending'] as string}`
+  for (const key of kept) {
+    const was = parent[key] as { prompt?: string }
+    expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : was)
+  }
   })
 
   it('the moved prompt sentences live only in core/prompt.ts: no other source file defines or repeats one', () => {

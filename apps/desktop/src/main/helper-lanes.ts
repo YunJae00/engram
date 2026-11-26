@@ -1,4 +1,4 @@
-import { runComet, type AgentTool } from 'core'
+import { HELPER_PERSONA, runComet, type AgentTool } from 'core'
 import { resetLane } from './agent-browser.js'
 
 const HELPER_READS = new Set(['search_web', 'open_page', 'read_open_page', 'read_pages', 'look', 'scroll', 'reveal', 'search_memory', 'read_note', 'search_chats', 'find_skills', 'open_skill'])
@@ -23,7 +23,7 @@ export async function lookAsHelper(input: {
       ...(signal ? { signal } : {}),
       guided: input.guided,
       maxCalls: HELPER_CALLS,
-      role: 'helper',
+      persona: HELPER_PERSONA,
       onStep: input.onStep,
     })
     return result.answer

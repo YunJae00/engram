@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
-import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { ENGINE_BUDGETS, type QuickReply, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { codexBinary, withHelpersOnPath, type CloudEngine } from './engine-cloud.js'
 import { commandText, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudLoginOptions, type RunText } from './run-text.js'
 import { cloudErrorKind } from './usage-limit.js'
@@ -108,9 +108,9 @@ export class CodexEngine implements CloudEngine {
   forgetStatus(): void { this.status.forget() }
 
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
-  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
+  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply> {
     const metric = modelCall('codex', prompt.length, 'low')
-    try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) } finally { metric.end() }
+    try { return { text: await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) } } finally { metric.end() }
   }
   private async voiceFor(workdir: string): Promise<CodexVoice | undefined> {
     await loadBrainConnections()
