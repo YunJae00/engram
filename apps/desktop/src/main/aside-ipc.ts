@@ -36,6 +36,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   })
   const watching = new Set<number>()
   const stops = new Map<string, number>()
+  const sayChain = new Map<string, Promise<unknown>>()
   ipcMain.handle('chat:queued', (event, botId: string, pending: boolean) => {
     if (typeof botId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(botId) || typeof pending !== 'boolean') return
     const source = event.sender.id
@@ -64,13 +65,18 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const stopped = (): boolean => (stops.get(channel) ?? 0) !== stopsBefore
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
+    const queued = (sayChain.get(channel) ?? Promise.resolve()).then(() => store(channel, botId, said, stopped))
+    sayChain.set(channel, queued.catch(() => undefined))
+    return { ok: await (await queued).read || stopped() }
+  })
+  const store = async (channel: string, botId: string, said: string, stopped: () => boolean): Promise<{ read: Promise<boolean> }> => {
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
     await changeCheckpoint(deps.paths, botId, state => stopped() ? state : { ...state, pending: [...new Set([...state.pending, said])] }).catch(() => flog('aside', 'checkpoint-write-failed'))
-    if (stopped()) return { ok: true }
+    if (stopped()) return { read: Promise.resolve(true) }
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     const pending = await readCheckpoint(deps.paths, botId).catch(() => ({ pending: [said] }))
     taskQueued(botId, pending.pending.length > 0)
-    return { ok: await deps.followUp(channel, said) || stopped() }
-  })
+    return { read: deps.followUp(channel, said) }
+  }
 }

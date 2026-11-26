@@ -76,6 +76,16 @@ it('lands two messages said during the turn in the same one result', async () =>
   expect((await readCheckpoint(paths, 'two')).pending).toEqual([])
 })
 
+it('hands messages said quickly one after another to the lead in the order they were said', async () => {
+  const h = await harness()
+  const turn = h.turn('order', '강릉 커피 거리 카페 골라줘', 4)
+  const said = ['창가 자리 있는 곳', '디저트도 맛있는 곳', '아침 일찍 여는 곳', '조용한 곳'].map(text => h.say('bot-order', text))
+  h.step.open()
+  expect(await Promise.all(said)).toEqual(said.map(() => ({ ok: true })))
+  await turn
+  expect((await rows('order')).filter(row => row.startsWith('assistant'))).toEqual(['assistant 강릉 커피 거리 카페 골라줘 + 창가 자리 있는 곳 + 디저트도 맛있는 곳 + 아침 일찍 여는 곳 + 조용한 곳'])
+})
+
 it('hands a message the lead never read back to the sender once the lead is done, stored once, so it goes out as the next message', async () => {
   const h = await harness()
   const turn = h.turn('three', '안동 하회마을 입장료 알려줘', 0)
