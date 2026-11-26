@@ -81,14 +81,17 @@ it('exports logs without a folder picker, and away from the real Downloads when 
   expect(fake.dialog).not.toHaveBeenCalled()
 })
 
-it('widening waits for the person\'s yes: a rule is not removed, a source not turned on before it, and a repository is never connected from chat', async () => {
+it('widening waits for the person\'s yes: a rule is not removed, a source not turned on and a repository not connected before it', async () => {
   const call = chat()
   const loosen = { do: 'ask_first', name: 'naver.com', on: false }
   await call('naver.com은 이제 그냥 해', loosen)
   await call('아뇨', loosen)
   expect(rules.removeReviewRule).not.toHaveBeenCalled()
-  expect(await call('https://github.com/me/notes 에 노트 올려줘', { do: 'backup_connect', name: 'https://github.com/me/notes' })).toBe('그건 채팅으로는 바꿀 수 없어요.')
+  const repo = { do: 'backup_connect', name: 'https://github.com/me/notes' }
+  expect(await call('https://github.com/me/notes 에 노트 올려줘', repo)).toBe('https://github.com/me/notes에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
   expect(fake.connect).not.toHaveBeenCalled()
+  await call('네', repo)
+  expect(fake.connect).toHaveBeenCalledOnce()
   fake.settings['workMap'] = false
   const places = { do: 'learn_places', on: true }
   await call('들른 사이트 다시 봐도 돼', places)

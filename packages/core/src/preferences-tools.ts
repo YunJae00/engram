@@ -62,7 +62,9 @@ function question(ask: PreferenceAsk): string {
   switch (ask.do) {
     case 'app_activity': case 'learn_places': case 'learn_files': case 'learn_apps': return `${josa(SOURCE_WORDS[ask.do], '을', '를')} 다시 참고할까요?`
     case 'app': return `${josa(name, '을', '를')} 다시 써도 될까요?`
-    default: return `${name}에서 먼저 여쭤보는 규칙을 없앨까요?`
+    case 'auto_allow': return `${name}에서는 묻지 않고 바로 제출해도 될까요?`
+    case 'ask_first': return `${name}에서 먼저 여쭤보는 규칙을 없앨까요?`
+    default: return `${name}에 백업을 연결할까요? 노트가 그 저장소로 올라가요.`
   }
 }
 
@@ -184,8 +186,7 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
       if (!found || found.on) return `${josa(found?.label ?? ask.name!.trim(), '은', '는')} 지금도 쓸 수 있어요.`
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
-    if (ask.do === 'auto_allow' && !siteOf(ask.name ?? '')) return done(ask)
-    if (ask.do === 'auto_allow' || ask.do === 'backup_connect') return '그건 채팅으로는 바꿀 수 없어요.'
+    if (ask.do === 'auto_allow') { const site = siteOf(ask.name ?? ''); if (!site) return done(ask); ask.name = site }
     const answer = turn.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
     if (held && same(held.ask, ask) && held.turn !== turn && clock().getTime() - held.at <= PENDING_MS) {
       if (YES.test(answer)) return done(ask)
@@ -198,7 +199,7 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     tool: (channel, said) => ({
       name: 'preferences',
       closes: () => /[가-힣]/.test(said()),
-      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call and give its reply to them as it is (it is already one Korean line; in another language, say the same thing in theirs). do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When the reply is a question, the change has NOT been made: pass the question on and stop. When the person answers that question in their next message, call once more with the same arguments; the tool reads their answer itself.',
+      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call and give its reply to them as it is (one Korean line; in another language, say it in theirs). do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When the reply is a question, the change has NOT been made: pass the question on and stop; when the person answers it, call again with the same arguments.',
       argsSchema: { type: 'object', additionalProperties: false, required: ['do'], properties: { do: { type: 'string', enum: [...PREFERENCE_ACTIONS] }, on: { type: 'boolean' }, name: { type: 'string' } } },
       async run(args) {
         const action = PREFERENCE_ACTIONS.find(one => one === args['do'])

@@ -180,14 +180,18 @@ describe('narrowing is done at once, widening waits for the person\'s own yes', 
     expect(fake.calls).toEqual(['learning:activity:false'])
   })
 
-  it('a model\'s call can neither start a standing allow nor connect a backup', async () => {
+  it('a standing allow and a backup connect are made only after the person types a yes in a later message', async () => {
     const { call, calls } = setup()
-    const allow = { do: 'auto_allow', name: 'evil.example.com', on: true }
-    expect(await call('evil.example.com은 확인 없이 보내', allow)).toBe('그건 채팅으로는 바꿀 수 없어요.')
-    expect(await call('응', allow)).toBe('그건 채팅으로는 바꿀 수 없어요.')
-    const backup = { do: 'backup_connect', name: 'https://github.com/someone/else' }
-    expect(await call('https://github.com/someone/else 에 백업 붙여줘', backup)).toBe('그건 채팅으로는 바꿀 수 없어요.')
-    expect(await call('네', backup)).toBe('그건 채팅으로는 바꿀 수 없어요.')
+    const allow = { do: 'auto_allow', name: 'https://forms.sample.org/apply', on: true }
+    expect(await call('forms.sample.org 신청서는 묻지 말고 바로 넣어', allow)).toBe('forms.sample.org에서는 묻지 않고 바로 제출해도 될까요?')
+    expect(await call('forms.sample.org 신청서는 묻지 말고 바로 넣어', allow)).toBe('forms.sample.org에서는 묻지 않고 바로 제출해도 될까요?')
     expect(calls).toEqual([])
+    expect(await call('넵', { ...allow, name: 'forms.sample.org' })).toBe('forms.sample.org에서는 묻지 않고 제출할게요.')
+    const backup = { do: 'backup_connect', name: 'https://github.com/haneul/diary' }
+    expect(await call('내 메모들 github.com/haneul/diary 로 올려두게 해줘', backup)).toBe('https://github.com/haneul/diary에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
+    expect(await call('아니요', backup)).toBe('그대로 둘게요.')
+    expect(await call('다시 생각해보니 github.com/haneul/diary 연결해줘', backup)).toBe('https://github.com/haneul/diary에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
+    expect(await call('좋아요', backup)).toBe('깃허브 백업을 연결했어요.')
+    expect(calls).toEqual(['rule:allow:forms.sample.org:true', 'connect:https://github.com/haneul/diary'])
   })
 })

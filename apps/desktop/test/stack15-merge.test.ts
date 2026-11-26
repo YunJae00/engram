@@ -2,10 +2,11 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createBot, createTask, employeesAnswer, handBacks, officeTools, partOutcome, runToolSession, settleMember, TEAM_ANSWER_MS, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from 'core'
+import { createBot, loadBotMemory, PERSON_MEMORY, createTask, employeesAnswer, handBacks, officeTools, partOutcome, runToolSession, settleMember, TEAM_ANSWER_MS, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
+import { learningTools } from '../src/main/learning-wiring.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
@@ -85,6 +86,16 @@ describe('stack-15 merge: the lead\'s answer check and background memory do not 
     started()
     expect(await memory).toBe('kept')
     expect(memoryRuns).toBe(2)
+  })
+  it('a fact the person asks to keep is written by the model\'s own call inside its turn, so turns that keep starting cannot drop it', async () => {
+    const paths = { ...await vault('keep'), notes: join(temporary, `engram-stack15-notes-${Date.now()}`) } as VaultPaths
+    await mkdir(paths.notes, { recursive: true })
+    const busy = Array.from({ length: 6 }, () => turnRunning())
+    const keep = learningTools(paths, 'bot-1', () => '').find(tool => tool.name === 'keep_in_mind')!
+    await keep.run({ facts: ['조카 생일은 4월 9일이다'] }, { task: '조카 생일 4월 9일인 거 잊지 마' })
+    for (let i = 0; i < 5; i++) busy.push(turnRunning())
+    expect((await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text)).toEqual(['조카 생일은 4월 9일이다'])
+    for (const end of busy) end()
   })
 })
 
