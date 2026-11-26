@@ -429,7 +429,7 @@ const ymd = (day: Date): string => `${day.getFullYear()}-${String(day.getMonth()
 
 export interface AssignHost extends TeamHost {
   later(ids: string[]): Promise<void>
-  running(): Promise<Pick<AssignHost, 'change' | 'later' | 'release'> | undefined>
+  running(): Promise<Array<Pick<AssignHost, 'change' | 'later' | 'release'> & { parts: TeamMember[] }>>
   attach(botId: string, then: NonNullable<TeamMember['then']>): Promise<boolean>
   write?: ReportWriter
 }
@@ -491,6 +491,8 @@ const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
 export const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]*)\)$/
 const delivered = (m: TeamMember): string => m.state === 'failed' || m.state === 'hired' || m.state === 'working' || !m.result?.trim() || m.result.startsWith('Failed: ') ? '' : m.result.trim()
 const atWork = (m: TeamMember): boolean => m.state === 'hired' || m.state === 'working'
+const named = (m: TeamMember, name: string): boolean => m.parentId === null && (name === m.id || name === m.topic || name === m.role)
+const runningNow = (members: readonly TeamMember[]): string => members.filter(m => m.parentId === null && atWork(m)).map(m => `${m.role}${m.topic ? ` (${m.topic})` : ''}`).join(', ')
 export type PartOutcome = 'found' | 'nothing-in-period' | 'working' | 'unfinished'
 export const partOutcome = (m: TeamMember): PartOutcome => atWork(m) ? 'working' : m.data?.nothing ? 'nothing-in-period' : m.data?.facts.length || m.data?.items?.length || (!m.unfinished && !m.data && !!delivered(m)) ? 'found' : 'unfinished'
 
@@ -546,20 +548,21 @@ const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member
 export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => void): AgentTool {
   return {
     name: 'assign',
-    closes: args => args['wait'] === false || args['steer'] === true,
-    description: `Hand work to agents on the person's team by name; each does their part as themselves, with their own role and memory, side by side. ONE call for the whole sentence, 1 to ${ASSIGN_MAX} parts, no question and no confirmation. to: who (the agent's name as it is on the team: "지민이는" names 지민), brief (their whole part, complete on its own, at most 3 short lines; only what the person asked for), topic (the name of their part in the person's own words, a word or two: "노션"). Someone named who is not on the team yet is added by this same call: give their role (a few words from the sentence, or that fit the part: "리니어 조사 담당"). then {who, brief}: when who finishes, their result goes to this second agent, who does brief with it ("지민이 다 찾으면 서연한테 건네서 ...", or "지민이 날씨를 보면 서연이 그걸 받아 문구 써줘": to [{who 지민, brief the weather part, then {who 서연, brief the copy part}}]); leave the first brief out to hand over the work that agent is on now or last finished. make true only for a part that creates or changes a file or acts on a page; otherwise the part is a fast read-only lookup. wait false when the person just hands the job off ("맡겨", "시켜 놔"): the reply is shown to the person as your answer and ends the turn, and the result comes back here by itself when the work is done. wait true when they want the result in this answer ("찾아서 알려줘"): it returns what every agent handed back, and you write the one merged answer from that. steer true when the person changes work you handed off earlier that is still running: the parts in to join that work and its one result, and stop lists the parts of it taken off (their topic, or the agent's name).`,
+    closes: args => args['wait'] === false || !!said(args['steer'], 60),
+    description: `Hand work to agents on the person's team by name; each does their part as themselves, with their own role and memory, side by side. ONE call for the whole sentence, 1 to ${ASSIGN_MAX} parts, no question and no confirmation. to: who (the agent's name as it is on the team: "지민이는" names 지민), brief (their whole part, complete on its own, at most 3 short lines; only what the person asked for), topic (the name of their part in the person's own words, a word or two). Someone named who is not on the team yet is added by this same call, with role (a few words that fit the part). then {who, brief}: when who finishes, their result goes to this second agent, who does brief with it; leave the first brief out to hand over the work that agent is on now or last finished. make true only for a part that creates or changes a file or acts on a page; otherwise the part is a fast read-only lookup. wait false when the person just hands the job off: the reply is shown to the person as your answer and ends the turn, and the result comes back here by itself when the work is done. wait true when they want the result in this answer: it returns what every agent handed back, and you write the one merged answer from that. steer (a topic or agent name in it) when the person changes work handed off earlier that is still running: to joins that work and its one result, stop lists its parts taken off.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['to', 'wait'],
       properties: {
         to: { type: 'array', maxItems: ASSIGN_MAX, items: { type: 'object', additionalProperties: false, required: ['who'], properties: { who, brief: who, topic: who, role: who, make: { type: 'boolean' }, then: { type: 'object', additionalProperties: false, required: ['who', 'brief'], properties: { who, brief: who, role: who } } } } },
-        wait: { type: 'boolean' }, steer: { type: 'boolean' }, stop: { type: 'array', items: who },
+        wait: { type: 'boolean' }, steer: who, stop: { type: 'array', items: who },
       },
     },
     async run(args, context) {
-      const steer = args['steer'] === true, wait = !steer && args['wait'] !== false
-      const stop = steer && Array.isArray(args['stop']) ? args['stop'].map(one => said(one, 60)).filter(Boolean) : []
-      const job = steer ? await host.running() : undefined
-      if (steer && !job) throw new Error('No work handed off earlier is still running in this thread; call assign without steer.')
+      const steer = said(args['steer'], 60), wait = !steer && args['wait'] !== false
+      const stop = steer ? names(args['stop']) : []
+      const jobs = steer ? await host.running() : []
+      const job = jobs.find(one => one.parts.some(m => [steer, ...stop].some(name => named(m, name))))
+      if (steer && !job) throw new Error(jobs.length ? `No work still running has a part named ${steer}. Running now: ${runningNow(jobs.flatMap(one => one.parts))}.` : 'No work handed off earlier is still running in this thread; call assign without steer.')
       const on = job ?? host
       const parts = rows(args['to']).map(row => {
         const next = typeof row['then'] === 'object' && row['then'] !== null ? row['then'] as Record<string, unknown> : undefined
@@ -609,8 +612,8 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       const out = await on.change((task): { refuse: string } | { missing: string } | { ids: string[]; off: TeamMember[] } => {
         const team = task.team ?? { members: [], hires: 0, maxHires: TEAM_MAX_HIRES, maxDepth: TEAM_MAX_DEPTH, big: false }
         if ((task.state !== 'running' && !steer) || team.hires + wanted.length > team.maxHires) return { refuse: '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.' }
-        const off = team.members.filter(m => m.parentId === null && atWork(m) && stop.some(one => one === m.id || one === m.topic || one === m.role))
-        if (stop.length && !off.length) return { missing: `Nothing still running matches stop. Running now: ${team.members.filter(m => m.parentId === null && atWork(m)).map(m => `${m.role}${m.topic ? ` (${m.topic})` : ''}`).join(', ')}.` }
+        const off = team.members.filter(m => m.parentId === null && atWork(m) && stop.some(name => named(m, name)))
+        if (stop.length && !off.length) return { missing: `Nothing still running matches stop. Running now: ${runningNow(team.members)}.` }
         task.team = team
         const at = new Date().toISOString()
         const ids = wanted.map(one => {

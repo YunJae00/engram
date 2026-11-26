@@ -34,7 +34,7 @@ test('a split research ask: assign hands the lead each part as the teammate wrot
     self: null, load: async () => task, change: async work => work(task),
     run: async ids => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) settled(m, BRANCHES[m.role]!.answer, [BRANCHES[m.role]!.page]) },
     release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
-    live: () => false, tokensLeft: async () => 100_000, personSaid: () => '', later: async () => undefined, running: async () => undefined, attach: async () => false,
+    live: () => false, tokensLeft: async () => 100_000, personSaid: () => '', later: async () => undefined, running: async () => [], attach: async () => false,
   }
   const out = back(await assignTool(paths, host, () => undefined).run({ wait: true, to: Object.entries(BRANCHES).map(([who, one]) => ({ who, brief: `이번 달 ${one.topic} 변경 사항 조사`, topic: one.topic })) }, { task: '' }))
   expect(out.reports.map(r => [r.who, r.part, r.state, r.result])).toEqual(Object.entries(BRANCHES).map(([who, one]) => [who, one.topic, 'done', one.answer]))

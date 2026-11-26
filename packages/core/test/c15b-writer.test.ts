@@ -106,7 +106,7 @@ test('a waited assign hands back the parts it started on this turn only, never a
     self: null, load: async () => task, change: async change => change(task),
     run: async ids => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) settleMember(m, { answer: `밤식빵이 새로 나왔어요. ${OVEN}` }, 'now', true) },
     release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
-    live: () => false, tokensLeft: async () => 100_000, personSaid: () => ASK, later: async () => undefined, running: async () => undefined, attach: async () => false,
+    live: () => false, tokensLeft: async () => 100_000, personSaid: () => ASK, later: async () => undefined, running: async () => [], attach: async () => false,
   }
   const back = JSON.parse(await assignTool(paths, host, () => undefined).run({ wait: true, to: [{ who: '솔', brief: '오븐 빵집 새 메뉴 알아봐', topic: '오븐' }] }, { task: ASK })) as Handed
   expect(back.reports.map(r => [r.who, r.part, r.result])).toEqual([['솔', '오븐', `밤식빵이 새로 나왔어요. ${OVEN}`]])

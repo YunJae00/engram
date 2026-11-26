@@ -359,10 +359,10 @@ export function teamRunner(deps: {
       return [...teamHireTools(host), assignTool(paths, {
         ...host,
         later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
-        running: async () => {
-          const job = (await listTasks(paths)).find(t => channelOf(t) === leadChannel && !TERMINAL.includes(t.state) && backgroundOpen(t)), jobKit = job && laterKits.get(job.id)
-          return job && jobKit ? { change: work => change(job.id, work), later: ids => later(job.id, leadChannel, ids, jobKit), release: ids => release(job.id, ids) } : undefined
-        },
+        running: async () => (await listTasks(paths)).filter(t => channelOf(t) === leadChannel && !TERMINAL.includes(t.state) && backgroundOpen(t)).flatMap(job => {
+          const jobKit = laterKits.get(job.id)
+          return jobKit ? [{ parts: job.team?.members ?? [], change: <T>(work: (task: DelegatedTask) => T) => change(job.id, work), later: (ids: string[]) => later(job.id, leadChannel, ids, jobKit), release: (ids: string[]) => release(job.id, ids) }] : []
+        }),
         ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) } : {}),
         attach: async (botId, then) => {
           for (const [key, one] of live) {

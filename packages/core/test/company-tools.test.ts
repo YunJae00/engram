@@ -289,7 +289,7 @@ async function office(work: (member: TeamMember) => { answer: string; asked?: bo
     release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
     live: () => false, tokensLeft: async () => 100_000, personSaid: () => '',
     later: async ids => { later.push(ids) },
-    running: async () => steerable ? { change: host.change, later: host.later, release: host.release } : undefined,
+    running: async () => steerable ? [{ parts: task.team?.members ?? [], change: host.change, later: host.later, release: host.release }] : [],
     attach: async (botId, then) => { attached.push({ botId, then }); return attach },
   }
   const tool = assignTool(c.paths, host, c.changed)
@@ -302,7 +302,7 @@ test('steer changes handed-off work that is still running even after its turn en
   o.task.state = 'waiting'
   for (const m of o.task.team!.members) { m.state = 'working'; m.result = '반쯤 찾은 목록' }
   o.steerable(true)
-  expect(await o.assign({ wait: false, steer: true, to: [{ who: '하린', brief: '여수 맛집 찾아줘', topic: '여수' }], stop: ['전주'] })).toBe('하린은 새로 넣고, 전주 말고 여수로 바꿀게요.')
+  expect(await o.assign({ wait: false, steer: '광주', to: [{ who: '하린', brief: '여수 맛집 찾아줘', topic: '여수' }], stop: ['전주'] })).toBe('하린은 새로 넣고, 전주 말고 여수로 바꿀게요.')
   const members = o.task.team!.members
   expect(members.map(m => [m.role, m.topic, m.state, !!m.background])).toEqual([['지민', '광주', 'working', true], ['서연', '전주', 'released', true], ['하린', '여수', 'hired', true]])
   expect(members[1]).toMatchObject({ review: { ok: false, note: TAKEN_OFF } })
@@ -313,12 +313,13 @@ test('steer changes handed-off work that is still running even after its turn en
 
 test('steer never starts work of its own: with nothing handed off still running, or a stop that matches no running part, it changes nothing and says why', async () => {
   const o = await office()
-  await expect(o.assign({ wait: false, steer: true, to: [{ who: '지민', brief: '울산 날씨 봐줘', topic: '울산' }] })).rejects.toThrow(/No work handed off earlier is still running/)
+  await expect(o.assign({ wait: false, steer: '울산', to: [{ who: '지민', brief: '울산 날씨 봐줘', topic: '울산' }] })).rejects.toThrow(/No work handed off earlier is still running/)
   expect(o.task.team).toBeUndefined()
   await o.assign({ wait: false, to: [{ who: '지민', brief: '울산 날씨 봐줘', topic: '울산' }] })
   for (const m of o.task.team!.members) m.state = 'working'
   o.steerable(true)
-  await expect(o.assign({ wait: false, steer: true, to: [{ who: '서연', brief: '창원 날씨 봐줘', topic: '창원' }], stop: ['김해'] })).rejects.toThrow('Nothing still running matches stop. Running now: 지민 (울산).')
+  await expect(o.assign({ wait: false, steer: '울산', to: [{ who: '서연', brief: '창원 날씨 봐줘', topic: '창원' }], stop: ['김해'] })).rejects.toThrow('Nothing still running matches stop. Running now: 지민 (울산).')
+  await expect(o.assign({ wait: false, steer: '마산', to: [{ who: '서연', brief: '창원 날씨 봐줘', topic: '창원' }] })).rejects.toThrow('No work still running has a part named 마산. Running now: 지민 (울산).')
   expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['울산', 'working']])
 })
 
