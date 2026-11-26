@@ -153,6 +153,19 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(ipc).not.toContain("turn?.verification && kind !== 'quota'")
   })
 
+  it('a hidden task turn that finds the AI signed out or limited before it starts hands that to the task and writes nothing itself', () => {
+    const early = ipc.slice(ipc.indexOf("if (!engine || isLimited('claude', channel)) {"))
+    const first = early.slice(early.indexOf('\n') + 1, early.indexOf('\n', early.indexOf('\n') + 1))
+    expect(first).toBe('      if (turn?.quiet) throw engine ? new QuotaError() : new AuthError()')
+  })
+
+  it('a stop during any turn, hidden re-checks included, stores the stop line so it is still there when the room reopens', () => {
+    const stop = ipc.slice(ipc.indexOf('const deliverStop = async'), ipc.indexOf('const deliverStop = async') + 400)
+    expect(stop).toContain('if (!stopLines.has(channel)) return')
+    expect(stop).not.toContain('verification')
+    expect(stop).toContain('await stopTurn(paths, channel, line)')
+  })
+
   it('an aborted turn ends with the stop line or nothing, never an empty finished bubble, and no held draft is dropped from the screen', () => {
     expect(ipc).not.toMatch(/type: 'chat:done', channel, text: ''/)
     expect(ipc.match(/await deliverStop\(\)/g)).toHaveLength(3)

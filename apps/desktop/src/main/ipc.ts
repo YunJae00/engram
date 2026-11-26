@@ -35,6 +35,7 @@ import {
   EngineCallError,
   helpersTool,
   QuotaError,
+  AuthError,
   engineCwd,
   expandQueries,
   hybridMerge,
@@ -2062,6 +2063,7 @@ export function registerIpc(ctx: VaultContext): void {
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error).map(turn => turn.files?.length ? { ...turn, text: withFiles(turn.text, turn.files) } : turn)
     await recordAsk()
     if (!engine || isLimited('claude', channel)) {
+      if (turn?.quiet) throw engine ? new QuotaError() : new AuthError()
       const korean = threadKorean(request.message, savedHistory)
       const said = engine ? usageLimitMessage(korean, limitedAt('claude', channel)) : signInMessage(korean)
       if (bot) await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
@@ -2180,7 +2182,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
 
     const deliverStop = async (): Promise<void> => {
-      if (turn?.verification || !stopLines.has(channel)) return
+      if (!stopLines.has(channel)) return
       const line = stopLines.get(channel) || stopLine(threadKorean(request.message, request.history ?? []))
       stopLines.delete(channel)
       answering.delete(channel)

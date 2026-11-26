@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, QuotaError, readBotTranscript, updateTask } from 'core'
-import { usageLimitMessage } from '../src/main/usage-limit.js'
+import { AuthError, createTask, listTasks, QuotaError, readBotTranscript, updateTask } from 'core'
+import { signInMessage, usageLimitMessage } from '../src/main/usage-limit.js'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
 
@@ -335,6 +335,29 @@ it('shows the usage line once when a hidden follow-up runs out of usage before a
   await t.settle('failed')
   expect(t.delivered).toEqual([])
   expect(t.events.filter(e => e.type === 'chat:error')).toEqual([expect.objectContaining({ kind: 'quota', message: usageLimitMessage(true) })])
+})
+
+it('keeps a delivered answer and adds no sign-in line when the AI is signed out before its hidden re-check starts', async () => {
+  const answer = '동호회 회원 명단을 가나다순으로 정리했어요. [명단](engram-artifact:members.xlsx)'
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done(answer, 1), check: { accepted: false, issues: ['Row count not read back'] } }
+    throw new AuthError()
+  })
+  await t.chat('동호회 회원 명단 가나다순으로 정리하고 빠진 사람 없는지 확인해줘')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: answer })
+  expect((await listTasks(t.paths))[0]?.question).toBeUndefined()
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([])
+  expect((await readBotTranscript(t.paths, 'bot-1')).filter(turn => turn.error)).toEqual([])
+})
+
+it('shows the sign-in line once when the AI is signed out before a hidden follow-up and nothing was delivered yet', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('', 1), unfinished: true, unfinishedReason: 'Photos not renamed yet' }
+    throw new AuthError()
+  })
+  await t.chat('여행 사진 파일 이름 날짜로 바꿔줘')
+  await t.settle('failed')
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([expect.objectContaining({ kind: 'auth', message: signInMessage(true) })])
 })
 
 it('posts the report the moment it is written, so a restart during its re-check has nothing left to post', async () => {
