@@ -35,6 +35,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
   })
   const watching = new Set<number>()
+  const stops = new Map<string, number>()
   ipcMain.handle('chat:queued', (event, botId: string, pending: boolean) => {
     if (typeof botId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(botId) || typeof pending !== 'boolean') return
     const source = event.sender.id
@@ -49,6 +50,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const busy = deps.busy(channel)
     const inKorean = async (): Promise<boolean> => [text, turnGoals.get(channel) ?? '', ...(await readBotTranscript(deps.paths, channel.slice('bot-'.length), 6).catch(() => [])).map(turn => turn.text)].some(said => /[가-힣]/.test(said))
     if (busy && deps.stop && STOP_WORDS.test(text)) {
+      stops.set(channel, (stops.get(channel) ?? 0) + 1)
       const korean = await inKorean()
       const reply = korean ? '멈췄어요.' : 'Stopped.'
       await changeCheckpoint(deps.paths, channel.slice('bot-'.length), state => state.pending.length ? { ...state, pending: [] } : state).catch(() => flog('aside', 'checkpoint-write-failed'))
@@ -58,11 +60,14 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
       return { ok: true, action: 'stop', reply }
     }
     if (!busy || deps.answered?.(channel)) return { ok: false }
+    const stopsBefore = stops.get(channel) ?? 0
+    const stopped = (): boolean => (stops.get(channel) ?? 0) !== stopsBefore
     const hold = deps.followUp?.(channel)
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
-    await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
+    await changeCheckpoint(deps.paths, botId, state => stopped() ? state : { ...state, pending: [...new Set([...state.pending, said])] }).catch(() => flog('aside', 'checkpoint-write-failed'))
+    if (stopped()) return { ok: true }
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
     hold?.(said)
     void deps.setOffersAside(botId).catch(error => flog('study', error))

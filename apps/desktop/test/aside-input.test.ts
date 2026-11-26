@@ -9,7 +9,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn(), tapBroadcas
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
-import { turnGoals } from '../src/main/turn-state.js'
+import { takeAsides, turnGoals } from '../src/main/turn-state.js'
 import { followUpFor, followUpSaid, takeFollowUps, dropFollowUps } from '../src/main/midstream-followup.js'
 import { runToolSession, type AgentLoopDeps, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
@@ -113,6 +113,32 @@ it('stops the conversation at once when the whole message is a stop word, and le
     expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: false })
     expect(stopped).toHaveLength(4)
   } finally { await rm(cache, { recursive: true, force: true }) }
+})
+
+it('drops a message still being saved when a stop word lands meanwhile, so the stopped work never gets it', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-stop-race-'))
+  const paths = { cache } as VaultPaths
+  const held: string[] = []
+  const checkpoint = await import('../src/main/comet-checkpoint.js')
+  const real = checkpoint.changeCheckpoint.bind(checkpoint)
+  const gated: { args: Parameters<typeof real>; release(): void }[] = []
+  const change = vi.spyOn(checkpoint, 'changeCheckpoint').mockImplementation((...args) => new Promise<void>(done => { gated.push({ args, release: () => { void real(...args).then(done) } }) }))
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async () => {} })
+  try {
+    const saying = handlers.get('chat:say')!({}, 'bot-race', '광주 숙소도 같이 봐줘')
+    const stopping = handlers.get('chat:say')!({}, 'bot-race', '그만')
+    await vi.waitFor(() => expect(gated).toHaveLength(2))
+    const clears = (one: typeof gated[number]) => one.args[2]({ pending: ['earlier'] }).pending.length === 0
+    gated.filter(clears).forEach(one => one.release())
+    expect(await stopping).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
+    gated.filter(one => !clears(one)).forEach(one => one.release())
+    expect(await saying).toEqual({ ok: true })
+    expect(held).toEqual([])
+    expect(takeAsides('bot-race')).toEqual([])
+    expect((await readCheckpoint(paths, 'race')).pending).toEqual([])
+  } finally { change.mockRestore(); await rm(cache, { recursive: true, force: true }) }
 })
 
 it('writes no assistant line for a message said mid-work: the person\'s words are stored and handed to the running work, and nothing else', async () => {
