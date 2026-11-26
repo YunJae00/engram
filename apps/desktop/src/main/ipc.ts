@@ -1,4 +1,4 @@
-import { finishProgress, progressWork } from './conversation-progress.js'
+import { finishProgress, progressWork, stopTurn } from './conversation-progress.js'
 import { availableMemory } from './available-memory.js'
 import { quickPrimary } from './quick-comet.js'
 import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
@@ -6,7 +6,7 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { standingApprovalsTool } from './approval-tools.js'
 import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
-import { noteStopped, registerAsideIpc } from './aside-ipc.js'
+import { registerAsideIpc, stopLine } from './aside-ipc.js'
 import { closeFollowUps, dropFollowUps, followUp, followUpSaid, openFollowUps, readingFollowUps, storedUnread, takeFollowUps } from './midstream-followup.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
@@ -165,11 +165,11 @@ import { claudeInputs, closeClaudeSession, cloudEngine } from './engine-cloud.js
 import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
-import { answerOnly, asksForCheck, checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
-import { canLearnTurn, dropHeldDraft, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
+import { asksForCheck, checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
+import { canLearnTurn } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { taskNotices, surfaceComet } from './task-notify.js'
-import { isKorean, keepStopMark } from './task-closing.js'
+import { isKorean } from './task-closing.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
@@ -600,6 +600,7 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
 }
 
 const chatAborts = new Set<{ controller: AbortController; channel: string }>()
+const stopLines = new Map<string, string>()
 
 export function abortAllChat(channel?: string): void {
   dropFollowUps(channel)
@@ -894,7 +895,13 @@ export function registerIpc(ctx: VaultContext): void {
   }))
 
   const stopChat = async (channel?: string, said?: unknown): Promise<void> => {
-    const stopping = [...chatAborts].find(entry => entry.channel === channel); noteStopped(channel, said); abortAllChat(channel); if (stopping) void keepStopMark(paths, broadcast, channel, said, () => chatAborts.has(stopping))
+    const line = typeof said === 'string' && said.trim() && said.length <= 80 ? said.trim() : undefined
+    if (channel && [...chatAborts].some(entry => entry.channel === channel)) stopLines.set(channel, line ?? '')
+    else if (line && channel?.startsWith('bot-') && tasks.activeChannels().includes(channel)) {
+      const last = (await readBotTranscript(paths, channel.slice(4), 1).catch(() => []))[0]
+      if (last?.role === 'user') await appendBotTurn(paths, channel.slice(4), { role: 'assistant', text: line, at: new Date().toISOString() }).catch(error => flog('chat-stop', error))
+    }
+    abortAllChat(channel)
     if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
     else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
   }
@@ -1912,6 +1919,7 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       memoryWait?.()
       chatAborts.delete(entry)
+      stopLines.delete(entry.channel)
       answering.delete(entry.channel)
       closeFollowUps(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); for (const ack of acks) ack.end()
@@ -2171,6 +2179,14 @@ export function registerIpc(ctx: VaultContext): void {
       markEngineOk(engine.id, (engine as Engine & { accountProfile?: string }).accountProfile)
     }
 
+    const deliverStop = async (): Promise<void> => {
+      if (turn?.verification || !stopLines.has(channel)) return
+      const line = stopLines.get(channel) || stopLine(threadKorean(request.message, request.history ?? []))
+      stopLines.delete(channel)
+      answering.delete(channel)
+      await stopTurn(paths, channel, line)
+    }
+
     if (bot) {
       releaseWallHold(channel)
       const guided = engine.id !== 'claude' && engine.id !== 'codex'
@@ -2198,7 +2214,7 @@ export function registerIpc(ctx: VaultContext): void {
         ? await companyNote(paths, { bots: everyone, message: request.message, tasks: await listTasks(paths), chief }) : ''
       let resendAfterOutage = false
       let toolStarted = false
-      let answerDelivered = false
+      let afterAnswer: (() => Promise<void>) | undefined
       try {
         assertDesktopChatEngine(channel, engine)
         const stored = await readCheckpoint(paths, bot.id)
@@ -2266,9 +2282,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (!ran.result) throw ran.failure
         const { result } = ran
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
-        if (signal.aborted) return
-        const answered = answerOnly(result.answer)
-        if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
+        signal.throwIfAborted()
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
@@ -2282,26 +2296,10 @@ export function registerIpc(ctx: VaultContext): void {
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs
           if (!result.asked && check.accepted) result.files = delivered.map(output => { const href = artifactHref(output.path.split(/[\\/]/).at(-1)!), replaces = result.files?.find(one => one.href === href)?.replaces; return { name: output.name, href, ...(replaces ? { replaces } : {}) } })
         }
-        const held = holdTaskResult({ ...result, answer: linked() }, turn, check)
+        const held = !!turn?.verification
         const finished = canLearnTurn(result, held, check)
-        if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
-        if (savedRoutine?.task) {
-          await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
-          broadcast({ type: 'vault:changed' })
-        }
-        const checkpoint = resumeCheckpoint(request.message, result)
-        await acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)
-        const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
-        if (visited.length) {
-          await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
-          for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch {} }
-          broadcast({ type: 'bots:changed' })
-        }
-        signal.throwIfAborted()
-        turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: linked(), asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}), ...(!held && !result.asked && !result.stopped && !result.budgetExhausted && result.answer.trim() && !result.answer.startsWith('Not verified as complete.') ? { delivered: true } : {}) })
-        if (held) {
-          await dropHeldDraft(turn, linked(), () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }))
-        } else {
+        turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: linked(), asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}), ...(!held && !result.asked && !result.stopped && !result.budgetExhausted && !result.incomplete && result.answer.trim() ? { delivered: true } : {}) })
+        if (!held && result.answer.trim()) {
           await deliverAnswer(
             result.asked ? askText(result.answer, result.options) : result.answer,
             result.asked && result.options?.length
@@ -2309,38 +2307,55 @@ export function registerIpc(ctx: VaultContext): void {
               : undefined,
             result.files,
           )
+          flog('chat-phase', JSON.stringify({ channel, phase: 'answer-delivered', ms: Date.now() - nativeSince }))
+        } else if (!held) {
+          const said = usageLimitMessage(threadKorean(request.message, savedHistory))
+          await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString(), error: true, provider: brainName(engine.id) }).catch(error => flog('chat-error-save', error))
+          broadcast({ type: 'chat:error', channel, message: said, provider: brainName(engine.id) })
+          turnOutcomes.set(channel, { answer: '', asked: false, unfinished: true, steps: result.steps.length, trail: result.steps, errored: said })
         }
-        answerDelivered = true
-        flog('chat-phase', JSON.stringify({ channel, phase: 'answer-delivered', ms: Date.now() - nativeSince }))
-        const completed = {
-          message: request.message,
-          steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
-          keepGoal: undefined as string | undefined,
-          execution: aiSelection(settings, channel),
-          scripts: takeTurnScripts(channel),
-        }
-        lastTurns.set(bot.id, completed)
-        const filingEngine = ctx.engines[0]
-        const previousAnswer = [...request.history].reverse().find((turn) => turn.role === 'assistant')?.text
-        if (!turn?.quiet && finished && filingEngine) {
-          void asBackground(() => tierPurpose.run('memory', () => rememberTurn({
-            engine: filingEngine,
-            workdir: engineCwd(paths),
-            paths,
-            botId: bot.id,
-            channel,
+        afterAnswer = async () => {
+          if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
+          if (savedRoutine?.task) {
+            await markRoutineRun(paths, savedRoutine.id, finished ? 'done' : 'failed')
+            broadcast({ type: 'vault:changed' })
+          }
+          await acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], resumeCheckpoint(request.message, result))
+          const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
+          if (visited.length) {
+            await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
+            for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch {} }
+            broadcast({ type: 'bots:changed' })
+          }
+          const completed = {
             message: request.message,
-            answer: result.answer,
-            ...(previousAnswer ? { previous: previousAnswer } : {}),
-            places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
-          }))).catch(error => flog('comet-memory', error))
+            steps: (finished ? result.steps : []).map((step) => ({ tool: step.tool, args: step.args, observation: step.observation, ...(step.seeded ? { seeded: true } : {}) })),
+            keepGoal: undefined as string | undefined,
+            execution: aiSelection(settings, channel),
+            scripts: takeTurnScripts(channel),
+          }
+          lastTurns.set(bot.id, completed)
+          const filingEngine = ctx.engines[0]
+          const previousAnswer = [...request.history].reverse().find((turn) => turn.role === 'assistant')?.text
+          if (!turn?.quiet && finished && filingEngine) {
+            void asBackground(() => tierPurpose.run('memory', () => rememberTurn({
+              engine: filingEngine,
+              workdir: engineCwd(paths),
+              paths,
+              botId: bot.id,
+              channel,
+              message: request.message,
+              answer: result.answer,
+              ...(previousAnswer ? { previous: previousAnswer } : {}),
+              places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
+            }))).catch(error => flog('comet-memory', error))
+          }
         }
       } catch (err) {
         if (signal.aborted) {
-          if (!turn?.verification) broadcast({ type: 'chat:done', channel, text: '' })
+          await deliverStop()
           return
         }
-        if (answerDelivered) { flog('chat-after-answer', err); return }
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
         if (turn?.verification && kind !== 'quota') throw err
@@ -2371,9 +2386,10 @@ export function registerIpc(ctx: VaultContext): void {
         warmLater(3_000)
         if (!wallHolds.has(channel)) armIdleClose()
       }
+      await afterAnswer?.().catch(error => flog('chat-after-answer', error))
       if (resendAfterOutage && !signal.aborted) {
         await delay(OUTAGE_RESEND_MS, undefined, { signal }).catch(() => undefined)
-        if (signal.aborted) { broadcast({ type: 'chat:done', channel, text: '' }); return }
+        if (signal.aborted) { await deliverStop(); return }
       }
       if (resendAfterOutage && !signal.aborted) {
         broadcast({ type: 'chat:token', channel, text: '', reset: true })
@@ -2395,7 +2411,7 @@ export function registerIpc(ctx: VaultContext): void {
       )
     } catch (err) {
       if (signal.aborted) {
-        if (!turn?.verification) broadcast({ type: 'chat:done', channel, text: '' })
+        await deliverStop()
         return
       }
       const said = err instanceof Error ? err.message : String(err)

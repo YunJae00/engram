@@ -11,7 +11,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import * as firstLine from '../src/main/first-line.js'
 const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import { cleanLine } from '../src/main/first-line.js'
 import { ackPrompt } from './ack-prompt.js'
 import { learningTools } from '../src/main/learning-wiring.js'
@@ -112,7 +112,7 @@ describe('small talk never sounds like a help desk (Q1)', () => {
     expect(COLLEAGUE_RULE).toMatch(/help in any wording/)
     expect(COLLEAGUE_RULE).toContain('뭘 도와드릴까요')
     expect(source('first-line.ts')).not.toMatch(/smallTalkPrompt|SMALL_TALK/)
-    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     for (const said of ['뭘 도와드릴까요?', '안녕하세요! 뭘 도와드릴까요?', '안녕하세요! 좋은 아침이에요.', 'How can I help you today?']) {
       const { posted, told, voiced } = await turn(said, '안녕')
@@ -184,6 +184,6 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     for (const other of ['엔비디아 오늘 주가 알려줘', '1년은 몇 초야?', '안녕', '고마워 수고했어', 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'fixtures/sales.csv에서 12월 매출 합계 알려줘',
       '빵집 세 군데에 하나씩 물어봐', '챙길 것 세 가지만 골라줘', '등산 모임 회칙을 문서 파일에 담아줘']) expect((await turn(answer, other)).posted, other).toBe(answer)
     expect((await turn(answer, '연락선 첫 배가 언제 떠?')).told).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
-    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
   })
 })

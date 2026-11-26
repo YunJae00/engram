@@ -18,18 +18,15 @@ interface AsideIpcDeps {
 
 export const STOP_WORDS = /^\s*(멈춰|멈춰\s?줘|멈춰요|그만|그만\s?해|그만\s?해\s?줘|그만해요|중지|중지\s?해|중지\s?해\s?줘|중단|중단\s?해|중단\s?해\s?줘|스톱|취소|취소\s?해|취소\s?해\s?줘|stop|stop it|cancel|cancel it|abort)\s*[.!~]*\s*$/i
 
+export const stopLine = (korean: boolean): string => korean ? '멈췄어요.' : 'Stopped.'
+
 let stopListening: (() => void) | undefined
-let stopReply: ((channel: string, text: string) => void) | undefined
-export function noteStopped(channel: unknown, text: unknown): void {
-  if (typeof channel === 'string' && channel.startsWith('bot-') && typeof text === 'string' && text.trim() && text.length <= 80) stopReply?.(channel, text.trim())
-}
 
 export function registerAsideIpc(deps: AsideIpcDeps): void {
   ipcMain.removeHandler('chat:queued')
   ipcMain.removeHandler('chat:say')
   stopListening?.()
   const progress = conversationProgress(deps.paths)
-  stopReply = (channel, text) => { if (deps.busy(channel)) void progress.stop(channel, text) }
   stopListening = tapBroadcast((event) => {
     progress.observe(event)
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
@@ -53,7 +50,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (busy && deps.stop && STOP_WORDS.test(text)) {
       stops.set(channel, (stops.get(channel) ?? 0) + 1)
       const korean = await inKorean()
-      const reply = korean ? '멈췄어요.' : 'Stopped.'
+      const reply = stopLine(korean)
       await changeCheckpoint(deps.paths, channel.slice('bot-'.length), state => state.pending.length ? { ...state, pending: [] } : state).catch(() => flog('aside', 'checkpoint-write-failed'))
       taskQueued(channel.slice('bot-'.length), false)
       await appendBotTurn(deps.paths, channel.slice('bot-'.length), { role: 'user', text: text.trim(), at: new Date().toISOString(), aside: true })

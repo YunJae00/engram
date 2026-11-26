@@ -10,7 +10,6 @@ const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknow
 vi.mock('electron', () => ({ ipcMain: { handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => {} }))
 import { taskRunner, type TaskTurn, type TurnOutcome } from '../src/main/task-runner.js'
-import { dropHeldDraft, holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome | undefined>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
@@ -21,7 +20,6 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
   await mkdir(paths.inbox, { recursive: true })
   const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], deliveredTrails: NonNullable<TurnOutcome["trail"]>[] = [], evidences: TurnEvidence[] = [], deliveredAsked: (string | undefined)[] = []
   let last: TurnOutcome | undefined
-  const hooks: { afterDrop?: () => Promise<void> } = {}
   const aborted: { resolve?: () => void } = {}
   const runner: ReturnType<typeof taskRunner> = taskRunner({
     paths,
@@ -29,8 +27,8 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
       sent.push({ request, extra }); last = await script(request, sent.length, extra, runner)
       if (!last) return
       if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
-      last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra, last.check)
-      if (last.held) { await dropHeldDraft(extra, last.answer, () => events.push({ type: 'chat:token', channel: request.channel ?? '', text: '', reset: true, drop: true })); await hooks.afterDrop?.() }
+      last.held = !!extra?.verification
+      if (!last.held && !last.errored && last.answer.trim()) { delivered.push(last.answer); deliveredAsked.push(extra?.asked); deliveredTrails.push(last.trail ?? []); events.push({ type: 'chat:done', channel: request.channel ?? '', text: last.answer }) }
     },
     outcome: () => { const o = last; last = undefined; return o },
     abort: () => { aborted.resolve?.() },
@@ -51,7 +49,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, hooks, sent, events, remembered, notified, learned, delivered, deliveredTrails, deliveredAsked, evidences, aborted, call, chat, settle }
+  return { paths, runner, sent, events, remembered, notified, learned, delivered, deliveredTrails, deliveredAsked, evidences, aborted, call, chat, settle }
 }
 
 export const pressed = (target: string, committed = true) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"`, ...(committed ? { committed: true } : {}) })

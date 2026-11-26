@@ -124,15 +124,15 @@ it('keeps concurrent callbacks within the total ceiling after verified phase all
   expect(result.incomplete).toBeUndefined()
 })
 
-it.each(['unverified', 'exhausted'] as const)('labels an unsupported completion claim explicitly when %s', async (state) => {
+it.each(['unverified', 'exhausted'] as const)('keeps the model\'s completion claim as its words and marks the result unfinished when %s', async (state) => {
   const result = await runToolSession({ workdir, engine: engine(async (job) => {
     for (let call = 0; call < (state === 'exhausted' ? SESSION_MAX_CALLS + 1 : 1); call++) await job.tools[0]!.run({})
   }, true, 'Everything completed'), tools: [{ name: 'desktop_action', description: 'Act', argsSchema: {}, run: async () => state === 'unverified'
     ? '{"dispatched":true,"error":"Readback failed","observationMayBeStale":true}'
     : '{"observation":{"snapshot":"fresh"}}',
   }] }, 'Change the field')
-  expect(result.answer).toMatch(/^Not verified as complete\./)
-  expect(result.answer).toContain('Unverified response:\nEverything completed')
+  expect(result.answer).toBe('Everything completed')
+  expect(result.incomplete ?? result.stopped).toBeTruthy()
 })
 
 it('does not admit a plan revision at the exhausted phase boundary', async () => {

@@ -162,7 +162,7 @@ it('a failed office write is marked not verified', async () => {
     { name: 'ppt_build', description: 'build', argsSchema: {}, run: async () => 'that did not work: the deck did not read clean' },
   ] }, 'Build the proposal deck')
   expect(result.incomplete).toContain('read back')
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('The deck is built')
 })
 
 it('resumes an unfinished job instead of restarting it', async () => {
@@ -200,7 +200,7 @@ it('discloses registered collection items left without a finish receipt', async 
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'Movie' }] }, 'Read movie showtimes')
   expect(result.incomplete).toContain('collection items remain unverified')
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('All done.')
 })
 
 it('distinguishes an attempted last-page failure from unfinished batch reads', () => {

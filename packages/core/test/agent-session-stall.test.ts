@@ -188,7 +188,7 @@ it('respects an explicit call budget while still reporting unchanged actions as 
   expect(result.steps[2]!.observation).toContain('nothing on the page changed')
   expect(successfulTurnSteps(result.steps)).toEqual([])
   expect(result.stopped).toBe('calls')
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('done')
 })
 
 it('allows a different key or search after failures instead of locking the entire page', async () => {

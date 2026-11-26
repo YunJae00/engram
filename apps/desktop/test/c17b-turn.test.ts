@@ -9,7 +9,6 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: logged }))
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
-import { answerOnly } from '../src/main/result-check.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../../../packages/core/src/prompt.js'
@@ -52,14 +51,14 @@ describe('a correction reaches the model as typed, and the thread says what it c
     const book: AgentTool = { name: 'file_create_workbook', description: 'makes a workbook', argsSchema: { type: 'object', properties: {}, required: [] }, run: async args => { seen.push(args); return JSON.stringify({ markdownLink: '[냉장-수량.xlsx](engram-artifact:cold-count.xlsx)' }) } }
     const { world, jobs } = await leadWorld(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '냉장-수량.xlsx' }, { task: message }); return draft }, earlier)
     const { result } = await answerTurn(world, message, { tools: [book] })
-    expect(answerOnly(result!.answer)).toBe(draft)
+    expect(result!.answer).toBe(draft)
     expect(seen).toEqual([{ name: '냉장-수량.xlsx' }])
     expect(jobs).toHaveLength(1)
     expect(jobs[0]!.tools.find(tool => tool.name === 'file_create_workbook')!.argsSchema).toEqual(book.argsSchema)
   })
   it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(own).not.toMatch(/changedNote|askNow|routeAsk|What the person asks for now/)
     expect(own).toContain("context: { ...context?.(), calendar: calendarLine(), ...(said ? { firstLine: said } : {}) },")
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')

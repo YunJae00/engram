@@ -267,6 +267,6 @@ describe('a correction, a file sort and a slide fix are the model\'s own tool ca
   it('answer.ts has no reply of its own', () => {
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
     expect(own).not.toMatch(/desk-lane|keptFix|plainKeep|slideTitleFix|fixSlideTitle|sortByKind|keepAsk|const host/)
-    expect(own).toContain('result = await runComet(')
+    expect(own).toContain('const ran = await runComet(')
   })
 })

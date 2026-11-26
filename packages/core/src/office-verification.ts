@@ -98,5 +98,5 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
 export function checkOfficeResult(result: AgentLoopResult): AgentLoopResult {
   if (result.asked || result.incomplete) return result
   const incomplete = evidenceFault(result.steps) ?? officeWriteUnverified(result.steps) ?? officeArithmeticFault(result.steps)
-  return incomplete ? { ...result, incomplete, answer: `Not verified as complete.\n\n${incomplete}\n\nUnverified response:\n${result.answer}` } : result
+  return incomplete ? { ...result, incomplete } : result
 }

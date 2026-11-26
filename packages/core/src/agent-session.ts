@@ -398,23 +398,22 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
   if (closed !== undefined) return { answer: withoutSecrets(closed, task), steps, files: outputCards(steps, closed, deps.workdir), fellBack: false, tokensUsed }
-  if (budgetExhausted) { const text = [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote } }
+  if (budgetExhausted) { const text = session.answer.trim(); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, tokensUsed, budgetExhausted: true, incomplete: [budgetNote, collection.summary()].filter(Boolean).join('\n\n') } }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
     return { answer: withoutSecrets(question, task), steps, fellBack: false, asked: true, options: choices }
   }
   if (stalled) {
     options.onMetric?.({ kind: 'host', operation: 'tool-deadline' })
-    return { answer: withoutSecrets(`Not verified as complete.\n\n${stallNote}`, task), steps, files: outputCards(steps, '', deps.workdir), fellBack: false, incomplete: stallNote }
+    const text = session.answer.trim()
+    return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, incomplete: stallNote }
   }
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
   if (finish?.status === 'blocked') { const text = [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, asked: true } }
   const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : (options.lookup ? undefined : finalDesktopFailure(steps)) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
-  const answer = incomplete || stopped
-    ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`
-    : session.answer.trim()
+  const answer = session.answer.trim()
   return { answer: withoutSecrets(answer, task), steps, files: outputCards(steps, answer, deps.workdir), fellBack: false, ...(stopped ? { stopped: 'calls' as const } : {}), ...(incomplete ? { incomplete } : {}) }
 }
 

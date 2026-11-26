@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { handBacks, handoffBrief, isSearchPage, withLiveSources, runToolSession, settleMember, sourceName, type DelegatedTask, type TeamMember } from 'core'
 import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { answerOnly } from '../src/main/result-check.js'
 import * as firstLine from '../src/main/first-line.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
@@ -17,9 +16,9 @@ const settled = (m: TeamMember, answer: string, sources: string[] = []): TeamMem
 const job = (members: TeamMember[], goal: string): DelegatedTask => ({ id: 'job', goal, botId: 'lead', state: 'running', turns: 1, createdAt: AT, updatedAt: AT, approvals: [], log: [], team: { members, hires: members.length, maxHires: 8, maxDepth: 3, big: false } })
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
-const posted = async (draft: string, ask: string): Promise<string> => answerOnly((await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer)
+const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const ipc = (): string => readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-const ipcTurn = (): string => { const all = ipc(), from = all.indexOf('await begun!.run({'); return all.slice(from, all.indexOf('answerDelivered = true', from)) }
+const ipcTurn = (): string => { const all = ipc(), from = all.indexOf('await begun!.run({'); return all.slice(from, all.indexOf('afterAnswer = async () => {', from)) }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 
@@ -43,7 +42,7 @@ describe('stack-11 merge: a team answer is never cut by wording on its way throu
     expect(await posted(draft, ASK)).toBe(draft)
     expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it')
-    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
+    expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
     expect(Object.keys(JSON.parse(handBacks([mil(), hodu()])) as object)).toEqual(['reports', 'note'])
     expect(job([mil(), hodu()], ASK).team!.members.every(m => m.data === undefined)).toBe(true)
   })
@@ -94,7 +93,7 @@ describe('stack-11: Codex-cap findings', () => {
     const answer = `이번 달엔 한 건만 확인됐어요.\n\n1. 욕지도 막배가 저녁 6시로 늦춰졌어요. [항만 공지](${live})`
     expect(await posted(answer, '이번 달 여객선 시간표 소식 2개만')).toBe(answer)
     expect(ipc()).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>/)
-    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
+    expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
   })
 })
 
@@ -110,8 +109,8 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
     expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
   it('ipc runs no pass over the answer before delivery: the files are attached to the answer the model wrote', () => {
-    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
-    expect(ipc()).toMatch(/const answered = answerOnly\(result\.answer\)/)
+    expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
+    expect(ipc()).not.toMatch(/answerOnly/)
     expect(ipc()).toMatch(/const linked = \(\): string => withFiles\(result\.answer, result\.files\)/)
   })
 })
@@ -126,7 +125,7 @@ describe('stack-11: working notes and date ranges', () => {
     expect(await posted(script, '반납 도서 정리 스크립트')).toBe(script)
     expect(COLLEAGUE_CORE_RULE).toContain('no opening line about what you are about to do, no account of your steps and no notes to yourself')
     expect(fns(firstLine)).toEqual(FIRST_FNS)
-    expect(ipcTurn().match(/result\.answer = /g)).toHaveLength(1)
+    expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
   })
   it('a day range is a date, read as its last day', async () => {
     const { resultDay } = await import('core')

@@ -120,5 +120,5 @@ it('does not accept a model completion claim after a stopped batch', async () =>
   } } as Engine
   const result = await runToolSession({ engine, tools: [batch], workdir: '.' as EngineCwd }, 'Read pages')
   expect(result.incomplete).toContain('batch stopped')
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('Everything is complete')
 })

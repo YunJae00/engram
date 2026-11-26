@@ -13,13 +13,13 @@ import * as firstLine from '../src/main/first-line.js'
 import { sessionRules } from '../../../packages/core/test/rules.js'
 const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import { beginFirstLine, endFirstLine, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLineReady, firstLineSaw, firstLineSpoke, SAFETY_LINE, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
 import { answer, openWorld } from '../src/main/answer.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
-import { answerOnly, asksForCheck } from '../src/main/result-check.js'
+import { asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
 import { displayTaskAnswer } from '../src/renderer/src/lib/threadLang.js'
 
@@ -141,7 +141,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(store.thread('1').messages.map(message => message.text)).toEqual([ask().message, answer])
     expect(hide).not.toHaveBeenCalled()
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
-    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
     expect(source('ipc.ts')).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
     const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, tools: [] })
     expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')
@@ -213,7 +213,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('answer.ts')).not.toMatch(/told:|onlyTells|TOLD_NOTE/)
     expect(source('ipc.ts')).not.toMatch(/reply: !\(turn\?\.context/)
     expect(source('answer.ts')).not.toMatch(/talked|smallTalkAnswer/)
-    expect(source('answer.ts')).toContain('result = await runComet(')
+    expect(source('answer.ts')).toContain('const ran = await runComet(')
   })
 })
 
@@ -249,7 +249,7 @@ describe('nothing is said before or between tool calls once the host has spoken'
     expect((await streamed(['지금 1달러에 1,385원이에요.'])).map(one => one.held)).toEqual([false])
   })
 
-  it('does not keep an English progress line in a Korean thread, on screen or on disk', async () => {
+  it('does not show an English progress line in a Korean thread on screen, and stores every interim line the model wrote on disk', async () => {
     const store = createCometThreads()
     store.begin('1', 'fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘')
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: 'I\'ll read the file first.' })
@@ -275,7 +275,7 @@ describe('nothing is said before or between tool calls once the host has spoken'
       await progress.flush('bot-9')
       progress.observe({ type: 'chat:token', channel: 'bot-9', text: '월별 합계는 다 넣었어요.' })
       await progress.flush('bot-9')
-      expect((await readBotTranscript(paths, '9')).filter(turn => turn.progress).map(turn => turn.text)).toEqual(['월별 합계는 다 넣었어요.'])
+      expect((await readBotTranscript(paths, '9')).filter(turn => turn.progress).map(turn => turn.text)).toEqual(['I\'ll read the sales data and build the monthly summary workbook with a chart.', '월별 합계는 다 넣었어요.'])
     } finally { turnGoals.delete('bot-9'); await rm(root, { recursive: true, force: true }) }
   })
 })
@@ -334,17 +334,12 @@ describe('a delivered answer is shown alone', () => {
   const reason = 'Unverified collection items (2/6): 한라산: The cited observation does not establish this item\'s limitation.'
   const wrapped = `Not verified as complete.\n\n${reason}\n\nUnverified response:\n덜 걷는 곳으로 세 군데 골랐어요.\n\n1. 해안도로 드라이브`
 
-  it('drops the model-facing reason from the thread and from a saved turn', () => {
-    expect(answerOnly(wrapped)).toBe('덜 걷는 곳으로 세 군데 골랐어요.\n\n1. 해안도로 드라이브')
+  it('posts the model\'s words with no reason wrapped around them, and an old wrapped turn still shows only its answer', () => {
     expect(displayTaskAnswer(wrapped, 'ko')).toBe('덜 걷는 곳으로 세 군데 골랐어요.\n\n1. 해안도로 드라이브')
     expect(displayTaskAnswer(wrapped, 'ko')).not.toMatch(/Unverified|확인하지 못한|현재까지/)
     const empty = 'Not verified as complete.\n\nThe last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.'
-    expect(answerOnly(empty)).toBe(empty)
     expect(displayTaskAnswer(empty, 'ko')).not.toMatch(/[A-Za-z]{4,}/)
-    expect(answerOnly('PPT 5장 만들었어요.')).toBe('PPT 5장 만들었어요.')
-    const ipc = source('ipc.ts')
-    expect(ipc).toContain('const answered = answerOnly(result.answer)')
-    expect(ipc.indexOf('const answered = answerOnly(result.answer)')).toBeLessThan(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result'))
+    for (const file of ['ipc.ts', 'team-runner.ts', 'result-check.ts']) expect(source(file)).not.toMatch(/answerOnly|Not verified as complete/)
   })
 
   it('offers the check tool only when the person asked for a check, or on a check turn', () => {

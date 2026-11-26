@@ -46,7 +46,7 @@ it('keeps failed writes incomplete and preserves explicit questions without clai
   const steps = [step('word_write', 'that did not work: partial write')]
   const result = checkOfficeResult({ steps, answer: 'Done', fellBack: false })
   expect(result.incomplete).toBeDefined()
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('Done')
   const asked = { steps, answer: 'Continue?', fellBack: false, asked: true }
   expect(checkOfficeResult(asked)).toBe(asked)
   expect(checkOfficeResult(result)).toBe(result)

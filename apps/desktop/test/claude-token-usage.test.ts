@@ -56,7 +56,7 @@ it('interrupts the Claude stream as soon as reported usage exhausts the task bud
     const output = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [] }, 'Work', { tokenBudget: 150, onUsage })
     expect(onUsage.mock.calls.flat()).toEqual([102, 53])
     expect(output).toMatchObject({ budgetExhausted: true, tokensUsed: 155 })
-    expect(output.answer).toContain('150 new tokens available for this turn')
+    expect(output.incomplete).toContain('150 new tokens available for this turn')
     expect(f.interrupt).toHaveBeenCalledOnce()
   } finally { f.pool.closeAll() }
 })

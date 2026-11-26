@@ -6,7 +6,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import { ackPrompt } from './ack-prompt.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
@@ -77,7 +77,7 @@ describe('decisions and tasks are said once (D1)', () => {
 
   it('no correction is called on a desk note answer: the chat turn posts it, and the repeat check stays with the quick voice', () => {
     const ipc = source('ipc.ts')
-    expect(answerSetInTurn(ipc)).toBe(1)
+    expect(answerSetInTurn(ipc)).toBe(0)
     expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('result.asked ? askText(result.answer, result.options) : result.answer,'))
     expect(source('first-line.ts')).not.toMatch(/saidBefore|laneLine|FILE_WORK/)
   })

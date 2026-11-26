@@ -42,5 +42,5 @@ it('stack-8 (c8c run D1): a Han shorthand in a note summary is the model\'s to a
   }
   expect(COLLEAGUE_CORE_RULE).toContain('no Chinese-character shorthand (多, 約, 等)')
   expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
-  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
 })

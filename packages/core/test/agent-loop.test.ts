@@ -879,7 +879,7 @@ it('enforces document readback in the non-session loop too', async () => {
   const { deps: d } = await deps('office-readback-loop', [tool('ppt_build', async () => JSON.stringify({ saved: 'C:/proposal.pptx' }))], engine)
   const result = await runAgentLoop(d, 'Build the proposal', { guided: false })
   expect(result.incomplete).toContain('read back')
-  expect(result.answer).toContain('Not verified as complete')
+  expect(result.answer).toBe('Done')
 })
 
 it('skill reference text is not evidence for filling user data into a form', async () => {

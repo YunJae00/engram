@@ -6,7 +6,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import { COLLEAGUE_RULE as VOICE } from '../../../packages/core/src/prompt.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { ackPrompt } from './ack-prompt.js'
@@ -130,7 +130,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
   it('pins the shape and the one move call in what the model is told; the chat turn reshapes nothing', async () => {
     expect(source('file-move.ts')).toContain('up to 500 in one call')
     expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
-    expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+    expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
   })
 
   it('posts the stored F1 answer as the model wrote it, file names and all, and a short list of counts the same way', async () => {
@@ -211,8 +211,8 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect(COLLEAGUE_RULE).toContain('When the ask is loose, decide the way a sensible colleague would and say in a few words what you chose')
     expect((await deskTurn(SHORT, H3_ASK)).told).toContain('never offer a menu of options or ask how they want it when one reasonable choice exists')
     const ipc = source('ipc.ts')
-    expect(answerSetInTurn(ipc)).toBe(1)
-    expect(ipc.split('\n').filter(line => /result\.answer = /.test(line)).map(line => line.trim())).toEqual([expect.stringContaining('result.answer = answered }')])
+    expect(answerSetInTurn(ipc)).toBe(0)
+    expect(ipc.split('\n').filter(line => /result\.answer = /.test(line))).toEqual([])
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
     expect((await deskTurn(todo, H4)).posted).toBe(todo)
@@ -231,14 +231,14 @@ it('stack-6: "할 일만" is asked of the model as that part only; a reply with 
   expect((await deskTurn(marked, ask)).posted).toBe(marked)
   expect((await deskTurn(tasks.join('\n'), ask)).posted).toBe(tasks.join('\n'))
   expect((await deskTurn(shown, '산악회 메모 돌려 보기 편하게 다듬어줘')).posted).toBe(shown)
-  expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
+  expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
 })
 
 it('stack-6: the repeat check is the quick voice\'s only, and no block correction is left in the chat turn or the desk lane', () => {
   const first = source('first-line.ts'), ipc = source('ipc.ts')
   expect(first).not.toMatch(/saidBefore|fallbackLine/)
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
-  expect(answerSetInTurn(ipc)).toBe(1)
+  expect(answerSetInTurn(ipc)).toBe(0)
   expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   expect(source('answer.ts')).not.toMatch(/deskNote|DESK_NOTE|fileGiven/)
 })

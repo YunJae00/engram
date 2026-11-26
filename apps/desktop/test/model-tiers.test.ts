@@ -295,7 +295,7 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).toMatch(/const reporting = company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined\n[^\n]*const handedBack = employeesAnswer\(reporting\)/)
     expect(source('ipc.ts')).toContain('context: () => ({ company, handedBack, attachments: attachments.context')
     expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)
-    expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await begun!.run({'), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await begun!.run({'), source('ipc.ts').indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
   })
 
   it('a mid-work change or a team question gets the quick first line like any ask; no host steer is decided before it', async () => {
@@ -610,14 +610,14 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(turn?.report ? {} : { light: true }) } : {}),")
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/modelHint|light: true|deskKind|deskLane/)
     expect(ipc).not.toContain('koreanLead(')
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
   })
 })
 
 describe('s1a: the team lane\'s model does the team\'s work', () => {
   const ipc = source('ipc.ts')
-  const chat = ipc.slice(ipc.indexOf('async function handleChatSend('), ipc.indexOf('answerDelivered = true'))
+  const chat = ipc.slice(ipc.indexOf('async function handleChatSend('), ipc.indexOf('afterAnswer = async () => {'))
   const imported = ipc.slice(0, ipc.indexOf('\nconst '))
   it('the host runs no team tool and writes no team answer from a chat message', () => {
     expect(chat.length).toBeGreaterThan(1000)

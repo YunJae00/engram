@@ -38,7 +38,7 @@ it('gives a lookup the shell and the full menu like any turn, and hands mid-turn
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('...(native ? { native } : {}),')
   expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }, steered: signal => followUpSaid(channel, signal)')
   expect(ipc).not.toMatch(/steerReplied|voice: \(\) => chatEngine/)
-  expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
+  expect(ipc).toContain('await acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], resumeCheckpoint(request.message, result))')
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
@@ -50,7 +50,7 @@ it('a lone lookup gets the quick model\'s ack like any ask, and no lane file is 
   expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/linkVerdicts|linkAnswers|team\.cited|401, 403, 429/)
-  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeGreaterThan(0)
   expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/whole|quickQuestion/)
@@ -91,7 +91,7 @@ it('posts a lookup\'s answer as written, a failure report included, and no host 
   const list = '세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)'
   for (const answer of [fine, '픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.', linked, failed, list]) expect((await turn('', '토트넘 어젯밤 경기 점수 몇 대 몇이야?', answer)).answer, answer).toBe(answer)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
 })
 
 it('hands a news ask\'s search rows to the model as they came and posts the list it writes, with no host count line', async () => {

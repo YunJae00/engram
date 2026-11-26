@@ -144,8 +144,7 @@ it('marks uncertain readback incomplete and resumes only after observing deliver
   })
   const first = await runToolSession({ engine: firstEngine, workdir, tools: ui.tools }, 'Create a draft and summary.')
   expect(first.incomplete).toBeTruthy()
-  expect(first.answer).toMatch(/^Not verified as complete\./)
-  expect(first.answer).toContain('Unverified response:\nEverything completed')
+  expect(first.answer).toBe('Everything completed')
   expect(ui.inputs).toHaveLength(1)
   const resumedEngine = new SimulatedPlanner(async (job) => {
     const { json, sequence } = caller(job)

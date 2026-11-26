@@ -45,7 +45,7 @@ describe('stack-17: a correction after a lookup reaches the model as typed, with
     expect(own).not.toMatch(/askNow|routeAsk|changedNote|What the person asks for now/)
     expect(own).toContain('tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {')
     const from = ipc.indexOf('await begun!.run({')
-    expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
+    expect(ipc.slice(from, ipc.indexOf('afterAnswer = async () => {', from)).match(/result\.answer = /g)).toBeNull()
   })
 })
 

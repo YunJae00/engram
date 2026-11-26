@@ -50,5 +50,5 @@ it('does not label a failed file write complete when the model says done', async
   })
   const result = await runToolSession({ engine, workdir: resolve('tmp') as EngineCwd, tools: fileWorkTools({ directory: resolve('tmp/not-written'), approveRead: async () => false }) }, 'Create JSON.')
   expect(result.incomplete).toBeDefined()
-  expect(result.answer).toMatch(/^Not verified as complete/)
+  expect(result.answer).toBe('Done.')
 })

@@ -2,7 +2,6 @@ import { ANSWER_NOW, backgroundOpen, failOnRestart, keepRead, timeBoxed, keepSou
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
-import { answerOnly } from './result-check.js'
 import { withFiles } from './native-tools.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
@@ -191,7 +190,7 @@ export function teamRunner(deps: {
           })
           if (!round && me.lookup) flog('team', `first-step role=${role} ms=${Date.now() - stepAt} pages=${(prompt.match(/^The page at /gm) ?? []).length} answered=${!!result.answer.trim()}`)
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
-          outcome = { answer: withFiles(cutShort ? answerOnly(result.answer) : result.answer, result.files), ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
+          outcome = { answer: withFiles(result.answer, result.files), ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
           whole = undefined
           const prior = !priced && search && !result.asked && !result.budgetExhausted && !control.signal.aborted ? priorPriceQuery(me, outcome.answer) : ''
           if (prior && search) {

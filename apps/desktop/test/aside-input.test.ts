@@ -397,7 +397,7 @@ it('tells the model when a call it was told is still running fails after the per
 
 it('answers words said mid-work in one short line written by the running model, with no quick voice and no fixed line from the host', async () => {
   const aside = await import('../src/main/aside-ipc.js')
-  expect(Object.keys(aside).sort()).toEqual(['STOP_WORDS', 'noteStopped', 'registerAsideIpc'])
+  expect(Object.keys(aside).sort()).toEqual(['STOP_WORDS', 'registerAsideIpc', 'stopLine'])
   const { paths, done } = await tempPaths('aside-own-line-')
   const channel = 'bot-own-line'
   openFollowUps(channel)

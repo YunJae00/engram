@@ -110,7 +110,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
     try {
       const said = firstLineState(channel)
       const shortlist = skills ? await skills() : undefined
-      result = await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
+      const ran = await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,
         history: world.history,
@@ -137,6 +137,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
         },
         onReset: (drop, tool) => { streamed = ''; onReset?.(drop, tool) },
       })
+      result = ran.answer.trim() ? ran : { ...ran, answer: streamed.trim() }
       trace.final = { text: result.answer, ms: ms() }
     } catch (cause) {
       failure = cause

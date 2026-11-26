@@ -30,7 +30,7 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
     expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine'])
     expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     const ipc = src('ipc.ts')
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
   })
   it('has no rewriter left that cuts or leads an answer by its wording', () => {
     expect(Object.keys(firstLine)).not.toEqual(expect.arrayContaining(['withoutWorkNote']))
@@ -113,7 +113,7 @@ describe('a counted list\'s rows go to the writing model as the search gave them
     expect(judged.answer).toBe(draft)
     const ipc = src('ipc.ts')
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/keepRead|skipWalls/)
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
   })
   it('an ask with no count, one whose count changed mid-work and a list of places all get the rows as they came', async () => {
     const draft = item(1, '10월 수출이 13% 늘었어요.')

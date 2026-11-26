@@ -432,5 +432,6 @@ it('the after-launch resume closes leftovers of the last run and never work begu
   expect(after.find(x => x.id === own.id)).toMatchObject({ state: 'running' })
   expect(after.find(x => x.id === own.id)!.question).toBeUndefined()
   expect(after.find(x => x.id === left.id)!.state).toBe('waiting')
-  expect(after.find(x => x.id === left.id)!.question).toBeTruthy()
+  expect(after.find(x => x.id === left.id)!.question).toBeUndefined()
+  expect(after.find(x => x.id === left.id)!.log.at(-1)!.line).toBe('The app restarted during this task.')
 })

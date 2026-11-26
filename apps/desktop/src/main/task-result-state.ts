@@ -2,17 +2,6 @@ import { commandChanged, handedInFrom, wroteFile } from './result-check.js'
 export { commandOnlyReads } from './result-check.js'
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
-export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' | 'asked' | 'pending' | 'stopped' | 'incomplete'>, turn?: { verification?: unknown; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean }, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
-  if (result.asked || result.pending) return false
-  if (turn?.verification) return true
-  return !result.stopped && !result.incomplete && turn?.holdIf?.(result.answer, result.steps, check) === true
-}
-
-export async function dropHeldDraft(turn: { saveHeld?: (answer: string) => Promise<void> } | undefined, answer: string, drop: () => void): Promise<void> {
-  await turn?.saveHeld?.(answer)
-  drop()
-}
-
 export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package|file_move)$/
 export const changedResult = (steps: TurnStep[]): boolean => successfulTurnSteps(steps).some(step => RESULT_CHANGES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool)) || steps.some(step => !step.seeded && commandChanged(step))
 const LEAVES_WORK = /^(upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package|file_move)$/

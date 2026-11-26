@@ -6,7 +6,7 @@ import { appendBotTurn, initVault, readBotTranscript } from 'core'
 
 const ASK = '거래처에 보낼 사과 문구를 격식 있게 두 문장으로 써줘'
 
-it('every continuation turn and every delivery of a task carries the task\'s ask', async () => {
+it('the answer is posted on the turn of its own ask, and every continuation turn carries the task\'s ask', async () => {
   const report = '납품이 늦어진 점 깊이 사과드립니다. 다음 주 월요일까지 반드시 보내 드리겠습니다.'
   const t = await setup(async (_request, turn) => turn === 1
     ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
@@ -14,8 +14,9 @@ it('every continuation turn and every delivery of a task carries the task\'s ask
   await t.chat(ASK)
   expect(t.sent).toHaveLength(2)
   expect(t.sent[1]?.extra?.asked).toBe(ASK)
+  expect(t.sent[0]?.request.message).toBe(ASK)
   expect(t.delivered).toEqual([report])
-  expect(t.deliveredAsked).toEqual([ASK])
+  expect(t.deliveredAsked).toEqual([undefined])
 })
 
 it('the ask of a reply posted after an unrelated exchange is its own ask, kept on that turn, not the message before it', async () => {

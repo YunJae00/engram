@@ -59,7 +59,6 @@ const HOST_CHECK = 'Unresolved verification'
 
 const CHECK_ASK = /확인까지|검증|검수|(다시|한\s*번\s*더|제대로|꼼꼼히|맞는지|틀린\s*(데|곳)|오류).{0,12}(확인|검토|체크)|(확인|검토|체크)\s*(도|까지)\s*(해|부탁)|\b(verify|double[- ]check|proofread|check (it|them|the result|your work|that it)|make sure)\b/i
 export const asksForCheck = (message: string): boolean => CHECK_ASK.test(message)
-export const answerOnly = (text: string): string => /^Not verified as complete\.\n\n[^]*?\n\nUnverified response:\n([^]*)$/.exec(text)?.[1]?.trim() || text
 
 export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; standing?: Standing }): AgentTool {
   return {

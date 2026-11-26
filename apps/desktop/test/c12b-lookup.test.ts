@@ -78,7 +78,7 @@ describe('the rows go to the writing model as they came; no item verdict stands 
     const at = (text: string): number => { const i = ipc.indexOf(text); expect(i, text).toBeGreaterThan(-1); return i }
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/keepRead|skipWalls|LANE_TOOLS/)
     expect(at('await begun!.run({')).toBeLessThan(at('result.asked ? askText(result.answer, result.options) : result.answer'))
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(ipc).not.toMatch(/listShortfall|itemsOff/)
   })
 

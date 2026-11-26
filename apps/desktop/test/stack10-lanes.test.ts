@@ -12,14 +12,14 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
   it('no host folder sort is left in the turn, and the lane has no tidy and no shaping step left to run anywhere', () => {
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/hostable|plainAsk|sortByKind/)
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/deskKind|deskLane|kind === 'tidy'/)
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     expect(ipc).not.toContain('sortByKind(')
   })
   it('no turn is reshaped by a second model: a lookup, a team ask, a handed or company turn and a desk turn all post the one draft, and another form is the model\'s to write', () => {
     expect(ipc).not.toMatch(/const reshaped|reshapeCandidate/)
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
-    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+    expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
     expect(COLLEAGUE_CORE_RULE).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
   })

@@ -1,9 +1,8 @@
-import { appendBotTurn, readBotTranscript, withoutSecrets, type VaultPaths } from 'core'
+import { appendBotTurn, withoutSecrets, type VaultPaths } from 'core'
 import type { EngramEvent } from '../shared/types.js'
 import { asides, turnGoals } from './turn-state.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { readsKorean } from '../shared/reads-korean.js'
 
 const work = new Map<string, string[]>()
 const secretSource = (channel: string): string => [turnGoals.get(channel) ?? '', ...(asides.get(channel) ?? []).map(turn => turn.text)].join('\n')
@@ -14,6 +13,12 @@ export function finishProgress(channel: string, text: string): string {
   return withoutSecrets(text, secretSource(channel))
 }
 
+export async function stopTurn(paths: VaultPaths, channel: string, line: string): Promise<void> {
+  broadcast({ type: 'chat:token', channel, text: '', reset: true })
+  if (channel.startsWith('bot-')) await appendBotTurn(paths, channel.slice(4), { role: 'assistant', text: line, at: new Date().toISOString() }).catch(error => flog('chat-stop', error))
+  broadcast({ type: 'chat:done', channel, text: line })
+}
+
 export function conversationProgress(paths: VaultPaths) {
   work.clear()
   const pending = new Map<string, string>()
@@ -22,7 +27,6 @@ export function conversationProgress(paths: VaultPaths) {
     const text = pending.get(channel), shownAt = since.get(channel)
     pending.delete(channel); since.delete(channel)
     if (!text?.trim()) return Promise.resolve()
-    if (/[\uac00-\ud7a3]/.test(turnGoals.get(channel) ?? '') && !readsKorean(text)) return Promise.resolve()
     const lines = progressWork(channel)
     work.delete(channel)
     return appendBotTurn(paths, channel.slice(4), {
@@ -31,13 +35,6 @@ export function conversationProgress(paths: VaultPaths) {
   }
   return {
     flush,
-    async stop(channel: string, text: string): Promise<void> {
-      if (pending.get(channel)?.trim()) return
-      const botId = channel.slice(4)
-      const last = (await readBotTranscript(paths, botId, 1).catch(() => []))[0]
-      if (last?.role !== 'user') return
-      await appendBotTurn(paths, botId, { role: 'assistant', text, work: progressWork(channel), at: new Date().toISOString() }).catch(error => flog('conversation-progress', error))
-    },
     observe(event: EngramEvent): void {
       if (!('channel' in event) || !event.channel?.startsWith('bot-')) return
       const channel = event.channel

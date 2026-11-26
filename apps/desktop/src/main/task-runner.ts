@@ -39,7 +39,7 @@ import { READ_CARD } from './read-card.js'
 import { asksForCheck, commandChanged } from './result-check.js'
 import { changedResult, freshResultReadback, nothingToReadBack, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
-import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
+import { closeTask, ENDED_LOG } from './task-closing.js'
 
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
@@ -49,7 +49,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { delivered?: boolean; tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; reportUnchanged?: boolean }; held?: boolean; errored?: string }
-export interface TaskTurn { asked?: string; report?: true; tokenBudget?: number; context?: string; learned?: boolean; quiet?: boolean; verification?: { result: string; goal?: string; readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; saveHeld?: (answer: string) => Promise<void> }
+export interface TaskTurn { asked?: string; report?: true; tokenBudget?: number; context?: string; learned?: boolean; quiet?: boolean; verification?: { result: string; goal?: string; readback?: boolean} }
 type Reason = Parameters<typeof continuationPrompt>[1]
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
   'Your result check passed except for one thing: these files were handed in with the result, but were not read back in full after their last write.',
@@ -122,8 +122,6 @@ export function taskRunner(deps: {
   const readbackNext = new Map<string, { name: string; path: string }[]>()
   const readbackAttempts = new Set<string>()
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
-  const unshown = new Map<string, string>()
-  const reportTrails = new Map<string, TurnStep[]>()
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
   const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
   const keep = (id: string, a: { url: string; words: string; answer?: string }) => {
@@ -137,16 +135,7 @@ export function taskRunner(deps: {
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
-  const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown, goal = task?.goal) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error, goal })
-
-  const flush = async (task: DelegatedTask | undefined): Promise<void> => {
-    const draft = task && unshown.get(task.id)
-    if (!task || draft === undefined) return
-    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), reportTrails.get(task.id) ?? trails.get(task.id) ?? [], undefined, task.goal)
-    answered.add(task.id)
-    await shown(task.id)
-  }
-  const shown = async (id: string): Promise<void> => { unshown.delete(id); await edit(id, t => { delete t.unshown }) }
+  const close = (task: DelegatedTask | undefined, channel = task && channelOf(task), error?: unknown, goal = task?.goal) => closeTask(paths, deps.broadcast, { task, channel, error, goal })
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
@@ -158,22 +147,17 @@ export function taskRunner(deps: {
       t.state = 'running'; delete t.question; delete t.verified; delete t.verificationIssue; t.turns++
     })
     if (!started || started.state !== 'running' || stopped.has(channelOf(started))) {
-      if (started?.state === 'failed') await close(started, (started.tokensUsed ?? 0) >= TASK_TOKEN_BUDGET ? 'budget' : 'turn-limit')
+      if (started?.state === 'failed') await close(started)
       return started
     }
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const earlier = trails.get(id) ?? []
     refusedThisTurn.delete(id)
-    const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && !extra?.report && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members' || step.tool === 'assign'))
-    const saveHeld: TaskTurn['saveHeld'] = extra?.verification ? undefined : async (answer) => {
-      if (unshown.get(id) !== answer) await flush(started)
-      unshown.set(id, answer); await edit(id, t => { t.unshown = answer })
-    }
     const teamCheck = teamChecks.delete(id) && !!extra?.verification?.result.trim() && !extra.verification.readback && !savedFile(extra.verification.result) && !teamReviewIssue(started)
     let overran = false
     const deadline = teamCheck && deps.checkBudgetMs ? setTimeout(() => { overran = true; deps.abort(channelOf(started)) }, deps.checkBudgetMs) : undefined
     try {
-      await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, ...(saveHeld ? { saveHeld } : {}), tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+      await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
     } finally { clearTimeout(deadline) }
     const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
@@ -181,10 +165,9 @@ export function taskRunner(deps: {
     const teamKept = teamCheck && (overran || (!!outcome?.budgetExhausted && !outcome.errored)) ? extra!.verification!.result : ''
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
-    if (!extra?.verification) reportTrails.set(id, trail)
     const reported = verdicts.get(id)
     let recheckOf = ''
-    const spoke = !!outcome && !outcome.held && !outcome.asked && !outcome.errored && !outcome.budgetExhausted && !!outcome.answer.trim() && !outcome.answer.startsWith('Not verified as complete.')
+    const spoke = !!outcome && !outcome.held && !outcome.asked && !outcome.errored && !outcome.budgetExhausted && !!outcome.answer.trim()
     const delivered = spoke && outcome.delivered === true && !extra?.verification && !extra?.report && !asksForCheck(started.goal) && !BARRIER.test(outcome.unfinishedReason || outcome.answer)
     if (spoke) answered.add(id)
     const after = await edit(id, (t) => {
@@ -255,17 +238,11 @@ export function taskRunner(deps: {
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass' && one.status !== 'not_applicable')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     const kept = (!!teamKept || !!outcome?.budgetExhausted && !!recheckOf) && after?.state === 'done'
-    if (after && outcome?.held && after.result) {
-      if (repeats || kept) await flush(after)
-      else if (extra?.verification || after.state !== 'running' || !verifyNext.has(id) || unshown.get(id) !== after.result) {
-        const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
-        if (!replaced) await flush(after)
-        await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, undefined, after.goal)
-        answered.add(id)
-        if (replaced) await shown(id)
-      }
-    } else if (after && after.state !== 'running') await flush(after)
-    if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
+    if (after && outcome?.held && after.result && !repeats && !kept && !recheckAddsNothing(after.result, extra?.verification?.result ?? '')) {
+      await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, undefined, after.goal)
+      answered.add(id)
+    }
+    if (after?.state === 'failed' && !outcome?.errored && !outcome?.answer.trim()) await close(after)
     return after
   }
 
@@ -281,10 +258,9 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    await flush(task)
     if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); answered.delete(task.id); teamChecks.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
-    if (task.state !== 'waiting') { trails.delete(task.id); reportTrails.delete(task.id) }
+    if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state) && !parked(task)) {
       const checkpoint = await readCheckpoint(paths, task.botId)
       taskQueued(task.botId, !!(checkpoint.pending.length))
@@ -323,8 +299,7 @@ export function taskRunner(deps: {
     } catch (error) {
       const cancelled = !!channel && stopped.has(channel)
       const after = await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } })
-      await flush(after)
-      if (!cancelled) await close(after, 'error', channel, error)
+      if (!cancelled) await close(after, channel, error)
       await finished(after)
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
@@ -360,7 +335,7 @@ export function taskRunner(deps: {
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
-        if (asked?.question && !isRestartQuestion(asked.question)) deps.learn?.(asked.question, request.message, asked.goal)
+        if (asked?.question) deps.learn?.(asked.question, request.message, asked.goal)
         for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); routine.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         if (task !== resumed && request.scheduled === true) routine.add(task.id)
@@ -381,8 +356,7 @@ export function taskRunner(deps: {
       } catch (error) {
         const cancelled = stopped.has(channel)
         const failed = task ? await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }) : undefined
-        await flush(failed)
-        if (!cancelled) await close(failed, 'error', channel, error, request.message)
+        if (!cancelled) await close(failed, channel, error, request.message)
         await finished(failed)
         if (cancelled) return
         throw error
@@ -397,20 +371,18 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id); reportTrails.delete(task.id)
+        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
-      for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), [], undefined, task.goal); await shown(task.id) }
       for (const task of tasksToResume(tasks)) {
         const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))
         if (mine()) continue
         if (lateOwed(task)) { await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }); continue }
-        const question = await restartQuestion(paths, task)
-        await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
+        await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; logTask(t, 'The app restarted during this task.') })
       }
     },
     waitingForPerson: (channel: string): boolean => (waiting.get(channel) ?? 0) > 0,

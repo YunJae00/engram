@@ -14,7 +14,7 @@ it('uses the shared 300,000-token default and describes the exhausted allowance'
   const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [] }, 'Work')
   expect(result.budgetExhausted).toBe(true)
   expect(result.tokensUsed).toBe(TASK_TOKEN_BUDGET)
-  expect(result.answer).toContain('300,000 new tokens available for this turn')
+  expect(result.incomplete).toContain('300,000 new tokens available for this turn')
 })
 
 it('stops at reported token usage even when the engine ignores cancellation', async () => {
@@ -71,7 +71,7 @@ it('delivers the warning in the next tool observation when live steering is unav
   await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [{ name: 'read_note', description: '', argsSchema: {}, run: async () => 'Read' }] }, 'Read', { tokenBudget: 100 })
 })
 
-it('keeps unavailable collection items visible even if the model omits them from its answer', async () => {
+it('keeps unavailable collection items on the result even if the model omits them from its answer', async () => {
   const engine = { runTools: async (job: ToolSessionJob) => {
     const ledger = job.tools.find(tool => tool.name === 'collect_results')!
     await job.tools.find(tool => tool.name === 'open_page')!.run({})
@@ -82,11 +82,12 @@ it('keeps unavailable collection items visible even if the model omits them from
   const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd,
     tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'HTTP 403' }] }, 'Read movie showtimes')
   expect(result.incomplete).toContain('Movie A: HTTP 403')
-  expect(result.answer).toContain('Unverified collection items (1/1)')
+  expect(result.incomplete).toContain('Unverified collection items (1/1)')
+  expect(result.answer).toBe('Here is what I found.')
 })
 
 
-it('preserves collected values and unavailable items in a budget stop answer', async () => {
+it('preserves collected values and unavailable items on a budget stop result', async () => {
   const engine = { runTools: async (job: ToolSessionJob) => {
     await job.tools.find(tool => tool.name === 'open_page')!.run({})
     const ledger = job.tools.find(tool => tool.name === 'collect_results')!
@@ -99,8 +100,8 @@ it('preserves collected values and unavailable items in a budget stop answer', a
   const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd,
     tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'Movie A: 14:00; Movie B: HTTP 403' }] }, 'Read showtimes', { tokenBudget: 100 })
   expect(result.budgetExhausted).toBe(true)
-  expect(result.answer).toContain('Movie A: showtime: 14:00')
-  expect(result.answer).toContain('Movie B: Not verified — HTTP 403')
+  expect(result.incomplete).toContain('Movie A: showtime: 14:00')
+  expect(result.incomplete).toContain('Movie B: Not verified — HTTP 403')
 })
 
 it('starts no tool after the session deadline and passes the model tier to the engine', async () => {

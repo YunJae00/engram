@@ -8,7 +8,6 @@ vi.mock('electron', () => ({ ipcMain: { handle: () => undefined } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => undefined }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 import { taskRunner, type TurnOutcome } from '../src/main/task-runner.js'
-import { holdTaskResult } from '../src/main/task-result-state.js'
 import { guideSettled, learnFromAnswer } from '../src/main/work-guide-learn.js'
 
 const RULE = JSON.stringify({ sections: [{ heading: 'Rules', lines: ['External recipients need approval'] }] })
@@ -24,7 +23,7 @@ async function answered(goal: string, question: string, answer: string) {
     paths,
     send: async (_request, extra) => {
       last = ++turns === 1 ? { answer: question, asked: true, unfinished: false, steps: 1 } : { answer: 'ok', asked: false, unfinished: false, steps: 0 }
-      last.held = holdTaskResult({ answer: last.answer, steps: [], asked: last.asked }, extra)
+      last.held = !!extra?.verification
     },
     outcome: () => { const o = last; last = undefined; return o },
     abort: () => undefined,

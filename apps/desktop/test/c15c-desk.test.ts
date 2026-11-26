@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { answer, openWorld } from '../src/main/answer.js'
-const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
+const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).split('result.answer = ').length - 1
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
 
@@ -60,7 +60,7 @@ describe('a structured desk answer is the model\'s own, posted as written (D1 cl
     expect(posted).toBe(DRAFT)
     expect(quick).not.toHaveBeenCalled()
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(answerSetInTurn(ipc)).toBe(1)
+    expect(answerSetInTurn(ipc)).toBe(0)
     expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
   })
   it('two short sections go out as written too (r2)', async () => {

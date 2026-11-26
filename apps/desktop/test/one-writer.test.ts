@@ -102,17 +102,49 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(stored(result.answer)).toBe(DRAFT)
   })
 
-  it('the chat turn hands the answer from the model step to the thread with one unwrap and nothing else', () => {
-    const turn = ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true'))
+  it('a stop after the first text keeps the streamed words as the turn\'s final text', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
+    const stop = new AbortController()
+    const engine = brain(job => new Promise(resolve => setTimeout(() => { job.onToken?.('창고 두 곳 재고는 맞아요. '); job.onToken?.('세 번째 창고 보는 중이에요'); setTimeout(() => stop.abort(), 20); job.signal?.addEventListener('abort', () => resolve(''), { once: true }) }, 10)))
+    const { trace } = await answer(await openWorld(root, engine), '창고 세 곳 재고 숫자 맞는지 봐줘', { signal: stop.signal, tools: [] }).finally(() => rm(root, { recursive: true, force: true }))
+    expect(trace.end).toBe('stop')
+    expect(trace.final.text).toBe('창고 두 곳 재고는 맞아요. 세 번째 창고 보는 중이에요')
+  })
+
+  it('a session that streamed its answer but returned no text ends with the streamed words, not with nothing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
+    const engine = brain(async job => { await new Promise(go => setTimeout(go, 10)); job.onToken?.('회의실 B는 목요일 오후 3시가 비어 있어요.'); return '' })
+    const { trace, result } = await answer(await openWorld(root, engine), '목요일에 회의실 B 빈 시간 있어?', { tools: [] }).finally(() => rm(root, { recursive: true, force: true }))
+    expect(trace.end).toBe('done')
+    expect(result?.answer).toBe('회의실 B는 목요일 오후 3시가 비어 있어요.')
+    expect(trace.final.text).toBe(result?.answer)
+  })
+
+  it('the chat turn delivers the model step\'s answer as written, then does its bookkeeping where an error cannot reach the answer', () => {
+    const from = ipc.indexOf('await begun!.run({')
+    const turn = ipc.slice(from, ipc.indexOf('      } catch (err) {', from))
     expect(turn.length).toBeGreaterThan(1000)
-    expect([...turn.matchAll(/result\.answer\s*=[^=]/g)].map(one => turn.slice(one.index, turn.indexOf('\n', one.index)).trim())).toEqual(['result.answer = answered }'])
-    expect(turn).toContain('const answered = answerOnly(result.answer)')
+    expect(turn).not.toMatch(/result\.answer\s*=[^=]/)
     expect(turn).toContain('result.asked ? askText(result.answer, result.options) : result.answer')
     expect(turn).toContain('result.files,')
+    const before = turn.slice(0, turn.indexOf('afterAnswer = async () => {')), after = turn.slice(turn.indexOf('afterAnswer = async () => {'))
+    expect(before).toContain('await deliverAnswer(')
+    for (const step of ['recordSkillUse(', 'markRoutineRun(', 'acknowledgeHanded(', 'recordBotSites(', 'rememberTurn(']) {
+      expect(after).toContain(step)
+      expect(before).not.toContain(step)
+    }
+    const tail = ipc.slice(ipc.indexOf('      } catch (err) {', from))
+    expect(tail.indexOf("await afterAnswer?.().catch(error => flog('chat-after-answer', error))")).toBeGreaterThan(tail.indexOf('      } finally {'))
+    expect(ipc).not.toContain('answerDelivered')
     expect(ipc).toContain('const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))')
     expect(ipc).toContain("await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned,")
-    expect(ipc).toContain("...(files.length ? { files: [...files] } : {}) }).catch(() => undefined)")
     expect(ipc).toContain('context: () => ({ company, handedBack, attachments: attachments.context')
     expect(ipc).not.toMatch(/\.replace\([^\n]*result\.answer|result\.answer\.replace\(/)
+  })
+
+  it('an aborted turn ends with the stop line or nothing, never an empty finished bubble, and no held draft is dropped from the screen', () => {
+    expect(ipc).not.toMatch(/type: 'chat:done', channel, text: ''/)
+    expect(ipc.match(/await deliverStop\(\)/g)).toHaveLength(3)
+    for (const gone of ['answerOnly', 'holdTaskResult', 'dropHeldDraft', 'Not verified as complete.', 'keepStopMark', 'noteStopped']) expect(ipc).not.toContain(gone)
   })
 })

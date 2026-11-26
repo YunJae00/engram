@@ -9,7 +9,7 @@ it.each(['Saved', '[Report](engram-artifact:report.md)'])('delivers %s without a
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(1)
   expect(t.sent[0]?.extra?.verification).toBeUndefined()
-  expect(t.delivered).toEqual([])
+  expect(t.delivered).toEqual([answer])
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: answer, turns: 1 })
 })
 
@@ -236,7 +236,7 @@ it.each([
   expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
 })
 
-const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: true, unfinishedReason: 'The task token budget (56,032 new tokens available for this turn) was reached.', steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
+const budgetStop = { answer: '리드 목록 세 개 중 두 개까지 합쳤어요.', asked: false, unfinished: true, unfinishedReason: 'The task token budget (56,032 new tokens available for this turn) was reached.', steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
 const hostAccepted = { accepted: true, verified: true, issues: [], report: unreadReport }
 it('finishes with the checked report when only its re-check ran out of budget', async () => {
   const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check: unreadCheck, trail: [fileRead] } : { ...budgetStop, check: hostAccepted, trail: [fileRead] }, false)
@@ -248,7 +248,7 @@ it('finishes with the checked report when only its re-check ran out of budget', 
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')
   expect(t.delivered).toEqual([report])
-  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
+  expect(JSON.stringify(t.events)).not.toMatch(/AI 사용 한도|AI usage limit|processing limit|token budget/)
 })
 
 it('posts the report restored at a budget stop with its own file, not a same-name file made in the re-check', async () => {
@@ -281,16 +281,17 @@ it.each([
   ['the re-check\'s accepted check read nothing back', unreadCheck, { ...budgetStop, check: hostAccepted, trail: [] }],
   ['the re-check still left the readback open', unreadCheck, { ...budgetStop, check: unreadCheck, trail: [fileRead] }],
   ['the re-check left a requirement unresolved', unreadCheck, { ...budgetStop, check: { accepted: true, verified: false, issues: ['Leads merged: unknown'] }, trail: [fileRead] }],
-] as const)('still stops at the budget when the report was not checked: %s', async (_why, check, stop = budgetStop) => {
+] as const)('ends on the report already in the thread, unverified, when the check stops at the budget: %s', async (_why, check, stop = budgetStop) => {
   const t = await setup(async (_request, turn, extra) => {
     if (turn === 1 && !check) { await hireLeads(t.paths); return { ...done(report, 1), tokensUsed: 240_000 } }
     return turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check, trail: [fileRead] } : extra?.verification ? stop : done(report, 1)
   }, false)
   await t.chat('Merge the leads')
   const task = (await listTasks(t.paths))[0]!
-  expect(task).toMatchObject({ state: 'failed', result: budgetStop.answer })
+  expect(t.delivered).toEqual([report])
+  expect(task).toMatchObject({ state: 'done', result: report })
   expect(task.verified).not.toBe(true)
-  expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
+  expect(task.log.at(-1)!.line).toBe('Done; the task token budget was reached after the answer.')
 })
 
 it('ends done on the report already in the thread when its unasked check runs out of budget, with no closing message', async () => {
@@ -303,7 +304,7 @@ it('ends done on the report already in the thread when its unasked check runs ou
   expect(task).toMatchObject({ state: 'done', result: report })
   expect(task.verified).not.toBe(true)
   expect(task.log.at(-1)!.line).toBe('Done; the task token budget was reached after the answer.')
-  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|Done so far|한 일:/)
+  expect(JSON.stringify(t.events)).not.toMatch(/AI 사용 한도|AI usage limit|processing limit|Done so far|한 일:/)
 })
 
 const doubt = 'An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.'
@@ -313,8 +314,8 @@ it('ends a plain ask done on its delivered answer whatever the host still doubts
   await t.chat('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')
   expect(t.sent).toHaveLength(1)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: deck, turns: 1 })
-  expect(t.delivered).toEqual([])
-  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|chat:error|한 일:/)
+  expect(t.delivered).toEqual([deck])
+  expect(JSON.stringify(t.events)).not.toMatch(/AI 사용 한도|AI usage limit|processing limit|chat:error|한 일:/)
   await t.chat('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
   expect(await listTasks(t.paths)).toHaveLength(2)
   expect(t.sent[1]?.extra?.context).toBeUndefined()
@@ -339,18 +340,19 @@ it('keeps waiting at a barrier only the person can clear, and keeps continuing w
   await cut.chat('공지 네 개 다 읽어줘')
   expect((await listTasks(cut.paths))[0]).toMatchObject({ state: 'done', turns: 2 })
   const ipc = (await import('node:fs')).readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain("...(!held && !result.asked && !result.stopped && !result.budgetExhausted && result.answer.trim() && !result.answer.startsWith('Not verified as complete.') ? { delivered: true } : {})")
+  expect(ipc).toContain("...(!held && !result.asked && !result.stopped && !result.budgetExhausted && !result.incomplete && result.answer.trim() ? { delivered: true } : {})")
 })
 
-it('still says so when a task ends at its limit with nothing delivered, and says nothing when the answer is already there', async () => {
-  const nothing = await setup(async () => budgetStop, false)
+it('shows the usage line when a task ends at its limit with nothing delivered, and says nothing when the answer is already there', async () => {
+  const nothing = await setup(async () => ({ ...budgetStop, answer: '' }), false)
   await nothing.chat('리드 목록 합쳐줘')
   expect((await listTasks(nothing.paths))[0]).toMatchObject({ state: 'failed' })
-  expect(JSON.stringify(nothing.events)).toMatch(/처리 한도에 닿아 끝나지 않았어요/)
+  expect(nothing.events.filter(e => e.type === 'chat:error')).toEqual([expect.objectContaining({ message: expect.stringContaining('AI 사용 한도에 도달했어요') })])
+  expect(nothing.events.filter(e => e.type === 'chat:done')).toEqual([])
   const answered = await setup(async (_request, turn) => turn === 1 ? { ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt, tokensUsed: 240_000 } : budgetStop, false)
   await answered.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
   expect((await listTasks(answered.paths))[0]).toMatchObject({ state: 'done', result: deck })
-  expect(JSON.stringify(answered.events)).not.toMatch(/처리 한도|한 일:/)
+  expect(JSON.stringify(answered.events)).not.toMatch(/AI 사용 한도|AI usage limit|한 일:/)
 })
 
 it('still stops a working turn at the budget', async () => {
@@ -363,7 +365,7 @@ const sourced = '서울 12도, 부산 15도, 제주 17도예요.\n출처: https:
 const hired = [{ tool: 'hire_members', args: {}, observation: '{"members":[]}' }]
 const teamEnd = async (t: Awaited<ReturnType<typeof setup>>) => {
   const task = (await listTasks(t.paths))[0]!
-  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
+  expect(JSON.stringify(t.events)).not.toMatch(/AI 사용 한도|AI usage limit|processing limit|token budget/)
   return task
 }
 
@@ -460,15 +462,17 @@ const unreviewedTeam = async (t: Awaited<ReturnType<typeof setup>>) => {
   await hireLeads(t.paths)
   await updateTask(t.paths, (await listTasks(t.paths))[0]!.id, saved => { const m = saved.team!.members[0]!; m.state = 'done'; delete m.review })
 }
-it('does not call a team report done at the budget when a member was never reviewed', async () => {
+it('ends a team report already in the thread unverified at the budget when a member was never reviewed', async () => {
   const t = await setup(async (_request, turn) => {
     if (turn === 1) { await unreviewedTeam(t); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: 240_000, trail: hired } }
     return budgetStop
   }, false)
   await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
   const task = (await listTasks(t.paths))[0]!
-  expect(task.state).toBe('failed')
-  expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
+  expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
+  expect(task).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(task.verified).not.toBe(true)
+  expect(task.log.at(-1)!.line).toBe('Done; the task token budget was reached after the answer.')
 })
 
 it('does not cut short the check of a team report whose member was never reviewed', async () => {

@@ -80,7 +80,7 @@ describe('stack-18: repair vs evidence on a team report (c18b scoped repair × c
     expect(shown.answer).toContain(EVIDENCED)
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
     const from = ipc.indexOf('await begun!.run({')
-    expect(ipc.slice(from, ipc.indexOf('answerDelivered = true', from)).match(/result\.answer = /g)).toHaveLength(1)
+    expect(ipc.slice(from, ipc.indexOf('afterAnswer = async () => {', from)).match(/result\.answer = /g)).toBeNull()
   })
 })
 

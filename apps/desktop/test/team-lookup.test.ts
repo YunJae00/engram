@@ -47,7 +47,7 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
 })
 
 it('hands the lead what a lookup member had when it stops at its call or time limit', async () => {
-  const w = await world(async () => ({ answer: 'Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 흐림 15도', steps: [], fellBack: false, stopped: 'calls' }))
+  const w = await world(async () => ({ answer: '부산 흐림 15도', steps: [], fellBack: false, stopped: 'calls' }))
   const out = JSON.parse(await w.hire([{ role: '부산 조사', brief: '부산 오늘 날씨', lookup: true }]))
   expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '부산 흐림 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
 })

@@ -1,20 +1,23 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentLoopResult, TurnStep } from 'core'
 import { checkResult, resultCheckTool } from '../src/main/result-check.js'
-import { canLearnTurn, changedResult, commandOnlyReads, freshResultReadback, holdTaskResult, needsResultCheck, nothingToReadBack } from '../src/main/task-result-state.js'
+import { canLearnTurn, changedResult, commandOnlyReads, freshResultReadback, needsResultCheck, nothingToReadBack } from '../src/main/task-result-state.js'
 import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
 
-it('does not hide incomplete answers for an automatic continuation', () => {
-  const draft = { answer: 'Same result', steps: [read] }
-  const turn = { holdIf: () => false }
-  expect(holdTaskResult({ ...draft, incomplete: 'The page check was not confirmed.' }, turn)).toBe(false)
-  expect(holdTaskResult({ ...draft, stopped: 'calls' }, turn)).toBe(false)
-  expect(holdTaskResult(draft, turn)).toBe(false)
-  expect(holdTaskResult({ ...draft, asked: true, incomplete: 'Need input' }, turn)).toBe(false)
-  expect(holdTaskResult({ ...draft, pending: 'run_procedure' }, turn)).toBe(false)
-  expect(holdTaskResult({ ...draft, incomplete: 'No unattended task' })).toBe(false)
+it('posts a finished answer before its re-check starts, and keeps only the hidden re-check turn off the thread', async () => {
+  const draft = '견적 세 건을 표로 비교했어요. [견적 비교](engram-artifact:quotes.xlsx)'
+  const seen: string[][] = []
+  const t = await setup(async (_request, turn) => {
+    seen.push([...t.delivered])
+    return turn === 1 ? { ...done(draft, 1), check: { accepted: false, issues: ['Quote total not read back'] } } : { ...done(draft, 1), check: { accepted: true, issues: [] }, trail: [read] }
+  })
+  await t.chat('견적서 세 개 비교해서 표로 만들어줘')
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[1]?.extra?.verification).toMatchObject({ result: draft })
+  expect(seen).toEqual([[], [draft]])
+  expect(t.delivered).toEqual([draft])
 })
 const result = (steps: TurnStep[], extra: Partial<AgentLoopResult> = {}) => ({ steps, ...extra })
 const report = async (): Promise<TurnStep> => {
@@ -22,19 +25,6 @@ const report = async (): Promise<TurnStep> => {
   const args = { checks: [{ ...finding, requirement: 'Finish the task' }], grounding: finding }
   return { tool: 'report_result_check', args, observation: await resultCheckTool().run(args, { task: 'Finish the task' }) }
 }
-
-it('holds a finished answer only when the runner says its own re-check follows', () => {
-  const draft = { answer: 'Report', steps: [read] }
-  const open = { accepted: false, issues: ['Row count not read back'] }
-  const holdIf = vi.fn((_answer: string, _steps: TurnStep[], check?: { accepted: boolean }) => !!check && !check.accepted)
-  expect(holdTaskResult(draft, { holdIf }, open)).toBe(true)
-  expect(holdIf).toHaveBeenLastCalledWith('Report', [read], open)
-  expect(holdTaskResult(draft, { holdIf }, { accepted: true, issues: [] })).toBe(false)
-  expect(holdTaskResult({ ...draft, incomplete: 'Not confirmed.' }, { holdIf }, open)).toBe(false)
-  expect(holdTaskResult({ ...draft, stopped: 'calls' }, { holdIf }, open)).toBe(false)
-  expect(holdTaskResult({ ...draft, asked: true }, { holdIf }, open)).toBe(false)
-  expect(holdTaskResult(draft, { verification: { result: 'Report' } })).toBe(true)
-})
 
 it('does not learn a held draft before its verification turn', () => {
   expect(canLearnTurn(result([read]), true)).toBe(false)

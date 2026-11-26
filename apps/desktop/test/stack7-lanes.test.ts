@@ -14,7 +14,7 @@ it('stack-7: no desk correction runs on any answer: no desk kind is left, the ke
   expect(source).not.toMatch(/deskKind|deskLane|const short =/)
   expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
   expect(ipc).not.toContain('asState(')
-  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
+  expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
   expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine'])
 })
