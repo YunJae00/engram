@@ -191,7 +191,8 @@ export function taskRunner(deps: {
       delete t.verificationPending
       delete t.awaitingEmployees
       const pending = t.approvals.filter((a) => !a.answer)
-      if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
+      if (answered.has(id) && before?.trim() && (!outcome || !!outcome.errored || (!outcome.answer.trim() && !outcome.unfinished))) { t.result = before; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; a later turn ended without a new answer after the answer.') }
+      else if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
       else if (outcome.budgetExhausted && recheckOf) { t.result = recheckOf; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the re-check stopped at the task token budget.') }
       else if (outcome.budgetExhausted && answered.has(id) && before?.trim()) { t.result = before; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the task token budget was reached after the answer.') }
@@ -298,8 +299,14 @@ export function taskRunner(deps: {
       }
     } catch (error) {
       const cancelled = !!channel && stopped.has(channel)
-      const after = await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } })
-      if (!cancelled) await close(after, channel, error)
+      const why = error instanceof Error ? error.message : String(error)
+      const after = await edit(id, (t) => {
+        if (t.state !== 'running') return
+        if (cancelled) { t.state = 'stopped'; logTask(t, 'Stopped by you') }
+        else if (answered.has(id) && t.result?.trim()) { t.state = 'done'; logTask(t, `Done; a later turn failed after the answer: ${why}`) }
+        else { t.state = 'failed'; logTask(t, `Failed: ${why}`) }
+      })
+      if (!cancelled && after?.state !== 'done') await close(after, channel, error)
       await finished(after)
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }

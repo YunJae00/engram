@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, updateTask } from 'core'
+import { createTask, listTasks, readBotTranscript, updateTask } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
 
@@ -281,8 +281,34 @@ it('still posts the waiting report when its re-check ends without an answer', as
   const report = 'Saved. [Report](engram-artifact:report.md)'
   const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : undefined)
   await t.chat('Save the report')
-  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed' })
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: report })
   expect(t.delivered).toEqual([report])
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([])
+  expect((await readBotTranscript(t.paths, 'bot-1')).filter(turn => turn.error)).toEqual([])
+})
+
+it('keeps a delivered answer and adds no error line when its hidden re-check throws', async () => {
+  const answer = '화분 물주기 일정표를 만들었어요. [물주기](engram-artifact:watering.xlsx)'
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done(answer, 1), check: { accepted: false, issues: ['Schedule rows not read back'] } }
+    throw new Error('socket hang up')
+  })
+  await t.chat('베란다 화분 물주기 일정표 엑셀로 만들고 한 번 더 확인해줘')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: answer })
+  expect(t.delivered).toEqual([answer])
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([])
+  expect((await readBotTranscript(t.paths, 'bot-1')).filter(turn => turn.error)).toEqual([])
+})
+
+it('still shows the usage line when a task fails before any answer was delivered', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('', 1), unfinished: true, unfinishedReason: 'List not built yet' }
+    throw new Error('socket hang up')
+  })
+  await t.chat('주간 장보기 목록 정리해줘')
+  await t.settle('failed')
+  expect(t.delivered).toEqual([])
+  expect(t.events.filter(e => e.type === 'chat:error')).toHaveLength(1)
 })
 
 it('posts the report the moment it is written, so a restart during its re-check has nothing left to post', async () => {
