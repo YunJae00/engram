@@ -590,6 +590,9 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))[0]
       for (const part of parts) if (!part.brief && !staff.has(part.who)) refused.push(`${josa(part.who, '이', '가')} 끝낸 일이 아직 없어서 넘길 게 없어요.`)
       if (refused.length) return [...new Set(refused)].join('\n')
+      const FULL = '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.'
+      const full = (task: DelegatedTask, count: number): boolean => (task.state !== 'running' && !steer) || (task.team?.hires ?? 0) + count > (task.team?.maxHires ?? TEAM_MAX_HIRES)
+      if (hiring.size && (await on.change(task => full(task, parts.length)) ?? true)) return FULL
 
       const voices: string[] = []
       for (const [name, title] of hiring) {
@@ -613,7 +616,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       if (!wanted.length && !stop.length) return lines.join(' ')
       const out = await on.change((task): { refuse: string } | { missing: string } | { ids: string[]; off: TeamMember[] } => {
         const team = task.team ?? { members: [], hires: 0, maxHires: TEAM_MAX_HIRES, maxDepth: TEAM_MAX_DEPTH, big: false }
-        if ((task.state !== 'running' && !steer) || team.hires + wanted.length > team.maxHires) return { refuse: '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.' }
+        if (full(task, wanted.length)) return { refuse: FULL }
         const off = team.members.filter(m => m.parentId === null && atWork(m) && stop.some(name => named(m, name)))
         if (stop.length && !off.length) return { missing: `Nothing still running matches stop. Running now: ${runningNow(team.members)}.` }
         task.team = team

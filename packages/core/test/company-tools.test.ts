@@ -323,6 +323,17 @@ test('steer never starts work of its own: with nothing handed off still running,
   expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['울산', 'working']])
 })
 
+test('a change that would go past the job\'s hire cap is refused before the new name joins the team', async () => {
+  const o = await office()
+  await o.assign({ wait: false, to: [{ who: '지민', brief: '속초 숙소 찾아줘', topic: '속초' }, { who: '서연', brief: '강릉 숙소 찾아줘', topic: '강릉' }] })
+  for (const m of o.task.team!.members) m.state = 'working'
+  o.task.team!.maxHires = o.task.team!.hires
+  o.steerable(true)
+  expect(await o.assign({ wait: false, steer: '속초', to: [{ who: '태오', brief: '양양 숙소 찾아줘', topic: '양양', role: '숙소 담당' }] })).toBe('지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.')
+  expect(await o.named('태오')).toBeUndefined()
+  expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['속초', 'working'], ['강릉', 'working']])
+})
+
 test('a change whose stop names nothing running is refused before anyone new joins the team', async () => {
   const o = await office()
   await o.assign({ wait: false, to: [{ who: '지민', brief: '한강 야경 명소 찾아줘', topic: '야경' }, { who: '서연', brief: '한강 자전거 대여소 찾아줘', topic: '자전거' }] })
