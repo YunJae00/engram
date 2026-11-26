@@ -53,11 +53,11 @@ it('parks a partial collection at its reported barrier and retains it through ou
     await collect.run({ status: 'blocked', summary: 'Please sign in to read the remaining seven items.', evidenceStep: 8 })
     await job.tools.find(t => t.name === 'file_create_copy')!.run({})
     await job.tools.find(t => t.name === 'report_result_check')!.run({})
-    return { answer: 'Continuing' }
+    return { answer: 'Sign in once and I will read the other seven.' }
   })
   const result = await runToolSession({ engine: engine(run), workdir, tools: [tool('open_page'), tool('read_open_page', 'HTTP 401: Sign in to read the remaining items.'), tool('file_create_copy', '{}'), tool('report_result_check', '{}')] }, 'Read ten items')
   expect(run).toHaveBeenCalledOnce()
-  expect(result).toMatchObject({ asked: true, answer: 'Please sign in to read the remaining seven items.\n\nContinuing' })
+  expect(result).toMatchObject({ asked: true, answer: 'Sign in once and I will read the other seven.' })
   expect(result.incomplete).toBeUndefined()
 })
 
@@ -69,7 +69,7 @@ it('directs a login-wall response into ask_person', async () => {
     const response = await job.tools.find(t => t.name === 'press')!.run({ target: 'Continue' })
     expect(String(response)).toContain('Call ask_person with this question:')
     await job.tools.find(t => t.name === 'ask_person')!.run({})
-    return { answer: 'Continuing' }
+    return { answer: 'Sign in once and I will read the other seven.' }
   })
   const result = await runToolSession({ engine: engine(run), workdir, tools }, 'Read the report')
   expect(result.asked).toBe(true)

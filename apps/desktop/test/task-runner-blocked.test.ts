@@ -18,7 +18,7 @@ it('parks partial collection barriers in waiting without a Continuing turn', asy
   await t.chat('Read both items')
   const task = await t.settle('waiting')
   expect(task.turns).toBe(1)
-  expect(task.question).toBe('Please sign in for the second item.\n\nSign in once and I will read the second item.')
+  expect(task.question).toBe('Sign in once and I will read the second item.')
   expect(task.log.some(entry => entry.line === 'Continuing')).toBe(false)
   expect(t.sent).toHaveLength(1)
 })

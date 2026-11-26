@@ -235,16 +235,16 @@ it('finishes a blocked collection once without rewriting it as incomplete', asyn
   expect(result.stopped).toBeUndefined()
 })
 
-it('shows a blocked collection as the barrier the model reported, followed by what the model wrote after it', async () => {
+it('asks the person in exactly the words the model wrote after a blocked finish, without the finish summary in front', async () => {
   let receipt = ''
   const engine = sessionBrain(async job => {
     await job.tools.find(tool => tool.name === 'open_page')!.run({})
-    receipt = String(await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: '창고 장부 페이지가 계속 열리지 않아요.', evidenceStep: 1 }))
-    return { answer: '평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.' }
+    receipt = String(await job.tools.find(tool => tool.name === 'collect_results')!.run({ status: 'blocked', summary: '구청 민원 조회 화면이 점검 중이라 안 열려요.', evidenceStep: 1 }))
+    return { answer: '민원 접수 문자를 받으셨으면 거기 적힌 번호로 다시 찾아볼게요.' }
   })
-  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'that did not work: HTTP 503' }] }, '창고 재고 장부 정리해줘')
-  expect(result.answer).toBe('창고 장부 페이지가 계속 열리지 않아요.\n\n평소 재고를 따로 적어 두는 곳이 있으면 거기서 찾아볼게요.')
-  expect(result.answer).not.toContain('503')
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [{ name: 'open_page', description: 'read', argsSchema: {}, run: async () => 'that did not work: HTTP 503 maintenance' }] }, '지난주 넣은 구청 민원 처리됐는지 봐줘')
+  expect(result.answer).toBe('민원 접수 문자를 받으셨으면 거기 적힌 번호로 다시 찾아볼게요.')
+  expect(result.answer).not.toContain('점검 중')
   expect(result.answer).not.toContain('Unverified')
   expect(result.asked).toBe(true)
   expect(JSON.parse(receipt.split('\n')[0]!).next).not.toMatch(/\bstop\b/i)

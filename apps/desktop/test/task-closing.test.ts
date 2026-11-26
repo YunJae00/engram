@@ -114,4 +114,3 @@ describe('stoppedText', () => {
     expect(stoppedText([{ role: 'assistant', text: 'Earlier', progress: true }, { role: 'user', text: 'Tidy' }])).toBe('Stopped.')
   })
 })
-
