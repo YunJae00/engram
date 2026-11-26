@@ -1,14 +1,12 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { companyNote, createBot, handBacks, handoffBrief, initVault, keepRead, keepSources, loadBots, LOOKUP_RULE, pointQueries, recordFacts, runToolSession, settleMember, skipWalls, staffTool, TEAM_MEMORY, timeBoxed, type AgentTool, type TeamMember } from 'core'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answer, openWorld } from '../src/main/answer.js'
-import * as desk from '../src/main/desk-lane.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 
-const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const looking = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(tool), new Set<string>()), []), () => 28_000)
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (url: string, title: string, snippet: string, day = '11월 18일'): string => `- ${title} — ${url} — ${snippet} — ${day}`
@@ -100,7 +98,7 @@ describe('H2 (stack16: the November turn was rewritten back to December)', () =>
     expect(told).not.toContain('the later words hold')
     expect(told).not.toContain('What the person asks for now')
     expect(result?.answer).toBe(draft)
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 

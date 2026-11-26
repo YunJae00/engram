@@ -1,23 +1,21 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { CHOICE_RULE, runComet, type Engine } from 'core'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 import * as firstLine from '../src/main/first-line.js'
-import * as desk from '../src/main/desk-lane.js'
 
 const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
 const posted = async (ask: string, draft: string, options: NonNullable<Parameters<typeof runComet>[2]> = {}): Promise<string> => (await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, ask, { guided: false, modelHint: 'smart', ...options })).answer
 
 it('stack-7: no desk correction runs on any answer: no desk kind is left, the keep gate runs only outside the team lane, and the turn posts the model\'s words (c11b: asState went)', () => {
   const source = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
-  expect(source).toContain('const keep = hostable && keepAsk(message)')
-  expect(source).toContain('const hostable = !company && plainAsk')
+  expect(source).not.toMatch(/keepAsk|hostable|plainAsk/)
   expect(source).not.toMatch(/deskKind|deskLane|const short =/)
-  expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
+  expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
   expect(ipc).not.toContain('asState(')
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
-  expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
+  expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine'])
 })
 

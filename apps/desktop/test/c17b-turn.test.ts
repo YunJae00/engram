@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,7 +8,6 @@ const logged = vi.hoisted(() => vi.fn())
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: logged }))
-import * as desk from '../src/main/desk-lane.js'
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { answerOnly } from '../src/main/result-check.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
@@ -59,7 +58,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(jobs[0]!.tools.find(tool => tool.name === 'file_create_workbook')!.argsSchema).toEqual(book.argsSchema)
   })
   it('no check or rewrite stands between the draft and the person, so the later words reach the model itself', () => {
-    expect(Object.keys(desk).filter(key => typeof (desk as Record<string, unknown>)[key] === 'function').sort()).toEqual(['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind'])
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(own).not.toMatch(/changedNote|askNow|routeAsk|What the person asks for now/)
     expect(own).toContain('const notes = [context?.(), calendarLine(), note].filter(Boolean).join(\'\\n\\n\')')
@@ -115,7 +114,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     for (const gone of ['namedText', 'namedBy', 'askNow', 'routeAsk', 'fileGiven', 'const meant', 'deskLane', 'deskKind', 'deskLight']) expect(own).not.toContain(gone)
     expect(ipc.split('\n').filter(line => /\brouted\b|\bdeskLane\(|\bdeskKind\(|\brouteAsk\(/.test(line))).toEqual([])
     expect(own).toContain('tools: everyTool,')
-    expect(ipc).toMatch(/await deliverAnswer\(\s*`\$\{result\.asked \? askText\(result\.answer, result\.options\) : result\.answer\}\$\{note\}`/)
+    expect(ipc).toMatch(/await deliverAnswer\(\s*result\.asked \? askText\(result\.answer, result\.options\) : result\.answer,/)
   })
   it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', async () => {
     expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
@@ -133,7 +132,7 @@ describe('memory waits while a person\'s turn runs', () => {
   it('a slow memory call queued between the turn\'s tools does not run next to the turn, and completes after release', async () => {
     const release = turnRunning()
     let started = 0
-    const memory = yielding(async () => { started = Date.now(); await tick(30); return 'kept' }, undefined, true)
+    const memory = yielding(async () => { started = Date.now(); await tick(30); return 'kept' })
     const t0 = Date.now()
     await tick(20)
     expect(Date.now() - t0).toBeLessThan(200)
@@ -152,12 +151,6 @@ describe('memory waits while a person\'s turn runs', () => {
     expect(runs).toBe(1)
     release()
     expect(await memory).toBe('again')
-  })
-  it('a "keep this" fact is never dropped by busy turns and is kept once they end', async () => {
-    let runs = 0
-    const memory = yielding(signal => new Promise<string>((resolve, reject) => { runs++; if (runs > 5) return resolve('the fact'); signal.addEventListener('abort', () => reject(new Error('cut'))) }), undefined, true)
-    for (let i = 0; i < 5; i++) { await tick(); turnRunning()() }
-    expect(await memory).toBe('the fact')
   })
 })
 

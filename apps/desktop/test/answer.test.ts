@@ -126,7 +126,7 @@ describe('answer is the one entry the app and the runner share', () => {
     const open: AgentTool = { name: 'open_page', description: 'opens a page', argsSchema: { type: 'object' }, run: async () => 'page' }
     const shelf: AgentTool = { name: 'shelf_lookup', description: 'finds a book on the shelf', argsSchema: { type: 'object' }, run: async () => '3층 서가' }
     for (const ask of ['오사카 이번 주말 비 소식 좀 찾아봐 줄래', '어제 나스닥 마감 시세랑 엔화 환율 알아봐 줘', '봇 두 개 써서 성수동 팝업이랑 연남동 전시 따로 조사해줘', '탕비실 커피머신 세척 순서 정리해 볼래'])
-      await answer(await openWorld(await temp(), engine), ask, { plainAsk: true, tools: [search, open, shelf], maxCalls: 12 })
+      await answer(await openWorld(await temp(), engine), ask, { tools: [search, open, shelf], maxCalls: 12 })
     expect(searches).toBe(0)
     expect(jobs).toHaveLength(4)
     for (const job of jobs) expect(job).toEqual(jobs[3])
@@ -143,7 +143,7 @@ describe('answer is the one entry the app and the runner share', () => {
     const world = await openWorld(dir, engine)
     await writeFile(join(world.paths.workspace, 'kitchen-duty.md'), '- 월: 설거지 담당 민서')
     for (const ask of ['신입 교육 일정 슬라이드 다섯 장 만들어줘', 'kitchen-duty.md 요약해줘', 'budget-q4.csv에서 총합 얼마야?', '아니 그거 말고 엑셀로', '오늘 드디어 이사 끝냈어'])
-      await answer({ ...world, history: [] }, ask, { plainAsk: true, tools: [reader, build], maxCalls: 12 })
+      await answer({ ...world, history: [] }, ask, { tools: [reader, build], maxCalls: 12 })
     expect(jobs).toHaveLength(5)
     for (const job of jobs) expect(job).toEqual({ tools: ['file_read', 'ppt_build'], maxCalls: 12, system: jobs[0]!.system })
     expect(prompts.join('\n')).not.toContain('설거지 담당 민서')
@@ -154,7 +154,7 @@ describe('answer is the one entry the app and the runner share', () => {
     const engine = fake(async job => { seen.push([job.system, job.opening, job.prompt].join('\n')); return '좋네요.' })
     const world = await openWorld(await temp(), engine)
     for (const ask of ['우리 집 강아지가 어제 처음 동네 한 바퀴 돌았어', '내 자전거 보관함 번호 412번이야, 기억해 줘', '아 412 말고 421이었어'])
-      await answer({ ...world, history: [] }, ask, { plainAsk: false })
+      await answer({ ...world, history: [] }, ask)
     expect(seen).toHaveLength(3)
     for (const input of seen) {
       expect(input).toContain('Keeping what they tell you is silent')
@@ -210,7 +210,63 @@ describe('answer is the one entry the app and the runner share', () => {
       expect(turn.indexOf(work), work).toBeGreaterThan(begin)
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8'), run = own.indexOf('const run = async')
     expect(own).not.toMatch(/namedText|namedBy|fileGiven|deskLane|deskKind|deskLight|closingBuilds/)
-    for (const work of ['keptFix(', 'plainKeep(', 'await fixSlideTitle(', 'await sortByKind(', 'await skills()']) expect(own.indexOf(work), work).toBeGreaterThan(run)
+    expect(own.indexOf('await skills()')).toBeGreaterThan(run)
     expect(ipc).toMatch(/for \(const ack of acks\) ack\.end\(\)/)
+  })
+})
+
+describe('a correction, a file sort and a slide fix are the model\'s own tool calls; the host writes no reply', () => {
+  const tool = (job: ToolSessionJob, name: string) => job.tools.find(one => one.name === name)!
+  it('a correction reaches the model, whose keep_in_mind call replaces the old fact, and the thread stores the model\'s words', async () => {
+    const { loadBotMemory, PERSON_MEMORY } = await import('core')
+    let calls = 0
+    const engine = fake(async job => {
+      calls++
+      if (calls === 1) { await tool(job, 'keep_in_mind').run({ facts: ['내 단골 빵집은 전주점이다'] }, {}); return '알겠어요.' }
+      expect(job.prompt).toContain('군산점')
+      await tool(job, 'keep_in_mind').run({ facts: ['내 단골 빵집은 군산점이다'], replaces: ['내 단골 빵집은 전주점이다'] }, {})
+      return '군산점으로 고쳤어요.'
+    })
+    const world = await openWorld(await temp(), engine)
+    await answer(world, '내 단골 빵집은 전주점이야, 잊지 말아줘')
+    const { result } = await answer(world, '어 전주점 아니라 군산점이었어')
+    expect(calls).toBe(2)
+    expect(result?.answer).toBe('군산점으로 고쳤어요.')
+    expect(result?.steps.map(step => step.tool)).toEqual(['keep_in_mind'])
+    expect((await loadBotMemory(world.paths, PERSON_MEMORY)).facts.map(fact => fact.text)).toEqual(['내 단골 빵집은 군산점이다'])
+    expect(world.history.filter(turn => turn.role === 'assistant').map(turn => turn.text)).toEqual(['알겠어요.', '군산점으로 고쳤어요.'])
+  })
+
+  it('a sort ask reaches the model with file_move on its menu, and the files move only by the model\'s call', async () => {
+    const { mkdir, readdir } = await import('node:fs/promises')
+    let menu: string[] = []
+    const engine = fake(async job => {
+      menu = job.tools.map(one => one.name)
+      await tool(job, 'file_move').run({ moves: [{ from: '스캔본/영수증.jpg', to: '스캔본/사진/영수증.jpg' }, { from: '스캔본/계약서.pdf', to: '스캔본/문서/계약서.pdf' }] }, {})
+      return '사진이랑 문서로 나눠 뒀어요.'
+    })
+    const world = await openWorld(await temp(), engine)
+    await mkdir(join(world.paths.workspace, '스캔본'), { recursive: true })
+    for (const name of ['영수증.jpg', '계약서.pdf']) await writeFile(join(world.paths.workspace, '스캔본', name), name)
+    const { result } = await answer(world, '스캔본 안에 있는 거 사진 문서 나눠서 넣어놔')
+    expect(menu).toContain('file_move')
+    expect(result?.answer).toBe('사진이랑 문서로 나눠 뒀어요.')
+    expect((await readdir(join(world.paths.workspace, '스캔본'))).sort()).toEqual(['문서', '사진'])
+    expect(world.history.at(-1)).toEqual({ role: 'assistant', text: '사진이랑 문서로 나눠 뒀어요.' })
+  })
+
+  it('a slide title ask reaches the model with the document tools, and nothing is edited before it is asked', async () => {
+    let asked = '', menu: string[] = []
+    const engine = fake(async job => { asked = job.prompt; menu = job.tools.map(one => one.name); return '두 번째 장 제목을 "올해 목표"로 바꿨어요.' })
+    const { result } = await answer(await openWorld(await temp(), engine), '아까 그 발표자료 두 번째 장 머리글 "올해 목표"로 고쳐줘')
+    expect(asked).toContain('올해 목표')
+    expect(menu).toEqual(expect.arrayContaining(['file_read_package', 'file_edit_package']))
+    expect(result?.answer).toBe('두 번째 장 제목을 "올해 목표"로 바꿨어요.')
+  })
+
+  it('answer.ts has no reply of its own', () => {
+    const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
+    expect(own).not.toMatch(/desk-lane|keptFix|plainKeep|slideTitleFix|fixSlideTitle|sortByKind|keepAsk|const host/)
+    expect(own).toContain('result = await runComet(')
   })
 })

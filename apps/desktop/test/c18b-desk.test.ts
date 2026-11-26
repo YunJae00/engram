@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,10 +7,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import type { Engine, ToolSessionJob } from 'core'
-import * as deskLane from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const scratch: string[] = []
 afterEach(async () => { await Promise.all(scratch.splice(0).map(dir => rm(dir, { recursive: true, force: true }))) })
 
@@ -76,9 +74,7 @@ describe('r2: where a line belongs is said in the rules, and the host moves no l
     for (const task of TASKS) expect(posted.split(task)).toHaveLength(2)
   })
   it('the mover, the checker and the desk note are gone from the desk lane: only the keep, slide-title and sort answers are left', () => {
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-    expect(Object.keys(deskLane)).not.toContain('DESK_NOTE')
-    expect(Object.keys(deskLane)).not.toContain('DESK_TOOLS')
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 

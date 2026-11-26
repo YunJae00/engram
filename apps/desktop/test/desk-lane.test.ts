@@ -7,7 +7,6 @@ import type { Engine, ToolSessionJob } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
 
-import { keepAsk } from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 const scratch: string[] = []
@@ -27,15 +26,20 @@ describe('desk lane', () => {
     const jobs: { tools: string[]; modelHint?: string; effort?: string }[] = []
     const engine = fake(async job => { jobs.push({ tools: job.tools.map(tool => tool.name), ...(job.modelHint ? { modelHint: job.modelHint } : {}), ...(job.effort ? { effort: job.effort } : {}) }); return '해 볼게요.' })
     const asks = ['작업실 화분 물 주는 요일 정해줘', 'fixtures/garden.csv에서 4월 물 사용량 합계 알려줘', 'fixtures/seeds 폴더 파일들 날짜순으로 옮겨줘', '다음 달 원예 모임용 PPT 4장 만들어줘', '온실 환기 순서 정리해서 수진님한테 보내줘']
-    for (const ask of asks) await answer(await openWorld(await temp(), engine), ask, { plainAsk: true })
+    for (const ask of asks) await answer(await openWorld(await temp(), engine), ask)
     expect(jobs).toHaveLength(asks.length)
     for (const job of jobs) expect(job).toEqual(jobs[0])
     for (const tool of ['file_read', 'file_move', 'keep_in_mind', 'search_web']) expect(jobs[0]!.tools, tool).toContain(tool)
   })
 
-  it('opens the host keep answers only for a one-line remember or correction ask', () => {
-    for (const ask of ['내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '아 지민호 말고 민호야', 'Remember that I work with Minho']) expect(keepAsk(ask), ask).toBe(true)
-    for (const ask of ['나 누구랑 일하지?', '기억해\n그리고 보고서도 써줘', `기억해 ${'가'.repeat(200)}`, '/plan 기억해', '', '적어 뒀다가 나중에 기억해 줘', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘']) expect(keepAsk(ask), ask).toBe(false)
+  it('gives a remember ask and a correction the model turn like any other ask: no host answer before it', async () => {
+    const asks: string[] = []
+    const engine = fake(async job => { asks.push(job.prompt); return '네, 그렇게 알고 있을게요.' })
+    for (const ask of ['우리 집 분리수거는 수요일이야, 잊지 마', '아 수요일 말고 목요일이야', 'Remember that the plants get water on Fridays']) {
+      const { result } = await answer(await openWorld(await temp(), engine), ask)
+      expect(result?.answer, ask).toBe('네, 그렇게 알고 있을게요.')
+    }
+    expect(asks).toHaveLength(3)
   })
 
   it('runs every turn on the caller\'s full tool list with no model hint and no light effort, and keeps the shell', () => {
@@ -52,7 +56,7 @@ describe('a question about a named file', () => {
     let told = '', menu: string[] = []
     const engine = fake(async job => { told = [job.system, job.opening, job.prompt].join('\n'); menu = job.tools.map(tool => tool.name); return '5월 물 사용량은 1,310리터예요.' })
     const world = { ...await openWorld(await temp(), engine), history: [{ role: 'user' as const, text: 'fixtures/garden.csv에서 4월 물 사용량 합계 알려줘' }, { role: 'assistant' as const, text: '4월 물 사용량은 1,240리터예요.' }] }
-    const { result } = await answer(world, '아 4월 말고 5월 걸로', { plainAsk: true })
+    const { result } = await answer(world, '아 4월 말고 5월 걸로')
     expect(result?.answer).toBe('5월 물 사용량은 1,310리터예요.')
     expect(told).toContain('Task: 아 4월 말고 5월 걸로')
     expect(told).toContain('fixtures/garden.csv에서 4월 물 사용량 합계 알려줘')
@@ -68,7 +72,7 @@ describe('a question about a named file', () => {
     const world = await openWorld(await temp(), engine)
     await mkdir(join(world.paths.workspace, 'fixtures'), { recursive: true })
     await writeFile(join(world.paths.workspace, 'fixtures', 'garden-log.md'), '# 텃밭 일지\n- 4월 둘째 주: 토마토 모종 여섯 포기\n')
-    const { result } = await answer(world, 'fixtures/garden-log.md에 4월에 뭐 심었다고 돼 있어?', { plainAsk: true })
+    const { result } = await answer(world, 'fixtures/garden-log.md에 4월에 뭐 심었다고 돼 있어?')
     expect(result?.answer).toBe('4월에는 토마토 모종을 심었어요.')
     expect(told).toContain('fixtures/garden-log.md')
     expect(told).not.toContain('토마토 모종 여섯 포기')

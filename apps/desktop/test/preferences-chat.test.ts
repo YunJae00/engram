@@ -24,7 +24,11 @@ import { preferenceHost } from '../src/main/preferences-chat.js'
 
 const rules = { reviewRules: vi.fn(async () => [{ kind: 'ask-first' as const, operation: 'submit', target: 'naver.com' }]), addReviewRule: vi.fn(), removeReviewRule: vi.fn() }
 const ctx = { git: {}, paths: { cache: '/fake/vault/.engram' } } as never
-const chat = () => preferences(preferenceHost(ctx, rules))
+const chat = () => {
+  const tool = preferences(preferenceHost(ctx, rules)).tool('b', () => said)
+  let said = ''
+  return (person: string, args: Record<string, unknown>) => { said = person; return tool.run(args, { task: person }) }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -32,102 +36,74 @@ beforeEach(() => {
   fake.settings = { autoStart: true, workMap: true, workFiles: true, workApps: true, teamSync: 'auto', theme: 'system', appsOff: [] }
 })
 
-it('each sentence does what its Settings row did, and tells every open window', async () => {
-  const c = chat()
-  expect(await c.say('b', '컴퓨터 켜면 자동으로 실행 꺼줘')).toBe('컴퓨터를 켜도 자동으로 실행하지 않을게요.')
+it('each call the model makes does what its Settings row did, and tells every open window', async () => {
+  const call = chat()
+  expect(await call('켤 때 엔그램은 안 떠도 돼', { do: 'auto_start', on: false })).toBe('컴퓨터를 켜도 자동으로 실행하지 않을게요.')
   expect(fake.settings['autoStart']).toBe(false)
   expect(fake.app.setLoginItemSettings).toHaveBeenCalledWith({ openAtLogin: false })
   expect(fake.broadcast).toHaveBeenCalledWith({ type: 'settings:changed', settings: fake.settings })
 
-  await c.say('b', '내 앱 활동 기억하지 마')
+  await call('내가 쓰는 프로그램은 신경 끄고', { do: 'app_activity', on: false })
   expect(fake.activity).toHaveBeenCalledWith(false)
-  await c.say('b', '방문 기록은 참고하지 마')
+  await call('들른 사이트도 보지 말고', { do: 'learn_places', on: false })
   expect(fake.settings['workMap']).toBe(false)
   expect(fake.workMap).toHaveBeenCalledWith(false)
-  await c.say('b', '최근 파일은 참고하지 마')
+  await call('요즘 연 파일도 빼줘', { do: 'learn_files', on: false })
   expect(fake.settings).toMatchObject({ workFiles: false, workApps: true })
   expect(fake.desk).not.toHaveBeenCalled()
 
-  await c.say('b', '카카오톡은 건드리지 마')
+  await call('카톡은 만지지 마', { do: 'app', name: '카카오톡', on: false })
   expect(fake.setApp).toHaveBeenCalledWith('kakaotalk', '카카오톡', false)
-  await c.say('b', '메일 분류 습관은 잊어')
+  await call('메일 분류 그거 내 방식 아니야', { do: 'habit', name: '메일 분류', on: false })
   expect(fake.answer).toHaveBeenCalledWith(ctx, 'h1', false)
-  await c.say('b', 'daum.net에서는 항상 먼저 물어봐')
+  await call('daum.net은 내기 전에 꼭 확인받아', { do: 'ask_first', name: 'daum.net', on: true })
   expect(rules.addReviewRule).toHaveBeenCalledWith({ kind: 'ask-first', target: 'daum.net', operation: 'submit' })
-  expect(await c.say('b', '항상 물어보는 곳 뭐 있어?')).toBe('항상 먼저 여쭤보는 곳: naver.com')
+  expect(await call('확인받기로 한 데 어디야?', { do: 'review_rules' })).toBe('항상 먼저 여쭤보는 곳: naver.com')
 
-  await c.say('b', '다크 모드로 바꿔')
+  await call('화면 어둡게', { do: 'theme', name: 'dark' })
   expect(fake.nativeTheme.themeSource).toBe('dark')
-  await c.say('b', '자동 백업 꺼줘')
+  await call('백업 알아서 하는 건 꺼', { do: 'backup_auto', on: false })
   expect(fake.settings['teamSync']).toBe('manual')
-  await c.say('b', '깃허브에 백업해줘')
+  await call('지금 백업 한 번', { do: 'backup_now' })
   expect(fake.sync).toHaveBeenCalledOnce()
-  await c.say('b', '깃허브 백업 해제해줘')
+  await call('깃허브 연결 풀어', { do: 'backup_disconnect' })
   expect(fake.disconnect).toHaveBeenCalledOnce()
-  await c.say('b', '컴퓨터 제어 꺼줘')
+  await call('화면 조작 그만', { do: 'computer_control', on: false })
   expect(fake.stop).toHaveBeenCalledOnce()
 })
 
 it('exports logs without a folder picker, and away from the real Downloads when the app\'s data has been moved', async () => {
-  expect(await chat().say('b', '로그 내보내줘')).toBe('로그를 다운로드 폴더에 내보냈어요. engram-logs-7')
+  expect(await chat()('로그 좀 모아줘', { do: 'export_logs' })).toBe('로그를 다운로드 폴더에 내보냈어요. engram-logs-7')
   expect(fake.logs).toHaveBeenLastCalledWith(ctx, '/fake/downloads')
   process.env['ENGRAM_USERDATA'] = '/fake/moved'
-  await chat().say('b', '로그 내보내줘')
+  await chat()('로그 좀 모아줘', { do: 'export_logs' })
   expect(fake.logs).toHaveBeenLastCalledWith(ctx, '/fake/userData/exports')
   expect(fake.dialog).not.toHaveBeenCalled()
 })
 
-it('widening waits for a yes: a rule is not removed, a repository not connected, a source not turned on before it', async () => {
-  const c = chat()
-  await c.say('b', 'naver.com에서는 이제 묻지 마')
-  await c.say('b', '아니')
+it('widening waits for the person\'s yes: a rule is not removed, a source not turned on before it, and a repository is never connected from chat', async () => {
+  const call = chat()
+  const loosen = { do: 'ask_first', name: 'naver.com', on: false }
+  await call('naver.com은 이제 그냥 해', loosen)
+  await call('아뇨', loosen)
   expect(rules.removeReviewRule).not.toHaveBeenCalled()
-  expect(await c.say('b', '깃허브 백업 https://github.com/me/notes 로 연결해줘')).toMatch(/연결할까요\?/)
+  expect(await call('https://github.com/me/notes 에 노트 올려줘', { do: 'backup_connect', name: 'https://github.com/me/notes' })).toBe('그건 채팅으로는 바꿀 수 없어요.')
   expect(fake.connect).not.toHaveBeenCalled()
-  expect(await c.say('b', '응')).toBe('깃허브 백업을 연결했어요.')
-  expect(fake.connect).toHaveBeenCalledWith(ctx, 'https://github.com/me/notes')
   fake.settings['workMap'] = false
-  await c.say('b', '방문 기록 다시 참고해')
+  const places = { do: 'learn_places', on: true }
+  await call('들른 사이트 다시 봐도 돼', places)
   expect(fake.settings['workMap']).toBe(false)
-  await c.say('b', '네')
+  await call('네', places)
   expect(fake.settings['workMap']).toBe(true)
   expect(fake.workMap).toHaveBeenLastCalledWith(true)
   expect(fake.dialog).not.toHaveBeenCalled()
 })
 
-it('says so in one Korean line when a connection fails', async () => {
-  fake.connect.mockRejectedValueOnce(new Error('already-connected'))
-  const c = chat()
-  await c.say('b', '깃허브 백업 https://github.com/me/other 로 연결해줘')
-  expect(await c.say('b', '응')).toBe('깃허브에 연결하지 못했어요. 저장소 주소와 로그인을 확인해 주세요.')
-})
-
-it('a message the task runner hands over is still the person\'s sentence; its own continuation turns are not', async () => {
-  const { isPersonSentence } = await import('../src/main/preferences-chat.js')
-  const fromRunner = { holdIf: () => false, saveHeld: async () => undefined, tokenBudget: 1000 }
-  expect(isPersonSentence({}, fromRunner)).toBe(true)
-  expect(isPersonSentence({}, { ...fromRunner, context: 'This message answers your question in the task below' } as never)).toBe(true)
-  expect(isPersonSentence({}, undefined)).toBe(true)
-  for (const own of [{ quiet: true }, { report: true as const }, { verification: { result: '' } }]) expect(isPersonSentence({}, { ...fromRunner, ...own })).toBe(false)
-  expect(isPersonSentence({ scheduled: true }, fromRunner)).toBe(false)
-  expect(isPersonSentence({ attachments: [{}] }, fromRunner)).toBe(false)
-  expect(isPersonSentence({}, fromRunner, 'recover')).toBe(false)
-  expect(isPersonSentence({}, fromRunner, undefined, {})).toBe(false)
-})
-
-it('the chat handler answers a preference sentence before it checks that an AI is connected', async () => {
+it('the chat handler has no settings reply of its own: every sentence reaches the model, which has the settings tool on its menu', async () => {
   const { readFile } = await import('node:fs/promises')
   const ipc = await readFile('apps/desktop/src/main/ipc.ts', 'utf8')
   const handler = ipc.slice(ipc.indexOf('async function handleChatSend('))
-  const says = handler.indexOf('settingsChat.say(channel, request.message)')
-  expect(says).toBeGreaterThan(0)
-  expect(handler.slice(0, says)).toContain('isPersonSentence(request, turn, recovery, savedRoutine)')
-  expect(says).toBeLessThan(handler.indexOf('chatEngine(ctx.engines)'))
-  expect(says).toBeLessThan(handler.indexOf("isLimited('claude', channel)"))
-  const opens = handler.indexOf("broadcast({ type: 'chat:token', channel, text: `${opening}\\n\\n` })")
-  expect(opens).toBeGreaterThan(handler.indexOf('settingsChat.opening(channel, request.message)'))
-  expect(opens).toBeLessThan(says)
-  expect(handler.slice(0, says)).not.toMatch(/&& !turn &&/)
-  const runner = await readFile('apps/desktop/src/main/task-runner.ts', 'utf8')
-  expect(runner).toMatch(/deps\.send\(request, \{ \.\.\.extra, holdIf/)
+  expect(ipc).not.toMatch(/settingsChat\.(say|opening)\(/)
+  expect(handler).not.toContain('isPersonSentence(')
+  expect(ipc).toContain("settingsChat.tool(channel, () => turnGoals.get(channel) ?? '')")
 })

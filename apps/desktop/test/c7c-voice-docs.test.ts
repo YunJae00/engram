@@ -78,7 +78,7 @@ describe('decisions and tasks are said once (D1)', () => {
   it('no correction is called on a desk note answer: the chat turn posts it, and the repeat check stays with the quick voice', () => {
     const ipc = source('ipc.ts')
     expect(answerSetInTurn(ipc)).toBe(1)
-    expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,'))
+    expect(ipc.indexOf('await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)')).toBeLessThan(ipc.indexOf('result.asked ? askText(result.answer, result.options) : result.answer,'))
     expect(source('first-line.ts')).not.toMatch(/saidBefore|laneLine|FILE_WORK/)
     expect(source('fast-lane.ts')).not.toContain('saidBefore')
   })

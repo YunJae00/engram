@@ -1,13 +1,11 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { handBacks, keepRead, keepSources, partOutcome, runToolSession, skipWalls, timeBoxed, type AgentTool, type TeamMember } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
-import * as desk from '../src/main/desk-lane.js'
 import { answerBubbles, answerReplies } from '../src/renderer/src/markdown.js'
 
-const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[], added: string[] = []): { added?: string[]; reports: Report[]; note: string } => JSON.parse(handBacks(members, added)) as { added?: string[]; reports: Report[]; note: string }
 const lead = async (draft: string, ask: string): Promise<{ answer: string; quick: number }> => {
@@ -99,7 +97,7 @@ describe('stack-19 replay H2/H3: a repaired desk answer keeps its replies block,
     expect(out.answer).toContain(block)
     expect(answerReplies(out.answer)).toEqual(replies)
     expect(answerBubbles(out.answer)).toEqual([line])
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 
@@ -107,6 +105,6 @@ describe('stack-19 replay Q4: the short draft goes out in two quick calls', () =
   it('"바로 앞 답 절반 길이로" after the meeting apology line: the shorter line is the model\'s one step and goes out as written, with no quick call at all', async () => {
     const out = await lead('Sorry I was late to the meeting.', '바로 앞 답 절반 길이로')
     expect(out).toEqual({ answer: 'Sorry I was late to the meeting.', quick: 0 })
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })

@@ -81,7 +81,6 @@ import {
   priorOutputLines,
   deriveSearchTemplate,
   fillSlots,
-  parsePendingCall,
   runErrand,
   addRoutine,
   hostOf,
@@ -152,7 +151,7 @@ import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-tran
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall, turnRunning } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
-import { isPersonSentence, preferencesChat } from './preferences-chat.js'
+import { preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -2015,7 +2014,7 @@ export function registerIpc(ctx: VaultContext): void {
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
     ...(channel.startsWith('bot-') && !isHelperLane(channel) ? [teammateSettingsTool(paths, channel.slice('bot-'.length), () => broadcast({ type: 'bots:changed' }))] : []),
-    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => /[가-힣]/.test(turnGoals.get(channel) ?? ''))] : []),
+    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => turnGoals.get(channel) ?? '')] : []),
     ...kit.learning,
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
       look: (question, index, lookSignal) => lookAsHelper({
@@ -2048,21 +2047,6 @@ export function registerIpc(ctx: VaultContext): void {
       if (!bot || recovery || turn?.quiet || recordedRequests.has(request) || savedFollowUp(channel, request.message)) return
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
-    }
-    if (bot && isPersonSentence(request, turn, recovery, savedRoutine)) {
-      const opening = settingsChat.opening(channel, request.message)
-      if (opening) { await recordAsk(); firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text: `${opening}\n\n` }) }
-      const reply = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
-      const said = opening ? `${opening}\n\n${reply ?? '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'}` : reply
-      if (said) {
-        await recordAsk()
-        firstLineSpoke(channel)
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
-        turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
-        answering.delete(channel)
-        broadcast({ type: 'chat:done', channel, text: said })
-        return
-      }
     }
     const settings = await loadSettings()
     const wanted = 'claude'
@@ -2212,15 +2196,6 @@ export function registerIpc(ctx: VaultContext): void {
 
     if (bot) {
       releaseWallHold(channel)
-      const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null
-      if (pastedSearch) {
-        const held = await loadSettings()
-        if (!held.searchTemplate) {
-          await updateSettings(settings => ({ ...settings, searchTemplate: settings.searchTemplate || pastedSearch }))
-          await deliverAnswer('Got it — from now on I search the way you do.')
-          return
-        }
-      }
       const guided = engine.id !== 'claude' && engine.id !== 'codex'
       await syncPersonNote(paths).catch((error) => flog('comet-memory', error))
       const personMemory = await loadBotMemory(paths, PERSON_MEMORY)
@@ -2271,16 +2246,10 @@ export function registerIpc(ctx: VaultContext): void {
         const handedBack = employeesAnswer(reporting)
         if (reporting && lateOwed(reporting)) await updateTask(paths, reporting.id, lateShown)
         if (reporting) await updateTask(paths, reporting.id, handoffShown)
-        const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         const steered: string[] = []
         const ran = await begun!.run({
           tools: everyTool,
           ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
-          plainAsk,
-          company: !!company,
-          remembered,
-          shared: personMemory.facts.map(fact => fact.text),
-          earlierOutputs,
           context: () => [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n'),
           tokenBudget: turn?.tokenBudget,
           onUsage: tokens => { tokensUsed += tokens },
@@ -2318,7 +2287,7 @@ export function registerIpc(ctx: VaultContext): void {
           },
         })
         if (!ran.result) throw ran.failure
-        const { result, keep } = ran
+        const { result } = ran
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
         const answered = answerOnly(result.answer)
@@ -2336,9 +2305,6 @@ export function registerIpc(ctx: VaultContext): void {
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs
           if (!result.asked && check.accepted) result.files = delivered.map(output => { const href = artifactHref(output.path.split(/[\\/]/).at(-1)!), replaces = result.files?.find(one => one.href === href)?.replaces; return { name: output.name, href, ...(replaces ? { replaces } : {}) } })
         }
-        const note = parsePendingCall(result.pending)?.tool !== 'run_procedure' ? ''
-          : isKorean(request.message) ? '\n\n아직 실행하지는 않았어요. 실행하려면 여기서 다시 말씀해 주세요.'
-            : '\n\nNothing was actually run yet. Ask again here when you want it done.'
         const held = holdTaskResult({ ...result, answer: linked() }, turn, check)
         const finished = canLearnTurn(result, held, check)
         if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
@@ -2360,7 +2326,7 @@ export function registerIpc(ctx: VaultContext): void {
           await dropHeldDraft(turn, linked(), () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }))
         } else {
           await deliverAnswer(
-            `${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,
+            result.asked ? askText(result.answer, result.options) : result.answer,
             result.asked && result.options?.length
               ? { kind: 'asked', question: result.answer, options: result.options }
               : undefined,
@@ -2390,7 +2356,6 @@ export function registerIpc(ctx: VaultContext): void {
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
             places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
-            asked: !!keep && !result.steps.some(step => step.tool === 'keep_in_mind'),
           }))).catch(error => flog('comet-memory', error))
         }
       } catch (err) {

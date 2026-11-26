@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
@@ -6,9 +6,6 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { COLLEAGUE_RULE as VOICE } from '../../../packages/core/src/agent-voice.js'
 import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, firstLinePrompt, firstLineReady } from '../src/main/first-line.js'
@@ -144,7 +141,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
     const short = await deskTurn(counts, F1_ASK)
     expect(short.posted).toBe(counts)
     expect(short.posted.split('\n').filter(line => /^- /.test(line))).toHaveLength(5)
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('leaves names they asked for, the odd file out, and an answer already in shape', async () => {
@@ -199,7 +196,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     }
     const blocked = '## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```'
     expect((await deskTurn(blocked, '산악회 메모 한눈에 들어오게 다듬어줘')).posted).toBe(blocked)
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('leaves the shape alone when the ask is not open-form or names a part (D1, H4)', async () => {
@@ -241,6 +238,6 @@ it('stack-6: the repeat check is the quick voice\'s only, and no block correctio
   expect(first).not.toMatch(/saidBefore|fallbackLine/)
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
   expect(answerSetInTurn(ipc)).toBe(1)
-  expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+  expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   expect(source('answer.ts')).not.toMatch(/deskNote|DESK_NOTE|fileGiven/)
 })

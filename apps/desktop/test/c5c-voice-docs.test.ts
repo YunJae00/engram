@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -8,11 +8,8 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import * as deskLane from '../src/main/desk-lane.js'
-import { keepAsk, keptFix } from '../src/main/desk-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import { cleanLine, firstLinePrompt } from '../src/main/first-line.js'
@@ -56,21 +53,9 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
   })
 })
 
-describe('a kept fact is corrected by the host (M2)', () => {
+describe('a kept fact is corrected by the model\'s own keep_in_mind call (M2)', () => {
   const kept = ['이름은 권윤재다', '지민호랑 같이 일한다']
-  it('replaces the whole word in the one fact that holds it', () => {
-    expect(keptFix('아 지민호 말고 민호야', kept)).toEqual({ old: '지민호랑 같이 일한다', fact: '민호랑 같이 일한다', answer: '민호로 고쳤어요.' })
-    expect(keptFix('지민호가 아니라 민호예요.', ['동료 이름은 지민호 님이다'])).toEqual({ old: '동료 이름은 지민호 님이다', fact: '동료 이름은 민호 님이다', answer: '민호로 고쳤어요.' })
-    expect(keptFix('아니, 김민준 말고 박서준이야', ['담당자는 김민준입니다'])?.answer).toBe('박서준으로 고쳤어요.')
-  })
-  it('never changes a word that only sits inside another, and leaves the rest to the model', () => {
-    expect(keptFix('아 민호 말고 수야', kept)).toBeUndefined()
-    expect(keptFix('아 박지성 말고 민호야', kept)).toBeUndefined()
-    expect(keptFix('아 지민호 말고 민호야', [...kept, '지민호 님 생일은 3월이다'])).toBeUndefined()
-    expect(keptFix('아 민호 말고 민호야', ['민호랑 같이 일한다'])).toBeUndefined()
-    for (const said of ['지민호 말고 민호한테 메일 보내줘', '민호야', '아 그거 말고 11월 걸로 해줘']) expect(keptFix(said, kept), said).toBeUndefined()
-    expect(keptFix('지민호 말고 수진이야', ['지민호와 같이 일한다'])).toBeUndefined()
-  })
+  const fix = { old: '지민호랑 같이 일한다', fact: '민호랑 같이 일한다' }
   it('stores it through keep_in_mind, and the old value is gone from memory and from the note', async () => {
     await mkdir(resolve('tmp'), { recursive: true })
     const root = await mkdtemp(resolve('tmp/c5c-keep-'))
@@ -78,15 +63,13 @@ describe('a kept fact is corrected by the host (M2)', () => {
     await mkdir(paths.notes, { recursive: true })
     const keep = learningTools(paths, 'bot-1', () => '').find(tool => tool.name === 'keep_in_mind')!
     await keep.run({ facts: kept }, { task: '' })
-    const known = (await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text)
-    const fix = keptFix('아 지민호 말고 민호야', known)!
+    expect((await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text)).toContain(fix.old)
     await keep.run({ facts: [fix.fact], replaces: [fix.old], scope: 'everyone' }, { task: '아 지민호 말고 민호야' })
     const now = (await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text)
     expect(now).toEqual(['이름은 권윤재다', '민호랑 같이 일한다'])
     const note = profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8'))
     expect(note.join('\n')).not.toContain('지민호')
     expect(note).toContain('민호랑 같이 일한다')
-    expect(fix.answer).not.toMatch(/저장|기억/)
   })
   it('takes the old value out of the person\'s memory and the teammate\'s own, whichever scope the correction names', async () => {
     for (const scope of ['everyone', 'this bot']) {
@@ -98,7 +81,6 @@ describe('a kept fact is corrected by the host (M2)', () => {
       await keep.run({ facts: kept, scope: 'this bot' }, { task: '' })
       const read = async () => mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, '1')).facts.map(fact => fact.text)
       expect((await loadBotMemory(paths, '1')).facts.map(fact => fact.text).join(' ')).toContain('지민호')
-      const fix = keptFix('아 지민호 말고 민호야', await read())!
       await keep.run({ facts: [fix.fact], replaces: [fix.old], scope }, { task: '아 지민호 말고 민호야' })
       for (const id of [PERSON_MEMORY, '1']) expect((await loadBotMemory(paths, id)).facts.map(fact => fact.text).join(' '), `${scope} ${id}`).not.toContain('지민호')
       expect((await read()).join(' '), scope).toContain('민호랑 같이 일한다')
@@ -106,16 +88,11 @@ describe('a kept fact is corrected by the host (M2)', () => {
       expect(profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8')).join('\n'), scope).not.toContain('지민호')
     }
   })
-  it('is made before the model is asked, only on a keep ask, and remember turns that reach the model get the same call as any other', () => {
-    const ipc = source('ipc.ts')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("const fix = keep ? keptFix(message, remembered) : undefined")
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const keep = hostable && keepAsk(message)')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain("scope: shared.includes(fix.old) ? 'everyone' : 'this bot'")
-    expect(ipc).toContain('shared: personMemory.facts.map(fact => fact.text),')
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toMatch(/= fixed \? \{ answer: fixed, steps: \[\{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations\.' \}\], fellBack: false \}\n/)
-    expect(keepAsk('아 지민호 말고 민호야')).toBe(true)
-    expect(keepAsk('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).toBe(false)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/deskLight|light: true|modelHint/)
+  it('is never made by the host: answer has no correction of its own and ipc hands it no kept facts to correct with', () => {
+    const own = source('answer.ts')
+    for (const gone of ['keptFix', 'keepAsk', 'fixArgs', 'remembered', 'shared']) expect(own, gone).not.toContain(gone)
+    expect(source('ipc.ts')).not.toContain('shared: personMemory.facts.map(fact => fact.text),')
+    expect(own).not.toMatch(/deskLight|light: true|modelHint/)
   })
 })
 
@@ -193,7 +170,7 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     expect(told).toContain(`("${offer}")`)
     expect([...offer].length).toBeLessThanOrEqual(60)
     for (const own of [`${answer}\n\n${offer}`, '- 38%\n- 12명', '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', `${answer}\n\n${offer}\n\n\`\`\`replies\n표로\n\`\`\``]) expect((await turn(own, ask, desk)).posted, own).toBe(own)
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
   it('an answer that offers, and one in a thread that already had an offer, are both posted as written; the model sees the earlier reply and the once-only rule', async () => {
     for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect((await turn(`${answer}\n\n${closing}`, ask, desk)).posted).toBe(`${answer}\n\n${closing}`)

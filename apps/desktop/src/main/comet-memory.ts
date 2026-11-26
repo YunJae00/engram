@@ -44,8 +44,8 @@ export function turnRunning(): () => void {
 }
 const noTurnRunning = (): Promise<void> => running.size ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve()
 export const MEMORY_YIELDS = 3
-export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, asked = false): Promise<T | undefined> {
-  for (let attempt = 0; asked || attempt < MEMORY_YIELDS; attempt++) {
+export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T | undefined> {
+  for (let attempt = 0; attempt < MEMORY_YIELDS; attempt++) {
     do await noTurnRunning(); while (running.size)
     if (signal?.aborted) return undefined
     const cut = new AbortController(), stop = (): void => cut.abort()
@@ -111,7 +111,6 @@ export async function rememberTurn(deps: {
   previous?: string
   places?: string[]
   signal?: AbortSignal
-  asked?: boolean
 }): Promise<void> {
   if (!memorableTurn(deps.message, deps.answer)) return
   let known: string[] = []
@@ -131,7 +130,7 @@ export async function rememberTurn(deps: {
       maxTokens: REMEMBER_TOKENS,
       effort: 'low',
       signal,
-      }), deps.signal, deps.asked)
+      }), deps.signal)
     })
     remembering = call.catch(() => undefined)
     const said = await call

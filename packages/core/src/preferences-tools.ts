@@ -62,9 +62,7 @@ function question(ask: PreferenceAsk): string {
   switch (ask.do) {
     case 'app_activity': case 'learn_places': case 'learn_files': case 'learn_apps': return `${josa(SOURCE_WORDS[ask.do], '을', '를')} 다시 참고할까요?`
     case 'app': return `${josa(name, '을', '를')} 다시 써도 될까요?`
-    case 'auto_allow': return `${name}에서는 묻지 않고 바로 제출해도 될까요?`
-    case 'ask_first': return `${name}에서 먼저 여쭤보는 규칙을 없앨까요?`
-    default: return `${name}에 백업을 연결할까요? 노트가 그 저장소로 올라가요.`
+    default: return `${name}에서 먼저 여쭤보는 규칙을 없앨까요?`
   }
 }
 
@@ -162,108 +160,50 @@ async function apply(host: PreferenceHost, ask: PreferenceAsk, now: Date): Promi
   }
 }
 
-const OFF = /(꺼|끄|끊|하지\s*마|보지\s*마|말아|마세요|마$|해제|중지|그만|안\s*해도|빼)/u
 const YES = /^(응|ㅇㅇ|ㅇ|네|넵|예|그래|좋아|맞아|어|웅|해\s*줘|해|그렇게\s*해|허용|허용해|연결해|ok|okay|yes|y|sure)\s*(요|줘|주세요)?$/iu
 const NO = /^(아니|아니요|아뇨|ㄴㄴ|안\s*돼|하지\s*마|됐어|취소|no|n|nope)\s*(요)?$/iu
-const ASK_MAX = 60
-const AND_MORE = /그리고|(주|하|끄|켜)고[,\s]|한\s*다음|다음에/u
-const DEICTIC = /^(이|그|저|이런|그런)\s*(앱|프로그램|거|것)?$/u
-
-export function preferenceAsk(message: string, apps: readonly string[] = []): PreferenceAsk | undefined {
-  const line = message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
-  if (!line || line.includes('\n') || [...line].length > ASK_MAX || AND_MORE.test(line)) return undefined
-  const off = OFF.test(line)
-  if (/(컴퓨터|맥|pc|노트북|부팅|로그인).{0,10}(켜면|켤\s*때|켜질\s*때|시작하면|시작할\s*때|하면|할\s*때).{0,8}자동(으로)?\s*(실행|시작|켜)|^(engram|엔그램)?\s*자동\s*(실행|시작)\s*(을|를)?\s*(켜|꺼|끄|해제|해\s*줘|하지\s*마)/iu.test(line)) return { do: 'auto_start', on: !off }
-  if (/자동\s*백업/u.test(line) && /(켜|꺼|끄|해제|하지\s*마|해\s*줘)/u.test(line)) return { do: 'backup_auto', on: !off }
-  if (/(깃허브|github)/iu.test(line) && /백업|연결|연동/u.test(line)) {
-    const url = /(https?:\/\/github\.com\/[\w.-]+\/[\w.-]+|git@github\.com:[\w.-]+\/[\w.-]+)/i.exec(line)?.[1]
-    if (/(해제|끊어|끊기|끊을|끊고)/u.test(line)) return { do: 'backup_disconnect' }
-    if (url || /(연결|연동)\s*(해|하고|좀)/u.test(line)) return { do: 'backup_connect', name: url ?? '' }
-    if (/백업\s*(해|좀|지금)/u.test(line)) return { do: 'backup_now' }
-  }
-  if (/^로그\s*(를|좀)?\s*(파일로\s*)?(내보내|저장해|뽑아)/u.test(line)) return { do: 'export_logs' }
-  if (/^(오늘|어제)\s*(은|는)?\s*(뭐|뭘|무슨\s*일(을)?)\s*(했는지|했나|했어|한\s*건지)\s*(기록\s*)?(좀\s*)?(보여|알려)\s*(줘|주세요)$/u.test(line) || /^(오늘|어제)?\s*활동\s*기록\s*(좀\s*)?(보여|알려)\s*(줘|주세요)$/u.test(line)) return { do: 'activity_log', ...(line.startsWith('어제') ? { name: 'yesterday' } : {}) }
-  if (/(앱|프로그램)\s*(활동|사용\s*(기록|내역))/u.test(line) && /(기억|기록|보지|보면|수집|저장|참고|학습)/u.test(line)) return { do: 'app_activity', on: !off }
-  if (/최근\s*(에\s*연\s*)?파일/u.test(line) && /(참고|기억|보지|학습|살펴)/u.test(line)) return { do: 'learn_files', on: !off }
-  if (/(방문\s*기록|브라우저\s*기록|인터넷\s*기록|북마크|즐겨찾기)/u.test(line) && /(참고|기억|보지|학습|살펴)/u.test(line)) return { do: 'learn_places', on: !off }
-  if (/(내가\s*)?(쓰는|사용하는)\s*앱/u.test(line) && /(참고|기억|학습)/u.test(line)) return { do: 'learn_apps', on: !off }
-  if (/작업\s*(폴더|공간|장소|하는\s*곳).{0,6}다시\s*(살펴|확인|찾아|봐)/u.test(line)) return { do: 'rescan_work' }
-  if (/(컴퓨터|앱|화면|마우스)\s*(제어|조작|컨트롤)/u.test(line) && /(꺼|끄|멈춰|중지|하지\s*마|켜|허용)/u.test(line)) return { do: 'computer_control', on: !/(꺼|끄|멈춰|중지|하지\s*마)/u.test(line) }
-  const theme = /(다크|어두운)\s*(모드|테마|화면)/u.test(line) ? 'dark' : /(라이트|밝은)\s*(모드|테마|화면)/u.test(line) ? 'light' : /(테마|화면\s*색).{0,8}시스템|시스템\s*(설정|테마).{0,6}(따라|맞춰)/u.test(line) ? 'system' : undefined
-  if (theme && /(바꿔|해\s*줘|켜|써|으로|로\s*해|따라|맞춰)/u.test(line)) return { do: 'theme', name: theme }
-  if (/(업무\s*)?(습관|일하는\s*방식).{0,10}(뭐|뭘|알려|보여|알고)/u.test(line)) return { do: 'habits' }
-  const habit = /^["“']?(.+?)["”']?\s*(습관|방식)\s*(은|는|을|를)?\s*(맞아|기억해|유지해|잊어|틀렸어|지워|아니야)/u.exec(line)
-  if (habit?.[1]) return { do: 'habit', name: habit[1].trim(), on: /(맞아|기억해|유지해)/u.test(line) }
-  if (/(항상|먼저)\s*(물어|여쭤|확인하)\S*\s*(곳|사이트|규칙).{0,8}(뭐|보여|알려|있어)|^(검토|확인)\s*규칙\s*(좀\s*)?(뭐|보여|알려)/u.test(line)) return { do: 'review_rules' }
-  const site = /^(\S+\.\S+?)(에서는|에선|에서|은|는)\s/u.exec(line)
-  const host = site?.[1] ? siteOf(site[1]) : undefined
-  if (host && /(묻지\s*말고|그냥|바로|자동으로)\s*(제출|보내|진행)/u.test(line)) return { do: 'auto_allow', name: host, on: true }
-  if (host && /(물어|여쭤|확인|묻지)/u.test(line)) return /(묻지\s*마|물어보지\s*마|안\s*물어|확인하지\s*마|규칙\s*(은|을|를)?\s*(지워|삭제|없애|해제))/u.test(line) ? { do: 'ask_first', name: host, on: false } : { do: 'ask_first', name: host, on: true }
-  if (/(메일|메시지|문자|카톡|뭐든|무엇이든)?\s*(을|를)?\s*보내기\s*전(에|엔|에는)\s*(항상|꼭|반드시|먼저)?\s*(물어|여쭤|확인)/u.test(line)) return { do: 'ask_first', on: true }
-  const app = /^(.+?)\s*(앱)?\s*(은|는|을|를|도)?\s*(이제\s*|다시\s*)?(쓰지\s*마|건드리지\s*마|사용하지\s*마|열지\s*마|써도\s*돼|사용해도\s*돼|건드려도\s*돼)(요|세요)?$/u.exec(line)
-  const named = app?.[1]?.trim()
-  if (named && !DEICTIC.test(named) && (app?.[2] || apps.some(label => label.toLowerCase() === named.toLowerCase()))) return { do: 'app', name: named, on: !/마(요|세요)?$/u.test(line) }
-  return undefined
-}
-
-const APP_VERB = /(쓰지\s*마|건드리지\s*마|사용하지\s*마|열지\s*마|써도\s*돼|사용해도\s*돼|건드려도\s*돼)(요|세요)?$/u
 const PENDING_MS = 10 * 60_000
+const same = (one: PreferenceAsk, other: PreferenceAsk): boolean => one.do === other.do && one.on === other.on && (one.name ?? '').trim().toLowerCase() === (other.name ?? '').trim().toLowerCase()
 
 export interface Preferences {
-  say(channel: string, message: string): Promise<string | undefined>
-  opening(channel: string, message: string): string | undefined
-  tool(channel: string, korean: () => boolean): AgentTool
+  tool(channel: string, said: () => string): AgentTool
 }
 
 export function preferences(host: PreferenceHost, clock: () => Date = () => new Date()): Preferences {
-  const pending = new Map<string, { ask: PreferenceAsk; at: number }>()
+  const pending = new Map<string, { ask: PreferenceAsk; at: number; turn: string }>()
   const failed = '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'
   const done = (ask: PreferenceAsk) => apply(host, ask, clock()).catch(() => failed)
-  const settle = async (channel: string, said: PreferenceAsk, typed = false): Promise<string> => {
+  const settle = async (channel: string, said: PreferenceAsk, turn: string): Promise<string> => {
+    const held = pending.get(channel)
     pending.delete(channel)
     const ask: PreferenceAsk = { ...said, on: said.do === 'ask_first' ? said.on !== false : said.on === true }
     if (!widens(ask)) return done(ask)
     if ((ask.do === 'app' || ask.do === 'auto_allow') && !ask.name?.trim()) return done(ask)
     if (ask.do === 'app') {
-      const name = ask.name!.trim().toLowerCase(), held = (await host.apps().catch(() => [])).find(one => one.label.toLowerCase() === name || one.app === name)
-      if (!held || held.on) return `${josa(held?.label ?? ask.name!.trim(), '은', '는')} 지금도 쓸 수 있어요.`
+      const name = ask.name!.trim().toLowerCase(), found = (await host.apps().catch(() => [])).find(one => one.label.toLowerCase() === name || one.app === name)
+      if (!found || found.on) return `${josa(found?.label ?? ask.name!.trim(), '은', '는')} 지금도 쓸 수 있어요.`
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow' && !siteOf(ask.name ?? '')) return done(ask)
-    if (!typed && ask.do === 'auto_allow') return `그건 직접 말씀해 주셔야 바꿀 수 있어요. "${siteOf(ask.name ?? '')}에서는 묻지 말고 제출해"라고 말씀해 주세요.`
-    if (!typed && ask.do === 'backup_connect') return `백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 ${ask.name!.trim()} 로 연결해줘"라고 말씀해 주세요.`
-    pending.set(channel, { ask: ask.do === 'auto_allow' ? { ...ask, name: siteOf(ask.name ?? '')! } : ask, at: clock().getTime() })
-    return question(pending.get(channel)!.ask)
+    if (ask.do === 'auto_allow' || ask.do === 'backup_connect') return '그건 채팅으로는 바꿀 수 없어요.'
+    const answer = turn.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
+    if (held && same(held.ask, ask) && held.turn !== turn && clock().getTime() - held.at <= PENDING_MS) {
+      if (YES.test(answer)) return done(ask)
+      if (NO.test(answer)) return '그대로 둘게요.'
+    }
+    pending.set(channel, { ask, at: clock().getTime(), turn })
+    return question(ask)
   }
   return {
-    opening(channel, message) {
-      const held = pending.get(channel)
-      if (held?.ask.do === 'backup_connect' && clock().getTime() - held.at <= PENDING_MS && YES.test(message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, ''))) return '깃허브 저장소에 연결할게요.'
-      const ask = preferenceAsk(message)
-      return ask?.do === 'export_logs' ? '로그 모아서 내보낼게요.' : ask?.do === 'backup_now' && host.backup.available() ? '지금 깃허브에 백업할게요.' : undefined
-    },
-    async say(channel, message) {
-      const line = message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
-      const held = pending.get(channel)
-      if (held) {
-        pending.delete(channel)
-        if (clock().getTime() - held.at <= PENDING_MS) {
-          if (YES.test(line)) return done(held.ask)
-          if (NO.test(line)) return '그대로 둘게요.'
-        }
-      }
-      const ask = preferenceAsk(message) ?? (APP_VERB.test(line) ? preferenceAsk(message, (await host.apps().catch(() => [])).map(one => one.label)) : undefined)
-      return ask ? settle(channel, ask, true) : undefined
-    },
-    tool: (channel, korean) => ({
+    tool: (channel, said) => ({
       name: 'preferences',
-      closes: () => korean(),
-      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call and give its reply to them as it is (it is already one Korean line; in another language, say the same thing in theirs). do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When the reply is a question, the change has NOT been made: pass the question on and stop; never call again to answer it yourself.',
+      closes: () => /[가-힣]/.test(said()),
+      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call and give its reply to them as it is (it is already one Korean line; in another language, say the same thing in theirs). do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When the reply is a question, the change has NOT been made: pass the question on and stop. When the person answers that question in their next message, call once more with the same arguments; the tool reads their answer itself.',
       argsSchema: { type: 'object', additionalProperties: false, required: ['do'], properties: { do: { type: 'string', enum: [...PREFERENCE_ACTIONS] }, on: { type: 'boolean' }, name: { type: 'string' } } },
       async run(args) {
         const action = PREFERENCE_ACTIONS.find(one => one === args['do'])
         if (!action) return '그건 여기서 바꿀 수 없어요.'
-        return settle(channel, { do: action, ...(typeof args['on'] === 'boolean' ? { on: args['on'] } : {}), ...(typeof args['name'] === 'string' ? { name: args['name'].slice(0, 200) } : {}) })
+        return settle(channel, { do: action, ...(typeof args['on'] === 'boolean' ? { on: args['on'] } : {}), ...(typeof args['name'] === 'string' ? { name: args['name'].slice(0, 200) } : {}) }, said())
       },
     }),
   }

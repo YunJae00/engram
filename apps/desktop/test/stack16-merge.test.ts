@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +7,6 @@ import { companyNote, createBot, createTask, employeeWriteBack, handBacks, loadB
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
-import * as desk from '../src/main/desk-lane.js'
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { WORK_REPLY_RULE } from '../../../packages/core/src/agent-session-shape.js'
@@ -51,8 +51,6 @@ async function lane(tag: string, ask: string, opts: { searchMs?: number; modelMs
   return { paths, hire, models, quick, searches, since: Date.now() }
 }
 const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`, topic: town, brief: `${town} 이번 주말 서핑 파도 높이`, lookup: true }))
-const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const SPLIT = '강릉 속초 양양 토요일 서핑 파도 견줘줘'
 
 describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
@@ -150,7 +148,7 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
     expect(Date.now() - began).toBeLessThan(3000)
     expect(result).toBeUndefined()
     expect(trace.end).toBe('stop')
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 

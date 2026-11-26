@@ -16,7 +16,6 @@ import { mistypedWords, officeBuildTools } from '../src/main/office-agent.js'
 import { officeAgentTools } from '../src/main/office-live.js'
 import { artifactDirectory, cometFileTools, placeInTask, saveOutput, taskOutputs, twinsFile } from '../src/main/file-work.js'
 import { appFileHost } from '../src/main/file-host.js'
-import { fixSlideTitle } from '../src/main/desk-lane.js'
 import { deliverOutputs, withFiles } from '../src/main/native-tools.js'
 import { outputCards } from '../../../packages/core/src/agent-session-result.js'
 import { answerFiles } from '../src/renderer/src/markdown.js'
@@ -58,8 +57,8 @@ describe('an edit is saved to the file it read', () => {
     expect(await files('.pptx')).toEqual(['영업 전략 발표.pptx'])
     expect(await saved('.pptx')).toEqual([fixed.artifact])
     const t2 = turnTools('t2', [fixed.path])
-    const done = (await fixSlideTitle({ slide: 2, title: '경쟁 구도' }, { name: '영업 전략 발표.pptx', path: fixed.path }, t2, { task: 'x' }))!
-    const receipt = JSON.parse(done.steps[1]!.observation) as { taskPath: string; artifact: string }
+    const seen = await use(t2, 'file_read_package', { path: fixed.path, outline: true })
+    const receipt = await use(t2, 'file_edit_package', { sourcePath: fixed.path, expectedSha256: seen.sha256, name: '영업 전략 발표.pptx', edits: [{ slide: 2, with: '경쟁 구도' }] })
     expect(receipt.taskPath).toBe(built.taskPath)
     expect(await files('.pptx')).toEqual(['영업 전략 발표.pptx'])
     expect(await saved('.pptx')).toEqual([receipt.artifact])
@@ -79,8 +78,8 @@ describe('an edit is saved to the file it read', () => {
     const forked = await placeInTask(task, '분기 리뷰.pptx', deliveredBytes, record, { source: `file_edit_package\0${join(root, 'elsewhere.pptx')}`, turn: 't1', artifact: delivered.artifact, outputs: artifactDirectory(paths()) })
     expect(basename(forked)).toBe('분기 리뷰 (2).pptx')
     const t2 = turnTools('t2', [delivered.path])
-    const done = (await fixSlideTitle({ slide: 1, title: '연간 회고' }, { name: '분기 리뷰.pptx', path: delivered.path }, t2, { task: 'x' }))!
-    const receipt = JSON.parse(done.steps[1]!.observation) as { taskPath: string; artifact: string }
+    const seen = await use(t2, 'file_read_package', { path: delivered.path, outline: true })
+    const receipt = await use(t2, 'file_edit_package', { sourcePath: delivered.path, expectedSha256: seen.sha256, name: '분기 리뷰.pptx', edits: [{ slide: 1, with: '연간 회고' }] })
     expect(receipt.taskPath).toBe(forked)
     expect(titleShape(await xmlOf(forked, 'ppt/slides/slide1.xml'))).toContain('<a:t>연간 회고</a:t>')
     expect((await readFile(draft.taskPath)).equals(draftBytes)).toBe(true)

@@ -1,11 +1,9 @@
+import { existsSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { officeTools, runToolSession, type AgentLoopOptions, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from 'core'
-import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 
 async function turn(draft: string, said: string, options: AgentLoopOptions = {}, wait = 0) {
   const jobs: ToolSessionJob[] = [], voiced: string[] = []
@@ -31,7 +29,7 @@ describe('item 1: a desk answer\'s ```replies block is not prose', () => {
     const { posted } = await turn(DRAFT, '장보기 목록이랑 같이 살 것 뽑아줘')
     expect(posted.endsWith(`- 우유 1L\n\n${REPLIES}`)).toBe(true)
     expect(posted).not.toContain('두부\n')
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 
@@ -55,7 +53,7 @@ describe('item 2: a line is under one part because the model is told so, not bec
   it('the host tells no copy from a different line: a reworded copy the model wrote is posted beside the first', async () => {
     const twice = [...TASKS, ...reworded].join('\n')
     expect((await turn(twice, ASK)).posted).toBe(twice)
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })
 
@@ -94,7 +92,7 @@ describe('item 3: a shorter reshape is the model\'s own reply: one call, the ask
   it('a draft that was not shorter is posted too: the host measures no length', async () => {
     const longer = `${LAST} 감사합니다.`
     expect((await turn(longer, '좀 더 줄여줘', thread(ASK, LAST))).posted).toBe(longer)
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
   it('another form is asked of the model the same way, and its reply is posted, never the last reply again', async () => {
     const polite = '택배 배송이 늦어져 정말 죄송해요. 최대한 빨리 받아보시게 할게요.'
@@ -177,7 +175,7 @@ describe('item 4: a build the host audit passed hands back to the model, whose r
     const slides = [{ title: 'Quarterly Kickoff' }, { title: '팀 소개', bullets: ['새 멤버'] }]
     const { result } = await run(deckTools(), { slides }, 'Quarterly Kickoff 자료 2장 만들었어요.')
     expect(result.answer).toBe('Quarterly Kickoff 자료 2장 만들었어요.')
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     const schema = deckTools().find(tool => tool.name === 'ppt_build')!.argsSchema as { properties: Record<string, unknown>; required?: string[] }
     expect(Object.keys(schema.properties)).not.toContain('reply')
     expect(Object.keys(schema.properties)).not.toContain('more')

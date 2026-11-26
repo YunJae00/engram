@@ -15,7 +15,7 @@ async function turn(page: string, ask: string, draft: string) {
   const engine = { id: 'claude', quick, detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
   const dir = await mkdtemp(join(tmpdir(), 'c9a-news-'))
   try {
-    const { result } = await answer(await openWorld(dir, engine), ask, { tools: [search], plainAsk: false, ack: { interactive: false } })
+    const { result } = await answer(await openWorld(dir, engine), ask, { tools: [search], ack: { interactive: false } })
     return { out, ran, answer: result?.answer, judged: quick.mock.calls.length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
   } finally { await rm(dir, { recursive: true, force: true }) }
 }

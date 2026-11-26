@@ -2,14 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import * as deskLane from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
 import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
@@ -64,7 +61,7 @@ describe('a structured desk answer is the model\'s own, posted as written (D1 cl
     expect(quick).not.toHaveBeenCalled()
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(answerSetInTurn(ipc)).toBe(1)
-    expect(ipc).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
+    expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
   })
   it('two short sections go out as written too (r2)', async () => {
     const two = '장점: 가벼워요.\n\n단점: 가벼워요.'
@@ -90,9 +87,8 @@ describe('a structured desk answer is the model\'s own, posted as written (D1 cl
 describe('a copy under a second part', () => {
   it('is gone with the check that fed it: a copy under a second part and a heading are posted as the model wrote them', async () => {
     const text = '원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요'
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect((await deskTurn(text)).posted).toBe(text)
-    expect(Object.keys(deskLane)).not.toContain('DESK_NOTE')
   })
 })
 

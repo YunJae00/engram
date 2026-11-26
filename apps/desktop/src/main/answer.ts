@@ -1,9 +1,7 @@
 import { join } from 'node:path'
 import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
-import { fixSlideTitle, keepAsk, keptFix, plainKeep, slideTitleFix, sortByKind } from './desk-lane.js'
 import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSpoke } from './first-line.js'
 import { taskRoot } from './file-work.js'
-import { flog } from './flog.js'
 import { fetchPlainPage } from './plain-page.js'
 import { addStudyOffer } from './study-offers.js'
 import { toolKit } from './tool-kit.js'
@@ -36,11 +34,6 @@ export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' 
   tools?: AgentTool[]
   imagePaths?: string[]
   ack?: Partial<Omit<AckInputs, 'message' | 'workdir' | 'signal'>>
-  plainAsk?: boolean
-  company?: boolean
-  remembered?: readonly string[]
-  shared?: readonly string[]
-  earlierOutputs?: readonly { name: string; path: string }[]
   context?(): string
   skills?(): Promise<NonNullable<LoopOptions['skills']>>
   onToken?(text: string, held: boolean): void
@@ -48,7 +41,7 @@ export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' 
   onStep?(line: string): void
 }
 
-export interface Answered { trace: AnswerTrace; result?: AgentLoopResult; failure?: unknown; keep?: boolean }
+export interface Answered { trace: AnswerTrace; result?: AgentLoopResult; failure?: unknown }
 
 export interface Answering {
   run(options?: Omit<AnswerOptions, 'signal' | 'ack'>): Promise<Answered>
@@ -111,33 +104,14 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   })
   firstLineReady(channel)
   const run = async (options: Omit<AnswerOptions, 'signal' | 'ack'> = {}): Promise<Answered> => {
-    const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, plainAsk = engine.id === 'claude', company = false, remembered = [], shared = [], earlierOutputs = [], skills, native, ...loop } = options
+    const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, skills, native, ...loop } = options
     let streamed = '', firstLine = false, result: AgentLoopResult | undefined, failure: unknown
     const everyTool = tools ?? worldTools(world, message, signal)
-    const hostable = !company && plainAsk
-    const keep = hostable && keepAsk(message)
     try {
-      const fix = keep ? keptFix(message, remembered) : undefined
-      const fixArgs = fix ? { facts: [fix.fact], replaces: [fix.old], scope: shared.includes(fix.old) ? 'everyone' : 'this bot' } : undefined
-      const fixed = fix && fixArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(fixArgs, { task: message, signal }).then(() => fix.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
-      if (fixed) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-fix' })) }
-      const plain = !fixed && keep ? plainKeep(message, lastReplyOf(world.history), korean) : undefined
-      const keepArgs = plain ? { facts: [plain.fact] } : undefined
-      const keptPlain = plain && keepArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(keepArgs, { task: message, signal }).then(() => plain.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
-      if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }
-      const retitle = hostable && !keep ? slideTitleFix(message) : undefined
-      const decks = retitle ? earlierOutputs.filter(output => /\.pptx$/i.test(output.name)) : []
-      const retitled = retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool, { task: message, ...(signal ? { signal } : {}) }, korean) : undefined
-      if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }
-      const sorted = hostable && !keep && !retitle && korean ? await sortByKind(message, paths.workspace, everyTool.find(tool => tool.name === 'file_move'), { task: message, ...(signal ? { signal } : {}) }) : undefined
-      if (sorted) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kind-sort', moved: (sorted.steps[0]!.args['moves'] as unknown[]).length })) }
-      const host: AgentLoopResult | undefined = fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-        : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-        : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined
       const note = firstLineNote(channel)
-      const shortlist = host || !skills ? undefined : await skills()
+      const shortlist = skills ? await skills() : undefined
       const notes = [context?.(), calendarLine(), note].filter(Boolean).join('\n\n')
-      result = host ?? await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
+      result = await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,
         history: world.history,
@@ -173,7 +147,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
     if (!trace.first && trace.final.text.trim()) trace.first = { text: trace.final.text.trim().split('\n')[0]!, ms: trace.final.ms }
     if (signal?.aborted) trace.end = 'stop'
     world.history.push({ role: 'user', text: message }, { role: 'assistant', text: trace.final.text })
-    return { trace, ...(result ? { result } : { failure }), ...(keep ? { keep } : {}) }
+    return { trace, ...(result ? { result } : { failure }) }
   }
   return { run, end: () => endFirstLine(channel) }
 }

@@ -11,7 +11,6 @@ const KOREAN_TODAY = [
   'apps/desktop/src/main/aside-ipc.ts',
   'apps/desktop/src/main/away-summary.ts',
   'apps/desktop/src/main/comet-title.ts',
-  'apps/desktop/src/main/desk-lane.ts',
   'apps/desktop/src/main/desktop-agent.ts',
   'apps/desktop/src/main/desktop-opt-in.ts',
   'apps/desktop/src/main/desktop-outcome.ts',

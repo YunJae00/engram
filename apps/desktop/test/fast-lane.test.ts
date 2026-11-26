@@ -15,7 +15,7 @@ async function turn(page: string, ask: string, draft: string) {
   const engine = { id: 'claude', quick, desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { if (page) out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer: draft } } } as unknown as Engine
   const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
   try {
-    const { result } = await answer(await openWorld(root, engine), ask, { plainAsk: true, tools: [search] })
+    const { result } = await answer(await openWorld(root, engine), ask, { tools: [search] })
     return { out, answer: result?.answer, judged: quick.mock.calls.filter(([prompt]) => prompt.includes(draft)).length, rows: out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)?.[1] ?? line) }
   } finally { await rm(root, { recursive: true, force: true }) }
 }
@@ -34,7 +34,7 @@ it('gives a short question and a short job the same call, and the host asks neit
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => '' }
   const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
   try {
-    for (const ask of ['하루는 몇 분이야?', '휴가 신청 메일 써줘']) await answer(await openWorld(join(root, String(jobs.length)), engine), ask, { plainAsk: true, tools: [search] })
+    for (const ask of ['하루는 몇 분이야?', '휴가 신청 메일 써줘']) await answer(await openWorld(join(root, String(jobs.length)), engine), ask, { tools: [search] })
   } finally { await rm(root, { recursive: true, force: true }) }
   expect(jobs).toHaveLength(2)
   for (const job of jobs) expect(job.told).not.toContain('This is a short ask')
@@ -49,7 +49,6 @@ it('gives a lookup the shell and the full menu like any turn, and hands mid-turn
   expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
   expect(ipc).toContain('voice: () => chatEngine(ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
-  expect(ipc).toContain('(!turn?.context || turn.learned === true)')
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
@@ -86,7 +85,7 @@ it('streams a lookup turn\'s words as they come, like any turn with no ack on sc
     const engine = { id: 'mock', desktopToolIsolation: true, run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { await new Promise(done => setTimeout(done, 20)); for (const piece of pieces) job.onToken?.(piece); return { answer: '지금 1달러에 1,385원이에요.' } } } as unknown as Engine
     const seen: boolean[] = []
     const search = { name: 'search_web', description: 'searches the web', argsSchema: { type: 'object' }, run: async () => '' }
-    const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { plainAsk: true, tools: [search], onToken: (_, held) => { seen.push(held) } })
+    const { trace } = await answer(await openWorld(root, engine), '원달러 환율 지금 얼마야?', { tools: [search], onToken: (_, held) => { seen.push(held) } })
     expect(seen).toHaveLength(pieces.length)
     expect(seen.some(Boolean)).toBe(false)
     expect(trace.final.text).toBe('지금 1달러에 1,385원이에요.')

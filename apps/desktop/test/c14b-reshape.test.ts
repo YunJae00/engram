@@ -1,10 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import * as deskLane from '../src/main/desk-lane.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 
 const ASK = '광합성이 뭔지 초등학생 아이에게 설명하듯 써줘'
 const LAST = '식물은 햇빛을 밥처럼 먹어요. 잎에서 햇빛이랑 물, 공기를 섞어서 자기가 먹을 달콤한 양분을 만들어요. 그래서 식물한테는 햇빛이 아주 중요해요.'
@@ -46,8 +43,7 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
   })
 
   it('a reshape is an ordinary turn: the desk lane has no reshape of its own to fall back from', () => {
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
-    expect(Object.keys(deskLane)).not.toContain('closingBuilds')
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('no checker is waited on: a quick voice that never answers does not hold the reply', async () => {

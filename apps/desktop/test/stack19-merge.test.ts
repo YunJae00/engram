@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,14 +9,12 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
-import * as desk from '../src/main/desk-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 import * as fastLane from '../src/main/fast-lane.js'
 import { answerBubbles } from '../src/renderer/src/markdown.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
 const FAST_FNS = ['asideShape', 'teamAsk']
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
@@ -148,7 +147,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(result?.answer).toBe(reply)
     expect(result?.files).toEqual([{ name: '동네 도서관 소개.pptx', href: 'a9' }])
     expect([read, quick]).toEqual([0, 0])
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   }, 30_000)
 
   it('a shorter reshape is one model step and ends under 4 s, the shorter line posted as written', async () => {
@@ -161,7 +160,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     expect(out.answer).toBe(short)
     expect(Date.now() - since).toBeLessThan(4000)
     expect(quick).toBe(0)
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   }, 30_000)
 })
 
@@ -255,7 +254,7 @@ describe('stack-19: fixes after the branch results', () => {
     expect(out.answer).toBe(short)
     expect(quick).toBe(0)
     expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed')
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('after a build the model\'s own two-sentence answer is posted exactly, the choice it took and the person\'s own file name included, with the file listed under it and no host line from the build', async () => {
@@ -274,7 +273,7 @@ describe('stack-19: fixes after the branch results', () => {
 
 describe('stack-19: Codex-cap decisions', () => {
   it('c19b r3 #1: no line about a build is made by the host from its title: the build reaches the model with its own schema, and the model\'s reply in the person\'s language closes the turn as written', async () => {
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     const deck: AgentTool = { name: 'ppt_build', description: 'deck', argsSchema: { type: 'object', properties: {}, required: [] }, run: async () => JSON.stringify({ artifact: 'p1', path: '/out/안내.pptx', markdownLink: '[안내.pptx](engram-artifact:p1)', completeReadback: true }) }
     const reply = '봄 산행 안내 자료를 2장으로 만들었어요.'
     let schema: unknown

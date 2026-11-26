@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activityLine, preferenceAsk, preferences, PREFERENCE_ACTIONS, widens, type PreferenceAsk, type PreferenceHost } from '../src/preferences-tools.js'
+import { activityLine, preferences, PREFERENCE_ACTIONS, widens, type PreferenceAsk, type PreferenceHost } from '../src/preferences-tools.js'
 
 function fakeHost(over: Partial<PreferenceHost> = {}) {
   const calls: string[] = []
@@ -32,110 +32,129 @@ function fakeHost(over: Partial<PreferenceHost> = {}) {
 }
 
 const NOW = new Date(2026, 10, 16, 15, 0, 0)
-const setup = (over: Partial<PreferenceHost> = {}) => { const fake = fakeHost(over); return { ...fake, chat: preferences(fake.host, () => NOW) } }
+const setup = (over: Partial<PreferenceHost> = {}) => {
+  const fake = fakeHost(over), chat = preferences(fake.host, () => NOW)
+  let said = ''
+  const tool = chat.tool('c', () => said)
+  const call = (person: string, args: Record<string, unknown>) => { said = person; return tool.run(args, { task: person }) }
+  return { ...fake, chat, call }
+}
 const HANGUL_ONLY = /^[^A-Za-z]*$/
 
-describe('each removed setting is one plain Korean sentence', () => {
-  const cases: [string, string, string[]][] = [
-    ['컴퓨터 켜면 자동으로 실행 꺼줘', '컴퓨터를 켜도 자동으로 실행하지 않을게요.', ['autoStart:false']],
-    ['컴퓨터 켜면 자동으로 실행해', '컴퓨터를 켜면 자동으로 실행할게요.', ['autoStart:true']],
-    ['내 앱 활동 기억하지 마', '앱 활동은 이제 참고하지 않을게요.', ['learning:activity:false']],
-    ['내 앱 사용 기록은 보지 마', '앱 활동은 이제 참고하지 않을게요.', ['learning:activity:false']],
-    ['최근 파일은 참고하지 마', '최근 파일은 이제 참고하지 않을게요.', ['learning:files:false']],
-    ['방문 기록은 참고하지 마', '자주 가는 사이트는 이제 참고하지 않을게요.', ['learning:places:false']],
-    ['내 작업 폴더 다시 살펴봐', '작업하시는 곳을 다시 살펴볼게요.', ['rescan']],
-    ['카카오톡은 건드리지 마', '카카오톡은 이제 쓰지 않을게요.', ['app:kakaotalk:카카오톡:false']],
-    ['슬랙 앱은 쓰지 마', '슬랙은 이제 쓰지 않을게요.', ['app:슬랙:슬랙:false']],
-    ['내 업무 습관 뭐 알고 있어?', '알아챈 업무 습관은 2가지예요.\n- 주간 보고서 정리\n- 메일 분류', []],
-    ['메일 분류 습관은 틀렸어, 잊어', '"메일 분류"는 잊었어요.', ['habit:h2:false']],
-    ['주간 보고서 습관은 맞아', '"주간 보고서 정리" 방식을 기억해 둘게요.', ['habit:h1:true']],
-    ['메일 보내기 전엔 항상 물어봐', '보내거나 제출하기 전에는 항상 먼저 여쭤볼게요.', []],
-    ['naver.com에서는 항상 먼저 물어봐', 'naver.com에서는 제출하기 전에 항상 먼저 여쭤볼게요.', ['rule:ask-first:naver.com:true']],
-    ['항상 물어보는 곳 뭐 있어?', '따로 정해 둔 곳은 없어요. 보내거나 제출하기 전에는 늘 먼저 여쭤봐요.', []],
-    ['오늘 뭐 했는지 보여줘', '오늘은 아직 한 일이 없어요.', []],
-    ['로그 내보내줘', '로그를 다운로드 폴더에 내보냈어요. engram-logs-1', ['export']],
-    ['깃허브 백업 연결해줘', '백업할 깃허브 저장소 주소를 알려 주세요. 아직 없으면 [깃허브](https://github.com/new?visibility=private)에서 비공개로 하나 만들면 돼요.', []],
-    ['깃허브 백업 해제해줘', '아직 깃허브 백업이 연결되어 있지 않아요.', []],
-    ['컴퓨터 제어 꺼줘', '컴퓨터 제어를 멈췄어요.', ['stop-control']],
-    ['컴퓨터 제어 켜줘', '앱을 직접 다뤄야 할 때 그때 한 번 여쭤볼게요.', []],
-    ['다크 모드로 바꿔', '어두운 화면으로 바꿨어요.', ['theme:dark']],
+describe('the model\'s call changes a setting, and the tool says what changed in one plain Korean line', () => {
+  const cases: [string, Record<string, unknown>, string, string[]][] = [
+    ['로그인할 때 엔그램 뜨는 거 이제 안 해도 돼', { do: 'auto_start', on: false }, '컴퓨터를 켜도 자동으로 실행하지 않을게요.', ['autoStart:false']],
+    ['맥 켜자마자 엔그램도 같이 열어줘', { do: 'auto_start', on: true }, '컴퓨터를 켜면 자동으로 실행할게요.', ['autoStart:true']],
+    ['내가 무슨 프로그램 쓰는지는 보지 말아줘', { do: 'app_activity', on: false }, '앱 활동은 이제 참고하지 않을게요.', ['learning:activity:false']],
+    ['요즘 연 문서들은 신경 쓰지 마', { do: 'learn_files', on: false }, '최근 파일은 이제 참고하지 않을게요.', ['learning:files:false']],
+    ['인터넷 들른 곳은 이제 빼줘', { do: 'learn_places', on: false }, '자주 가는 사이트는 이제 참고하지 않을게요.', ['learning:places:false']],
+    ['내가 일하는 폴더 한 번 더 둘러봐 줄래', { do: 'rescan_work' }, '작업하시는 곳을 다시 살펴볼게요.', ['rescan']],
+    ['카톡엔 손대지 말아줘', { do: 'app', name: '카카오톡', on: false }, '카카오톡은 이제 쓰지 않을게요.', ['app:kakaotalk:카카오톡:false']],
+    ['슬랙은 열지 말아줘', { do: 'app', name: '슬랙', on: false }, '슬랙은 이제 쓰지 않을게요.', ['app:슬랙:슬랙:false']],
+    ['내가 일하는 버릇 눈치챈 거 있어?', { do: 'habits' }, '알아챈 업무 습관은 2가지예요.\n- 주간 보고서 정리\n- 메일 분류', []],
+    ['메일 분류하는 거 그건 내 방식 아니야', { do: 'habit', name: '메일 분류', on: false }, '"메일 분류"는 잊었어요.', ['habit:h2:false']],
+    ['주간 보고서 그렇게 하는 거 맞아', { do: 'habit', name: '주간 보고서', on: true }, '"주간 보고서 정리" 방식을 기억해 둘게요.', ['habit:h1:true']],
+    ['어디든 보내기 전엔 나한테 꼭 확인해', { do: 'ask_first', on: true }, '보내거나 제출하기 전에는 항상 먼저 여쭤볼게요.', []],
+    ['naver.com은 제출 전에 늘 나한테 물어봐', { do: 'ask_first', name: 'naver.com', on: true }, 'naver.com에서는 제출하기 전에 항상 먼저 여쭤볼게요.', ['rule:ask-first:naver.com:true']],
+    ['먼저 묻기로 한 사이트 어디어디야?', { do: 'review_rules' }, '따로 정해 둔 곳은 없어요. 보내거나 제출하기 전에는 늘 먼저 여쭤봐요.', []],
+    ['오늘 다들 뭐 했는지 기록 좀', { do: 'activity_log' }, '오늘은 아직 한 일이 없어요.', []],
+    ['로그 파일 하나 뽑아줘', { do: 'export_logs' }, '로그를 다운로드 폴더에 내보냈어요. engram-logs-1', ['export']],
+    ['깃허브 백업 끊어줘', { do: 'backup_disconnect' }, '아직 깃허브 백업이 연결되어 있지 않아요.', []],
+    ['화면 조작하는 거 그만해', { do: 'computer_control', on: false }, '컴퓨터 제어를 멈췄어요.', ['stop-control']],
+    ['앱 직접 만져도 돼', { do: 'computer_control', on: true }, '앱을 직접 다뤄야 할 때 그때 한 번 여쭤볼게요.', []],
+    ['눈 아프니까 화면 까맣게 해줘', { do: 'theme', name: 'dark' }, '어두운 화면으로 바꿨어요.', ['theme:dark']],
   ]
-  for (const [message, reply, did] of cases) {
-    it(message, async () => {
-      const { chat, calls } = setup()
-      const said = await chat.say('bot-1', message)
+  for (const [person, args, reply, did] of cases) {
+    it(person, async () => {
+      const { call, calls } = setup()
+      const said = await call(person, args)
       expect(said).toBe(reply)
       expect(calls).toEqual(did)
-      expect(said!.replace(/naver\.com|engram-logs-1|\(https:\/\/[^)]*\)/g, '')).toMatch(HANGUL_ONLY)
+      expect(said.replace(/naver\.com|engram-logs-1/g, '')).toMatch(HANGUL_ONLY)
     })
   }
 
   it('backs up and disconnects once a repository is connected', async () => {
-    const { chat, calls, state } = setup()
+    const { call, calls, state } = setup()
     state.connected = true
-    expect(await chat.say('c', '깃허브에 백업해줘')).toBe('깃허브에 백업했어요.')
-    expect(await chat.say('c', '자동 백업 꺼줘')).toBe('자동 백업을 껐어요.')
-    expect(await chat.say('c', '깃허브 백업 해제해줘')).toBe('깃허브 백업 연결을 해제했어요. 이미 올라간 내용은 그대로 있어요.')
+    expect(await call('지금 바로 백업 한 번 돌려줘', { do: 'backup_now' })).toBe('깃허브에 백업했어요.')
+    expect(await call('백업 자동으로 하는 건 꺼둬', { do: 'backup_auto', on: false })).toBe('자동 백업을 껐어요.')
+    expect(await call('깃허브랑 연결 풀어줘', { do: 'backup_disconnect' })).toBe('깃허브 백업 연결을 해제했어요. 이미 올라간 내용은 그대로 있어요.')
     expect(calls).toEqual(['backup-now', 'auto:false', 'disconnect'])
   })
 
   it('says so where this copy keeps no history to back up', async () => {
-    const { chat, calls, host } = setup()
+    const { call, calls, host } = setup()
     host.backup.available = () => false
-    expect(await chat.say('c', '깃허브 백업 https://github.com/me/notes 로 연결해줘')).toBe('이 컴퓨터에서는 백업을 쓸 수 없어요.')
+    expect(await call('https://github.com/me/notes 에 백업 붙여줘', { do: 'backup_connect', name: 'https://github.com/me/notes' })).toBe('이 컴퓨터에서는 백업을 쓸 수 없어요.')
     expect(calls).toEqual([])
   })
 
   it('tells a day from the audit files by the person\'s own midnight', async () => {
     const asked: string[] = []
     const at = (hour: number) => new Date(2026, 10, 16, hour).toISOString()
-    const { chat } = setup({ audit: async day => { asked.push(day); return ([
-      { at: at(1), kind: 'step', channel: 'bot-a', bot: '비서실장', tool: 'open_page', url: 'https://finance.naver.com/item' },
-      { at: at(2), kind: 'step', channel: 'bot-a', bot: '비서실장' },
-      { at: at(3), kind: 'step', channel: 'bot-b', bot: '김대리' },
-      { at: at(4), kind: 'approval', channel: 'bot-a', bot: '비서실장', detail: 'send' },
-      { at: new Date(2026, 10, 15, 23).toISOString(), kind: 'step', channel: 'bot-b', bot: '김대리' },
+    const { call } = setup({ audit: async day => { asked.push(day); return ([
+      { at: at(1), kind: 'step', channel: 'bot-a', bot: '지민', tool: 'open_page', url: 'https://finance.naver.com/item' },
+      { at: at(2), kind: 'step', channel: 'bot-a', bot: '지민' },
+      { at: at(3), kind: 'step', channel: 'bot-b', bot: '서연' },
+      { at: at(4), kind: 'approval', channel: 'bot-a', bot: '지민', detail: 'send' },
+      { at: new Date(2026, 10, 15, 23).toISOString(), kind: 'step', channel: 'bot-b', bot: '서연' },
     ] as const).filter(entry => entry.at.startsWith(day)) } })
-    expect(await chat.say('c', '오늘 뭐 했는지 보여줘')).toBe('오늘은 비서실장 2번, 김대리 1번 일했어요.\n다녀온 곳: [finance.naver.com](https://finance.naver.com)\n먼저 여쭤본 일은 1번이에요.')
+    expect(await call('팀이 오늘 한 일 기록 보여줘', { do: 'activity_log' })).toBe('오늘은 지민 2번, 서연 1번 일했어요.\n다녀온 곳: [finance.naver.com](https://finance.naver.com)\n먼저 여쭤본 일은 1번이에요.')
     expect(asked.length).toBeGreaterThanOrEqual(1)
-    expect(await chat.say('c', '어제 뭐 했는지 알려줘')).toBe('어제는 김대리 1번 일했어요.')
+    expect(await call('어제 기록은?', { do: 'activity_log', name: 'yesterday' })).toBe('어제는 서연 1번 일했어요.')
     expect(activityLine([], '어제')).toBe('어제는 아직 한 일이 없어요.')
+  })
+
+  it('a change that fails says so in one line and changes nothing else', async () => {
+    const { call } = setup({ autoStart: async () => { throw new Error('EPERM: operation not permitted') } })
+    expect(await call('부팅할 때 자동 실행 빼줘', { do: 'auto_start', on: false })).toBe('바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.')
+  })
+
+  it('an action off the list changes nothing', async () => {
+    const { call, calls } = setup()
+    expect(await call('디스크 싹 밀어줘', { do: 'format_disk' })).toBe('그건 여기서 바꿀 수 없어요.')
+    expect(calls).toEqual([])
+  })
+
+  it('the reply is Korean-closing only in a Korean conversation', () => {
+    const { chat } = setup()
+    expect((chat.tool('c', () => '다크로 바꿔줘').closes as (args: Record<string, unknown>) => boolean)({})).toBe(true)
+    expect((chat.tool('c', () => 'switch to dark').closes as (args: Record<string, unknown>) => boolean)({})).toBe(false)
   })
 })
 
-describe('narrowing is done at once, widening is asked about once', () => {
-  const widening: [string, string, string, string][] = [
-    ['내 앱 활동 다시 기억해', '앱 활동을 다시 참고할까요?', '앱 활동을 다시 참고할게요.', 'learning:activity:true'],
-    ['최근 파일 다시 참고해', '최근 파일을 다시 참고할까요?', '최근 파일을 다시 참고할게요.', 'learning:files:true'],
-    ['엑셀은 써도 돼', '엑셀을 다시 써도 될까요?', '엑셀을 다시 쓸게요.', 'app:excel:엑셀:true'],
-    ['naver.com에서는 이제 묻지 마', 'naver.com에서 먼저 여쭤보는 규칙을 없앨까요?', 'naver.com에서 먼저 여쭤보는 규칙을 없앴어요.', 'rule:ask-first:naver.com:false'],
-    ['naver.com에서는 묻지 말고 바로 제출해', 'naver.com에서는 묻지 않고 바로 제출해도 될까요?', 'naver.com에서는 묻지 않고 제출할게요.', 'rule:allow:naver.com:true'],
-    ['깃허브 백업 https://github.com/me/notes 로 연결해줘', 'https://github.com/me/notes에 백업을 연결할까요? 노트가 그 저장소로 올라가요.', '깃허브 백업을 연결했어요.', 'connect:https://github.com/me/notes'],
+describe('narrowing is done at once, widening waits for the person\'s own yes', () => {
+  const widening: [string, Record<string, unknown>, string, string, string][] = [
+    ['앱 쓰는 거 다시 봐도 돼', { do: 'app_activity', on: true }, '앱 활동을 다시 참고할까요?', '앱 활동을 다시 참고할게요.', 'learning:activity:true'],
+    ['요즘 연 파일 다시 참고해도 괜찮아', { do: 'learn_files', on: true }, '최근 파일을 다시 참고할까요?', '최근 파일을 다시 참고할게요.', 'learning:files:true'],
+    ['엑셀 이제 열어도 돼', { do: 'app', name: '엑셀', on: true }, '엑셀을 다시 써도 될까요?', '엑셀을 다시 쓸게요.', 'app:excel:엑셀:true'],
+    ['naver.com은 이제 안 물어봐도 돼', { do: 'ask_first', name: 'naver.com', on: false }, 'naver.com에서 먼저 여쭤보는 규칙을 없앨까요?', 'naver.com에서 먼저 여쭤보는 규칙을 없앴어요.', 'rule:ask-first:naver.com:false'],
   ]
-  for (const [message, asks, done, call] of widening) {
-    it(`${message}: nothing changes until yes`, async () => {
-      const { chat, calls } = setup()
-      expect(await chat.say('c', message)).toBe(asks)
+  for (const [person, args, asks, done, did] of widening) {
+    it(`${person}: nothing changes until the person says yes in a later message`, async () => {
+      const { call, calls } = setup()
+      expect(await call(person, args)).toBe(asks)
+      expect(await call(person, args)).toBe(asks)
       expect(calls).toEqual([])
-      expect(await chat.say('c', '응')).toBe(done)
-      expect(calls).toEqual([call])
-      expect(await chat.say('c', '응')).toBeUndefined()
-      expect(calls).toEqual([call])
+      expect(await call('좋아요', args)).toBe(done)
+      expect(calls).toEqual([did])
+      expect(await call('좋아요', args)).toBe(asks)
+      expect(calls).toEqual([did])
     })
-    it(`${message}: no leaves it as it is`, async () => {
-      const { chat, calls } = setup()
-      await chat.say('c', message)
-      expect(await chat.say('c', '아니')).toBe('그대로 둘게요.')
-      expect(await chat.say('c', '응')).toBeUndefined()
+    it(`${person}: a no leaves it as it is`, async () => {
+      const { call, calls } = setup()
+      await call(person, args)
+      expect(await call('아뇨', args)).toBe('그대로 둘게요.')
+      expect(await call('네', args)).toBe(asks)
       expect(calls).toEqual([])
     })
   }
 
   it('an app that is already in reach needs no question', async () => {
-    const { chat, calls } = setup()
-    expect(await chat.say('c', '카카오톡은 써도 돼')).toBe('카카오톡은 지금도 쓸 수 있어요.')
-    expect(await chat.tool('c', () => true).run({ do: 'app', name: '파워포인트', on: true }, { task: '' })).toBe('파워포인트는 지금도 쓸 수 있어요.')
-    expect(await chat.say('c', '응')).toBeUndefined()
+    const { call, calls } = setup()
+    expect(await call('카톡 써도 돼', { do: 'app', name: '카카오톡', on: true })).toBe('카카오톡은 지금도 쓸 수 있어요.')
+    expect(await call('파워포인트 써도 돼', { do: 'app', name: '파워포인트', on: true })).toBe('파워포인트는 지금도 쓸 수 있어요.')
     expect(calls).toEqual([])
   })
 
@@ -145,84 +164,30 @@ describe('narrowing is done at once, widening is asked about once', () => {
     expect(wide).toEqual(['app_activity:true', 'learn_places:true', 'learn_files:true', 'learn_apps:true', 'app:true', 'ask_first:false', 'auto_allow:true', 'backup_connect:true', 'backup_connect:false'])
   })
 
-  it('a yes in another conversation, a late yes, or other words in between confirm nothing', async () => {
-    let now = NOW.getTime()
+  it('a yes in another conversation, a late yes, a yes to a different change, or leaving `on` out confirm nothing', async () => {
+    let now = NOW.getTime(), said = ''
     const fake = fakeHost(), chat = preferences(fake.host, () => new Date(now))
-    await chat.say('one', '엑셀은 써도 돼')
-    expect(await chat.say('two', '응')).toBeUndefined()
+    const one = chat.tool('one', () => said), two = chat.tool('two', () => said)
+    const excel = { do: 'app', name: '엑셀', on: true }
+    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
+    said = '응'; expect(await two.run(excel, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
+    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
+    said = '응'; expect(await one.run({ do: 'learn_files', on: true }, { task: '' })).toBe('최근 파일을 다시 참고할까요?')
+    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
     now += 11 * 60_000
-    expect(await chat.say('one', '응')).toBeUndefined()
-    await chat.say('one', '엑셀은 써도 돼')
-    expect(await chat.say('one', '1년은 몇 초야?')).toBeUndefined()
-    expect(await chat.say('one', '응')).toBeUndefined()
-    expect(fake.calls).toEqual([])
+    said = '응'; expect(await one.run(excel, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
+    expect(await one.run({ do: 'app_activity' }, { task: '' })).toBe('앱 활동은 이제 참고하지 않을게요.')
+    expect(fake.calls).toEqual(['learning:activity:false'])
   })
 
-  it('the tool goes through the same door: a model cannot widen by calling it, or by leaving `on` out', async () => {
-    const { chat, calls } = setup()
-    const tool = chat.tool('c', () => true)
-    expect(await tool.run({ do: 'app', name: '엑셀', on: true }, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
-    expect(await tool.run({ do: 'app', name: '엑셀', on: true }, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
+  it('a model\'s call can neither start a standing allow nor connect a backup', async () => {
+    const { call, calls } = setup()
+    const allow = { do: 'auto_allow', name: 'evil.example.com', on: true }
+    expect(await call('evil.example.com은 확인 없이 보내', allow)).toBe('그건 채팅으로는 바꿀 수 없어요.')
+    expect(await call('응', allow)).toBe('그건 채팅으로는 바꿀 수 없어요.')
+    const backup = { do: 'backup_connect', name: 'https://github.com/someone/else' }
+    expect(await call('https://github.com/someone/else 에 백업 붙여줘', backup)).toBe('그건 채팅으로는 바꿀 수 없어요.')
+    expect(await call('네', backup)).toBe('그건 채팅으로는 바꿀 수 없어요.')
     expect(calls).toEqual([])
-    expect(await chat.say('c', '네')).toBe('엑셀을 다시 쓸게요.')
-    expect(await tool.run({ do: 'app', name: '카카오톡', on: false }, { task: '' })).toBe('카카오톡은 이제 쓰지 않을게요.')
-    expect(await tool.run({ do: 'app_activity' }, { task: '' })).toBe('앱 활동은 이제 참고하지 않을게요.')
-    expect(await tool.run({ do: 'ask_first', name: 'naver.com' }, { task: '' })).toBe('naver.com에서는 제출하기 전에 항상 먼저 여쭤볼게요.')
-    expect(await tool.run({ do: 'ask_first', name: 'naver.com', on: false }, { task: '' })).toBe('naver.com에서 먼저 여쭤보는 규칙을 없앨까요?')
-    expect(await tool.run({ do: 'format_disk' }, { task: '' })).toBe('그건 여기서 바꿀 수 없어요.')
-    expect(calls).toEqual(['app:excel:엑셀:true', 'app:kakaotalk:카카오톡:false', 'learning:activity:false', 'rule:ask-first:naver.com:true'])
-    expect((tool.closes as (args: Record<string, unknown>) => boolean)({})).toBe(true)
-    expect((chat.tool('c', () => false).closes as (args: Record<string, unknown>) => boolean)({})).toBe(false)
   })
-
-  it('a model\'s call cannot start a standing allow or a backup connection; the person\'s own sentence still can', async () => {
-    const { chat, calls } = setup()
-    const tool = chat.tool('c', () => true)
-    const allow = await tool.run({ do: 'auto_allow', name: 'evil.example.com', on: true }, { task: '' })
-    expect(allow).toBe('그건 직접 말씀해 주셔야 바꿀 수 있어요. "evil.example.com에서는 묻지 말고 제출해"라고 말씀해 주세요.')
-    expect(await chat.say('c', '응')).toBeUndefined()
-    const backup = await tool.run({ do: 'backup_connect', name: 'https://github.com/someone/else' }, { task: '' })
-    expect(backup).toBe('백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 https://github.com/someone/else 로 연결해줘"라고 말씀해 주세요.')
-    expect(await chat.say('c', '네')).toBeUndefined()
-    expect(calls).toEqual([])
-    expect(await chat.say('c', 'evil.example.com에서는 묻지 말고 제출해')).toBe('evil.example.com에서는 묻지 않고 바로 제출해도 될까요?')
-    expect(calls).toEqual([])
-    expect(await chat.say('c', '응')).toBe('evil.example.com에서는 묻지 않고 제출할게요.')
-    expect(await chat.say('c', '깃허브 백업 https://github.com/someone/else 로 연결해줘')).toBe('https://github.com/someone/else에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
-    expect(calls).toEqual(['rule:allow:evil.example.com:true'])
-  })
-
-  it('names the first step at once for the sentences whose work can take seconds, and for no other', async () => {
-    const { chat } = setup()
-    expect(chat.opening('c', '로그 내보내줘')).toBe('로그 모아서 내보낼게요.')
-    expect(chat.opening('c', '깃허브에 백업해줘')).toBe('지금 깃허브에 백업할게요.')
-    for (const quick of ['컴퓨터 켜면 자동으로 실행 꺼줘', '다크 모드로 바꿔', '응', '1년은 몇 초야?', '깃허브 백업 https://github.com/me/notes 로 연결해줘']) expect(chat.opening('c', quick)).toBeUndefined()
-    await chat.say('c', '깃허브 백업 https://github.com/me/notes 로 연결해줘')
-    expect(chat.opening('other', '응')).toBeUndefined()
-    expect(chat.opening('c', '아니')).toBeUndefined()
-    expect(chat.opening('c', '응')).toBe('깃허브 저장소에 연결할게요.')
-    await chat.say('c', '엑셀은 써도 돼')
-    expect(chat.opening('c', '응')).toBeUndefined()
-    for (const line of ['로그 모아서 내보낼게요.', '지금 깃허브에 백업할게요.', '깃허브 저장소에 연결할게요.']) expect(line).toMatch(/^[가-힣 ]+게요\.$/)
-  })
-
-  it('a change that fails says so in one line and changes nothing else', async () => {
-    const { chat } = setup({ autoStart: async () => { throw new Error('EPERM: operation not permitted') } })
-    expect(await chat.say('c', '컴퓨터 켜면 자동으로 실행 꺼줘')).toBe('바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.')
-  })
-})
-
-describe('everything else is left to the turn', () => {
-  for (const message of [
-    '1년은 몇 초야?', '엔비디아 오늘 주가 알려줘', '멈춰', '존댓말은 쓰지 마', '이 앱은 쓰지 마', '보고서 써', '오늘 뭐 했어?',
-    '김대리한테 맡겨: 깃허브 신기능 조사', '다크 모드가 눈에 좋아?', '엑셀로 표 만들어줘', '로그인 좀 도와줘', '이 파일 깃허브에 올려줘',
-    '컴퓨터 켜면 자동으로 실행 꺼주고, 그리고 내일 회의 자료도 만들어줘. 자료는 지난주 보고서 기준으로 하고 표 두 개 넣어서 워드로 저장해줘',
-  ]) {
-    it(message, async () => {
-      const { chat, calls } = setup()
-      expect(await chat.say('c', message)).toBeUndefined()
-      expect(calls).toEqual([])
-      expect(preferenceAsk(message, ['카카오톡', '엑셀'])).toBeUndefined()
-    })
-  }
 })

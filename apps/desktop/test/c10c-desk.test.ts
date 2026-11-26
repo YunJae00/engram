@@ -1,20 +1,20 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import { kindSortAsk, sortByKind } from '../src/main/desk-lane.js'
+import { answer, openWorld } from '../src/main/answer.js'
 import { fileMoveTool } from '../src/main/file-move.js'
 
 const INBOX = ['채용공고_초안.docx', '영수증_사진.png', '출장보고.pdf', '로고_시안.png', '제품소개서.pdf', '할일.txt', '주간보고_44주차.docx', '출장비정산.xlsx', '재고현황.xlsx', '계약서_초안.pdf',
   '좌석배치도.png', '견적서_A사.pdf', '회의자료_1103.pdf', '세금계산서_10월.pdf', '메모.txt', '연락처목록.xlsx', 'wifi_안내.txt', '인사말.docx', '전화메모_1112.txt', '화면캡처_01.png']
-const F1 = 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘'
 
-describe('c10c F1: the host sorts one folder by kind', () => {
+describe('c10c F1: the model sorts a folder by kind with its own file_move call', () => {
   let root: string, workspace: string, inbox: string
   const move = () => fileMoveTool(vaultPaths(root), () => {})
-  const context = { task: F1 }
+  const context = { task: '받은 자료 폴더 확장자 보고 나눠 담아줘' }
+  const KIND: Record<string, string> = { pdf: 'PDF', png: '이미지', docx: '문서', xlsx: '엑셀', txt: '텍스트' }
   beforeEach(async () => {
     await mkdir('tmp', { recursive: true })
     root = await mkdtemp(resolve('tmp/c10c-sort-'))
@@ -25,69 +25,49 @@ describe('c10c F1: the host sorts one folder by kind', () => {
   })
   afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
-  it('sorts the folder whatever the sentence shape, and leaves other asks to the model', async () => {
-    const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘',
-      '"fixtures/inbox-dump" 안의 자료 형식별로 분류해 주세요.', '받은 파일 모아둔 fixtures/inbox-dump/ 좀 확장자별로 나눠줘', 'fixtures/inbox-dump의 파일들 파일유형별로 정리해 줄래']
-    for (const ask of yes) {
-      expect(kindSortAsk(ask), ask).toBeDefined()
-      const sorted = await sortByKind(ask, workspace, move(), context)
-      expect(sorted?.answer, ask).toContain('- PDF 6개')
-      for (const folder of ['PDF', '문서', '엑셀', '이미지', '텍스트']) for (const name of await readdir(join(inbox, folder))) await rename(join(inbox, folder, name), join(inbox, name))
-      for (const folder of ['PDF', '문서', '엑셀', '이미지', '텍스트']) await rmdir(join(inbox, folder))
-    }
-    await writeFile(join(workspace, 'fixtures', 'meeting-notes.md'), '# 회의')
-    await mkdir(join(workspace, 'fixtures', 'other'))
-    const no = ['fixtures/inbox-dump 폴더 날짜별로 정리해줘', 'fixtures/inbox-dump에 있는 파일들 프로젝트별로 정리해줘', 'fixtures/inbox-dump fixtures/other 정리해줘',
-      'fixtures/meeting-notes.md 정리해줘', 'fixtures/inbox-dump 폴더 정리하고 오래된 건 지워줘', '폴더 정리해줘', 'fixtures/inbox-dump 폴더 정리해서 민호한테 보내줘',
-      'fixtures/inbox-dump에서 PDF만 종류별로 정리해줘', 'fixtures/inbox-dump 정리하지 마', 'fixtures/nowhere 종류별로 정리해줘',
-      'fixtures/inbox-dump 파일들을 이름순으로 정리해줘', 'fixtures/inbox-dump 날짜순으로 정리해줘', 'fixtures/inbox-dump 크기대로 나눠줘', 'fixtures/inbox-dump 거래처마다 분류해줘', 'fixtures/inbox-dump 정리해줘']
-    for (const ask of no) expect(await sortByKind(ask, workspace, move(), context), ask).toBeUndefined()
-    expect((await readdir(inbox)).sort()).toEqual([...INBOX].sort())
-  })
-
-  it('moves every file into Korean kind folders in one file_move, deletes nothing and answers with the counts', async () => {
-    const sorted = await sortByKind(F1, workspace, move(), context)
-    expect(sorted?.answer).toBe('종류별 폴더로 옮겼어요.\n\n- PDF 6개\n- 이미지 4개\n- 텍스트 4개\n- 문서 3개\n- 엑셀 3개')
-    expect(sorted?.steps).toHaveLength(1)
-    expect(sorted?.steps[0]!.tool).toBe('file_move')
-    expect(JSON.parse(sorted!.steps[0]!.observation)).toMatchObject({ moved: 20, deleted: 0, overwritten: 0 })
+  it('the ask reaches the model, whose one file_move puts every file in a kind folder and deletes nothing; the thread stores the model\'s words', async () => {
+    const jobs: ToolSessionJob[] = []
+    const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => {
+      jobs.push(job)
+      const moves = INBOX.map(name => ({ from: `fixtures/inbox-dump/${name}`, to: `fixtures/inbox-dump/${KIND[name.split('.').pop()!]}/${name}` }))
+      await job.tools.find(tool => tool.name === 'file_move')!.run({ moves }, {})
+      return { answer: '확장자대로 다섯 폴더에 나눠 담았어요. PDF가 6개로 제일 많아요.' }
+    } } as unknown as Engine
+    const world = await openWorld(join(root, 'w'), engine)
+    inbox = join(world.paths.workspace, 'fixtures', 'inbox-dump')
+    await mkdir(inbox, { recursive: true })
+    for (const name of INBOX) await writeFile(join(inbox, name), name)
+    const { result } = await answer(world, '받은 자료 폴더 확장자 보고 나눠 담아줘')
+    expect(jobs).toHaveLength(1)
+    expect(result?.answer).toBe('확장자대로 다섯 폴더에 나눠 담았어요. PDF가 6개로 제일 많아요.')
+    expect(result?.steps.map(step => step.tool)).toEqual(['file_move'])
+    expect(JSON.parse(result!.steps[0]!.observation.split('\n')[0]!)).toMatchObject({ moved: 20, deleted: 0, overwritten: 0 })
     expect((await readdir(inbox)).sort()).toEqual(['PDF', '문서', '엑셀', '이미지', '텍스트'].sort())
-    expect((await readdir(join(inbox, 'PDF'))).length).toBe(6)
     const kept = (await Promise.all(['PDF', '문서', '엑셀', '이미지', '텍스트'].map(folder => readdir(join(inbox, folder))))).flat()
     expect(kept.sort()).toEqual([...INBOX].sort())
     expect(await readFile(join(inbox, '텍스트', '메모.txt'), 'utf8')).toBe('메모.txt')
+    expect(world.history.at(-1)).toEqual({ role: 'assistant', text: '확장자대로 다섯 폴더에 나눠 담았어요. PDF가 6개로 제일 많아요.' })
   })
 
-  it('keeps both files when a kind folder already holds the name', async () => {
+  it('nothing moves when the model makes no move call: the host never sorts on its own', async () => {
+    const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async () => ({ answer: '어느 폴더인지 찾아볼게요.' }) } as unknown as Engine
+    await answer(await openWorld(root, engine), 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘')
+    expect((await readdir(inbox)).sort()).toEqual([...INBOX].sort())
+  })
+
+  it('file_move keeps the file a kind folder already holds', async () => {
     await mkdir(join(inbox, 'PDF'))
     await writeFile(join(inbox, 'PDF', '견적서_A사.pdf'), 'older')
-    const sorted = await sortByKind(F1, workspace, move(), context)
-    expect(sorted?.answer).toContain('- PDF 6개')
-    expect(sorted?.answer).toContain('-2를 붙여서 둘 다 남겼어요.')
+    await move().run({ moves: [{ from: 'fixtures/inbox-dump/견적서_A사.pdf', to: 'fixtures/inbox-dump/PDF/견적서_A사.pdf' }] }, context).catch(() => undefined)
     expect(await readFile(join(inbox, 'PDF', '견적서_A사.pdf'), 'utf8')).toBe('older')
-    expect(await readFile(join(inbox, 'PDF', '견적서_A사-2.pdf'), 'utf8')).toBe('견적서_A사.pdf')
   })
 
-  it('leaves a folder outside the workspace, a folder of folders and an empty one to the model, moving nothing', async () => {
+  it('file_move moves nothing from outside the workspace', async () => {
     const outside = join(root, 'outside')
     await mkdir(outside, { recursive: true })
     await writeFile(join(outside, 'a.pdf'), 'a')
-    expect(await sortByKind('../outside 폴더 종류별로 정리해줘', workspace, move(), context)).toBeUndefined()
-    expect(await sortByKind(`${outside} 폴더 종류별로 정리해줘`, workspace, move(), context)).toBeUndefined()
+    await move().run({ moves: [{ from: join(outside, 'a.pdf'), to: 'fixtures/a.pdf' }] }, context).catch(() => undefined)
     expect(await readdir(outside)).toEqual(['a.pdf'])
-    await mkdir(join(inbox, '2024'))
-    expect(await sortByKind(F1, workspace, move(), context)).toBeUndefined()
-    expect((await readdir(inbox)).length).toBe(21)
-    await mkdir(join(workspace, 'empty', 'box'), { recursive: true })
-    expect(await sortByKind('empty/box 정리해줘', workspace, move(), context)).toBeUndefined()
-  })
-
-  it('moves nothing into Engram\'s own folders: file_move refuses and the model takes it', async () => {
-    const tasks = join(workspace, 'tasks', 'bot-one')
-    await mkdir(tasks, { recursive: true })
-    await writeFile(join(tasks, 'x.pdf'), 'x')
-    expect(await sortByKind('tasks/bot-one 종류별로 정리해줘', workspace, move(), context)).toBeUndefined()
-    expect(await readdir(tasks)).toEqual(['x.pdf'])
   })
 })
 
@@ -127,7 +107,7 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   it('has no reply of its own in the chat turn: after the host\'s file jobs the model turn is the only writer (stack-10)', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).not.toMatch(/reshape/i)
-    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain(': retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : undefined')
+    expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('result = await runComet(')
     for (const gone of ['laneNote', 'SHORT_QUESTION_NOTE', 'short: true']) expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8'), gone).not.toContain(gone)
   })
 })

@@ -86,13 +86,6 @@ describe('stack-15 merge: the lead\'s answer check and background memory do not 
     expect(await memory).toBe('kept')
     expect(memoryRuns).toBe(2)
   })
-  it('a "기억해" turn nothing kept is never dropped, however many turns start (c15c review)', async () => {
-    let runs = 0
-    const call = yielding(signal => new Promise<string>((resolve, reject) => { runs++; if (runs > 5) return resolve('kept'); signal.addEventListener('abort', () => reject(new Error('cut'))) }), undefined, true)
-    for (let i = 0; i < 5; i++) { await new Promise(resolve => setTimeout(resolve, 0)); turnRunning()() }
-    expect(await call).toBe('kept')
-    expect(runs).toBe(6)
-  })
 })
 
 describe('stack-15 merge: stop', () => {

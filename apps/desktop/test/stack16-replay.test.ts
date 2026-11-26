@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,13 +7,10 @@ import { ANSWER_FROM_THIS, handBacks, keepRead, keepSources, LOOKUP_ROUND_MS, LO
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import * as desk from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
 import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
 import { openRuleLines } from 'core/src/agent-prompt'
 
-const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const DESK_FNS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const looking = (search: AgentTool, left = 28_000): { tool: AgentTool; seen: Set<string>; kept: string[] } => { const seen = new Set<string>(), kept: string[] = []; return { tool: timeBoxed(keepRead(keepSources(skipWalls(search), seen), kept), () => left), seen, kept } }
 const at = new Date().toISOString()
@@ -97,7 +95,7 @@ describe('stack-16 replays', () => {
     expect(told).toContain('A summary or tidy-up of a short note is answered in the chat itself')
     expect(told).not.toContain('A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file')
     expect(COLLEAGUE_CORE_RULE).toContain('A decision or item is listed once, never again under a second heading.')
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('Q4: the Q3/Q4 pair → the keep-facts line for a reshaped reply is in the rules every turn\'s prompt carries', () => {
@@ -105,6 +103,6 @@ describe('stack-16 replays', () => {
     console.log(`Q4 reshape line: ${line}`)
     expect(COLLEAGUE_CORE_RULE).toContain(line)
     for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind }).join('\n'), kind).toContain(line)
-    expect(fns(desk)).toEqual(DESK_FNS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 })

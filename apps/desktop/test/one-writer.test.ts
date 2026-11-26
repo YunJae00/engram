@@ -52,7 +52,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     const menu: string[] = []
     const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
     const engine = brain(async job => { menu.push(...job.tools.map(one => one.name)); await job.tools.find(one => one.name === 'search_web')!.run({ query: '등대 개방 시간' }); return DRAFT })
-    const { result } = await answer(await openWorld(root, engine), '섬 등대 이번 토요일에 몇 시에 문 여는지 좀 찾아봐', { plainAsk: true, tools: [search, tool('new_bot', async () => 'offered')] }).finally(() => rm(root, { recursive: true, force: true }))
+    const { result } = await answer(await openWorld(root, engine), '섬 등대 이번 토요일에 몇 시에 문 여는지 좀 찾아봐', { tools: [search, tool('new_bot', async () => 'offered')] }).finally(() => rm(root, { recursive: true, force: true }))
     if (!result) throw new Error('no result')
     expect(asked).toEqual(['등대 개방 시간'])
     expect(menu).toEqual(expect.arrayContaining(['search_web', 'new_bot']))
@@ -68,7 +68,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     const jobs: ToolSessionJob[] = []
     const root = await mkdtemp(join(tmpdir(), 'one-writer-'))
     const engine = brain(async job => { jobs.push(job); await job.tools.find(one => one.name === 'word_write')!.run({ title: '등대 안내문' }); return DRAFT })
-    const { result: made } = await answer(await openWorld(root, engine), '등대 안내문을 문서 파일로 써줘', { plainAsk: true, tools: [build, tool('search_web', async () => 'unused')] }).finally(() => rm(root, { recursive: true, force: true }))
+    const { result: made } = await answer(await openWorld(root, engine), '등대 안내문을 문서 파일로 써줘', { tools: [build, tool('search_web', async () => 'unused')] }).finally(() => rm(root, { recursive: true, force: true }))
     if (!made) throw new Error('no result')
     expect(jobs).toHaveLength(1)
     expect(jobs[0]!.tools.map(one => one.name)).toEqual(expect.arrayContaining(['word_write', 'search_web']))
@@ -107,7 +107,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(turn.length).toBeGreaterThan(1000)
     expect([...turn.matchAll(/result\.answer\s*=[^=]/g)].map(one => turn.slice(one.index, turn.indexOf('\n', one.index)).trim())).toEqual(['result.answer = answered }'])
     expect(turn).toContain('const answered = answerOnly(result.answer)')
-    expect(turn).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`')
+    expect(turn).toContain('result.asked ? askText(result.answer, result.options) : result.answer')
     expect(turn).toContain('result.files,')
     expect(ipc).toContain('const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))')
     expect(ipc).toContain("await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned,")

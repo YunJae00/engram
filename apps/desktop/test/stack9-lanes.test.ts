@@ -65,7 +65,7 @@ it('stack-9 (c9a Codex r3): the statistic row reaches the model with the rest; t
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => held }
   const engine = { id: 'claude', quick, detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob) => { out = String(await job.tools.find(one => one.name === 'search_web')!.run({ query: 'q' })); return { answer } } } as unknown as Engine
   const dir = await mkdtemp(join(tmpdir(), 'stack9-'))
-  const result = await answerAsk(await openWorld(dir, engine), ask, { tools: [search], plainAsk: false, ack: { interactive: false } }).finally(() => rm(dir, { recursive: true, force: true }))
+  const result = await answerAsk(await openWorld(dir, engine), ask, { tools: [search], ack: { interactive: false } }).finally(() => rm(dir, { recursive: true, force: true }))
   expect(out).toBe(held)
   expect(out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\/\/\S+)/.exec(line)![1])).toEqual([...names.map((_, i) => `https://news.example/${i}`), 'https://news.example/bg'])
   expect(quick).not.toHaveBeenCalled()

@@ -1,13 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runToolSession, WORK_REPLY_RULE, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
-import * as deskLane from '../src/main/desk-lane.js'
 import { answer, openWorld } from '../src/main/answer.js'
-const DESK_FUNCTIONS = ['fixSlideTitle', 'keepAsk', 'keptFix', 'kindSortAsk', 'plainKeep', 'slideTitleFix', 'sortByKind']
-const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 
 const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 const scratch: string[] = []
@@ -76,7 +73,7 @@ describe('c13c: a reshape is the model\'s reply in the asked form, posted as wri
       expect(posted).toBe(reply)
       expect(told).toContain(asked)
     }
-    expect(functionsOf(deskLane)).toEqual(DESK_FUNCTIONS)
+    expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
   it('a table is posted byte for byte, and so is plain text: no form is read out of the reply', async () => {
     const table = '| 내용 |\n|---|\n| 출시 도움 감사 |'

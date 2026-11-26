@@ -289,7 +289,7 @@ describe('instant first line', () => {
     expect(source('answer.ts')).not.toMatch(/firstLineNow|laneLine|smallTalkAnswer/)
     expect(source('ipc.ts')).not.toMatch(/\bnow: !!company/)
     expect(source('ipc.ts')).not.toMatch(/\b(handoff|hire|split|change|direct|handed|summing) = /)
-    expect(source('answer.ts')).toMatch(/const host: AgentLoopResult \| undefined = fixed \? /)
+    expect(source('answer.ts')).not.toMatch(/const host\b/)
     expect(source('ipc.ts')).toMatch(/const reporting = company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined\n[^\n]*const handedBack = employeesAnswer\(reporting\)/)
     expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
     expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)

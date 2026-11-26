@@ -146,7 +146,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(hide).not.toHaveBeenCalled()
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     expect(answerSetInTurn(source('ipc.ts'))).toBe(1)
-    expect(source('ipc.ts')).toContain('`${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,')
+    expect(source('ipc.ts')).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
     const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, tools: [] })
     expect(rules).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps and no notes to yourself.')
     expect(rules).toContain('not between paragraphs and not before a list or a table')
@@ -217,7 +217,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('answer.ts')).not.toMatch(/told:|onlyTells|TOLD_NOTE/)
     expect(source('ipc.ts')).not.toMatch(/reply: !\(turn\?\.context/)
     expect(source('answer.ts')).not.toMatch(/talked|smallTalkAnswer/)
-    expect(source('answer.ts')).toContain('result = host ?? await runComet(')
+    expect(source('answer.ts')).toContain('result = await runComet(')
   })
 })
 
