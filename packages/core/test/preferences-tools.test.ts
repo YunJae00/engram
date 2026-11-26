@@ -209,4 +209,19 @@ describe('narrowing is done at once, widening waits for the person\'s own yes', 
     expect(await call('좋아요', backup)).toBe('깃허브 백업을 연결했어요.')
     expect(calls).toEqual(['rule:allow:forms.sample.org:true', 'connect:https://github.com/haneul/diary'])
   })
+
+  it('a model call from a message that never named the site or repository starts no standing allow or backup, and a later yes applies nothing', async () => {
+    const { call, calls } = setup()
+    const allow = { do: 'auto_allow', name: 'tickets.harbor.net', on: true }
+    const backup = { do: 'backup_connect', name: 'git@github.com:dalbit/notes.git' }
+    expect(await call('이번 달 영수증 정리 좀 해줄래', allow)).not.toContain('될까요')
+    expect(await call('그래요', allow)).not.toContain('될까요')
+    expect(await call('저녁 메뉴 추천해줘', backup)).not.toContain('할까요')
+    expect(await call('좋아', backup)).not.toContain('할까요')
+    expect(calls).toEqual([])
+    expect(await call('tickets.harbor.net 예매는 매번 확인 안 받아도 돼', allow)).toBe('tickets.harbor.net에서는 묻지 않고 바로 제출해도 될까요?')
+    expect(await call('dalbit/notes 저장소에 메모 백업 이어줘', backup)).toBe('git@github.com:dalbit/notes.git에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
+    expect(await call('그래', backup)).toBe('깃허브 백업을 연결했어요.')
+    expect(calls).toEqual(['connect:git@github.com:dalbit/notes.git'])
+  })
 })

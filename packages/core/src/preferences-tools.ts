@@ -165,6 +165,13 @@ async function apply(host: PreferenceHost, ask: PreferenceAsk, now: Date): Promi
 const YES = /^(응|ㅇㅇ|ㅇ|네|넵|예|그래|좋아|맞아|어|웅|해\s*줘|해|그렇게\s*해|허용|허용해|연결해|ok|okay|yes|y|sure)\s*(요|줘|주세요)?$/iu
 const NO = /^(아니|아니요|아뇨|ㄴㄴ|안\s*돼|하지\s*마|됐어|취소|no|n|nope)\s*(요)?$/iu
 const PENDING_MS = 10 * 60_000
+const named = (ask: PreferenceAsk, turn: string): boolean => {
+  if (ask.do !== 'auto_allow' && ask.do !== 'backup_connect') return true
+  const said = turn.toLowerCase()
+  if (ask.do === 'auto_allow') return said.includes(ask.name!)
+  const repo = /github\.com[/:]([\w.-]+\/[\w.-]+?)(\.git)?$/i.exec((ask.name ?? '').trim().replace(/\/+$/, ''))?.[1]?.toLowerCase()
+  return !!repo && said.includes(repo)
+}
 const same = (one: PreferenceAsk, other: PreferenceAsk): boolean => one.do === other.do && one.on === other.on && (one.name ?? '').trim().toLowerCase() === (other.name ?? '').trim().toLowerCase()
 
 export interface Preferences {
@@ -187,6 +194,8 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow') { const site = siteOf(ask.name ?? ''); if (!site) return done(ask); ask.name = site }
+    const fresh = !held || !same(held.ask, ask) || held.turn === turn
+    if (fresh && !named(ask, turn)) return ask.do === 'auto_allow' ? `${ask.name}에서 묻지 않고 제출하는 건 그 사이트를 직접 말씀해 주셔야 바꿀 수 있어요.` : '백업 연결은 저장소 주소를 직접 말씀해 주셔야 할 수 있어요.'
     const answer = turn.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
     if (held && same(held.ask, ask) && held.turn !== turn && clock().getTime() - held.at <= PENDING_MS) {
       if (YES.test(answer)) return done(ask)
