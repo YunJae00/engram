@@ -111,9 +111,9 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     const world = await openWorld(dir, engine)
     const own = await seedFiles(world.paths, one.files ?? {})
     for (const ask of one.before ?? []) before.push((await answer(world, ask, { signal: stop.signal })).trace)
-    let said = (): void => undefined
-    const steered = (signal: AbortSignal): Promise<void> => new Promise(heard => { if (steer.length) heard(); said = heard; signal.addEventListener('abort', () => heard(), { once: true }) })
-    if (one.aside) aside = setTimeout(() => { steer.push(one.aside!.text); said() }, one.aside.afterMs)
+    const waiting = new Set<() => void>()
+    const steered = (signal: AbortSignal): Promise<void> => new Promise(heard => { if (steer.length) return heard(); waiting.add(heard); signal.addEventListener('abort', () => heard(), { once: true }) })
+    if (one.aside) aside = setTimeout(() => { steer.push(one.aside!.text); for (const wake of waiting) wake(); waiting.clear() }, one.aside.afterMs)
     trace = (await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0), steered })).trace
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
     checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)) })

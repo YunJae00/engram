@@ -166,33 +166,69 @@ it('puts a message said mid-work into the running model call at once when the en
   } finally { dropFollowUps(channel); await done() }
 })
 
-it('puts a message said mid-work into the next tool result when the engine has no live input, and never while a tool is still running', async () => {
-  const { paths, done } = await tempPaths('aside-next-step-')
-  const channel = 'bot-next'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+const slowSearch = (): { tool: never; release(): void; started: Promise<void> } => {
   let release = (): void => {}
   const slow = new Promise<void>(go => { release = go })
-  let toolStarted = (): void => {}
-  const inTool = new Promise<void>(go => { toolStarted = go })
-  const tool = { name: 'search_web', description: 'search', argsSchema: { type: 'object', properties: {} }, run: async () => { toolStarted(); await slow; return 'three results' } }
-  const results: string[] = []
-  const live: string[][] = []
+  let begin = (): void => {}
+  const started = new Promise<void>(go => { begin = go })
+  return { tool: { name: 'search_web', description: 'search', argsSchema: { type: 'object', properties: {} }, run: async () => { begin(); await slow; return '렌터카 세 곳, 하루 4만 원부터' } } as never, release: () => release(), started }
+}
+
+it('hands a message said while a slow tool runs to the model at once, keeps the tool running, and gives its result to the model when it lands', async () => {
+  const { paths, done } = await tempPaths('aside-slow-tool-')
+  const channel = 'bot-slow'
+  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  const search = slowSearch()
+  const returned: string[] = []
+  const prompts: string[] = []
   const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
-    job.onSteerable?.(async said => { live.push(said); return false })
-    results.push(String(await job.tools[0]!.run({})))
+    prompts.push(job.prompt)
+    job.onSteerable?.(async () => false)
+    if (prompts.length === 1) returned.push(String(await job.tools[0]!.run({})))
     job.onSteerable?.(null)
-    return { answer: 'done' }
+    return { answer: prompts.length === 1 ? '조금만 기다려 주세요.' : '제주 렌터카는 하루 4만 원부터예요.' }
   }
   try {
-    const run = runToolSession(sessionDeps(runTools, [tool as never]), '여수 숙소 찾아줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
-    await inTool
-    await handlers.get('chat:say')!({}, channel, '바다 보이는 데로만')
-    await new Promise(go => setTimeout(go, 20))
+    const run = runToolSession(sessionDeps(runTools, [search.tool]), '제주 렌터카 가격 알아봐줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
+    await search.started
+    await handlers.get('chat:say')!({}, channel, '아 진짜 한참 걸리네')
+    await vi.waitFor(() => expect(returned).toHaveLength(1))
+    expect(returned[0]).toContain('"아 진짜 한참 걸리네"')
+    expect(returned[0]).not.toContain('렌터카 세 곳')
+    expect(prompts).toHaveLength(1)
+    search.release()
+    const result = await run
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('렌터카 세 곳, 하루 4만 원부터')
+    expect(prompts[1]).toContain('조금만 기다려 주세요.')
+    expect(result.answer).toBe('제주 렌터카는 하루 4만 원부터예요.')
+  } finally { dropFollowUps(channel); await done() }
+})
+
+it('gives a slow tool\'s result to the model live when it lands after the person\'s message was already answered', async () => {
+  const { paths, done } = await tempPaths('aside-slow-live-')
+  const channel = 'bot-slow-live'
+  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  const search = slowSearch()
+  const live: string[][] = []
+  const returned: string[] = []
+  const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
+    const landed = new Promise<void>(go => job.onSteerable?.(async said => { live.push(said); go(); return true }))
+    returned.push(String(await job.tools[0]!.run({})))
+    await landed
+    job.onSteerable?.(null)
+    return { answer: '하루 4만 원부터예요.' }
+  }
+  try {
+    const run = runToolSession(sessionDeps(runTools, [search.tool]), '제주 렌터카 가격 알아봐줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
+    await search.started
+    await handlers.get('chat:say')!({}, channel, '경차로만 봐 줘')
+    await vi.waitFor(() => expect(returned).toHaveLength(1))
+    expect(returned[0]).toContain('"경차로만 봐 줘"')
     expect(live).toEqual([])
-    release()
-    await run
-    expect(results[0]).toContain('three results')
-    expect(results[0]).toContain('"바다 보이는 데로만"')
-    expect(live).toEqual([['바다 보이는 데로만']])
+    search.release()
+    expect((await run).answer).toBe('하루 4만 원부터예요.')
+    expect(live).toHaveLength(1)
+    expect(live[0]!.join('\n')).toContain('렌터카 세 곳, 하루 4만 원부터')
   } finally { dropFollowUps(channel); await done() }
 })

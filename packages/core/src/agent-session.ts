@@ -52,8 +52,10 @@ const RECHECK_CALLS = 2
 const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
 const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
 const theirLanguage = (text: string, task: string): boolean => !/[가-힣]/.test(task) || /[가-힣]/.test(text) && !(text.match(/[A-Za-z]+/g) ?? []).some(word => !task.toLowerCase().includes(word.toLowerCase()))
-function lateSteer(draft: string, said: string[]): string {
-  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
+const STILL_RUNNING = 'That call is still running; its result will be given to you when it is ready, so do not call it again.'
+const landedResult = (name: string, text: string): string => `The ${name} call that was still running has finished:\n${text}`
+function lateSteer(draft: string, said: string[], back: string[]): string {
+  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\n${back.map(line => `${line}\n\n`).join('')}Write ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
 }
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
@@ -74,6 +76,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const takeSteer = (): string[] => [...unread.splice(0), ...(options.takeSteer?.() ?? [])]
   let nudge: (() => void) | undefined
   const ready = (): void => { const go = nudge; nudge = undefined; go?.() }
+  const finished: string[] = []
+  const detached = new Set<Promise<void>>()
+  let landed = (): void => {}
   const compactPage = pageDelta()
   const plan = taskPlan(steps)
   const collection = collectionProgress(steps)
@@ -206,8 +211,30 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       return image ? { text, image } : text
     },
   }))
-  const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: (args) => {
+  const heard = new AbortController()
+  const listening = AbortSignal.any([signal, heard.signal])
+  const heardWhile = async (settled: Promise<unknown>): Promise<string[] | undefined> => {
+    if (!options.steered) return undefined
+    let over = false
+    const done = new AbortController()
+    void settled.then(() => { over = true; done.abort() }, () => { over = true; done.abort() })
+    while (!over && !listening.aborted) {
+      await Promise.race([options.steered(AbortSignal.any([listening, done.signal])), settled.catch(() => undefined)])
+      if (over || listening.aborted) return undefined
+      const said = takeSteer()
+      if (said.length) { done.abort(); return said }
+    }
+    return undefined
+  }
+  const withFinished = (outcome: Awaited<ReturnType<ToolSessionCall['run']>>): Awaited<ReturnType<ToolSessionCall['run']>> => {
+    if (!finished.length) return outcome
+    const back = finished.splice(0).join('\n\n')
+    return typeof outcome === 'string' ? `${outcome}\n\n${back}` : { ...outcome, text: `${outcome.text}\n\n${back}` }
+  }
+  const sessionCalls = calls.map((call): ToolSessionCall => ({ ...call, run: async (args) => {
     queued++
+    let open = true
+    const shut = (): void => { if (!open) return; open = false; queued = Math.max(0, queued - 1); if (!queued) ready() }
     const run = async () => {
       signal.throwIfAborted()
       const active = { name: call.name, at: Date.now(), native: false }
@@ -215,9 +242,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       try { return await call.run(args) } finally { running.delete(active) }
     }
     const outcome = planned ? toolTail.then(run) : run()
-    const settled = outcome.finally(() => { queued = Math.max(0, queued - 1); if (!queued) ready() })
+    const settled = outcome.finally(shut)
     if (planned) toolTail = settled.then(() => undefined, () => undefined)
-    return settled
+    const said = await heardWhile(settled)
+    if (!said) return withFinished(await settled)
+    shut()
+    const back = settled.then(result => { finished.push(landedResult(call.name, typeof result === 'string' ? result : result.text)); landed() }, () => undefined)
+    detached.add(back)
+    void back.finally(() => detached.delete(back))
+    return withSteer(STILL_RUNNING, said)
   } }))
   const opening = conversationLines(options.history).join('\n')
   let checkedAt = Date.now()
@@ -306,17 +339,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     signal.addEventListener('abort', end, { once: true })
     if (signal.aborted) end()
   })
-  const heard = new AbortController()
-  const listening = AbortSignal.any([signal, heard.signal])
   const hear = async (): Promise<void> => {
     while (options.steered && !listening.aborted) {
-      await options.steered(listening)
+      if (!finished.length) await Promise.race([options.steered(listening), new Promise<void>(go => { landed = go })])
       while (!listening.aborted && (!liveSteer || queued > 0)) await new Promise<void>(go => { nudge = go; listening.addEventListener('abort', () => go(), { once: true }) })
       if (listening.aborted) return
-      const said = takeSteer()
-      if (!said.length) continue
-      if (await liveSteer!([withSteer('', said)]).catch(() => false)) renew()
-      else unread.push(...said)
+      const said = takeSteer(), back = finished.splice(0)
+      if (!said.length && !back.length) continue
+      if (await liveSteer!([...back, ...(said.length ? [withSteer('', said)] : [])]).catch(() => false)) { if (said.length) renew() }
+      else { unread.push(...said); finished.unshift(...back) }
     }
   }
   void hear()
@@ -329,12 +360,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     const takeLate = async (): Promise<boolean> => {
       let took = false
       while (lateLeft > 0 && closed === undefined && !signal.aborted && !session.error && !asked) {
-        const late = takeSteer()
-        if (!late.length) break
+        await Promise.race([Promise.all(detached), ended])
+        const late = takeSteer(), back = finished.splice(0)
+        if (!late.length && !back.length) break
         lateLeft--; took = true
         options.onReset?.(true)
         exhausted = false; extended = false; startedCalls = 0; working = Date.now()
-        session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late)}` }), ended])
+        session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, back)}` }), ended])
       }
       return took
     }
