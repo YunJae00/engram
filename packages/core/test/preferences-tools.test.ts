@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { runToolSession } from '../src/agent-session.js'
+import type { Engine, EngineCwd, ToolSessionJob } from '../src/engine/types.js'
 import { activityLine, preferences, PREFERENCE_ACTIONS, widens, type PreferenceAsk, type PreferenceHost } from '../src/preferences-tools.js'
 
 function fakeHost(over: Partial<PreferenceHost> = {}) {
@@ -117,10 +119,23 @@ describe('the model\'s call changes a setting, and the tool says what changed in
     expect(calls).toEqual([])
   })
 
-  it('the reply is Korean-closing only in a Korean conversation', () => {
-    const { chat } = setup()
-    expect((chat.tool('c', () => '다크로 바꿔줘').closes as (args: Record<string, unknown>) => boolean)({})).toBe(true)
-    expect((chat.tool('c', () => 'switch to dark').closes as (args: Record<string, unknown>) => boolean)({})).toBe(false)
+  it('a settings call never ends the turn: the stored answer is the draft the model writes after it', async () => {
+    const { chat, calls } = setup()
+    const asked = '밤에는 눈 아프니까 까만 배경으로 해줄래'
+    const engine = {
+      id: 'mock',
+      detect: async () => ({ installed: true, loggedIn: true }),
+      run: async function* () { yield { type: 'result', text: '' } },
+      runTools: async (job: ToolSessionJob) => {
+        const seen = await job.tools.find(one => one.name === 'preferences')!.run({ do: 'theme', name: 'dark' })
+        expect(seen).toBe('어두운 화면으로 바꿨어요.')
+        await new Promise(resolve => setTimeout(resolve, 400))
+        return { answer: '까만 배경으로 바꿔 뒀어요. 눈이 좀 편하실 거예요.' }
+      },
+    } as unknown as Engine
+    const result = await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [chat.tool('c', () => asked)] }, asked)
+    expect(calls).toEqual(['theme:dark'])
+    expect(result.answer).toBe('까만 배경으로 바꿔 뒀어요. 눈이 좀 편하실 거예요.')
   })
 })
 
