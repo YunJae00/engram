@@ -410,7 +410,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   }
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
-  if (finish?.status === 'blocked') { const text = [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, asked: true } }
+  if (finish?.status === 'blocked') { const text = session.answer.trim(); return { answer: withoutSecrets(text, task), steps, files: outputCards(steps, text, deps.workdir), fellBack: false, asked: true } }
   const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : (options.lookup ? undefined : finalDesktopFailure(steps)) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = session.answer.trim()

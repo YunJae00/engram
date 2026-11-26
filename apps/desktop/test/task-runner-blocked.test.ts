@@ -10,7 +10,7 @@ it('parks partial collection barriers in waiting without a Continuing turn', asy
       await collect.run({ items: ['First', 'Second'], fields: ['value'] })
       await collect.run({ item: 'First', values: { value: '42' }, evidenceStep: 1 })
       await collect.run({ status: 'blocked', summary: 'Please sign in for the second item.', evidenceStep: 1 })
-      return { answer: 'Continuing' }
+      return { answer: 'Sign in once and I will read the second item.' }
     } } as Engine
     const result = await runToolSession({ engine, workdir: t.paths.workspace as EngineCwd, tools: [{ name: 'open_page', description: '', argsSchema: {}, run: async () => 'First: 42; HTTP 401: sign in for Second' }] }, 'Read both items')
     return { answer: result.answer, asked: result.asked === true, unfinished: !!result.incomplete, steps: result.steps.length, trail: result.steps }
@@ -18,7 +18,7 @@ it('parks partial collection barriers in waiting without a Continuing turn', asy
   await t.chat('Read both items')
   const task = await t.settle('waiting')
   expect(task.turns).toBe(1)
-  expect(task.question).toBe('Please sign in for the second item.')
+  expect(task.question).toBe('Sign in once and I will read the second item.')
   expect(task.log.some(entry => entry.line === 'Continuing')).toBe(false)
   expect(t.sent).toHaveLength(1)
 })

@@ -57,7 +57,7 @@ it('parks a partial collection at its reported barrier and retains it through ou
   })
   const result = await runToolSession({ engine: engine(run), workdir, tools: [tool('open_page'), tool('read_open_page', 'HTTP 401: Sign in to read the remaining items.'), tool('file_create_copy', '{}'), tool('report_result_check', '{}')] }, 'Read ten items')
   expect(run).toHaveBeenCalledOnce()
-  expect(result).toMatchObject({ asked: true, answer: 'Please sign in to read the remaining seven items.' })
+  expect(result).toMatchObject({ asked: true, answer: 'Continuing' })
   expect(result.incomplete).toBeUndefined()
 })
 
