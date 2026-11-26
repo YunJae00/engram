@@ -290,6 +290,38 @@ it('waits for something new after the engine declines a landed tool result live,
   } finally { dropFollowUps(channel); await done() }
 })
 
+it('starts a new round at once for a message said after the interim reply while the slow tool is still running, then another when the tool lands', async () => {
+  const { paths, done } = await tempPaths('aside-slow-second-')
+  const channel = 'bot-slow-second'
+  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  const search = slowSearch()
+  const prompts: string[] = []
+  const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
+    prompts.push(job.prompt)
+    if (prompts.length > 1) return { answer: prompts.length === 2 ? '창가 좌석으로 볼게요.' : '창가 좌석은 하루 4만 원부터예요.' }
+    job.onSteerable?.(async () => false)
+    await job.tools[0]!.run({})
+    job.onSteerable?.(null)
+    return { answer: '알아보는 중이에요.' }
+  }
+  try {
+    const run = runToolSession(sessionDeps(runTools, [search.tool]), '강릉 가는 KTX 요금 알아봐줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
+    await search.started
+    await handlers.get('chat:say')!({}, channel, '좀 오래 걸리네요')
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
+    await new Promise(go => setTimeout(go, 20))
+    await handlers.get('chat:say')!({}, channel, '창가 자리로만 알려 줘요')
+    await vi.waitFor(() => expect(prompts).toHaveLength(2))
+    expect(prompts[1]).toContain('"창가 자리로만 알려 줘요"')
+    expect(prompts[1]).not.toContain('렌터카 세 곳')
+    search.release()
+    const result = await run
+    expect(prompts).toHaveLength(3)
+    expect(prompts[2]).toContain('렌터카 세 곳, 하루 4만 원부터')
+    expect(result.answer).toBe('창가 좌석은 하루 4만 원부터예요.')
+  } finally { dropFollowUps(channel); await done() }
+})
+
 it('tells the model when a call it was told is still running fails after the person was answered, instead of finishing as if it worked', async () => {
   const { paths, done } = await tempPaths('aside-slow-fail-')
   const channel = 'bot-slow-fail'

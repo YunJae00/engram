@@ -363,9 +363,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     const takeLate = async (): Promise<boolean> => {
       let took = false
       while (lateLeft > 0 && closed === undefined && !signal.aborted && !session.error && !asked) {
-        await Promise.race([Promise.all(detached), ended])
+        const quiet = new AbortController()
+        await Promise.race([Promise.all(detached), ended, ...(detached.size && options.steered ? [options.steered(AbortSignal.any([listening, quiet.signal]))] : [])]).finally(() => quiet.abort())
         const late = takeSteer(), back = finished.splice(0)
-        if (!late.length && !back.length) break
+        if (!late.length && !back.length) { if (detached.size && !listening.aborted) continue; break }
         lateLeft--; took = true
         options.onReset?.(true)
         exhausted = false; extended = false; startedCalls = 0; working = Date.now()
