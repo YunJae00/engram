@@ -35,6 +35,35 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
   beforeEach(() => { vi.useFakeTimers(); endFirstLine('bot-1') })
   afterEach(() => { endFirstLine('bot-1'); vi.useRealTimers() })
 
+  it('reads no ending in the host: the voice is told the earlier lines, and a line on the same ending is posted unchanged', async () => {
+    const earlier = ['메모 내용부터 훑어볼게요.', '일정표부터 훑어볼게요.']
+    const got = await run('다음 주 워크숍 진행표 만들어줘', '시간 순서부터 훑어볼게요.', earlier)
+    expect(got.prompt).toContain('"메모 내용부터 훑어볼게요.", "일정표부터 훑어볼게요."')
+    expect(got.line).toBe('시간 순서부터 훑어볼게요.')
+    expect(got.shown).toBe(1)
+    expect(firstLinePrompt('다음 주 워크숍 진행표 만들어줘', true, earlier)).toBe(firstLinePrompt('다음 주 워크숍 진행표 만들어줘', true, ['메모 내용 볼게요.', '일정표 열게요.']).replace('"메모 내용 볼게요.", "일정표 열게요."', '"메모 내용부터 훑어볼게요.", "일정표부터 훑어볼게요."'))
+  })
+
+  it('three document asks the voice has no line for show nothing of their own, and only the one safety line stands in at 1.3 s', async () => {
+    const asks = ['출장 경비 내역 엑셀로 묶어줘', '신입 교육 자료 슬라이드 4장 만들어줘', '고객 문의 메모로 워드 정리본 만들어줘']
+    for (const ask of asks) expect((await run(ask, '', [])).shown, ask).toBe(0)
+    const shown: string[] = []
+    for (const ask of asks) {
+      endFirstLine('bot-1')
+      beginFirstLine({ channel: 'bot-1', message: ask, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick: async () => 'NONE' }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: line => shown.push(line), said: async () => shown })
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(1300)
+    }
+    expect(shown).toEqual(Array(3).fill('바로 확인해 볼게요.'))
+  })
+
+  it('a split asked as a question is the voice\'s to name: its prompt carries the split rule and its line is posted as written', async () => {
+    const ask = '하은이랑 수진한테 나눠서 숙소 알아봐 줄래?'
+    expect(firstLinePrompt(ask, true)).toContain('the line says the split in their words')
+    expect((await run(ask, '하은이랑 수진한테 나눠 맡길게요.', [])).line).toBe('하은이랑 수진한테 나눠 맡길게요.')
+    expect((await run('둘이 뭐 하고 있어?', '지금 확인해 볼게요.', [])).line).toBe('지금 확인해 볼게요.')
+  })
+
   it('shows the voice the last two lines, and posts its line as written even when it repeats the ending', async () => {
     const first = await run(DOCS[0]!, '회의록 내용부터 정리할게요.', [])
     expect(first.line).toBe('회의록 내용부터 정리할게요.')
@@ -84,12 +113,15 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 })
 
 describe('a figure that rests on a convention says so (Q2)', () => {
-  it('asks for the convention inside the one sentence, in the lead\'s voice rule every turn gets', () => {
-    const text = VOICE
-    expect(text).toContain('평년 기준으로 31,536,000초예요.')
-    expect(text).toMatch(/a common (year )?or a leap year, a 30- or 31-day month, which exchange/)
+  it('asks the lead to name an unstated convention inside its one-sentence answer, and posts that sentence as written', async () => {
+    expect(VOICE).toContain('A one-fact ask gets that fact in one sentence, also when it comes from a file, naming in it any convention it rests on (a common year, a 30-day month)')
+    expect(VOICE).toContain('other variant or "if" unless they ask')
+    expect(VOICE).not.toContain('31,536,000')
+    const draft = '30일 기준으로 한 달은 43,200분이에요.'
+    const { posted, told } = await deskTurn(draft, '한 달은 몇 분이야?')
+    expect(told).toContain('naming in it any convention it rests on')
+    expect(posted).toBe(draft)
     expect(source('first-line.ts')).not.toContain('quickAnswerPrompt')
-    expect(text).toContain('inside that same sentence ("평년 기준으로 31,536,000초예요."), never the other variant and never an "if" clause')
   })
 })
 

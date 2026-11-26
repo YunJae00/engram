@@ -380,6 +380,67 @@ describe('instant first line', () => {
     expect(FIRST_LINE_BUDGET_MS).toBeLessThan(2000)
   })
 
+  it('a short general-knowledge question gets no whole answer from the quick voice: a line it writes is only the first line, and the lead is told it is up', async () => {
+    const live = voice(later('지금 바로 계산해 볼게요.', 200))
+    const { show } = begin(live, { message: '마라톤 거리는 몇 km야?' })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(live.quick).toHaveBeenCalledOnce()
+    expect(live.quick.mock.calls[0]![0]).toContain('Reply with exactly NONE when')
+    expect(show).toHaveBeenCalledExactlyOnceWith('지금 바로 계산해 볼게요.')
+    expect(firstLineNote('bot-1')).toContain('Do not repeat or rephrase it.')
+    expect(firstLineCarried('bot-1')).toBe('지금 바로 계산해 볼게요.')
+  })
+
+  it('a reply too long or on several lines is not shown, and the safety line stands in at 1.3 s', async () => {
+    for (const reply of ['약 42.195km예요.\n올림픽 마라톤도 같은 거리예요.', '회의록을 먼저 꼼꼼하게 읽고 결정된 일과 각자 맡은 일, 그리고 기한을 하나씩 확인해서 짧고 보기 좋게 정리해 드릴게요.']) {
+      endFirstLine('bot-1')
+      const { show } = begin(voice(later(reply, 300)))
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(show, reply).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(show, reply).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
+    }
+  })
+
+  it('a message that only tells gets one first-line prompt and no second call, and a NONE from it gives the lead no note', async () => {
+    const live = voice(later('NONE', 250))
+    const { show } = begin(live, { message: '나 이번 달부터 재택근무해' })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(live.quick).toHaveBeenCalledExactlyOnceWith(firstLinePrompt('나 이번 달부터 재택근무해', true), expect.anything())
+    expect(firstLineNote('bot-1')).toBe('')
+    firstLineSpoke('bot-1')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).not.toHaveBeenCalled()
+    expect(live.quick).toHaveBeenCalledOnce()
+  })
+
+  it('an engine that takes past 1.3 s to come up gets the safety line, and the voice is never asked after it', async () => {
+    const live = voice(later('주문 내역부터 볼게요.', 100))
+    const show = vi.fn()
+    beginFirstLine({ ...ask({ message: '지난주 택배 주문 내역 모아줘' }), engine: () => new Promise(done => setTimeout(() => done(live as never), 1400)), workdir: WORKDIR, signal: new AbortController().signal, show })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+    expect(show).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(live.quick).not.toHaveBeenCalled()
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('an English thread gets the voice\'s English line as written, and the English safety line when the voice is silent', async () => {
+    let { show } = begin(voice(later('Pulling up the flight times now.', 300)), { message: 'Find me flights to Osaka next Friday', korean: false })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(show).toHaveBeenCalledExactlyOnceWith('Pulling up the flight times now.')
+    endFirstLine('bot-1')
+    ;({ show } = begin(voice(later('', 300)), { message: 'Find me flights to Osaka next Friday', korean: false }))
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+    expect(show).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.en)
+  })
+
   it('stays silent for mock or missing engines', async () => {
     for (const engine of [undefined, { id: 'mock' }, { id: 'mock', quick: async () => '줄' }]) {
       const { show } = begin(engine)

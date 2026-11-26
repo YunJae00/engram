@@ -93,6 +93,19 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
     expect(firstLinePrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).toBe(firstLinePrompt('회의록 요약해줘', true, ['보고서 구성부터 잡을게요.']).replace('"보고서 구성부터 잡을게요."', '"지금 시세 확인할게요."'))
   })
 
+  it('asks the voice to build a line another way after an earlier "…부터" line, and only then', () => {
+    const ask = '분기별 지출 내역 표로 정리해줘'
+    const after = firstLinePrompt(ask, true, ['영수증부터 모아 볼게요.'])
+    expect(after).toContain('Your first lines earlier in this conversation: "영수증부터 모아 볼게요."')
+    expect(after).toContain('Do not reuse their ending, their last word or their sentence frame')
+    expect(firstLinePrompt(ask, true)).not.toContain('Do not reuse their ending')
+  })
+  it('has no host line to build after a voice line: the one safety line is all the host writes, whatever came before', () => {
+    const first = source('first-line.ts')
+    expect(first.match(/SAFETY_LINE/g)).toHaveLength(3)
+    expect(first).not.toMatch(/fallback\??:|lines\)\s*=>/)
+    expect(source('answer.ts')).not.toContain('SAFETY_LINE')
+  })
   it('leaves the repeat to the voice: no host code reads the earlier lines', () => {
     expect(source('first-line.ts')).not.toMatch(/saidBefore|endedTwice|FROM_FRAME|lineTail/)
     expect(source('fast-lane.ts')).not.toContain('saidBefore')
@@ -117,7 +130,7 @@ describe('a fact about the person is a state, not an instruction (M3, c11b)', ()
 describe('a pick comes with its reason, recommendations with what they went by (H1)', () => {
   it('keeps the rules Q2-Q4 and H2 ride on in the prompts still sent, with no short-ask note left', () => {
     for (const said of ['text they asked for in another language, which you hand over unchanged after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
-    expect(COLLEAGUE_RULE).toContain('"평년 기준으로 31,536,000초예요."')
+    expect(COLLEAGUE_RULE).toContain('naming in it any convention it rests on (a common year, a 30-day month)')
     expect(source('fast-lane.ts')).not.toContain('SHORT_QUESTION_NOTE')
   })
   it('keeps a recommendation\'s lead and every pick under it: nothing is taken off a short answer', async () => {

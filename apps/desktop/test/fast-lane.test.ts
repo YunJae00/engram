@@ -69,6 +69,14 @@ it('tells a team ask from a lone one, and a lone lookup gets the quick model\'s 
   expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/whole|quickQuestion/)
 })
 
+it('a general-knowledge question reaches the lead as typed and its own sentence is the answer, with no quick call reading the draft', async () => {
+  for (const [ask, said] of [['서울에서 부산까지 몇 km야?', '직선으로 약 325km예요.'], ['한 시간은 몇 초야?', '3,600초예요.']] as const) {
+    const got = await turn('', ask, said)
+    expect(got.answer, ask).toBe(said)
+    expect(got.judged, ask).toBe(0)
+  }
+})
+
 it('streams a lookup turn\'s words as they come, like any turn with no ack on screen', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fast-lane-'))
   try {

@@ -186,6 +186,13 @@ describe('an offer is the next step, never the same content in another shape (H4
 })
 
 describe('first lines across a document thread (D5, F1)', () => {
+  it('the host\'s one line does not turn with the thread, and the voice is told only the last two lines', () => {
+    const said = ['표 머리부터 잡을게요.', '열 이름부터 바꿀게요.', '합계 칸부터 채울게요.']
+    const prompt = firstLinePrompt('그 표에 평균 열도 넣어줘', true, said)
+    expect(prompt).toContain('"열 이름부터 바꿀게요.", "합계 칸부터 채울게요."')
+    expect(prompt).not.toContain('표 머리부터 잡을게요.')
+    expect(readFileSync(new URL('../src/main/first-line.ts', import.meta.url), 'utf8')).toContain("SAFETY_LINE = { ko: '바로 확인해 볼게요.', en: 'Checking now.' }")
+  })
   it('the voice sees the last two lines with other ways to end, the same prompt whatever they end in', () => {
     const said = ['회의록 내용 정리할게요.', '장표 흐름 구성할게요.']
     const prompt = firstLinePrompt('3번 슬라이드 본문 고쳐줘', true, said)
