@@ -23,7 +23,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
   const DOCS = ['위 회의록으로 워드 보고서 만들어줘', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘']
   const run = async (message: string, reply: string, said: string[]) => {
     const show = vi.fn(), quick = vi.fn(async () => reply)
-    beginFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show, said: async () => said })
+    beginFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show, said: async () => said })
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(10)
     endFirstLine('bot-1')
@@ -47,7 +47,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     const shown: string[] = []
     for (const ask of asks) {
       endFirstLine('bot-1')
-      beginFirstLine({ channel: 'bot-1', message: ask, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick: async () => 'NONE' }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: line => shown.push(line), said: async () => shown })
+      beginFirstLine({ channel: 'bot-1', message: ask, korean: true, interactive: true, studying: false, limited: false, secret: false, engine: async () => ({ id: 'claude' as const, quick: async () => 'NONE' }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: line => shown.push(line), said: async () => shown })
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(1300)
     }
@@ -91,7 +91,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     const file = source('first-line.ts')
     expect(file).toContain('export const FIRST_LINE_BUDGET_MS = 1500')
     const quick = vi.fn(async () => '목차부터 세워 볼게요.')
-    beginFirstLine({ channel: 'bot-1', message: '여름 워크숍 안내문 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: vi.fn() })
+    beginFirstLine({ channel: 'bot-1', message: '여름 워크숍 안내문 써줘', korean: true, interactive: true, studying: false, limited: false, secret: false, engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: 'C:/work' as never, signal: new AbortController().signal, show: vi.fn() })
     await vi.advanceTimersByTimeAsync(10)
     expect(quick).toHaveBeenCalledOnce()
     expect(source('ipc.ts')).toContain("said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error")

@@ -118,8 +118,8 @@ test('the period searched matches the period asked, by date arithmetic, and the 
   expect(dateLine('이번 주말 대전 공연 일정', SAT)).toContain('이번 주말')
 })
 
-test('stack-13 (c13a r3 #1): a part added by a steer after the deadline answer is owed in the hand-back after it, with the late ones', async () => {
-  const { employeesAnswer, lateShown, lateOwed, markLate, plainSteer, steerSplit } = await import('../src/company-tools.js')
+test('stack-13 (c13a r3 #1): a part added after the deadline answer is owed in the hand-back after it, with the late ones', async () => {
+  const { employeesAnswer, lateShown, lateOwed, markLate } = await import('../src/company-tools.js')
   const brief = (thing: string) => `이번 주 ${thing} 업데이트 조사`
   const team = { hires: 2, maxHires: 8, maxDepth: 2, big: false, members: [
     member({ id: 'm1', role: '하람', brief: brief('피그마'), topic: '피그마', result: '피그마에 슬라이드 자동 정렬이 생겼어요. https://www.figma.com/release-notes/1' }),
@@ -128,8 +128,7 @@ test('stack-13 (c13a r3 #1): a part added by a steer after the deadline answer i
   const job = { id: 't9', goal: '피그마, 캔바 이번 주 업데이트 알아봐줘', botId: 'lead', state: 'waiting', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team } as DelegatedTask
   expect(markLate(job)).toEqual(['m2'])
   lateShown(job)
-  const steer = plainSteer('미로도 넣어줘', [job], 'lead')!
-  expect(steerSplit(job, steer, at)?.ids).toEqual(['m3'])
+  job.team!.members.push(member({ id: 'm3', role: '하람', brief: brief('미로'), topic: '미로', state: 'working', late: true }))
   const added = job.team!.members[2]!
   expect(added.late).toBe(true)
   Object.assign(job.team!.members[1]!, { state: 'done', result: '캔바가 표로 차트를 만드는 기능을 냈어요. https://www.canva.com/newsroom/1' })

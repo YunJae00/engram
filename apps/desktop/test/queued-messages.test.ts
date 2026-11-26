@@ -11,13 +11,13 @@ const api = () => {
 
 it('ignores a late voice reply after stop, even after its done echo', async () => {
   const store = createCometThreads()
-  let reply!: (answer: { ok: true; action: 'later'; instruction: string }) => void
-  const client = { ...api(), chatSay: () => new Promise<{ ok: true; action: 'later'; instruction: string }>(resolve => { reply = resolve }) }
+  let reply!: (answer: { ok: true }) => void
+  const client = { ...api(), chatSay: () => new Promise<{ ok: true }>(resolve => { reply = resolve }) }
   await sendCometMessage(client, store, 'one', 'First')
   const pending = sendCometMessage(client, store, 'one', 'Then this')
   store.stop('one', 'Stopped')
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: '' })
-  reply({ ok: true, action: 'later', instruction: 'Then this' })
+  reply({ ok: true })
   await pending
   expect(store.thread('one').queued).toEqual([])
   expect(client.chatSend).toHaveBeenCalledTimes(1)
@@ -25,21 +25,21 @@ it('ignores a late voice reply after stop, even after its done echo', async () =
 
 it('keeps a recorded late follow-up out of automatic resend and preserves the newer draft', async () => {
   const store = createCometThreads()
-  let reply!: (answer: { ok: true; action: 'later'; instruction: string }) => void
-  const client = { ...api(), chatSay: () => new Promise<{ ok: true; action: 'later'; instruction: string }>(resolve => { reply = resolve }) }
+  let reply!: (answer: { ok: true }) => void
+  const client = { ...api(), chatSay: () => new Promise<{ ok: true }>(resolve => { reply = resolve }) }
   await sendCometMessage(client, store, 'one', 'First')
   const pending = sendCometMessage(client, store, 'one', 'Then this')
   store.setDraft('one', 'Still typing')
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Done' })
-  reply({ ok: true, action: 'later', instruction: 'Then this' })
+  reply({ ok: true })
   await pending
   expect(client.chatSend).toHaveBeenCalledTimes(1)
   expect(store.thread('one').draft).toBe('Still typing')
 })
 
-it('shows words sent mid-reply at once, with the host\'s reply under them and above the answer still to come', async () => {
+it('shows words sent mid-reply at once above the answer still to come, with no line of the host\'s own', async () => {
   const store = createCometThreads()
-  const chatSay = vi.fn(async () => ({ ok: true, reply: 'I will look at Seoul only.', action: 'relay' as const, instruction: 'Only Seoul' }))
+  const chatSay = vi.fn(async () => ({ ok: true }))
   const client = { ...api(), chatSay }
   await sendCometMessage(client, store, 'one', 'Find the postings')
   store.setDraft('one', 'Only Seoul please')
@@ -47,16 +47,15 @@ it('shows words sent mid-reply at once, with the host\'s reply under them and ab
   expect(store.thread('one').draft).toBe('')
   expect(chatSay).toHaveBeenCalledWith('bot-one', 'Only Seoul please')
   expect(store.thread('one').workLines).toEqual([])
-  expect(store.thread('one').messages.map(m => [m.role, m.text])).toEqual([['user', 'Find the postings'], ['user', 'Only Seoul please'], ['assistant', 'I will look at Seoul only.'], ['assistant', '']])
-  expect(store.thread('one').messages[2]).toMatchObject({ progress: true, aside: true })
+  expect(store.thread('one').messages.map(m => [m.role, m.text])).toEqual([['user', 'Find the postings'], ['user', 'Only Seoul please'], ['assistant', '']])
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'Seoul postings: 3.' })
-  expect(store.thread('one').messages.map(m => m.text)).toEqual(['Find the postings', 'Only Seoul please', 'I will look at Seoul only.', 'Seoul postings: 3.'])
+  expect(store.thread('one').messages.map(m => m.text)).toEqual(['Find the postings', 'Only Seoul please', 'Seoul postings: 3.'])
   expect(store.thread('one').queued).toEqual([])
 })
 
 it('queues actual attachments but does not resend recorded aside instructions', async () => {
   const store = createCometThreads()
-  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true, action: 'relay' as const })) }
+  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true })) }
   await sendCometMessage(client, store, 'one', 'Find the postings')
   await sendCometMessage(client, store, 'one', 'Then sum up my mail')
   const file = { id: 'file-one', name: 'notes.txt', size: 5 }
@@ -70,7 +69,7 @@ it('queues actual attachments but does not resend recorded aside instructions', 
 it('stops where it is when told to, and what was set to follow stops with it', async () => {
   const store = createCometThreads()
   const chatAbort = vi.fn(async () => undefined)
-  const client = { ...api(), chatAbort, chatSay: vi.fn(async (_channel: string, text: string) => text.startsWith('Stop') ? { ok: true, reply: 'Stopping.', action: 'stop' as const } : { ok: true, reply: 'Next.', action: 'later' as const, instruction: 'Then this' }) }
+  const client = { ...api(), chatAbort, chatSay: vi.fn(async (_channel: string, text: string) => text.startsWith('Stop') ? { ok: true, reply: 'Stopping.', action: 'stop' as const } : { ok: true }) }
   await sendCometMessage(client, store, 'one', 'First')
   await sendCometMessage(client, store, 'one', 'Then this')
   await sendCometMessage(client, store, 'one', 'Stop that')
@@ -121,7 +120,7 @@ it('reads the words around a conversation in the language the person writes in',
 
 it('empties the box after words sent mid-reply even when the box held spaces around them', async () => {
   const store = createCometThreads()
-  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true, reply: 'Noted.', action: 'relay' as const, instruction: 'All of this month' })) }
+  const client = { ...api(), chatSay: vi.fn(async () => ({ ok: true })) }
   await sendCometMessage(client, store, 'one', 'Find the report')
   store.setDraft('one', 'All of this month \n')
   await sendCometMessage(client, store, 'one', 'All of this month')
@@ -147,7 +146,7 @@ it('reports attachment queues to the host and clears them after the continuation
 it('sends words said after a finished short answer as their own turn once that turn ends, and still relays words said while it streams', async () => {
   const store = createCometThreads()
   let wrappingUp = false
-  const chatSay = vi.fn(async (_channel: string, text: string) => wrappingUp ? { ok: false as const } : { ok: true as const, action: 'relay' as const, instruction: text })
+  const chatSay = vi.fn<(channel: string, text: string) => Promise<{ ok: boolean }>>(async () => ({ ok: !wrappingUp }))
   const client = { ...api(), chatSay }
   await sendCometMessage(client, store, 'one', 'Fix the date to Dec 5')
   store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: true })

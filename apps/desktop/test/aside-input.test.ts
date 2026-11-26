@@ -10,23 +10,23 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
 import { takeAsides, turnGoals } from '../src/main/turn-state.js'
-import { followUpFor, followUpSaid, takeFollowUps, dropFollowUps } from '../src/main/midstream-followup.js'
+import { closeFollowUps, followUp, followUpSaid, openFollowUps, readingFollowUps, takeFollowUps } from '../src/main/midstream-followup.js'
 import { runToolSession, type AgentLoopDeps, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
 import { beginFirstLine, endFirstLine, firstLineCarried, firstLineReady, firstLineSaw } from '../src/main/first-line.js'
 import { broadcast } from '../src/main/engine-health.js'
 
-it('hands a message said as the turn completes to the follow-up queue once', async () => {
+it('hands a message said as the turn completes to the running turn once', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const cache = await mkdtemp(join(temporary, 'aside-input-'))
   const paths = { cache } as VaultPaths
   let calls = 0
   const held: string[] = []
-  registerAsideIpc({ paths, busy: () => ++calls === 1, followUp: () => text => held.push(text), setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => ++calls === 1, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {} })
   expect(handlers.has('chat:steer')).toBe(false)
   try {
-    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay' })
+    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true })
     expect(held).toEqual(['Do not submit'])
     expect((await readBotTranscript(paths, 'late')).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', 'Do not submit', true, false]])
     const next = await readCheckpoint(paths, 'late')
@@ -57,7 +57,7 @@ it('acknowledges a persisted user row even when checkpoint storage fails afterwa
   const paths = { cache } as VaultPaths
   const checkpoint = await import('../src/main/comet-checkpoint.js')
   const change = vi.spyOn(checkpoint, 'changeCheckpoint').mockRejectedValueOnce(new Error('disk unavailable'))
-  registerAsideIpc({ paths, busy: () => true, followUp: () => () => {}, setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async () => true, setOffersAside: async () => {} })
   try {
     await expect(handlers.get('chat:say')!({}, 'bot-persisted', 'Only Claude Desktop')).resolves.toMatchObject({ ok: true })
     expect((await readBotTranscript(paths, 'persisted')).filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Only Claude Desktop'])
@@ -72,11 +72,11 @@ it('relays every message said while the turn runs, whatever it says, and refuses
   const paths = { cache } as VaultPaths
   const held: string[] = []
   let answered = false
-  registerAsideIpc({ paths, busy: () => true, answered: () => answered, followUp: () => text => held.push(text), setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => !answered, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {} })
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-done', text) as Promise<{ ok: boolean }>
   const words = ['오래 걸리네요 ㅎㅎ', '창원 시세도 같이 봐 줄 수 있어?', '아 그건 됐고 목포로', '고생 많으세요', 'Make it a short list']
   try {
-    for (const one of words) expect(await say(one)).toEqual({ ok: true, action: 'relay' })
+    for (const one of words) expect(await say(one)).toEqual({ ok: true })
     answered = true
     expect(await say('끝났으면 알려줘')).toEqual({ ok: false })
     expect(held).toEqual(words)
@@ -94,7 +94,7 @@ it('stops the conversation at once when the whole message is a stop word, and le
   const paths = { cache } as VaultPaths
   const stopped: [string, string][] = [], held: string[] = []
   let busy = true
-  registerAsideIpc({ paths, busy: () => busy, answered: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async (channel, said) => { stopped.push([channel, said]) } })
+  registerAsideIpc({ paths, busy: () => busy, reading: () => false, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {}, stop: async (channel, said) => { stopped.push([channel, said]) } })
   try {
     expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
     expect(await handlers.get('chat:say')!({}, 'bot-team', 'stop')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
@@ -125,7 +125,7 @@ it('drops a message still being saved when a stop word lands meanwhile, so the s
   const real = checkpoint.changeCheckpoint.bind(checkpoint)
   const gated: { args: Parameters<typeof real>; release(): void }[] = []
   const change = vi.spyOn(checkpoint, 'changeCheckpoint').mockImplementation((...args) => new Promise<void>(done => { gated.push({ args, release: () => { void real(...args).then(done) } }) }))
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {}, stop: async () => {} })
   try {
     const saying = handlers.get('chat:say')!({}, 'bot-race', '광주 숙소도 같이 봐줘')
     const stopping = handlers.get('chat:say')!({}, 'bot-race', '그만')
@@ -148,10 +148,10 @@ it('writes no assistant line for a message said mid-work: the person\'s words ar
   const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const held: string[] = []
   turnGoals.set('bot-quiet', '다음 주 강릉 숙소 세 곳 비교해줘')
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {} })
   const words = ['주차 되는 곳만 남겨', '언제쯤 끝나요?', '1인치는 몇 센티야?', '역시 빠르네 고마워']
   try {
-    for (const one of words) expect(await handlers.get('chat:say')!({}, 'bot-quiet', one)).toEqual({ ok: true, action: 'relay' })
+    for (const one of words) expect(await handlers.get('chat:say')!({}, 'bot-quiet', one)).toEqual({ ok: true })
     expect(held).toEqual(words)
     expect((await readCheckpoint(paths, 'quiet')).pending).toEqual(words)
     expect((await readBotTranscript(paths, 'quiet')).filter(turn => turn.role === 'assistant')).toEqual([])
@@ -169,7 +169,8 @@ const sessionDeps = (runTools: (job: ToolSessionJob) => Promise<{ answer: string
 it('puts a message said mid-work into the running model call at once when the engine can take it live', async () => {
   const { paths, done } = await tempPaths('aside-live-')
   const channel = 'bot-live'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const heard: string[][] = []
   let started = (): void => {}
   const calling = new Promise<void>(go => { started = go })
@@ -183,7 +184,7 @@ it('puts a message said mid-work into the running model call at once when the en
   try {
     const run = runToolSession(sessionDeps(runTools), '광주 맛집 다섯 곳 찾아줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
     await calling
-    expect(await handlers.get('chat:say')!({}, channel, '아 순천도 끼워 줘')).toEqual({ ok: true, action: 'relay' })
+    expect(await handlers.get('chat:say')!({}, channel, '아 순천도 끼워 줘')).toEqual({ ok: true })
     const result = await run
     expect(heard).toHaveLength(1)
     expect(heard[0]!.join(' ')).toContain('"아 순천도 끼워 줘"')
@@ -191,7 +192,7 @@ it('puts a message said mid-work into the running model call at once when the en
     expect(result.answer).toContain('순천')
     expect(takeFollowUps(channel)).toEqual([])
     expect((await readBotTranscript(paths, 'live')).map(turn => turn.role)).toEqual(['user'])
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 const slowSearch = (): { tool: never; release(): void; started: Promise<void> } => {
@@ -205,7 +206,8 @@ const slowSearch = (): { tool: never; release(): void; started: Promise<void> } 
 it('hands a message said while a slow tool runs to the model at once, keeps the tool running, and gives its result to the model when it lands', async () => {
   const { paths, done } = await tempPaths('aside-slow-tool-')
   const channel = 'bot-slow'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const returned: string[] = []
   const prompts: string[] = []
@@ -230,13 +232,14 @@ it('hands a message said while a slow tool runs to the model at once, keeps the 
     expect(prompts[1]).toContain('렌터카 세 곳, 하루 4만 원부터')
     expect(prompts[1]).toContain('조금만 기다려 주세요.')
     expect(result.answer).toBe('제주 렌터카는 하루 4만 원부터예요.')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('gives a slow tool\'s result to the model live when it lands after the person\'s message was already answered', async () => {
   const { paths, done } = await tempPaths('aside-slow-live-')
   const channel = 'bot-slow-live'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const live: string[][] = []
   const returned: string[] = []
@@ -258,13 +261,14 @@ it('gives a slow tool\'s result to the model live when it lands after the person
     expect((await run).answer).toBe('하루 4만 원부터예요.')
     expect(live).toHaveLength(1)
     expect(live[0]!.join('\n')).toContain('렌터카 세 곳, 하루 4만 원부터')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('waits for something new after the engine declines a landed tool result live, and gives that result to the model in the next round instead', async () => {
   const { paths, done } = await tempPaths('aside-declined-')
   const channel = 'bot-declined'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const prompts: string[] = []
   let declined = 0
@@ -287,13 +291,14 @@ it('waits for something new after the engine declines a landed tool result live,
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toContain('렌터카 세 곳, 하루 4만 원부터')
     expect(result.answer).toBe('경차는 하루 3만 원대예요.')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('starts a new round at once for a message said after the interim reply while the slow tool is still running, then another when the tool lands', async () => {
   const { paths, done } = await tempPaths('aside-slow-second-')
   const channel = 'bot-slow-second'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const prompts: string[] = []
   const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
@@ -319,13 +324,14 @@ it('starts a new round at once for a message said after the interim reply while 
     expect(prompts).toHaveLength(3)
     expect(prompts[2]).toContain('렌터카 세 곳, 하루 4만 원부터')
     expect(result.answer).toBe('창가 좌석은 하루 4만 원부터예요.')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('still gives the slow tool\'s result to the model after the person has used up the follow-up rounds with messages while it runs, together with what they said since', async () => {
   const { paths, done } = await tempPaths('aside-slow-many-')
   const channel = 'bot-slow-many'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const prompts: string[] = []
   const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
@@ -345,22 +351,24 @@ it('still gives the slow tool\'s result to the model after the person has used u
       await handlers.get('chat:say')!({}, channel, words)
       await vi.waitFor(() => expect(prompts).toHaveLength(index + 2))
     }
-    await handlers.get('chat:say')!({}, channel, '주차도 되면 좋고요')
+    const parking = handlers.get('chat:say')!({}, channel, '주차도 되면 좋고요')
     await new Promise(go => setTimeout(go, 20))
     expect(prompts).toHaveLength(4)
     search.release()
     const result = await run
+    expect(await parking).toEqual({ ok: true })
     expect(prompts).toHaveLength(5)
     expect(prompts[4]).toContain('렌터카 세 곳, 하루 4만 원부터')
     expect(prompts[4]).toContain('"주차도 되면 좋고요"')
     expect(result.answer).toBe('알겠어요 5')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('tells the model when a call it was told is still running fails after the person was answered, instead of finishing as if it worked', async () => {
   const { paths, done } = await tempPaths('aside-slow-fail-')
   const channel = 'bot-slow-fail'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const search = slowSearch()
   const prompts: string[] = []
   const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
@@ -384,7 +392,7 @@ it('tells the model when a call it was told is still running fails after the per
     expect(prompts[1]).toContain('The search_web call that was still running has finished:\nthat did not work: usage log unavailable')
     expect(prompts[1]).not.toContain('렌터카 세 곳')
     expect(result.answer).toBe('시세를 못 불러왔어요. 다시 찾아볼게요.')
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('answers words said mid-work in one short line written by the running model, with no quick voice and no fixed line from the host', async () => {
@@ -392,7 +400,8 @@ it('answers words said mid-work in one short line written by the running model, 
   expect(Object.keys(aside).sort()).toEqual(['STOP_WORDS', 'noteStopped', 'registerAsideIpc'])
   const { paths, done } = await tempPaths('aside-own-line-')
   const channel = 'bot-own-line'
-  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  openFollowUps(channel)
+  registerAsideIpc({ paths, busy: () => true, reading: readingFollowUps, followUp, setOffersAside: async () => {} })
   const streamed: string[] = []
   let open = (): void => {}
   const opened = new Promise<void>(go => { open = go })
@@ -413,17 +422,17 @@ it('answers words said mid-work in one short line written by the running model, 
     expect((await run).answer).toBe('네 명 기준으로 다시 볼게요.')
     expect(streamed).toEqual(['네 명 기준으로 다시 볼게요.'])
     expect((await readBotTranscript(paths, 'own-line')).map(turn => turn.role)).toEqual(['user'])
-  } finally { dropFollowUps(channel); await done() }
+  } finally { closeFollowUps(channel); await done() }
 })
 
 it('hands a change and a remark to the running turn the same way, and leaves stop on its own path', async () => {
   const { paths, done } = await tempPaths('aside-change-remark-')
   const held: string[] = [], stopped: string[] = []
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) } })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) } })
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-paths', text)
   try {
-    expect(await say('속초 쪽 코스도 하나 넣어줘')).toEqual({ ok: true, action: 'relay' })
-    expect(await say('생각보다 오래 걸리네요')).toEqual({ ok: true, action: 'relay' })
+    expect(await say('속초 쪽 코스도 하나 넣어줘')).toEqual({ ok: true })
+    expect(await say('생각보다 오래 걸리네요')).toEqual({ ok: true })
     expect(held).toEqual(['속초 쪽 코스도 하나 넣어줘', '생각보다 오래 걸리네요'])
     expect((await readCheckpoint(paths, 'paths')).pending).toEqual(held)
     expect(await say('그만')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
@@ -438,7 +447,7 @@ it('hands a change and a remark to the running turn the same way, and leaves sto
 it('stack-7: a lookup\'s first line still live when the person speaks mid-work stays as it is; the host neither resets it nor writes a line of its own', async () => {
   const { paths, done } = await tempPaths('aside-first-line-')
   const resets = (): unknown[] => vi.mocked(broadcast).mock.calls.map(([event]) => event).filter(event => (event as { reset?: boolean }).reset)
-  registerAsideIpc({ paths, busy: () => true, followUp: () => () => {}, setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async () => true, setOffersAside: async () => {} })
   try {
     vi.mocked(broadcast).mockClear()
     vi.mocked(broadcast).mockImplementation(event => { firstLineSaw(event as { type: string; channel?: string; reset?: boolean }) })
@@ -456,7 +465,7 @@ it('stack-7: a lookup\'s first line still live when the person speaks mid-work s
 it('holds every message said mid-work for the running turn, a remark as much as a change', async () => {
   const { paths, done } = await tempPaths('aside-held-')
   const order: string[] = []
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { order.push(`held ${text}`); return true }, setOffersAside: async () => {} })
   try {
     await handlers.get('chat:say')!({}, 'bot-held', '청주 것도 끼워서 봐줄래')
     await handlers.get('chat:say')!({}, 'bot-held', '이거 언제 돼')
@@ -468,10 +477,10 @@ it('c11b r2: no verdict is taken on words said mid-work; each reaches the runnin
   const { paths, done } = await tempPaths('aside-verdict-')
   const held: string[] = []
   turnGoals.set('bot-verdict', '요즘 국내 바이오 투자 소식 세 개만 찾아줘')
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {} })
   const words = ['아 너무 답답하다', '해외 건도 하나 넣어', '그냥 의료기기로 바꿔', '천천히 해도 돼요']
   try {
-    for (const one of words) expect(await handlers.get('chat:say')!({}, 'bot-verdict', one)).toEqual({ ok: true, action: 'relay' })
+    for (const one of words) expect(await handlers.get('chat:say')!({}, 'bot-verdict', one)).toEqual({ ok: true })
     expect(held).toEqual(words)
     expect((await readCheckpoint(paths, 'verdict')).pending).toEqual(words)
     await acknowledgeHanded(paths, 'verdict', words.slice(0, 2))
@@ -486,8 +495,8 @@ it('c11b r3: words said mid-work go to the running model with one wording whatev
   const words = ['아 너무 답답한데', '이거 언제 끝나는 거예요 대체', '수원 말고 안양으로']
   try {
     for (const bot of ['bot-one', 'bot-two']) {
-      registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {} })
-      for (const one of words) expect(await handlers.get('chat:say')!({}, bot, one)).toEqual({ ok: true, action: 'relay' })
+      registerAsideIpc({ paths, busy: () => true, reading: () => true, followUp: async (_channel, text) => { held.push(text); return true }, setOffersAside: async () => {} })
+      for (const one of words) expect(await handlers.get('chat:say')!({}, bot, one)).toEqual({ ok: true })
     }
     expect(held).toEqual([...words, ...words])
     const frames = words.map(one => withSteer('result', [one]).replace(JSON.stringify(one), '<said>'))

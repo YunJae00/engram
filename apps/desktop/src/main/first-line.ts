@@ -15,9 +15,7 @@ export interface FirstLineAsk {
   interactive: boolean
   studying: boolean
   limited: boolean
-  followUp: boolean
   secret: boolean
-  host?: boolean
 }
 type Voice = Pick<Engine, 'id' | 'quick'>
 interface Pending { open: boolean; ready: boolean; quiet?: boolean; line?: string; shown?: boolean; carried?: boolean; show?: (line: string) => void; hide?: () => void }
@@ -29,10 +27,8 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
   if (!ask.interactive) return 'background'
   if (ask.studying) return 'study'
   if (ask.limited) return 'limited'
-  if (ask.followUp) return 'follow-up'
   if (ask.secret) return 'secret'
   if (ask.message.trim().startsWith('/')) return 'command'
-  if (ask.host) return 'host'
   return null
 }
 

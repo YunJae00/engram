@@ -744,8 +744,6 @@ test('c4 C8/C2: taking one teammate off and renaming one takes the team lane, an
   expect(await o.run({ remove: ['지우'] })).toBe('지우는 뺐어요. 다시 부르면 돌아와요.')
 })
 
-import { plainSteer, steerSplit } from '../src/company-tools.js'
-
 test('a teammate cut short with only English rows is handed back in the words it read, link kept: the host translates nothing and the voice rule asks for Korean', () => {
   const row = 'Harbor ferry adds a late sailing on Fridays https://ferry.example/news'
   const m = part('m1', '하늘', '여객선 증편 소식', { state: 'working' })
@@ -763,40 +761,6 @@ test('every dated item a teammate listed is in the hand-back, and a lead draft t
   expect(await posted(draft, '3월 빵집 개점 일정 알려줘')).toBe(draft)
 })
 
-test('c4b r2: words said while a split works are read as a change to it: add, swap, take off; anything else is not', () => {
-  const brief = (thing: string) => `이번 주 ${thing} 신기능 조사해서 알려줘`
-  const split = (states: TeamMember['state'][] = ['working', 'working', 'working']): DelegatedTask => task({ id: 't1', botId: 'lead', state: 'waiting', team: { hires: 3, maxHires: 8, maxDepth: 2, big: false, members: [
-    part('m1', '지민', brief('노션'), { topic: '노션', background: true, state: states[0]! }), part('m2', '서연', brief('슬랙'), { topic: '슬랙', background: true, state: states[1]! }), part('m3', '도윤', brief('리니어'), { topic: '리니어', background: true, state: states[2]! }),
-  ] } })
-  const steer = (words: string, t = split()) => plainSteer(words, [t], 'lead')
-  expect(steer('아 피그마도 추가해')).toEqual({ taskId: 't1', said: '피그마도 넣을게요.', add: { role: '지민', botId: 'bot-m1', brief: brief('피그마'), topic: '피그마' } })
-  expect(steer('그리고 제주도도 같이 알아봐줘.')?.add?.topic).toBe('제주도')
-  expect(steer('그냥 슬랙 말고 지라로 바꿔')).toEqual({ taskId: 't1', said: '슬랙 말고 지라로 바꿀게요.', stop: 'm2', add: { role: '서연', botId: 'bot-m2', brief: brief('지라'), topic: '지라' } })
-  expect(steer('슬랙을 팀즈로 바꿔줘')?.said).toBe('슬랙 말고 팀즈로 바꿀게요.')
-  expect(steer('리니어 대신 지라')?.add).toMatchObject({ role: '도윤', topic: '지라' })
-  expect(steer('리니어는 빼줘')).toEqual({ taskId: 't1', said: '리니어는 뺄게요.', stop: 'm3' })
-  expect(plainSteer('피그마도 추가해', [split()], 'other')).toBeUndefined()
-  expect(steer('피그마도 추가해', split(['done', 'done', 'done']))).toBeUndefined()
-  for (const words of ['노션도 추가해', '지라 말고 피그마로 바꿔', '하준도 추가해줘. 디자인 담당이야', '1년은 몇 초야?', '고마워 수고했어', '피그마도 슬랙에 올려줘']) expect(steer(words), words).toBeUndefined()
-  const four = split(); steerSplit(four, steer('피그마도 추가해', four)!)
-  expect(steer('지라도 추가해', four)).toBeUndefined()
-  expect(steer('피그마는 빼줘', four)?.stop).toBe('m4')
-
-  const t = split(['working', 'done', 'working'])
-  t.team!.members[1]!.result = '슬랙이 캔버스를 냈어요 https://slack.com/blog'
-  expect(steerSplit(t, steer('슬랙 말고 지라로 바꿔', t)!, 'now')).toEqual({ ids: ['m4'], stop: ['m2'] })
-  expect(t.team!.members[1]).toMatchObject({ state: 'released' })
-  expect(t.team!.members[1]!.result).toBeUndefined()
-  expect(t.team!.members[3]).toMatchObject({ id: 'm4', role: '서연', botId: 'bot-m2', topic: '지라', brief: brief('지라'), lookup: true, background: true, state: 'hired', sessionKey: 'team-t1-m4' })
-  expect(t.team!.hires).toBe(4)
-  for (const m of t.team!.members) if (m.state !== 'released') settleMember(m, { answer: `${m.topic} 쪽 소식 하나 챙겨 왔어요 https://example.com/${m.id}` }, 'now', true)
-  const report = JSON.parse(employeesAnswer(t)!) as Handed
-  expect(report.reports.map(r => `${r.part}(${r.who})`)).toEqual(['노션(지민)', '리니어(도윤)', '지라(서연)'])
-  expect(report.reports.map(r => r.result)).toEqual(['m1', 'm3', 'm4'].map((id, i) => `${['노션', '리니어', '지라'][i]} 쪽 소식 하나 챙겨 왔어요 https://example.com/${id}`))
-  const ended = split(['done', 'done', 'done'])
-  expect(steerSplit(ended, { taskId: 't1', said: '', add: { role: '지민', botId: 'bot-m1', brief: brief('지라'), topic: '지라' } })).toBeUndefined()
-  expect(ended.team!.members).toHaveLength(3)
-})
 
 test('three events on one day stay three lines in what the teammate hands back', () => {
   const day = ['- 4월 5일 오전 산악회 시산제 https://club.example/1', '- 4월 5일 낮 둘레길 걷기 https://club.example/2', '- 4월 5일 저녁 회원 총회 https://club.example/3'].join('\n')

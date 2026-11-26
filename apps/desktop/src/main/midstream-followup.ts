@@ -1,37 +1,42 @@
-import type { ChatRequestDto } from '../shared/types.js'
-import { flog } from './flog.js'
+interface Said { text: string; taken(read: boolean): void }
+const reading = new Set<string>()
+const waiting = new Map<string, Said[]>()
+const unread = new Map<string, string[]>()
+const listeners = new Map<string, Set<() => void>>()
 
-type Chat = (request: ChatRequestDto) => Promise<void>
-const waiting = new Map<string, string[]>()
-const answeringNow = new Map<string, string>()
-const stops = new Map<string, number>()
-let allStops = 0
-let run: Chat | undefined
-let busy: (channel: string) => boolean = () => false
+export const readingFollowUps = (channel: string): boolean => reading.has(channel)
 
-export function answerFollowUps(chat: Chat, isBusy: (channel: string) => boolean): Chat {
-  run = chat
-  busy = isBusy
-  return request => chat(request).finally(() => afterTurn(request.channel ?? `bot-${request.botId}`))
+export function openFollowUps(channel: string): void { reading.add(channel) }
+
+export function closeFollowUps(channel: string): void {
+  reading.delete(channel)
+  const left = settle(channel, false)
+  if (left.length) unread.set(channel, [...(unread.get(channel) ?? []), ...left])
 }
 
-export function followUpFor(channel: string): (text: string) => void {
-  const ticket = `${allStops}:${stops.get(channel) ?? 0}`
-  return text => {
-    if (ticket !== `${allStops}:${stops.get(channel) ?? 0}`) return
-    waiting.set(channel, [...(waiting.get(channel) ?? []), text])
+export function followUp(channel: string, text: string): Promise<boolean> {
+  if (!reading.has(channel)) { unread.set(channel, [...(unread.get(channel) ?? []), text]); return Promise.resolve(false) }
+  return new Promise(taken => {
+    waiting.set(channel, [...(waiting.get(channel) ?? []), { text, taken }])
     for (const wake of [...(listeners.get(channel) ?? [])]) wake()
-    afterTurn(channel)
-  }
+  })
 }
 
 export function takeFollowUps(channel: string): string[] {
   const said = waiting.get(channel) ?? []
   waiting.delete(channel)
-  return said
+  for (const one of said) one.taken(true)
+  return said.map(one => one.text)
 }
 
-const listeners = new Map<string, Set<() => void>>()
+export function storedUnread(channel: string, message: string): boolean {
+  const left = unread.get(channel) ?? [], at = left.indexOf(message)
+  if (at < 0) return false
+  left.splice(at, 1)
+  if (!left.length) unread.delete(channel)
+  return true
+}
+
 export function followUpSaid(channel: string, signal: AbortSignal): Promise<void> {
   return new Promise(resolve => {
     if (waiting.get(channel)?.length) return resolve()
@@ -43,26 +48,12 @@ export function followUpSaid(channel: string, signal: AbortSignal): Promise<void
 }
 
 export function dropFollowUps(channel?: string): void {
-  if (channel === undefined) { allStops++; waiting.clear(); return }
-  stops.set(channel, (stops.get(channel) ?? 0) + 1)
-  waiting.delete(channel)
+  for (const one of channel === undefined ? [...waiting.keys()] : [channel]) settle(one, false)
 }
 
-export const followingUp = (channel: string): boolean => answeringNow.has(channel)
-export const savedFollowUp = (channel: string, message: string): boolean => answeringNow.get(channel) === message
-export function afterTurn(channel: string): void { void drain(channel) }
-
-async function drain(channel: string): Promise<void> {
-  if (!run || answeringNow.has(channel) || busy(channel)) return
-  try {
-    while (!busy(channel)) {
-      const next = waiting.get(channel)?.shift()
-      if (next === undefined) break
-      answeringNow.set(channel, next)
-      await run({ engineId: '', botId: channel.slice('bot-'.length), channel, message: next, history: [] }).catch(error => flog('follow-up', error))
-    }
-  } finally {
-    answeringNow.delete(channel)
-    if (!waiting.get(channel)?.length) waiting.delete(channel)
-  }
+function settle(channel: string, read: boolean): string[] {
+  const said = waiting.get(channel) ?? []
+  waiting.delete(channel)
+  for (const one of said) one.taken(read)
+  return said.map(one => one.text)
 }

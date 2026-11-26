@@ -93,7 +93,7 @@ describe('three tiers', () => {
 })
 
 describe('instant first line', () => {
-  const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '지난 분기 매출 보고서를 표로 정리해줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, ...patch })
+  const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '지난 분기 매출 보고서를 표로 정리해줘', korean: true, interactive: true, studying: false, limited: false, secret: false, ...patch })
   const voice = (answer: () => Promise<string>) => ({ id: 'claude' as const, quick: vi.fn(answer) })
   const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
   const begin = (engine: unknown, patch: Partial<FirstLineAsk> = {}, signal = new AbortController().signal) => {
@@ -196,7 +196,7 @@ describe('instant first line', () => {
     expect(show).not.toHaveBeenCalled()
     expect(firstLineNote('bot-1')).toBe('')
     endFirstLine('bot-1')
-    begin(voice(later('x', 10)), { followUp: true })
+    begin(voice(later('x', 10)), { interactive: false })
     expect(firstLineNote('bot-1')).toBe('')
   })
 
@@ -296,30 +296,16 @@ describe('instant first line', () => {
     expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await begun!.run({'), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
 
-  it('only a steer the host applies itself is decided before the first line and shows none; a team question is no host answer', async () => {
-    const ask = { channel: 'bot-1', message: '지우 무슨 일 하는 사람이야?', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }
+  it('a mid-work change or a team question gets the quick first line like any ask; no host steer is decided before it', async () => {
+    const ask = { channel: 'bot-1', message: '아 포항도 같이 넣어 줘', korean: true, interactive: true, studying: false, limited: false, secret: false }
     expect(wantsFirstLine(ask)).toBeNull()
-    expect(wantsFirstLine({ ...ask, host: true })).toBe('host')
-    vi.useFakeTimers()
-    try {
-      const show = vi.fn(), quick = vi.fn(async () => '지금 확인해 볼게요.')
-      beginFirstLine({ ...ask, host: true, engine: async () => ({ id: 'claude', quick }), workdir: '/tmp' as never, signal: new AbortController().signal, show })
-      firstLineReady('bot-1')
-      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS + 1000)
-      expect(show).not.toHaveBeenCalled()
-      expect(quick).not.toHaveBeenCalled()
-      expect(firstLineNote('bot-1')).toBe('')
-    } finally { vi.useRealTimers(); endFirstLine('bot-1') }
-    const ipc = source('ipc.ts'), decided = ipc.indexOf('const steer = bot?.primary && '), begun = ipc.indexOf('ack: { host: !!steer,')
-    expect(decided).toBeGreaterThan(0)
-    expect(begun).toBeGreaterThan(decided)
-    const line = ipc.slice(decided, ipc.indexOf('\n', decided))
-    expect(line).toMatch(/steerShaped\(request\.message\) \? plainSteer\(request\.message, await listTasks\(paths\), bot\.id\) : undefined$/)
-    expect(line).not.toMatch(/answersItself|isStatusAsk|isDutyCancel|takesCompanyLane|lastReplyOf/)
+    expect(wantsFirstLine({ ...ask, message: '하린이는 무슨 일 맡고 있어?' })).toBeNull()
+    const ipc = source('ipc.ts')
+    expect(ipc).not.toMatch(/steerShaped|plainSteer|steerSplit|team\.steer\(|host: !!steer|followingUp|savedFollowUp|answerFollowUps/)
+    expect(ipc).toContain('ack: { channel,')
   })
-
-  it('says nothing where no first line is wanted: a report turn, a follow-up, a secret, a stopped turn', async () => {
-    for (const patch of [{ interactive: false }, { followUp: true }, { secret: true }] as Partial<FirstLineAsk>[]) {
+  it('says nothing where no first line is wanted: a report turn, a secret, a stopped turn', async () => {
+    for (const patch of [{ interactive: false }, { secret: true }] as Partial<FirstLineAsk>[]) {
       const { show } = begin(voice(async () => 'x'), patch)
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(2000)
@@ -349,7 +335,7 @@ describe('instant first line', () => {
   })
 
   it('skips ineligible turns without resolving the engine, and leaves every short or chatty message to the voice', async () => {
-    const skipped: Partial<FirstLineAsk>[] = [{ studying: true }, { limited: true }, { followUp: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' }]
+    const skipped: Partial<FirstLineAsk>[] = [{ studying: true }, { limited: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' }]
     for (const patch of skipped) {
       expect(wantsFirstLine(ask(patch)), JSON.stringify(patch)).not.toBeNull()
       const live = voice(async () => '줄')

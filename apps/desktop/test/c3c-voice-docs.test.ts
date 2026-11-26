@@ -36,7 +36,7 @@ async function lead(message: string, history: { role: 'user' | 'assistant'; text
 const WORKDIR = { kind: 'vault' as const, path: 'C:/vault' } as never
 
 describe('the first line is a waiting line, not part of the answer', () => {
-  const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, ...patch })
+  const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, secret: false, ...patch })
   const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
   const start = (reply: string | ((prompt: string) => string), patch: Partial<FirstLineAsk> = {}, ms = 500) => {
     const show = vi.fn(), hide = vi.fn(), quick = vi.fn((prompt: string) => later(typeof reply === 'string' ? reply : reply(prompt), ms)())
@@ -60,12 +60,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('first-line.ts')).not.toContain('export function withFirstLine')
   })
 
-  it('stack-3: a host-answered ask shows no line, a lookup gets the voice\'s line and keeps it after a reset, and no round of either hold is aloud', async () => {
-    const hosted = start('NONE', { message: '지우가 누구야?', host: true })
-    await vi.advanceTimersByTimeAsync(2000)
-    expect(hosted.show).not.toHaveBeenCalled()
-    expect(hosted.quick).not.toHaveBeenCalled()
-    endFirstLine('bot-1')
+  it('stack-3: a lookup gets the voice\'s line and keeps it after a reset, and no round of the hold is aloud', async () => {
     const { show, hide, quick } = start('지금 시세 확인할게요.', { message: '엔비디아 오늘 주가 알려줘' })
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('지금 시세 확인할게요.')
@@ -76,7 +71,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     firstLineSpoke('bot-1')
     expect(hide).not.toHaveBeenCalled()
     const ipc = source('ipc.ts')
-    expect(ipc).toContain('ack: { host: !!steer, channel,')
+    expect(ipc).toContain('ack: { channel,')
     expect(source('answer.ts')).toMatch(/if \(!hold\) \{\n\s*firstLineSpoke\(channel\)/)
     expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
@@ -191,7 +186,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
 
   it('takes thanks, praise and goodbyes to the one quick call like any message, and a NONE from it gives no line and no note; the lead\'s words drop the safety line', async () => {
     for (const message of ['오늘 정말 애쓰셨어요', '덕분에 발표 잘 끝났어요', '내일 봬요!', '역시 믿고 맡길 만하네요']) {
-      expect(wantsFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }), message).toBeNull()
+      expect(wantsFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, secret: false }), message).toBeNull()
       endFirstLine('bot-1')
       const { show, quick } = start('NONE', { message })
       await vi.advanceTimersByTimeAsync(500)

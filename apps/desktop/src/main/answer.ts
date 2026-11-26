@@ -97,7 +97,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   const korean = asked.korean ?? threadKorean(message, world.history)
   const turn = signal ?? new AbortController().signal
   beginFirstLine({
-    interactive: true, studying: false, limited: false, followUp: false, secret: false, engine: async () => engine,
+    interactive: true, studying: false, limited: false, secret: false, engine: async () => engine,
     ...asked,
     channel, message, korean, workdir: engineCwd(paths), signal: turn,
     show: line => { trace.first ??= { text: line, ms: ms() }; asked.show?.(line) },

@@ -354,47 +354,6 @@ export function isHireAsk(message: string): boolean {
   return (!!name && !!role && !NOT_A_NAME.test(name) && !ARTIFACT.test(name)) || namesDuties(line)
 }
 
-const PLEASE = '\\s*(?:줘요?|주세요)?'
-const ALSO = new RegExp(`^(\\S+(?:\\s\\S+)?)도\\s*(?:같이\\s*)?(?:추가해?|넣어|포함해|조사해|알아봐|찾아|봐|해)${PLEASE}$`, 'u')
-const OPEN = ['hired', 'working']
-export interface SplitSteer { taskId: string; said: string; stop?: string; add?: { role: string; botId: string; brief: string; topic: string; voice?: string } }
-export const steerShaped = (message: string): boolean => message.length <= 60 && !message.includes('\n') && /도\s|말고|대신|빼|제외|바꿔/u.test(message)
-export function plainSteer(message: string, tasks: readonly DelegatedTask[], botId: string): SplitSteer | undefined {
-  const line = message.trim().replace(/[.!~\s]+$/u, '').replace(/^(?:(?:아\s*참|아니|아|앗|참|그리고|그냥)[,\s]+)+/u, '')
-  if (!steerShaped(message) || isHireAsk(line)) return undefined
-  for (const task of tasks) {
-    const team = task.team
-    if (!team || task.botId !== botId || ['done', 'failed', 'stopped'].includes(task.state)) continue
-    const parts = team.members.filter(m => m.background && m.lookup && !!m.botId && !!m.topic && m.parentId === null && !m.then && m.state !== 'released' && m.brief.includes(m.topic))
-    if (parts.length < 2 || !parts.some(m => OPEN.includes(m.state))) continue
-    const part = (thing: string, like: TeamMember, by: TeamMember): NonNullable<SplitSteer['add']> | undefined =>
-      thing.length > 20 || parts.some(m => m.topic === thing) || team.hires >= team.maxHires ? undefined : { role: by.role, botId: by.botId!, brief: like.brief.replace(like.topic!, thing), topic: thing, ...(by.voice ? { voice: by.voice } : {}) }
-    for (const old of parts) {
-      const name = `^${escaped(old.topic!)}(?:은|는|을|를)?`
-      if (parts.length > 2 && new RegExp(`${name}\\s*(?:빼|제외해)${PLEASE}$`, 'u').test(line)) return { taskId: task.id, said: `${josa(old.topic!, '은', '는')} 뺄게요.`, stop: old.id }
-      const swap = new RegExp(`${name}\\s*(?:말고|대신|빼고)[,\\s]+(\\S+?)(?:으로|로)?\\s*(?:바꿔|해|조사해|찾아|알아봐|넣어)?${PLEASE}$`, 'u').exec(line) ?? new RegExp(`${name}\\s+(\\S+?)(?:으로|로)\\s*바꿔${PLEASE}$`, 'u').exec(line)
-      const add = swap ? part(swap[1]!, old, old) : undefined
-      if (add) return { taskId: task.id, said: `${old.topic} 말고 ${ro(add.topic)} 바꿀게요.`, stop: old.id, add }
-    }
-    const also = ALSO.exec(line)?.[1]
-    const count = (m: TeamMember): number => parts.filter(one => one.botId === m.botId).length
-    const add = also && parts.length < ASSIGN_MAX ? part(also, parts[0]!, [...parts].sort((a, b) => count(a) - count(b))[0]!) : undefined
-    if (add) return { taskId: task.id, said: `${add.topic}도 넣을게요.`, add }
-  }
-  return undefined
-}
-export function steerSplit(task: DelegatedTask, steer: SplitSteer, at = new Date().toISOString()): { ids: string[]; stop: string[] } | undefined {
-  const team = task.team, old = steer.stop ? team?.members.find(m => m.id === steer.stop) : undefined
-  if (!team || !team.members.some(m => m.background && OPEN.includes(m.state)) || (steer.stop && !old)) return undefined
-  if (old) { old.state = 'released'; old.finishedAt ??= at; delete old.result }
-  if (!steer.add) return { ids: [], stop: old ? [old.id] : [] }
-  const id = `m${team.members.length + 1}`
-  team.members.push({ id, parentId: null, depth: 1, ...(team.lateTold && !team.lateDone ? { late: true as const } : {}), role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, ...(steer.add.voice ? { voice: steer.add.voice } : {}), title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief, undefined, task.goal) ? { query: searchWords(steer.add.brief, undefined, task.goal)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
-  team.hires++
-  logTask(task, `Changed while working: ${steer.said}`)
-  return { ids: [id], stop: old ? [old.id] : [] }
-}
-
 const REPEATS = /매주|매일|매달|매월|평일마다|주말마다|[월화수목금토일]요일\s*마다/u
 const AT_TIME = /\d{1,2}\s*시|\d{1,2}:\d{2}|아침|오전|오후|점심|저녁|밤|정오|자정/u
 const DUTIES = /^(내|제|우리|지금|현재|정기|예약된|잡힌|\s)*(일정|스케줄|정기\s*(업무|보고)|예약)(은|이|들)?\s*(뭐|뭐가|뭐뭐|어떤\s*게|어떤\s*거|목록)?\s*(있어|있나|있니|있지|알려\s*줘|보여\s*줘)요?[?？!.~\s]*$/u

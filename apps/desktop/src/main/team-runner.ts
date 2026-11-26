@@ -382,15 +382,6 @@ export function teamRunner(deps: {
       }) as Ask
     },
     reportTo(tell: (channel: string, taskId: string) => void): void { report = tell },
-    async steer(taskId: string, leadChannel: string, work: (task: DelegatedTask) => { ids: string[]; stop: string[] } | undefined): Promise<boolean> {
-      const kit = laterKits.get(taskId)
-      if (!kit) return false
-      const out = await change(taskId, work)
-      if (!out) return false
-      if (out.ids.length) await later(taskId, leadChannel, out.ids, kit)
-      for (const id of out.stop) live.get(`${taskId}/${id}`)?.control.abort()
-      return true
-    },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
     async stop(channel: string): Promise<void> {

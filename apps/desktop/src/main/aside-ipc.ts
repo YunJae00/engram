@@ -10,8 +10,8 @@ import { asides, STEER_CAP, turnGoals, workSoFar } from './turn-state.js'
 interface AsideIpcDeps {
   paths: VaultPaths
   busy(channel: string): boolean
-  followUp?(channel: string): (text: string) => void
-  answered?(channel: string): boolean
+  reading(channel: string): boolean
+  followUp(channel: string, text: string): Promise<boolean>
   setOffersAside(botId: string): Promise<void>
   stop?(channel: string, said: string): Promise<void>
 }
@@ -45,7 +45,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     }
     clientTaskQueued(botId, pending, source)
   })
-  ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: 'relay' | 'stop' }> => {
+  ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: 'stop' }> => {
     if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
     const busy = deps.busy(channel)
     const inKorean = async (): Promise<boolean> => [text, turnGoals.get(channel) ?? '', ...(await readBotTranscript(deps.paths, channel.slice('bot-'.length), 6).catch(() => [])).map(turn => turn.text)].some(said => /[가-힣]/.test(said))
@@ -59,20 +59,18 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
       setImmediate(() => { void deps.stop!(channel, reply).catch(error => flog('aside', error)) })
       return { ok: true, action: 'stop', reply }
     }
-    if (!busy || deps.answered?.(channel)) return { ok: false }
+    if (!busy || !deps.reading(channel)) return { ok: false }
     const stopsBefore = stops.get(channel) ?? 0
     const stopped = (): boolean => (stops.get(channel) ?? 0) !== stopsBefore
-    const hold = deps.followUp?.(channel)
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
     await changeCheckpoint(deps.paths, botId, state => stopped() ? state : { ...state, pending: [...new Set([...state.pending, said])] }).catch(() => flog('aside', 'checkpoint-write-failed'))
     if (stopped()) return { ok: true }
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    hold?.(said)
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     const pending = await readCheckpoint(deps.paths, botId).catch(() => ({ pending: [said] }))
     taskQueued(botId, pending.pending.length > 0)
-    return { ok: true, action: 'relay' }
+    return { ok: await deps.followUp(channel, said) || stopped() }
   })
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { handBacks, handoffBrief, isSearchPage, withLiveSources, plainSteer, runToolSession, settleMember, sourceName, steerSplit, type DelegatedTask, type TeamMember } from 'core'
+import { handBacks, handoffBrief, isSearchPage, withLiveSources, runToolSession, settleMember, sourceName, type DelegatedTask, type TeamMember } from 'core'
 import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answerOnly } from '../src/main/result-check.js'
@@ -49,25 +49,6 @@ describe('stack-11 merge: a team answer is never cut by wording on its way throu
   })
 })
 
-describe('stack-11 merge: words said mid-split', () => {
-  const split = (): DelegatedTask => job(['광주', '대전', '울산'].map((city, i) => member(`m${i + 1}`, ['다온', '시우', '하람'][i]!, `${city} 이번 주말 날씨 조사`, city)), '광주 대전 울산 이번 주말 날씨 나눠서 조사해서 취합해줘')
-  it('an added city joins the running split as one more part', () => {
-    for (const said of ['아 전주도 추가해', '춘천도 넣어줘']) {
-      const task = split(), steer = plainSteer(said, [task], 'lead')
-      expect(steer?.add?.topic).toBe(said.includes('전주') ? '전주' : '춘천')
-      const done = steerSplit(task, steer!, AT)
-      expect(done?.ids).toHaveLength(1)
-      expect(task.team!.members.filter(m => m.state === 'working' || m.state === 'hired')).toHaveLength(4)
-    }
-  })
-  it('a complaint or thanks is no change: no part stops, none is added', () => {
-    for (const said of ['아 진짜 오래 걸리네', '왜 이렇게 굼떠', '고마워 천천히 해도 돼']) {
-      const task = split()
-      expect(plainSteer(said, [task], 'lead')).toBeUndefined()
-      expect(task.team!.members.every(m => m.state === 'working')).toBe(true)
-    }
-  })
-})
 
 describe('stack-11 merge: one helper each', () => {
   it('"is a search page" is core\'s isSearchPage for the lone lookup and the team alike', async () => {

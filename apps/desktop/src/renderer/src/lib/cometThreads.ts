@@ -322,7 +322,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     noteUser(id: string, text: string, attachments: string[] = [], absorbed = false): void {
       const current = thread(id), at = current.busy && absorbed ? streamingAt(current.messages) : -1
-      const said: CometMessage = { role: 'user', text, ...(attachments.length ? { attachments } : {}) }
+      const said: CometMessage = { role: 'user', text, ...(attachments.length ? { attachments } : {}), ...(at >= 0 ? { aside: true } : {}) }
       const above = at >= 0 && !current.messages[at]!.text.trim()
       const messages: CometMessage[] = above ? [...current.messages.slice(0, at), said, ...current.messages.slice(at)] : [...current.messages, said]
       if (current.busy && streamingAt(messages) < 0) messages.push({ role: 'assistant', text: '', streaming: true })
@@ -334,18 +334,6 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let i = messages.length - 1; i >= 0 && from < 0; i--) if (messages[i]!.role === 'user' && messages[i]!.text === text) from = i
       if (from < 0 || streaming < 0 || from > streaming) return
       messages.push(messages.splice(from, 1)[0]!)
-      patch(id, { messages })
-    },
-    noteReply(id: string, text: string, reply: string): void {
-      const current = thread(id), messages = [...current.messages]
-      let from = -1
-      for (let i = messages.length - 1; i >= 0 && from < 0; i--) if (messages[i]!.role === 'user' && messages[i]!.text === text) from = i
-      if (!current.busy || from < 0 || !reply.trim()) return
-      const [said] = messages.splice(from, 1)
-      const streaming = streamingAt(messages)
-      const lineShown = streaming >= 0 && !messages[streaming]!.checking && /^.{1,80}$/.test(messages[streaming]!.text.trim())
-      const to = streaming >= 0 && streaming < from && !lineShown ? streaming : from
-      messages.splice(to, 0, { ...said!, aside: true }, { role: 'assistant', text: reply, progress: true, aside: true })
       patch(id, { messages })
     },
     noteWork(id: string, line: string): void {

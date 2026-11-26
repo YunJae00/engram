@@ -401,31 +401,6 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
 
   const trelloJira = { wait: false, to: ['트렐로', '지라'].map((topic, i) => ({ who: ['지민', '서연'][i]!, brief: `이번 주 ${topic} 새 기능 좀 찾아봐줘`, topic })) }
 
-  it('words said while a split works change it: a part added joins the one set of hand-backs, a part swapped is stopped and hands nothing back', async () => {
-    const { plainSteer, steerSplit, listTasks } = await import('core')
-    let go!: () => void
-    const gate = new Promise<void>(resolve => { go = resolve })
-    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found(`${/이번 주 (\S+) 신기능/.exec(turn.prompt)?.[1]} 새 기능이 나왔어요.`, `https://tools.example/${turn.role === '지민' ? 'a' : 'b'}`))) }))
-    expect(await w.assign(trelloJira)).toBe('지민, 서연한테 나눠 맡겼어요.')
-    await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
-    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
-    await w.team.turnEnded('bot-b1')
-    const say = async (words: string) => { const steer = plainSteer(words, await listTasks(w.paths), 'b1'); return steer && await w.team.steer(steer.taskId, 'bot-b1', task => steerSplit(task, steer)) ? steer.said : undefined }
-    expect(await say('아 아사나도 추가해')).toBe('아사나도 넣을게요.')
-    expect(await say('지라 말고 먼데이로 바꿔줘')).toBe('지라 말고 먼데이로 바꿀게요.')
-    await vi.waitFor(async () => expect((await w.members()).map(m => [m.role, m.topic, m.state])).toEqual([['지민', '트렐로', 'working'], ['서연', '지라', 'released'], ['지민', '아사나', 'working'], ['서연', '먼데이', 'working']]))
-    expect(w.reported).toEqual([])
-    go()
-    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
-    await new Promise(resolve => setTimeout(resolve, 30))
-    expect(w.reported).toEqual([`bot-b1 ${w.id}`])
-    const back = backs(employeesAnswer(await w.task())!)
-    expect(back.map(one => `${one.who}: ${one.part}`)).toEqual(['지민: 트렐로', '지민: 아사나', '서연: 먼데이'])
-    expect(back.map(one => /https:\/\/tools\.example\/[ab]/.exec(one.result)?.[0])).toEqual(['https://tools.example/a', 'https://tools.example/a', 'https://tools.example/b'])
-    expect(JSON.stringify(back)).not.toContain('지라')
-    expect(await say('아 노션도 추가해')).toBeUndefined()
-  })
-
   it('at the cap the result step gets what is back and the slow part as still working, and that part\'s hand-back alone when it lands', async () => {
     const { lateShown } = await import('core')
     let go!: () => void

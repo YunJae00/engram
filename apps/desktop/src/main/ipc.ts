@@ -7,7 +7,7 @@ import { standingApprovalsTool } from './approval-tools.js'
 import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
-import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
+import { closeFollowUps, dropFollowUps, followUp, followUpSaid, openFollowUps, readingFollowUps, storedUnread, takeFollowUps } from './midstream-followup.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -42,7 +42,7 @@ import {
   loadAliasGroups,
   addBotTask,
   type ScheduleDeps,
-  companyNote, employees, takesCompanyLane, plainSteer, steerShaped, steerSplit, employeesAnswer, lateShown, lateOwed, handoffShown, updateTask, COMPANY_LANE_TOOLS, loadArchivedBots,
+  companyNote, employees, takesCompanyLane, employeesAnswer, lateShown, lateOwed, handoffShown, updateTask, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -177,7 +177,7 @@ import { registerFirstSetupIpc } from './first-setup.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { firstLineSaw, firstLineSpoke } from './first-line.js'
+import { firstLineSaw } from './first-line.js'
 import { beginAnswer, lastReplyOf, type Answering } from './answer.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, withFiles, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
@@ -923,9 +923,9 @@ export function registerIpc(ctx: VaultContext): void {
   })
   registerAsideIpc({
     paths,
-    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
-    followUp: followUpFor,
-    answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
+    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
+    reading: readingFollowUps,
+    followUp,
     setOffersAside,
     stop: stopChat,
   })
@@ -1500,7 +1500,6 @@ export function registerIpc(ctx: VaultContext): void {
     checkBudgetMs: 90_000,
   })
   team.reportTo((channel, id) => void tasks.report(id, channel).catch(error => flog('tasks', error)))
-  tasks.chat = answerFollowUps(tasks.chat, channel => answering.has(channel) || tasks.activeChannels().includes(channel))
   tasks.register()
   registerWorkMapIpc(ctx)
   registerFirstSetupIpc(ctx)
@@ -1900,6 +1899,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (!requestReceived.has(request)) requestReceived.set(request, new Date().toISOString())
     chatAborts.add(entry)
     answering.add(entry.channel)
+    openFollowUps(entry.channel)
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
     workSoFar.delete(entry.channel)
@@ -1914,8 +1914,9 @@ export function registerIpc(ctx: VaultContext): void {
       memoryWait?.()
       chatAborts.delete(entry)
       answering.delete(entry.channel)
+      closeFollowUps(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); for (const ack of acks) ack.end()
-      afterTurn(entry.channel); void team.turnEnded(entry.channel).catch(error => flog('team', error))
+      void team.turnEnded(entry.channel).catch(error => flog('team', error))
       takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
       releaseBrowser()
@@ -2043,7 +2044,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     await rememberSelections([channel])
     const recordAsk = async (): Promise<void> => {
-      if (!bot || recovery || turn?.quiet || recordedRequests.has(request) || savedFollowUp(channel, request.message)) return
+      if (!bot || recovery || turn?.quiet || recordedRequests.has(request) || storedUnread(channel, request.message)) return
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
     }
@@ -2061,18 +2062,7 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'chat:done', channel, text: said })
       return
     }
-    const steer = bot?.primary && !recovery && !savedRoutine && !turn?.verification && !turn?.report && !turn?.quiet && !request.scheduled && !request.attachments?.length && steerShaped(request.message) ? plainSteer(request.message, await listTasks(paths), bot.id) : undefined
-    if (bot && steer) {
-      if (await team.steer(steer.taskId, channel, task => steerSplit(task, steer))) {
-        firstLineSpoke(channel)
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: steer.said, at: new Date().toISOString() })
-        turnOutcomes.set(channel, { answer: steer.said, asked: false, unfinished: false, steps: 0 })
-        answering.delete(channel)
-        broadcast({ type: 'chat:done', channel, text: steer.said })
-        return
-      }
-    }
-    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { host: !!steer, channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), followUp: followingUp(channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
+    const begun = bot ? beginAnswer({ paths, botId: bot.id, engine: team.leadEngine(channel, engine), history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) }, request.message, { signal, ack: { channel, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(channel), limited: isLimited('claude', channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), said: async () => (await readBotTranscript(paths, bot.id, 12)).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), show: line => broadcast({ type: 'chat:token', channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }) } }) : undefined
     if (begun) acks.push(begun)
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
