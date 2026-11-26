@@ -2308,7 +2308,7 @@ export function registerIpc(ctx: VaultContext): void {
             result.files,
           )
           flog('chat-phase', JSON.stringify({ channel, phase: 'answer-delivered', ms: Date.now() - nativeSince }))
-        } else if (!held) {
+        } else if (!held && !turn?.quiet) {
           const said = usageLimitMessage(threadKorean(request.message, savedHistory))
           await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString(), error: true, provider: brainName(engine.id) }).catch(error => flog('chat-error-save', error))
           broadcast({ type: 'chat:error', channel, message: said, provider: brainName(engine.id) })
@@ -2358,9 +2358,9 @@ export function registerIpc(ctx: VaultContext): void {
         }
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
-        if (turn?.verification && kind !== 'quota') throw err
-        const korean = threadKorean(request.message, savedHistory)
         if (kind === 'quota') noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
+        if (turn?.quiet) { void noteEngineFailure(engine, kind, ctx).then(() => revalidateEngines(ctx)); throw err }
+        const korean = threadKorean(request.message, savedHistory)
         if (kind === 'quota') {
           const question = `${usageLimitMessage(korean, limitedAt(engine.id, channel))}${!toolStarted ? '' : korean ? ' 이미 일부 작업이 진행됐을 수 있어서, 다시 시작하면 남은 것만 이어서 할게요.' : ' Some steps may already have run, so when I resume I will continue only the unfinished part.'}`
           turnOutcomes.set(channel, { answer: question, asked: true, unfinished: true, steps: 0 })

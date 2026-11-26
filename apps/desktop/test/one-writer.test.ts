@@ -142,6 +142,17 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(ipc).not.toMatch(/\.replace\([^\n]*result\.answer|result\.answer\.replace\(/)
   })
 
+  it('a hidden task turn writes no failure text of its own: it hands every failure to the task, which alone knows whether an answer was already delivered', () => {
+    const from = ipc.indexOf('await begun!.run({')
+    const caught = ipc.slice(ipc.indexOf('      } catch (err) {', from), ipc.indexOf('      } finally {', from))
+    const quiet = caught.indexOf('if (turn?.quiet) {')
+    expect(quiet).toBeGreaterThan(0)
+    expect(caught.slice(quiet, caught.indexOf('\n', quiet))).toContain('throw err')
+    for (const text of ['deliverAnswer(', 'appendBotTurn(', "type: 'chat:error'"]) expect(caught.indexOf(text)).toBeGreaterThan(quiet)
+    expect(ipc).toContain('} else if (!held && !turn?.quiet) {')
+    expect(ipc).not.toContain("turn?.verification && kind !== 'quota'")
+  })
+
   it('an aborted turn ends with the stop line or nothing, never an empty finished bubble, and no held draft is dropped from the screen', () => {
     expect(ipc).not.toMatch(/type: 'chat:done', channel, text: ''/)
     expect(ipc.match(/await deliverStop\(\)/g)).toHaveLength(3)

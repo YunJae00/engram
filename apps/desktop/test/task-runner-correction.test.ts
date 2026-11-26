@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, readBotTranscript, updateTask } from 'core'
+import { createTask, listTasks, QuotaError, readBotTranscript, updateTask } from 'core'
+import { usageLimitMessage } from '../src/main/usage-limit.js'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
 
@@ -309,6 +310,31 @@ it('still shows the usage line when a task fails before any answer was delivered
   await t.settle('failed')
   expect(t.delivered).toEqual([])
   expect(t.events.filter(e => e.type === 'chat:error')).toHaveLength(1)
+})
+
+it('keeps a delivered answer, ends done and adds no limit line when its hidden re-check runs out of usage', async () => {
+  const answer = '독서 모임 회비 정산표를 만들었어요. [회비](engram-artifact:dues.xlsx)'
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done(answer, 1), check: { accepted: false, issues: ['Totals not read back'] } }
+    throw new QuotaError('usage limit reached', 60_000)
+  })
+  await t.chat('독서 모임 회비 정산표 만들고 합계 맞는지 다시 봐줘')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: answer })
+  expect((await listTasks(t.paths))[0]?.question).toBeUndefined()
+  expect(t.delivered).toEqual([answer])
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([])
+  expect((await readBotTranscript(t.paths, 'bot-1')).filter(turn => turn.error)).toEqual([])
+})
+
+it('shows the usage line once when a hidden follow-up runs out of usage before any answer was delivered', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) return { ...done('', 1), unfinished: true, unfinishedReason: 'Receipts not sorted yet' }
+    throw new QuotaError('usage limit reached', 60_000)
+  })
+  await t.chat('지난달 영수증 날짜순으로 정리해줘')
+  await t.settle('failed')
+  expect(t.delivered).toEqual([])
+  expect(t.events.filter(e => e.type === 'chat:error')).toEqual([expect.objectContaining({ kind: 'quota', message: usageLimitMessage(true) })])
 })
 
 it('posts the report the moment it is written, so a restart during its re-check has nothing left to post', async () => {
