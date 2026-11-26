@@ -61,3 +61,22 @@ it('reads a saved first line back above the words said after it was shown, whene
   const later = [at(user('q'), 0), at(user('add', true), 3), at(line('adding', true), 4), at(line('reading the page'), 6), at(answer('both'), 12)]
   expect(texts(askOrder(later))).toEqual(['q', 'add', 'adding', 'reading the page', 'both'])
 })
+
+it('shows a reloaded room the same lines the live room showed, hiding an English interim line under a Korean ask', () => {
+  const live = createCometThreads()
+  live.begin('5', '견적서 세 건 금액 비교해줘')
+  for (const text of ['Let me open the three quotes now.', '두 건은 다 봤어요.']) {
+    live.handleEvent({ type: 'chat:token', channel: 'bot-5', text })
+    live.handleEvent({ type: 'chat:token', channel: 'bot-5', text: '', reset: true })
+  }
+  live.handleEvent({ type: 'chat:token', channel: 'bot-5', text: 'B 업체가 제일 싸요.' })
+  live.handleEvent({ type: 'chat:done', channel: 'bot-5', text: 'B 업체가 제일 싸요.' })
+  const shownLive = live.thread('5').messages.map(message => message.text).filter(Boolean)
+  const reloaded = createCometThreads()
+  reloaded.load('5', [user('견적서 세 건 금액 비교해줘'), line('Let me open the three quotes now.'), line('두 건은 다 봤어요.'), answer('B 업체가 제일 싸요.')])
+  expect(shownLive).toEqual(['견적서 세 건 금액 비교해줘', '두 건은 다 봤어요.', 'B 업체가 제일 싸요.'])
+  expect(reloaded.thread('5').messages.map(message => message.text)).toEqual(shownLive)
+  const english = createCometThreads()
+  english.load('6', [user('compare the two invoices'), line('Opening both invoices.'), answer('The second one is cheaper.')])
+  expect(english.thread('6').messages.map(message => message.text)).toEqual(['compare the two invoices', 'Opening both invoices.', 'The second one is cheaper.'])
+})
