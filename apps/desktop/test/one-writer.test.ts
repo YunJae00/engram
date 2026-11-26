@@ -159,16 +159,18 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(first).toBe('      if (turn?.quiet) throw engine ? new QuotaError() : new AuthError()')
   })
 
-  it('a stop during any turn, hidden re-checks included, stores the stop line so it is still there when the room reopens', () => {
-    const stop = ipc.slice(ipc.indexOf('const deliverStop = async'), ipc.indexOf('const deliverStop = async') + 400)
-    expect(stop).toContain('if (!stopLines.has(channel)) return')
-    expect(stop).not.toContain('verification')
-    expect(stop).toContain('await stopTurn(paths, channel, line)')
+  it('the stop line has one writer: the room\'s stopper, after the stopped turn has ended, whatever phase that turn was in', () => {
+    expect(ipc).toContain("const stopChat = stopper(paths, {")
+    for (const gone of ['stopTurn', 'stopLine(', 'stopLines', 'deliverStop']) expect(ipc).not.toContain(gone)
+    expect(ipc.match(/if \(signal\.aborted\) return\n/g)?.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('a hidden task turn that finds computer access unavailable hands that to the task and writes nothing itself', () => {
+    expect(ipc).toContain("catch (error) { if (turn?.quiet) throw error; broadcast({ type: 'chat:error', channel,")
   })
 
   it('an aborted turn ends with the stop line or nothing, never an empty finished bubble, and no held draft is dropped from the screen', () => {
     expect(ipc).not.toMatch(/type: 'chat:done', channel, text: ''/)
-    expect(ipc.match(/await deliverStop\(\)/g)).toHaveLength(3)
     for (const gone of ['answerOnly', 'holdTaskResult', 'dropHeldDraft', 'Not verified as complete.', 'keepStopMark', 'noteStopped']) expect(ipc).not.toContain(gone)
   })
 })

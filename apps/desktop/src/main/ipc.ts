@@ -1,4 +1,4 @@
-import { finishProgress, progressWork, stopTurn } from './conversation-progress.js'
+import { finishProgress, progressWork } from './conversation-progress.js'
 import { availableMemory } from './available-memory.js'
 import { quickPrimary } from './quick-comet.js'
 import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
@@ -6,7 +6,8 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { standingApprovalsTool } from './approval-tools.js'
 import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
-import { registerAsideIpc, stopLine } from './aside-ipc.js'
+import { registerAsideIpc } from './aside-ipc.js'
+import { stopper } from './turn-stop.js'
 import { closeFollowUps, dropFollowUps, followUp, followUpSaid, openFollowUps, readingFollowUps, storedUnread, takeFollowUps } from './midstream-followup.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
@@ -600,8 +601,7 @@ function askBeforePress(channel: string, approvals: ReturnType<typeof approvalsS
   }
 }
 
-const chatAborts = new Set<{ controller: AbortController; channel: string }>()
-const stopLines = new Map<string, string>()
+const chatAborts = new Set<{ controller: AbortController; channel: string; ended: Promise<void> }>()
 
 export function abortAllChat(channel?: string): void {
   dropFollowUps(channel)
@@ -895,17 +895,15 @@ export function registerIpc(ctx: VaultContext): void {
     umbrella: await loadUmbrellaTerms(paths),
   }))
 
-  const stopChat = async (channel?: string, said?: unknown): Promise<void> => {
-    const line = typeof said === 'string' && said.trim() && said.length <= 80 ? said.trim() : undefined
-    if (channel && [...chatAborts].some(entry => entry.channel === channel)) stopLines.set(channel, line ?? '')
-    else if (line && channel?.startsWith('bot-') && tasks.activeChannels().includes(channel)) {
-      const last = (await readBotTranscript(paths, channel.slice(4), 1).catch(() => []))[0]
-      if (last?.role === 'user') await appendBotTurn(paths, channel.slice(4), { role: 'assistant', text: line, at: new Date().toISOString() }).catch(error => flog('chat-stop', error))
-    }
-    abortAllChat(channel)
-    if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
-    else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
-  }
+  const stopChat = stopper(paths, {
+    ends: channel => [...chatAborts].filter(entry => channel === undefined || entry.channel === channel).map(entry => entry.ended),
+    goal: channel => turnGoals.get(channel),
+    halt: async channel => {
+      abortAllChat(channel)
+      if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
+      else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
+    },
+  })
   ipcMain.handle('chat:abort', (_e, channel?: string, said?: unknown) => stopChat(channel, said))
   ipcMain.handle('chat:fresh', async (_e, botId: string) => {
     const id = String(botId)
@@ -1901,7 +1899,8 @@ export function registerIpc(ctx: VaultContext): void {
     if ([...chatAborts].some(entry => entry.channel === (request.channel ?? 'panel'))) throw new Error('The previous turn is still stopping. Please try again shortly.')
     if (externalOwns(request.channel ?? (request.botId ? `bot-${request.botId}` : 'panel'))) throw new Error('An external client is working in this conversation. Stop its session in Settings → External connections before sending here.')
     const controller = new AbortController()
-    const entry = { controller, channel: request.channel ?? 'panel' }
+    let ended = (): void => undefined
+    const entry = { controller, channel: request.channel ?? 'panel', ended: new Promise<void>(resolve => { ended = resolve }) }
     const started = performance.now()
     if (!requestReceived.has(request)) requestReceived.set(request, new Date().toISOString())
     chatAborts.add(entry)
@@ -1920,7 +1919,7 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       memoryWait?.()
       chatAborts.delete(entry)
-      stopLines.delete(entry.channel)
+      ended()
       answering.delete(entry.channel)
       closeFollowUps(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); for (const ack of acks) ack.end()
@@ -2059,7 +2058,7 @@ export function registerIpc(ctx: VaultContext): void {
     const settings = await loadSettings()
     const engine = await chatEngine(ctx.engines)
     try { assertDesktopChatEngine(channel, engine) }
-    catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
+    catch (error) { if (turn?.quiet) throw error; broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error).map(turn => turn.files?.length ? { ...turn, text: withFiles(turn.text, turn.files) } : turn)
     await recordAsk()
     if (!engine || isLimited('claude', channel)) {
@@ -2179,14 +2178,6 @@ export function registerIpc(ctx: VaultContext): void {
       answering.delete(channel)
       broadcast({ type: 'chat:done', channel, text: `${cleaned}${receipt}`, ...(offer ? { offer } : {}), ...(files.length ? { files: [...files] } : {}) })
       markEngineOk(engine.id, (engine as Engine & { accountProfile?: string }).accountProfile)
-    }
-
-    const deliverStop = async (): Promise<void> => {
-      if (!stopLines.has(channel)) return
-      const line = stopLines.get(channel) || stopLine(threadKorean(request.message, request.history ?? []))
-      stopLines.delete(channel)
-      answering.delete(channel)
-      await stopTurn(paths, channel, line)
     }
 
     if (bot) {
@@ -2354,10 +2345,7 @@ export function registerIpc(ctx: VaultContext): void {
           }
         }
       } catch (err) {
-        if (signal.aborted) {
-          await deliverStop()
-          return
-        }
+        if (signal.aborted) return
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
         if (kind === 'quota') noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
@@ -2391,7 +2379,7 @@ export function registerIpc(ctx: VaultContext): void {
       await afterAnswer?.().catch(error => flog('chat-after-answer', error))
       if (resendAfterOutage && !signal.aborted) {
         await delay(OUTAGE_RESEND_MS, undefined, { signal }).catch(() => undefined)
-        if (signal.aborted) { await deliverStop(); return }
+        if (signal.aborted) return
       }
       if (resendAfterOutage && !signal.aborted) {
         broadcast({ type: 'chat:token', channel, text: '', reset: true })
@@ -2412,10 +2400,7 @@ export function registerIpc(ctx: VaultContext): void {
         }),
       )
     } catch (err) {
-      if (signal.aborted) {
-        await deliverStop()
-        return
-      }
+      if (signal.aborted) return
       const said = err instanceof Error ? err.message : String(err)
       const quota = (err instanceof EngineCallError ? err.kind : classifyEngineError(said)) === 'quota'
       if (quota) noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
