@@ -190,15 +190,17 @@ describe('the first line is a waiting line, not part of the answer', () => {
     }
   })
 
-  it('takes thanks, praise and goodbyes to the one quick call like any message, and a NONE from it shows nothing', async () => {
+  it('takes thanks, praise and goodbyes to the one quick call like any message, and a NONE from it gives no line and no note; the lead\'s words drop the safety line', async () => {
     for (const message of ['오늘 정말 애쓰셨어요', '덕분에 발표 잘 끝났어요', '내일 봬요!', '역시 믿고 맡길 만하네요']) {
       expect(wantsFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }), message).toBeNull()
       endFirstLine('bot-1')
       const { show, quick } = start('NONE', { message })
-      await vi.advanceTimersByTimeAsync(3000)
+      await vi.advanceTimersByTimeAsync(500)
       expect(quick, message).toHaveBeenCalledOnce()
-      expect(show, message).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
+      firstLineSpoke('bot-1')
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(show, message).not.toHaveBeenCalled()
     }
   })
 

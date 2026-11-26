@@ -20,7 +20,7 @@ export interface FirstLineAsk {
   host?: boolean
 }
 type Voice = Pick<Engine, 'id' | 'quick'>
-interface Pending { open: boolean; ready: boolean; line?: string; shown?: boolean; carried?: boolean; show?: (line: string) => void; hide?: () => void }
+interface Pending { open: boolean; ready: boolean; quiet?: boolean; line?: string; shown?: boolean; carried?: boolean; show?: (line: string) => void; hide?: () => void }
 const turns = new Map<string, Pending>()
 const log = (fields: Record<string, unknown>): void => flog('first-line', JSON.stringify(fields))
 
@@ -85,9 +85,9 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     if (!turn.open) return
     const line = cleanLine(await engine.quick(firstLinePrompt(ask.message, ask.korean, said), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS }), ACK_MAX)
     if (!turn.open || turn.line) return
+    if (!line) { turn.quiet = true; return log({ channel: ask.channel, outcome: 'silent', reason: 'none', ms: Date.now() - started }) }
     clearTimeout(timer)
-    if (line) say(line, 'voiced')
-    else close('silent', 'none')
+    say(line, 'voiced')
   })().catch(() => undefined)
 }
 
@@ -121,7 +121,7 @@ export function firstLineNote(channel: string): string {
   if (!turn) return ''
   const quiet = 'Write nothing before your first tool call and nothing between tool calls: no opening line, no note of what you will read, check or do next. Your next words to the person are the answer itself.'
   if (turn.shown && turn.line) return `The person has already been shown this first line from you: ${JSON.stringify(turn.line)}. Do not repeat or rephrase it. ${quiet}`
-  return turn.open ? `A short first line from you saying what you are starting on is already on screen when you answer. Do not open with a greeting or a restatement of the request. ${quiet}` : ''
+  return turn.open && !turn.quiet ? `A short first line from you saying what you are starting on is already on screen when you answer. Do not open with a greeting or a restatement of the request. ${quiet}` : ''
 }
 
 export function firstLineSaw(event: { type: string; channel?: string; reset?: boolean }): void {

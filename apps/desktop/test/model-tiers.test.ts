@@ -249,9 +249,15 @@ describe('instant first line', () => {
     for (const message of ['거실 조명 색 온도 비교해서 하나 골라줘', '점심 맛있게 드세요', '1미터는 몇 센티야?']) {
       for (const reply of ['NONE', '']) {
         show = start(voice(later(reply, 600)), { message })
-        await vi.advanceTimersByTimeAsync(3000)
+        await vi.advanceTimersByTimeAsync(600)
         expect(show, message).not.toHaveBeenCalled()
         expect(firstLineNote('bot-1')).toBe('')
+        firstLineSpoke('bot-1')
+        await vi.advanceTimersByTimeAsync(3000)
+        expect(show, message).not.toHaveBeenCalled()
+        show = start(voice(later(reply, 600)), { message })
+        await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+        expect(show, message).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
       }
     }
     show = start(voice(later('NONE', 600)))
@@ -357,23 +363,25 @@ describe('instant first line', () => {
     expect(source('first-line.ts')).not.toMatch(/chit-chat|SMALL_TALK|GREETING|SMALL_TAIL/)
   })
 
-  it('a greeting or a thanks the voice answers NONE to shows nothing and leaves no note, so the answer itself is the first text', async () => {
+  it('a greeting or a thanks the voice answers NONE to gets no line of its own and no note, so an answer by 1.3 s is the first text, and only a silent screen gets the safety line', async () => {
     for (const message of ['좋은 저녁이에요, 내일도 부탁해요', '도와줘서 진짜 고마웠어요', 'Have a nice weekend!']) {
       endFirstLine('bot-1')
       const live = voice(later('NONE', 500))
       const { show } = begin(live, { message })
       firstLineReady('bot-1')
-      await vi.advanceTimersByTimeAsync(3000)
+      await vi.advanceTimersByTimeAsync(500)
       expect(live.quick).toHaveBeenCalledOnce()
       expect(show, message).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
       expect(firstLineCarried('bot-1')).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
+      expect(show, message).toHaveBeenCalledExactlyOnceWith(SAFETY_LINE.ko)
     }
     expect(FIRST_LINE_BUDGET_MS).toBeLessThan(2000)
   })
 
-  it('stays silent for mock or missing engines and NONE answers', async () => {
-    for (const engine of [undefined, { id: 'mock' }, { id: 'mock', quick: async () => '줄' }, voice(async () => 'NONE')]) {
+  it('stays silent for mock or missing engines', async () => {
+    for (const engine of [undefined, { id: 'mock' }, { id: 'mock', quick: async () => '줄' }]) {
       const { show } = begin(engine)
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(2000)
