@@ -322,6 +322,41 @@ it('starts a new round at once for a message said after the interim reply while 
   } finally { dropFollowUps(channel); await done() }
 })
 
+it('still gives the slow tool\'s result to the model after the person has used up the follow-up rounds with messages while it runs, together with what they said since', async () => {
+  const { paths, done } = await tempPaths('aside-slow-many-')
+  const channel = 'bot-slow-many'
+  registerAsideIpc({ paths, busy: () => true, followUp: followUpFor, setOffersAside: async () => {} })
+  const search = slowSearch()
+  const prompts: string[] = []
+  const runTools = async (job: ToolSessionJob): Promise<{ answer: string }> => {
+    prompts.push(job.prompt)
+    if (prompts.length > 1) return { answer: `알겠어요 ${prompts.length}` }
+    job.onSteerable?.(async () => false)
+    await job.tools[0]!.run({})
+    job.onSteerable?.(null)
+    return { answer: '찾고 있어요.' }
+  }
+  try {
+    const run = runToolSession(sessionDeps(runTools, [search.tool]), '여수 바다 보이는 숙소 가격 봐줘', { takeSteer: () => takeFollowUps(channel), steered: signal => followUpSaid(channel, signal) })
+    await search.started
+    await handlers.get('chat:say')!({}, channel, '천천히 해도 돼요')
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
+    for (const [index, words] of ['두 명이 묵어요', '토요일 하루만요', '조식 있는 곳이면 좋겠어요'].entries()) {
+      await handlers.get('chat:say')!({}, channel, words)
+      await vi.waitFor(() => expect(prompts).toHaveLength(index + 2))
+    }
+    await handlers.get('chat:say')!({}, channel, '주차도 되면 좋고요')
+    await new Promise(go => setTimeout(go, 20))
+    expect(prompts).toHaveLength(4)
+    search.release()
+    const result = await run
+    expect(prompts).toHaveLength(5)
+    expect(prompts[4]).toContain('렌터카 세 곳, 하루 4만 원부터')
+    expect(prompts[4]).toContain('"주차도 되면 좋고요"')
+    expect(result.answer).toBe('알겠어요 5')
+  } finally { dropFollowUps(channel); await done() }
+})
+
 it('tells the model when a call it was told is still running fails after the person was answered, instead of finishing as if it worked', async () => {
   const { paths, done } = await tempPaths('aside-slow-fail-')
   const channel = 'bot-slow-fail'
