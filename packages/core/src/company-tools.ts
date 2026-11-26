@@ -561,8 +561,10 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       const steer = said(args['steer'], 60), wait = !steer && args['wait'] !== false
       const stop = steer ? names(args['stop']) : []
       const jobs = steer ? await host.running() : []
-      const job = jobs.find(one => one.parts.some(m => [steer, ...stop].some(name => named(m, name))))
-      if (steer && !job) throw new Error(jobs.length ? `No work still running has a part named ${steer}. Running now: ${runningNow(jobs.flatMap(one => one.parts))}.` : 'No work handed off earlier is still running in this thread; call assign without steer.')
+      const steered = jobs.filter(one => one.parts.some(m => named(m, steer)))
+      const job = steered.length === 1 ? steered[0] : undefined
+      if (steer && !job) throw new Error(!jobs.length ? 'No work handed off earlier is still running in this thread; call assign without steer.' : `${steered.length ? `More than one running work has a part named ${steer}; steer with the topic of a part in the one to change.` : `No work still running has a part named ${steer}.`} Running now: ${runningNow(jobs.flatMap(one => one.parts))}.`)
+      if (job && stop.some(name => !job.parts.some(m => named(m, name) && atWork(m)))) throw new Error(`Nothing still running matches stop. Running now: ${runningNow(job.parts)}.`)
       const on = job ?? host
       const parts = rows(args['to']).map(row => {
         const next = typeof row['then'] === 'object' && row['then'] !== null ? row['then'] as Record<string, unknown> : undefined

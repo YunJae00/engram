@@ -468,6 +468,28 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(await answerOf(second.id)).toEqual(['지민: 택배사', '서연: 화물'])
   })
 
+  it('when the same teammate works in two open jobs, a change goes to the job its topic names and never to the other one', async () => {
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(found(`${/(\S+) 입장료 확인해/.exec(turn.prompt)?.[1]} 입장료예요.`, 'https://ticket.example/fee'))) }))
+    const part = (who: string, topic: string) => ({ who, brief: `${topic} 입장료 확인해줘`, topic })
+    await w.assign({ wait: false, to: [part('지민', '미술관'), part('서연', '박물관')] })
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    const second = await createTask(w.paths, 'Check park fees', 'b1')
+    await updateTask(w.paths, second.id, t => { t.state = 'running'; t.turns = 1 })
+    await w.assign({ wait: false, to: [part('지민', '식물원'), part('서연', '동물원')] })
+    await updateTask(w.paths, second.id, t => { t.state = 'waiting' })
+    await vi.waitFor(async () => expect((await listTasks(w.paths)).flatMap(t => t.team?.members ?? []).every(m => m.state === 'working')).toBe(true))
+    await w.team.turnEnded('bot-b1')
+    await expect(w.assign({ wait: false, steer: '서연', to: [], stop: ['서연'] })).rejects.toThrow(/More than one running work has a part named 서연/)
+    expect(await w.assign({ wait: false, steer: '식물원', to: [part('서연', '수족관')], stop: ['서연'] })).toBe('동물원 말고 수족관으로 바꿀게요.')
+    const of = async (id: string) => ((await listTasks(w.paths)).find(t => t.id === id)!.team?.members ?? []).map(m => [m.role, m.topic, m.state])
+    await vi.waitFor(async () => expect(await of(second.id)).toEqual([['지민', '식물원', 'working'], ['서연', '동물원', 'released'], ['서연', '수족관', 'working']]))
+    expect(await of(w.id)).toEqual([['지민', '미술관', 'working'], ['서연', '박물관', 'working']])
+    go()
+    await vi.waitFor(() => expect([...w.reported].sort()).toEqual([`bot-b1 ${w.id}`, `bot-b1 ${second.id}`].sort()))
+  })
+
   it('at the cap the result step gets what is back and the slow part as still working, and that part\'s hand-back alone when it lands', async () => {
     const { lateShown } = await import('core')
     let go!: () => void

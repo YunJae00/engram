@@ -323,6 +323,16 @@ test('steer never starts work of its own: with nothing handed off still running,
   expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['울산', 'working']])
 })
 
+test('a change whose stop names nothing running is refused before anyone new joins the team', async () => {
+  const o = await office()
+  await o.assign({ wait: false, to: [{ who: '지민', brief: '한강 야경 명소 찾아줘', topic: '야경' }, { who: '서연', brief: '한강 자전거 대여소 찾아줘', topic: '자전거' }] })
+  for (const m of o.task.team!.members) m.state = 'working'
+  o.steerable(true)
+  await expect(o.assign({ wait: false, steer: '야경', to: [{ who: '유나', brief: '한강 캠핑장 찾아줘', topic: '캠핑', role: '캠핑 담당' }], stop: ['자전거', '수영장'] })).rejects.toThrow('Nothing still running matches stop. Running now: 지민 (야경), 서연 (자전거).')
+  expect(await o.named('유나')).toBeUndefined()
+  expect(o.task.team!.members.map(m => [m.topic, m.state])).toEqual([['야경', 'working'], ['자전거', 'working']])
+})
+
 test('assign runs each agent as a member of their own, adds an unknown name on the spot and hands back one attributed answer', async () => {
   const o = await office()
   const said = await o.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능', topic: '노션' }, { who: '서연', brief: '슬랙 신기능', topic: '슬랙' }, { who: '도윤', brief: '리니어 신기능', topic: '리니어' }] })
