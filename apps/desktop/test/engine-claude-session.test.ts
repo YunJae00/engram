@@ -454,6 +454,43 @@ describe('a message said while the model is writing', () => {
     } finally { pool.closeAll() }
   })
 
+  it('hands every message said before the interrupted call returns to the model as one input, so the turn answers all of them', async () => {
+    let interrupts = 0, interrupted = (): void => {}
+    const stopped = new Promise<void>(go => { interrupted = go })
+    const users: string[] = []
+    const sdk: SessionSdk = {
+      createSdkMcpServer: (options) => options,
+      tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
+      query: ({ prompt }) => {
+        async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
+          for await (const message of prompt) {
+            const content = String(message.message.content)
+            users.push(content)
+            if (users.length === 1) {
+              yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '도서관 목록 보는 중' } } }
+              await stopped
+              yield { type: 'result', subtype: 'error_during_execution', result: '' }
+            } else {
+              yield { type: 'assistant', message: { content: [{ type: 'text', text: content }] } }
+              yield { type: 'result', subtype: 'success', result: content }
+            }
+          }
+        }
+        const stream = run() as AsyncGenerator<{ type: string }> & { interrupt(): Promise<unknown> }
+        stream.interrupt = async () => { interrupts++ }
+        return stream
+      },
+    }
+    const pool = new SessionPool()
+    let steer: ((said: string[]) => Promise<boolean>) | null = null
+    try {
+      const result = pool.run(job('세종 도서관 찾아줘', { onToken: () => { void steer?.(['"주말에 여는 곳만"']).then(() => steer?.(['"대전도 봐 줘"'])).then(() => interrupted()) }, onSteerable: live => { steer = live } }), { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
+      expect(await result).toEqual({ answer: '"주말에 여는 곳만"\n\n"대전도 봐 줘"' })
+      expect(interrupts).toBe(1)
+      expect(users).toEqual(['세종 도서관 찾아줘', '"주말에 여는 곳만"\n\n"대전도 봐 줘"'])
+    } finally { pool.closeAll() }
+  })
+
   it('leaves a running tool call alone and says the message was not taken live', async () => {
     let steer: ((said: string[]) => Promise<boolean>) | null = null
     let answer: Promise<boolean> | undefined

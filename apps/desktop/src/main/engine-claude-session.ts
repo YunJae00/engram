@@ -239,7 +239,7 @@ class WarmSession {
         if (this.turn?.steers.length) {
           this.turn.stalled = false
           this.turn.calls.clear()
-          this.queue.push(...this.turn.steers.splice(0).map((content): SdkUserMessage => ({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })))
+          this.queue.push({ type: 'user', message: { role: 'user', content: this.turn.steers.splice(0).join('\n\n') }, parent_tool_use_id: null, session_id: '' })
           this.wake?.()
           this.wake = null
           this.watch()
