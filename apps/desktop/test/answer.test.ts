@@ -87,6 +87,19 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.first?.text).toBe('한 시간은 3,600초예요.')
   })
 
+  it('puts no host line in front of a lead that answers a recall from the thread before the safety time, after the quick call says NONE', async () => {
+    const quick = vi.fn(async () => { await wait(10); return 'NONE' })
+    const engine = fake(async job => { await wait(150); job.onToken?.('토요일 2시예요.'); return '토요일 2시예요.' }, quick)
+    const world = { ...await openWorld(await temp(), engine), history: [{ role: 'user' as const, text: '치과 예약 금요일 3시야' }, { role: 'assistant' as const, text: '알겠어요.' }, { role: 'user' as const, text: '아 금요일 말고 토요일 2시로 옮겼어' }, { role: 'assistant' as const, text: '토요일 2시로 고쳤어요.' }] }
+    const shown: string[] = []
+    const { trace } = await answer(world, '치과 언제 가더라?', { ack: { show: line => { shown.push(line) } } })
+    await wait(50)
+    expect(quick).toHaveBeenCalledOnce()
+    expect(shown).toEqual([])
+    expect(trace.first?.text).toBe('토요일 2시예요.')
+    expect(trace.first?.ms).toBeLessThan(1300)
+  })
+
   it('drops an ack that comes after the lead\'s first text', async () => {
     const quick = vi.fn(async () => { await wait(200); return '도서 목록부터 볼게요.' })
     const engine = fake(async job => { await wait(20); job.onToken?.('신간은 세 권이에요.'); return '신간은 세 권이에요.' }, quick)
