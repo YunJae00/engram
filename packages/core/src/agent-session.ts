@@ -79,6 +79,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const finished: string[] = []
   const detached = new Set<Promise<void>>()
   let landed = (): void => {}
+  let fresh = false
   const compactPage = pageDelta()
   const plan = taskPlan(steps)
   const collection = collectionProgress(steps)
@@ -247,7 +248,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     const said = await heardWhile(settled)
     if (!said) return withFinished(await settled)
     shut()
-    const back = settled.then(result => { finished.push(landedResult(call.name, typeof result === 'string' ? result : result.text)); landed() }, () => undefined)
+    const back = settled.then(result => { finished.push(landedResult(call.name, typeof result === 'string' ? result : result.text)); fresh = true; landed() }, () => undefined)
     detached.add(back)
     void back.finally(() => detached.delete(back))
     return withSteer(STILL_RUNNING, said)
@@ -341,7 +342,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   })
   const hear = async (): Promise<void> => {
     while (options.steered && !listening.aborted) {
-      if (!finished.length) await Promise.race([options.steered(listening), new Promise<void>(go => { landed = go })])
+      if (!fresh) await Promise.race([options.steered(listening), new Promise<void>(go => { landed = go })])
+      fresh = false
       while (!listening.aborted && (!liveSteer || queued > 0)) await new Promise<void>(go => { nudge = go; listening.addEventListener('abort', () => go(), { once: true }) })
       if (listening.aborted) return
       const said = takeSteer(), back = finished.splice(0)

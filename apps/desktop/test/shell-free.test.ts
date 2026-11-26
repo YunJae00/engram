@@ -107,6 +107,10 @@ describe('the headless runner and its one answer entry', () => {
   it.each(['src/main/answer.ts', 'src/main/first-line.ts', 'src/main/runner.ts', 'scripts/runner.mts'])('%s never reaches the shell through its imports', file => {
     expect(shellPath(file)).toBeNull()
   })
+  it('src/main/fast-lane.ts is gone, so no lane file sits between the runner and its answer entry', () => {
+    expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
+    expect(readFileSync(new URL('../src/main/runner.ts', import.meta.url), 'utf8')).not.toContain('fast-lane')
+  })
 })
 
 it('reports a file that still reaches the shell', () => {

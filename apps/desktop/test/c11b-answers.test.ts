@@ -144,6 +144,17 @@ describe('words said mid-work reach the running model as typed, and the model ju
     for (const [at, prompt] of prompts.entries()) expect(prompt).toContain(JSON.stringify(said[at]))
     expect(tails[0]).toContain('First answer them in one short line')
   })
+  it('takes a new subject or a new scope said mid-work through the running model, whose own answer is the result', async () => {
+    const said = ['그냥 배터리 쪽으로 바꿔', '일본 건도 하나 넣어']
+    const seen: string[] = []
+    let left = [...said]
+    const search: AgentTool = { name: 'search_web', description: 'search', argsSchema: { type: 'object', properties: {} }, run: async () => 'rows' }
+    const engine = { id: 'claude', runTools: async (job: ToolSessionJob) => { seen.push(String(await job.tools.find(one => one.name === 'search_web')!.run({}))); return { answer: '배터리 소식 세 개에 일본 건 하나 넣었어요.' } } } as unknown as Engine
+    const result = await runComet({ engine, workdir: '.' as EngineCwd, tools: [search] }, ask, { guided: false, takeSteer: () => left.splice(0) })
+    left = []
+    for (const one of said) expect(seen[0]).toContain(JSON.stringify(one))
+    expect(result.answer).toBe('배터리 소식 세 개에 일본 건 하나 넣었어요.')
+  })
 })
 
 it('c11b r2, r3: a row dated outside the asked period reaches the writer with its date, and the answer is posted as written', async () => {
