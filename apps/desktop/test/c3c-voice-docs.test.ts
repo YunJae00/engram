@@ -249,14 +249,15 @@ describe('nothing is said before or between tool calls once the host has spoken'
     expect((await streamed(['지금 1달러에 1,385원이에요.'])).map(one => one.held)).toEqual([false])
   })
 
-  it('does not show an English progress line in a Korean thread on screen, and stores every interim line the model wrote on disk', async () => {
+  it('shows and stores every interim line as the model wrote it, with no language check by the host; the Korean rule is in the prompt', async () => {
     const store = createCometThreads()
     store.begin('1', 'fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘')
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: 'I\'ll read the file first.' })
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '', reset: true })
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '결정사항이랑 할 일 위주로 정리했어요.' })
     store.handleEvent({ type: 'chat:done', channel: 'bot-1', text: '결정사항이랑 할 일 위주로 정리했어요.' })
-    expect(store.thread('1').messages.map(message => message.text)).toEqual(['fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', '결정사항이랑 할 일 위주로 정리했어요.'])
+    expect(store.thread('1').messages.map(message => message.text)).toEqual(['fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', 'I\'ll read the file first.', '결정사항이랑 할 일 위주로 정리했어요.'])
+    expect(sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, tools: [] })).toContain('In a Korean thread every line is Korean')
     store.begin('2', '도시 네 곳 날씨 정리해줘')
     store.handleEvent({ type: 'chat:token', channel: 'bot-2', text: '셋 중 둘은 끝났어요.' })
     store.handleEvent({ type: 'chat:token', channel: 'bot-2', text: '', reset: true })

@@ -62,7 +62,7 @@ it('reads a saved first line back above the words said after it was shown, whene
   expect(texts(askOrder(later))).toEqual(['q', 'add', 'adding', 'reading the page', 'both'])
 })
 
-it('shows a reloaded room the same lines the live room showed, hiding an English interim line under a Korean ask', () => {
+it('shows a reloaded room the same interim lines the live room showed, as the model wrote them, wherever the load window starts', async () => {
   const live = createCometThreads()
   live.begin('5', '견적서 세 건 금액 비교해줘')
   for (const text of ['Let me open the three quotes now.', '두 건은 다 봤어요.']) {
@@ -72,11 +72,15 @@ it('shows a reloaded room the same lines the live room showed, hiding an English
   live.handleEvent({ type: 'chat:token', channel: 'bot-5', text: 'B 업체가 제일 싸요.' })
   live.handleEvent({ type: 'chat:done', channel: 'bot-5', text: 'B 업체가 제일 싸요.' })
   const shownLive = live.thread('5').messages.map(message => message.text).filter(Boolean)
+  expect(shownLive).toEqual(['견적서 세 건 금액 비교해줘', 'Let me open the three quotes now.', '두 건은 다 봤어요.', 'B 업체가 제일 싸요.'])
+  const turn = [user('견적서 세 건 금액 비교해줘'), line('Let me open the three quotes now.'), line('두 건은 다 봤어요.'), answer('B 업체가 제일 싸요.')]
   const reloaded = createCometThreads()
-  reloaded.load('5', [user('견적서 세 건 금액 비교해줘'), line('Let me open the three quotes now.'), line('두 건은 다 봤어요.'), answer('B 업체가 제일 싸요.')])
-  expect(shownLive).toEqual(['견적서 세 건 금액 비교해줘', '두 건은 다 봤어요.', 'B 업체가 제일 싸요.'])
+  reloaded.load('5', turn)
   expect(reloaded.thread('5').messages.map(message => message.text)).toEqual(shownLive)
-  const english = createCometThreads()
-  english.load('6', [user('compare the two invoices'), line('Opening both invoices.'), answer('The second one is cheaper.')])
-  expect(english.thread('6').messages.map(message => message.text)).toEqual(['compare the two invoices', 'Opening both invoices.', 'The second one is cheaper.'])
+  const stored = [...turn, ...Array.from({ length: 397 }, (_, n) => n % 2 ? answer(`답 ${n}`) : user(`질문 ${n}`))].map((one, n) => ({ ...one, at: `t${String(n).padStart(4, '0')}` }))
+  const paged = createCometThreads()
+  paged.load('5', stored.slice(-400))
+  expect(paged.thread('5').messages.slice(0, 3).map(message => message.text)).toEqual(['Let me open the three quotes now.', '두 건은 다 봤어요.', 'B 업체가 제일 싸요.'])
+  expect(await paged.loadEarlier('5', async (_id, before, limit) => stored.slice(Math.max(0, stored.length - before - limit), stored.length - before))).toBe(1)
+  expect(paged.thread('5').messages.slice(0, 4).map(message => message.text)).toEqual(shownLive)
 })

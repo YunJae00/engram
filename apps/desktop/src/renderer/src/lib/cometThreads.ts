@@ -1,6 +1,5 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 import { askOrder, shownTexts } from './transcriptOrder.js'
-import { readsKorean, threadLang } from './threadLang.js'
 
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
@@ -393,8 +392,7 @@ export function createCometThreads(initialSelected: string | null = null) {
             if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: underAsides(next, at) }, true) }
             return id
           }
-          if (next[at]!.text.trim() && threadLang(next) === 'ko' && !readsKorean(next[at]!.text)) next[at] = { ...next[at]!, text: '' }
-          else if (next[at]!.text.trim()) {
+          if (next[at]!.text.trim()) {
             next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }
             next.splice(asidesEnd(next, at), 0, { role: 'assistant', text: '', streaming: true })
           }

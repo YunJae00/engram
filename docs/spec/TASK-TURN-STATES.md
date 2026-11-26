@@ -32,3 +32,7 @@ Phases: **first** = the person's own turn before any answer; **booked** = answer
 | F7 | hidden-before | thrown error | one usage line | ask, usage line | failed |
 | F8 | hidden-before | empty reply | one usage line | ask, usage line | failed |
 | F9 | first | any failure | the turn's own one line | ask, that line | failed or waiting; the task adds no line |
+
+## Interim lines
+
+An interim line is the model's own text before a tool call. The host shows it and stores it as written, the same live, after reload and on any page of the transcript. The host does not check its language. Base hid an English interim line in a Korean thread twice: in main before storage and in the renderer while live. Cut 10 removes that language drop (plan cut 10, brief "the language drop of interim text"; ANSWER-SPEC §5 "the host never deletes a sentence", §8 voice rules "are not enforced by host checks"). Both halves go, so live and reload cannot disagree. Korean interim lines come from the prompt rule "In a Korean thread every line is Korean". An English interim line in a Korean room is a prompt defect to fix in the prompt, not in the host.

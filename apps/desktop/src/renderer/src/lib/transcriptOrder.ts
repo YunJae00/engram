@@ -1,6 +1,5 @@
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { doneText } from './answerTail.js'
-import { readsKorean, threadLang } from './threadLang.js'
 
 const isAnswer = (turn: ChatTurnDto): boolean => turn.role === 'assistant' && !turn.progress
 const isProgress = (turn: ChatTurnDto): boolean => turn.role === 'assistant' && !!turn.progress
@@ -23,7 +22,6 @@ export function shownTexts(list: ChatTurnDto[]): (string | null)[] {
     }
     from = j + 1
   }
-  for (let i = 0; i < list.length; i++) if (out[i] !== null && isProgress(list[i]!) && list[i]!.text.trim() && threadLang(list.slice(0, i)) === 'ko' && !readsKorean(list[i]!.text)) out[i] = null
   return out
 }
 
