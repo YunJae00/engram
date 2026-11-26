@@ -12,7 +12,7 @@ import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { answerOnly } from '../src/main/result-check.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
-import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../../../packages/core/src/prompt.js'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
 const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
@@ -61,7 +61,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
     expect(own).not.toMatch(/changedNote|askNow|routeAsk|What the person asks for now/)
-    expect(own).toContain('const notes = [context?.(), calendarLine(), note].filter(Boolean).join(\'\\n\\n\')')
+    expect(own).toContain("context: { ...context?.(), calendar: calendarLine(), ...(said ? { firstLine: said } : {}) },")
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it, so write it finished: nobody tidies, checks or completes it after you.')
   })
   it('a correction naming a new part reaches the model beside the ask it changes, and the rules for one part and one offer are the model\'s', async () => {

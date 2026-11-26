@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import * as hire from '../src/team-hire-tools.js'
 import { employeesAnswer, handBacks, LOOKUP_RULE, MERGED_SHAPE, settleMember, sourceName, teamHireTools, type DelegatedTask, type TeamHost, type TeamMember } from '../src/index.js'
 

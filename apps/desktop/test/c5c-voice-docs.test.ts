@@ -9,15 +9,16 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { cleanLine, firstLinePrompt } from '../src/main/first-line.js'
+import { cleanLine } from '../src/main/first-line.js'
+import { ackPrompt } from './ack-prompt.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
-const COLLEAGUE_RULE = core('agent-voice.ts')
+const COLLEAGUE_RULE = core('prompt.ts')
 async function turn(draft: string, said: string, options: AgentLoopOptions = {}) {
   const jobs: ToolSessionJob[] = [], voiced: string[] = []
   const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick: async (prompt: string) => { voiced.push(prompt); return '안녕하세요!' } } as unknown as Engine
@@ -31,7 +32,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(COLLEAGUE_RULE).toContain('never offer a menu of options or ask how they want it when one reasonable choice exists')
     expect(source('answer.ts')).toContain('tools: everyTool,')
     expect(source('answer.ts')).not.toMatch(/DESK_TOOLS|deskKind/)
-    expect(core('agent-prompt.ts')).toContain('A control that would submit, save, send or buy is pressed like any other - the app stops there itself')
+    expect(core('prompt.ts')).toContain('A control that would submit, save, send or buy is pressed like any other - the app stops there itself')
     expect(core('comet-page-tools.ts')).toContain('The page needs the person to sign in or pass a check.')
   })
   it('tells the turn to make the file with marked blanks, say the choice, and never ask or invent', () => {
@@ -41,14 +42,14 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(core('document-tools.ts')).toContain('give name the same file name and the file in the task folder is replaced in place and stays one file')
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory')
-    expect(ipc).toMatch(/context: \(\) => \[company, [^\]]*attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
+    expect(ipc).toContain('context: () => ({ company, handedBack, attachments: attachments.context, recovery, turn: turn?.context, team: team.note(channel), outputs: priorOutputLines(earlierOutputs)')
   })
   it('opens a document turn with its first step and closes with what is in the file (D2, D4 judge)', () => {
-    const line = firstLinePrompt('위 회의록으로 워드 보고서 만들어줘', true)
+    const line = ackPrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(line).toContain('the step is the first thing done with what the request names, never the document plus "-해볼게요"')
     expect(line).toContain('"회의록 내용부터 추릴게요.", "매출 파일부터 볼게요."')
     expect(line).toContain('never "보고서 작성해볼게요.", "엑셀 파일 만들어볼게요."')
-    expect(firstLinePrompt('Make a report from the notes', false)).toContain('never "Making the report now."')
+    expect(ackPrompt('Make a report from the notes', false)).toContain('never "Making the report now."')
     expect(COLLEAGUE_RULE).toContain('never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요.")')
   })
 })
@@ -99,7 +100,7 @@ describe('a kept fact is corrected by the model\'s own keep_in_mind call (M2)', 
 describe('small talk never sounds like a help desk (Q1)', () => {
   it('a greeting goes to the lead, whose rule says never to ask or offer help, and the quick voice is asked for nothing on it; a line is shown as written', () => {
     expect(COLLEAGUE_RULE).toContain('no asking or offering help in any wording')
-    expect(firstLinePrompt('주말 잘 보내셨어요?', true)).toContain('Reply with exactly NONE when the message is a greeting')
+    expect(ackPrompt('주말 잘 보내셨어요?', true)).toContain('Reply with exactly NONE when the message is a greeting')
     for (const said of ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요! 오늘은 무엇을 도와드릴까요?', '좋은 아침이에요. 뭐 도와드릴까요?', '안녕하세요! 도와드릴 일 있으면 말씀하세요.', '반가워요. 필요하신 게 있으면 말씀해 주세요.', 'Hi there! How can I help you today?', '무엇을 도와드릴까요?']) expect(cleanLine(said), said).toBe(said)
     for (const none of ['NONE', '  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()
   })

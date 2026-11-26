@@ -138,7 +138,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, type FileCard, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, sessionShape, type PermissionMode, type NativeTools, type AgentTool, type FileCard, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -198,7 +198,6 @@ import { withModelCallContext } from './model-call-metrics.js'
 import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
-const HANDED_BACK = 'Your teammates handed back their parts of this job. Write the one result for the person from what they handed back, as its note says.'
 import { appCourier } from './app-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { browserHistory, browserNavigate, browserResize } from './browser-navigation.js'
@@ -2228,7 +2227,7 @@ export function registerIpc(ctx: VaultContext): void {
         const ran = await begun!.run({
           tools: everyTool,
           ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
-          context: () => [company, handedBack ? `${HANDED_BACK}\n${handedBack}` : '', attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n'),
+          context: () => ({ company, handedBack, attachments: attachments.context, recovery, turn: turn?.context, team: team.note(channel), outputs: priorOutputLines(earlierOutputs), plan: permission === 'plan' }),
           tokenBudget: turn?.tokenBudget,
           onUsage: tokens => { tokensUsed += tokens },
           waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runComet } from '../src/agent-session.js'
-import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/prompt.js'
 import { recordFacts } from '../src/bot-memory.js'
 import { createBot, loadBots } from '../src/bots.js'
 import { companyNote, employeesAnswer, handBacks, partOutcome, staffTool, TEAM_MEMORY } from '../src/company-tools.js'

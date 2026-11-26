@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { toolBudgetMs, withinBudget } from '../src/tool-budget.js'
 import { resumeCheckpoint } from '../src/agent-resume.js'
-import { resumeLines } from '../src/agent-prompt.js'
+import { resumeLines } from '../src/prompt.js'
 import { pressCommits } from '../src/press-guard.js'
 
 it.each(['PowerShell', 'Shell'])('allows a 60-second %s call to finish', async name => {

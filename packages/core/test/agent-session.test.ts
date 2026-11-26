@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { ANSWER_NOW, runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
-import { EARLIER_REPLIES_RULE } from '../src/agent-session-shape.js'
+import { EARLIER_REPLIES_RULE } from '../src/prompt.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { MockEngine } from '../src/engine/mock.js'

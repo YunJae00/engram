@@ -11,7 +11,7 @@ import { answer, openWorld } from '../src/main/answer.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(join(__dirname, '../src/main', file), 'utf8')
@@ -21,7 +21,7 @@ const posted = async (draft: string, ask: string): Promise<string> => (await run
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
 const handed = (members: TeamMember[]): { reports: Report[]; note: string } => JSON.parse(handBacks(members)) as { reports: Report[]; note: string }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 afterEach(() => { vi.useRealTimers() })
 
 describe('stack-17: a correction after a lookup reaches the model as typed, with the earlier lookup in the history', () => {

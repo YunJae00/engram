@@ -7,11 +7,11 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { firstLinePrompt } from '../src/main/first-line.js'
+import { ackPrompt } from './ack-prompt.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
-const COLLEAGUE_RULE = core('agent-voice.ts')
+const COLLEAGUE_RULE = core('prompt.ts')
 async function turn(draft: string, said: string, options: AgentLoopOptions = {}) {
   const jobs: ToolSessionJob[] = []
   const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
@@ -85,19 +85,19 @@ describe('decisions and tasks are said once (D1)', () => {
 
 describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
   it('tells the voice which frame is used up and shows other builds', () => {
-    const fresh = firstLinePrompt('위 회의록으로 워드 보고서 만들어줘', true)
+    const fresh = ackPrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(fresh).not.toContain('Your first lines earlier')
-    const later = firstLinePrompt('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true, ['보고서 구성부터 잡을게요.'])
+    const later = ackPrompt('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true, ['보고서 구성부터 잡을게요.'])
     for (const said of ['"보고서 구성부터 잡을게요."', '"엑셀로 바로 묶어 볼게요."', '"3번 슬라이드 제목 바꿀게요."', '"차트까지 넣어서 만들게요."', 'Do not reuse their ending, their last word or their sentence frame']) expect(later, said).toContain(said)
-    expect(firstLinePrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).toBe(firstLinePrompt('회의록 요약해줘', true, ['보고서 구성부터 잡을게요.']).replace('"보고서 구성부터 잡을게요."', '"지금 시세 확인할게요."'))
+    expect(ackPrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).toBe(ackPrompt('회의록 요약해줘', true, ['보고서 구성부터 잡을게요.']).replace('"보고서 구성부터 잡을게요."', '"지금 시세 확인할게요."'))
   })
 
   it('asks the voice to build a line another way after an earlier "…부터" line, and only then', () => {
     const ask = '분기별 지출 내역 표로 정리해줘'
-    const after = firstLinePrompt(ask, true, ['영수증부터 모아 볼게요.'])
+    const after = ackPrompt(ask, true, ['영수증부터 모아 볼게요.'])
     expect(after).toContain('Your first lines earlier in this conversation: "영수증부터 모아 볼게요."')
     expect(after).toContain('Do not reuse their ending, their last word or their sentence frame')
-    expect(firstLinePrompt(ask, true)).not.toContain('Do not reuse their ending')
+    expect(ackPrompt(ask, true)).not.toContain('Do not reuse their ending')
   })
   it('has no host line to build after a voice line: the one safety line is all the host writes, whatever came before', () => {
     const first = source('first-line.ts')

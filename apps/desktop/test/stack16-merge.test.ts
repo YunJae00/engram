@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { WORK_REPLY_RULE } from '../../../packages/core/src/agent-session-shape.js'
+import { WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type View = { id: string; role: string; state: string; result?: string; sources?: string[]; accepted?: boolean }

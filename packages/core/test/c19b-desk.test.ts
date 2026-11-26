@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { runComet } from '../src/agent-session.js'
-import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/prompt.js'
 import { MockEngine } from '../src/engine/mock.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 

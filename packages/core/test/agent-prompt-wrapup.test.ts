@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DESKTOP_TASK_RULE, wrapUpPrompt } from '../src/agent-prompt.js'
+import { wrapUpPrompt } from '../src/agent-prompt.js'
+import { DESKTOP_TASK_RULE } from '../src/prompt.js'
 
 describe('desktop wrap-up guidance', () => {
   it('asks for 했어/못 했어 and never success while moving', () => {

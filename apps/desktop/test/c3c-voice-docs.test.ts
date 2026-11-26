@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { appendBotTurn, initVault, readBotTranscript, sessionRules, type AgentTool, type Engine, type ToolSessionJob } from 'core'
+import { appendBotTurn, initVault, readBotTranscript, type AgentTool, type Engine, type ToolSessionJob } from 'core'
 
 const bus = vi.hoisted(() => ({ sent: [] as { type: string; reset?: boolean; drop?: boolean; text?: string }[] }))
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
@@ -10,10 +10,12 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: stri
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import * as firstLine from '../src/main/first-line.js'
-const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
+import { sessionRules } from '../../../packages/core/test/rules.js'
+const FIRST_LINE_FUNCTIONS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 const functionsOf = (module: object): string[] => Object.entries(module).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { beginFirstLine, endFirstLine, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, SAFETY_LINE, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, endFirstLine, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLineReady, firstLineSaw, firstLineSpoke, SAFETY_LINE, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { firstLineNote } from './ack-prompt.js'
 import { answer, openWorld } from '../src/main/answer.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
@@ -22,7 +24,7 @@ import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
 import { displayTaskAnswer } from '../src/renderer/src/lib/threadLang.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
-const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
+const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/prompt.ts', import.meta.url), 'utf8')
 const tool = (name: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object' }, run: async () => '' })
 const MENU = ['keep_in_mind', 'search_memory', 'file_read', 'find_files', 'file_move', 'ppt_build', 'file_read_package', 'file_edit_package', 'search_web', 'open_page', 'ask_person', 'report_result_check'].map(tool)
 async function lead(message: string, history: { role: 'user' | 'assistant'; text: string }[] = [], quick: (prompt: string) => Promise<string> = async () => 'NONE') {
@@ -233,7 +235,7 @@ describe('nothing is said before or between tool calls once the host has spoken'
         expect(seen.map(one => one.held), narration).toEqual([true, true])
       }
     }
-    expect(source('answer.ts')).toContain('const hold = !!firstLineNote(channel)')
+    expect(source('answer.ts')).toContain('const hold = !!firstLineState(channel)')
   })
 
   it('shows no round of a general turn as it comes, however long', async () => {

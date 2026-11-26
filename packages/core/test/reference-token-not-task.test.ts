@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { REFERENCE_ID_RULE, openRuleLines, stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
-import { sessionRules } from '../src/agent-session-shape.js'
+import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
+import { REFERENCE_ID_RULE } from '../src/prompt.js'
+import { openRuleLines } from './rules.js'
+import { sessionRules } from './rules.js'
 
 const task = '다음주 화요일 거래처 미팅 준비 메모: 견적서 v2 들고 가기, 토큰 CLI-4402'
 const count = (prompt: string) => prompt.split(REFERENCE_ID_RULE).length - 1

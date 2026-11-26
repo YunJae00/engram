@@ -7,7 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { turnRunning, yielding } from '../src/main/comet-memory.js'
 import { learningTools } from '../src/main/learning-wiring.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }

@@ -85,11 +85,10 @@ describe('a question about a named file', () => {
 describe('document and tidy answers', () => {
   const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
   it('closes a document turn with one or two sentences and no list of contents', () => {
-    expect(core('agent-voice.ts')).toContain('never a list of its sections, slides, sheets or contents')
-    expect(core('agent-session-shape.ts')).toContain('never a list of its sections, slides, sheets or contents')
+    expect(core('prompt.ts').match(/never a list of its sections, slides, sheets or contents/g)).toHaveLength(2)
   })
   it('asks for the offer in one place only, at most once across document turns, and exactly once after an extraction', () => {
-    const voice = core('agent-voice.ts')
+    const voice = core('prompt.ts')
     expect(voice.match(/ONE short offer line/g)).toHaveLength(1)
     expect(voice).toContain('An extraction from a file ("할 일만 뽑아줘") ends with exactly ONE short offer line')
     expect(voice).toContain('never as a "(참고: …)" note or an aside')

@@ -3,7 +3,7 @@ import { cometChannel, createCometThreads } from '../src/renderer/src/lib/cometT
 import { threadT } from '../src/renderer/src/lib/threadLang.js'
 import { withRetry } from '../src/renderer/src/lib/stopMark.js'
 import { sidebarPreview } from '../src/renderer/src/lib/sidebarPreview.js'
-import { VOICE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { VOICE_RULE } from '../../../packages/core/src/prompt.js'
 
 const BOT = 'bot-stop-1'
 const channel = cometChannel(BOT)

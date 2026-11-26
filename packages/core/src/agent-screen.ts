@@ -1,5 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
-import { DESKTOP_TASK_RULE } from './agent-prompt.js'
+import { DESKTOP_TASK_RULE } from './prompt.js'
 import { isDesktopTool } from './desktop-tools.js'
 
 export function textStepTools(tools: AgentTool[]): AgentTool[] {

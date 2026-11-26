@@ -1,6 +1,6 @@
 import { join } from 'node:path'
-import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type VaultPaths, type WebCourier } from 'core'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSpoke } from './first-line.js'
+import { addBotTask, calendarLine, createBot, engineCwd, initVault, loadBots, offerStudyTool, removeBotTask, runComet, type AgentLoopResult, type AgentTool, type Engine, type PromptContext, type VaultPaths, type WebCourier } from 'core'
+import { beginFirstLine, endFirstLine, firstLineReady, firstLineSpoke, firstLineState } from './first-line.js'
 import { taskRoot } from './file-work.js'
 import { fetchPlainPage } from './plain-page.js'
 import { addStudyOffer } from './study-offers.js'
@@ -28,13 +28,13 @@ export interface AnswerTrace {
   error?: string
 }
 
-export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' | 'onToken' | 'onReset' | 'onStep' | 'attachmentContext' | 'skills'> {
+export interface AnswerOptions extends Omit<LoopOptions, 'signal' | 'takeSteer' | 'onToken' | 'onReset' | 'onStep' | 'context' | 'skills'> {
   signal?: AbortSignal
   takeSteer?(): string[]
   tools?: AgentTool[]
   imagePaths?: string[]
   ack?: Partial<Omit<AckInputs, 'message' | 'workdir' | 'signal'>>
-  context?(): string
+  context?(): PromptContext
   skills?(): Promise<NonNullable<LoopOptions['skills']>>
   onToken?(text: string, held: boolean): void
   onReset?(drop?: boolean, tool?: string): void
@@ -108,9 +108,8 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
     let streamed = '', firstLine = false, result: AgentLoopResult | undefined, failure: unknown
     const everyTool = tools ?? worldTools(world, message, signal)
     try {
-      const note = firstLineNote(channel)
+      const said = firstLineState(channel)
       const shortlist = skills ? await skills() : undefined
-      const notes = [context?.(), calendarLine(), note].filter(Boolean).join('\n\n')
       result = await runComet({ engine, workdir: engineCwd(paths), tools: everyTool, ...(imagePaths ? { imagePaths } : {}) }, message, {
         guided: false,
         session: botId,
@@ -120,10 +119,10 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
         ...(native ? { native } : {}),
         ...(signal ? { signal } : {}),
         ...(takeSteer ? { takeSteer } : {}),
-        ...(notes ? { attachmentContext: notes } : {}),
+        context: { ...context?.(), calendar: calendarLine(), ...(said ? { firstLine: said } : {}) },
         onStep: line => { trace.steps.push({ line, ms: ms() }); onStep?.(line) },
         onToken: text => {
-          const hold = !!firstLineNote(channel)
+          const hold = !!firstLineState(channel)
           if (!hold) {
             firstLineSpoke(channel)
             streamed += text

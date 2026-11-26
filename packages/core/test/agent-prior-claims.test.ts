@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { sessionRules } from '../src/agent-session-shape.js'
-import { openRuleLines, PRIOR_CLAIM_RULE, skillIndexLines, stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
+import { sessionRules } from './rules.js'
+import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
+import { PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
+import { openRuleLines } from './rules.js'
 
 describe('a comet claims the person did something before only after reading it this turn', () => {
   it('the open rules tie any claim about earlier requests, records or work to a search or read this turn', () => {

@@ -5,13 +5,10 @@ import type { AgentLoopDeps, AgentLoopOptions, AgentLoopResult, AgentLoopStep } 
 import { withinBudget, toolBudgetMs, ToolOverBudget } from './tool-budget.js'
 import { sessionMenu } from './session-menu.js'
 import { runAgentLoop, said } from './agent-loop.js'
-import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
-import { ONE_BUBBLE_RULE } from './agent-voice.js'
 import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
-import { EARLIER_REPLIES_RULE, sessionRules } from './agent-session-shape.js'
+import { promptFor } from './prompt.js'
 import { withoutSecrets } from './secrets.js'
-import { answerLanguageLine } from './task-proposal.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
 import { taskPlan } from './agent-plan.js'
 import { officeWriteUnverified } from './office-verification.js'
@@ -26,7 +23,6 @@ const CALL_CEILING = 300
 const REPEAT_GUARDED = new Set(['press', 'type_text', 'choose', 'press_point', 'page_steps', 'hover', 'reveal'])
 const RECEIPT_ACTIONS = new Set(['press', 'press_point', 'press_key', 'type_text', 'choose', 'page_steps', 'page_do', 'page_each', 'upload_file'])
 const PAGE_MOVES = new Set([...REPEAT_GUARDED, 'press_key', 'scroll', 'open_page', 'search_web', 'read_pages'])
-export const PLAN_RULE = 'Plan mode: read and investigate only. Do not run commands, create or change files, or submit anything; reply with a concrete plan of what you would do and what you need from the person.'
 const CONTENT_TOOLS = new Set(['read_pages', 'file_read', 'file_read_package', 'file_read_workbook', 'read_live_document', 'edit_live_document', 'compose_live_document', 'search_memory', 'read_note', 'open_page', 'read_open_page', 'search_web', 'press', 'type_text', 'choose', 'page_steps', 'scroll', 'hover', 'press_key', 'press_point', 'reveal', 'look', 'page_each', 'look_in_parallel'])
 
 function readSoFar(steps: AgentLoopStep[], history?: AgentLoopOptions['history']): string {
@@ -254,7 +250,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     void back.finally(() => detached.delete(back))
     return withSteer(STILL_RUNNING, said)
   } }))
-  const opening = conversationLines(options.history).join('\n')
+  const built = promptFor(options.role ?? 'lead', { task, flags: { engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native, kind, tools: deps.tools.map(tool => tool.name) }, persona: options.persona, memory: options.memory, history: options.history, onScreen: options.onScreen, context: options.context, resume: options.resume, skills: options.skills })
   let checkedAt = Date.now()
   const watchdog = setInterval(() => {
     const elapsed = Date.now() - checkedAt
@@ -293,14 +289,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       }
     },
     workdir: deps.workdir,
-    system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native, kind, tools: deps.tools.map(tool => tool.name) }),
-    prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
-      ...(options.attachmentContext ? [options.attachmentContext] : []),
-      ...resumeLines(options.resume),
-      ...(desktop ? ['Prior-turn desktop observations are historical: use app_read for background accessibility work, or read_desktop/look_desktop for foreground work, before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
-      ...skillIndexLines(options.skills),
-      ...(kind === 'work' ? [EARLIER_REPLIES_RULE] : []), `Task: ${task}`, answerLanguageLine(task), ONE_BUBBLE_RULE].join('\n'),
-    ...(opening ? { opening } : {}),
+    system: built.system,
+    prompt: built.prompt,
+    ...(built.opening ? { opening: built.opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),
     ...(options.lookup || options.light ? { effort: 'low' as const } : {}),

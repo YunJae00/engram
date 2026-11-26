@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import { createBot } from '../src/bots.js'
 import { assignTool, employeesAnswer, handBacks, partOutcome, type AssignHost } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'

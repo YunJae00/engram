@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runComet } from '../src/agent-session.js'
-import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/agent-voice.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE } from '../src/prompt.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd

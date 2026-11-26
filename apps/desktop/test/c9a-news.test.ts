@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { cometTools, type AgentTool, type Engine, type ToolSessionJob } from 'core'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')

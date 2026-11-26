@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { openRuleLines } from '../src/agent-prompt.js'
+import { openRuleLines } from './rules.js'
 
 describe('a comet answers a hold in its own voice', () => {
   const rule = openRuleLines().find((line) => line.startsWith('Speak to the person directly'))

@@ -80,7 +80,7 @@ it('streams a lookup turn\'s words as they come, like any turn with no ack on sc
   } finally { await rm(root, { recursive: true, force: true }) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("if (!held && !signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text })")
-  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hold = !!firstLineNote(channel)')
+  expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).toContain('const hold = !!firstLineState(channel)')
   expect(ipc).toContain('onReset: (drop, tool) => { broadcast(')
 })
 

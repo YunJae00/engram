@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { resumeCheckpoint } from '../src/agent-resume.js'
-import { resumeLines } from '../src/agent-prompt.js'
+import { resumeLines } from '../src/prompt.js'
 
 it('retains bounded history for incomplete work and questions but not completed tasks', () => {
   const done = { answer: 'Done', steps: [], fellBack: false }

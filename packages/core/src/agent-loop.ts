@@ -9,6 +9,7 @@ import { collectResult, DESKTOP_TOOL_ISOLATION_MESSAGE, extractJson, type Engine
 import { checkOfficeResult } from './office-verification.js'
 import type { WebPage } from './errand.js'
 import type { HarnessMetric } from './harness-metrics.js'
+import { contextText, HELPER_PERSONA, type PromptContext, type PromptRole } from './prompt.js'
 
 export interface AgentToolContext {
   task: string
@@ -54,7 +55,8 @@ export interface AgentLoopOptions {
   compactObservations?: boolean
   onMetric?(metric: HarnessMetric): void
   signal?: AbortSignal
-  attachmentContext?: string
+  context?: PromptContext
+  role?: Exclude<PromptRole, 'ack'>
   persona?: string
   history?: { role: 'user' | 'assistant'; text: string; at?: string; attachments?: string[] }[]
   memory?: string
@@ -185,7 +187,7 @@ async function plainAnswer(deps: AgentLoopDeps, task: string, steps: AgentLoopSt
 
 async function answerText(deps: AgentLoopDeps, task: string, steps: AgentLoopStep[], options: AgentLoopOptions): Promise<string> {
   return collectResult(deps.engine, {
-    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills, options.resume), options.onScreen, deps.tools, options.attachmentContext),
+    prompt: screenPrompt(wrapUpPrompt(task, steps, options.persona, options.history, options.memory, options.guided !== false, options.skills, options.resume), options.onScreen, deps.tools, contextText(options.context)),
     workdir: deps.workdir,
     ...(deps.imagePaths?.length ? { imagePaths: deps.imagePaths } : {}),
     disallowTools: true,
@@ -245,7 +247,7 @@ async function followRead(
 }
 
 export async function runAgentLoop(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
-  return checkOfficeResult(await agentLoop(deps, task, options))
+  return checkOfficeResult(await agentLoop(deps, task, options.role === 'helper' ? { ...options, persona: HELPER_PERSONA } : options))
 }
 
 async function agentLoop(
@@ -294,7 +296,7 @@ async function agentLoop(
     const modelStarted = performance.now()
     try {
       raw = await collectResult(deps.engine, {
-        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools, options.attachmentContext),
+        prompt: screenPrompt(stepPrompt(task, tools, steps, options.persona, options.history, options.memory, guided, options.skills, options.resume), options.onScreen, deps.tools, contextText(options.context)),
         workdir: deps.workdir,
         ...(deps.imagePaths?.length ? { imagePaths: deps.imagePaths } : {}),
         disallowTools: true,

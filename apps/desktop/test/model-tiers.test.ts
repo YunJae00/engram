@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { vaultPaths, type EngineCwd, type ToolSessionJob } from 'core'
-import { FILE_JOB_RULE } from '../../../packages/core/src/agent-voice.js'
+import { FILE_JOB_RULE } from '../../../packages/core/src/prompt.js'
 
 const fixture = vi.hoisted(() => ({
   query: vi.fn(), binary: vi.fn(), flog: vi.fn(), created: [] as string[],
@@ -24,10 +24,12 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
   return { id, detect: async () => ({ installed: true, loggedIn: true }), async *run() { yield { type: 'result', text: 'OK' } } }
 } }))
 
-import { chosenModel, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
+import { chosenModel, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
+import { sessionRules } from '../../../packages/core/test/rules.js'
 import { claudeEngine, claudeInputs, closeClaudeSessions } from '../src/main/engine-cloud.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLinePrompt, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, SAFETY_LINE, wantsFirstLine, warmFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLineReady, firstLineSaw, firstLineSpoke, SAFETY_LINE, wantsFirstLine, warmFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { ackPrompt, firstLineNote } from './ack-prompt.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -121,7 +123,7 @@ describe('instant first line', () => {
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(300)
       expect(live.quick, message).toHaveBeenCalledOnce()
-      expect(live.quick.mock.calls[0]![0], message).toBe(firstLinePrompt(message, true))
+      expect(live.quick.mock.calls[0]![0], message).toBe(ackPrompt(message, true))
     }
   })
 
@@ -133,7 +135,7 @@ describe('instant first line', () => {
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
     expect(show).toHaveBeenCalledExactlyOnceWith('통장 내역부터 모아 볼게요.')
-    expect(quick.mock.calls[0]![0]).toBe(firstLinePrompt('이번 달 카드값 얼마 나왔는지 정리해줘', true, await said()))
+    expect(quick.mock.calls[0]![0]).toBe(ackPrompt('이번 달 카드값 얼마 나왔는지 정리해줘', true, await said()))
     endFirstLine('bot-1')
     show = vi.fn()
     quick = vi.fn(later('후보지 목록부터 뽑을게요.', 200))
@@ -144,20 +146,20 @@ describe('instant first line', () => {
   })
 
   it('shows the voice its earlier lines and asks for nothing on a greeting, a thanks, a telling or a one-step question', () => {
-    const prompt = firstLinePrompt('이 사진 배경 지워줄 수 있어?', true, ['파일부터 열어 볼게요.'])
+    const prompt = ackPrompt('이 사진 배경 지워줄 수 있어?', true, ['파일부터 열어 볼게요.'])
     expect(prompt).toContain('Your first lines earlier in this conversation: "파일부터 열어 볼게요."')
     expect(prompt).toContain('Reply with exactly NONE when the message is a greeting, a thanks, something the person only tells you that asks for nothing, or a question the assistant answers in one reply from what it already knows')
     expect(prompt).toContain('A question that needs anything looked up, read or done, a short ask that leaves its verb out, or an unclear request gets its first step like any other request.')
-    expect(firstLinePrompt('x', true)).not.toContain('Your first lines earlier')
+    expect(ackPrompt('x', true)).not.toContain('Your first lines earlier')
   })
 
   it('never holds the main turn: the note is read without waiting and the turn races the line', () => {
     const ipc = source('ipc.ts'), turn = source('answer.ts')
     expect(ipc).not.toMatch(/beginFirstLine|firstLineNote|await firstLine/)
-    expect(turn).toContain('const note = firstLineNote(channel)')
+    expect(turn).toContain('const said = firstLineState(channel)')
     expect(turn).not.toMatch(/await firstLine/)
-    expect(turn).toContain("const notes = [context?.(), calendarLine(), note].filter(Boolean).join('\\n\\n')")
-    expect(turn).toContain('const hold = !!firstLineNote(channel)')
+    expect(turn).toContain("context: { ...context?.(), calendar: calendarLine(), ...(said ? { firstLine: said } : {}) },")
+    expect(turn).toContain('const hold = !!firstLineState(channel)')
     expect(turn.indexOf('beginFirstLine({')).toBeLessThan(turn.indexOf('runComet('))
   })
 
@@ -217,7 +219,7 @@ describe('instant first line', () => {
     expect(ipc.indexOf('recordedRequests.add(request)')).toBeLessThan(ipc.indexOf('await begun!.run({'))
     const turn = source('answer.ts')
     expect(turn.indexOf('firstLineReady(channel)')).toBeGreaterThan(turn.indexOf('beginFirstLine({'))
-    expect(turn.indexOf('firstLineReady(channel)')).toBeLessThan(turn.indexOf('const note = firstLineNote(channel)'))
+    expect(turn.indexOf('firstLineReady(channel)')).toBeLessThan(turn.indexOf('const said = firstLineState(channel)'))
     expect(ipc).toContain('extractChatCaptures(finishProgress(channel, rawText))')
     expect(ipc).not.toContain('withFirstLine')
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
@@ -291,7 +293,7 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).not.toMatch(/\b(handoff|hire|split|change|direct|handed|summing) = /)
     expect(source('answer.ts')).not.toMatch(/const host\b/)
     expect(source('ipc.ts')).toMatch(/const reporting = company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined\n[^\n]*const handedBack = employeesAnswer\(reporting\)/)
-    expect(source('ipc.ts')).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
+    expect(source('ipc.ts')).toContain('context: () => ({ company, handedBack, attachments: attachments.context')
     expect(source('ipc.ts')).not.toMatch(/lastTeamResult|REPORT_WRITER_MS/)
     expect(source('ipc.ts').slice(source('ipc.ts').indexOf('await begun!.run({'), source('ipc.ts').indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])
   })
@@ -395,7 +397,7 @@ describe('instant first line', () => {
     const { show } = begin(live, { message: '나 이번 달부터 재택근무해' })
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(250)
-    expect(live.quick).toHaveBeenCalledExactlyOnceWith(firstLinePrompt('나 이번 달부터 재택근무해', true), expect.anything())
+    expect(live.quick).toHaveBeenCalledExactlyOnceWith(ackPrompt('나 이번 달부터 재택근무해', true), expect.anything())
     expect(firstLineNote('bot-1')).toBe('')
     firstLineSpoke('bot-1')
     await vi.advanceTimersByTimeAsync(3000)
@@ -593,10 +595,11 @@ describe('Claude command sandbox', () => {
     expect('sandbox' in open).toBe(false)
     const job = (native: typeof boxed): ToolSessionJob => ({ system: 'Rules. Commands are not sandboxed: use only the files and network access needed for this request.', prompt: 'go', tools: [], workdir: WORKDIR, native })
     expect(signatureOf(job(boxed))).not.toBe(signatureOf(job(open)))
-    expect(forSandbox(job(boxed)).system).toContain('Commands run in a sandbox with no network')
-    expect(forSandbox(job(boxed)).system).not.toContain('not sandboxed')
-    expect(forSandbox(job(open)).system).toContain('not sandboxed')
-    expect(readFileSync(resolve(__dirname, '../../../packages/core/src/agent-session-shape.ts'), 'utf8')).toContain('Commands are not sandboxed: use only the files and network access needed for this request.')
+    const rules = (native: typeof boxed): string => sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, native })
+    expect(rules(boxed)).toContain('Commands run in a sandbox with no network')
+    expect(rules(boxed)).not.toContain('not sandboxed')
+    expect(rules(open)).toContain('Commands are not sandboxed: use only the files and network access needed for this request.')
+    expect(source('engine-claude.ts')).not.toMatch(/system\.replace\(/)
     expect(source('engine-claude-session.ts')).toContain("'sandbox' in job.native ? { sandbox: job.native.sandbox }")
   })
 })

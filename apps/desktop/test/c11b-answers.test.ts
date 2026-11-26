@@ -6,7 +6,7 @@ import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.
 import * as firstLine from '../src/main/first-line.js'
 
 const src = (file: string): string => readFileSync(new URL(`../src/main/${file}`, import.meta.url), 'utf8')
-const voice = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
+const voice = readFileSync(new URL('../../../packages/core/src/prompt.ts', import.meta.url), 'utf8')
 async function turn(page: string, ask: string, draft: string) {
   const quick = vi.fn(async () => '')
   let out = ''
@@ -27,7 +27,7 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
       const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '도서관 휴관 안내를 영문 문장 하나로 적어줘', { guided: false })
       expect(result.answer, answer).toBe(answer)
     }
-    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine'])
+    expect(Object.keys(firstLine).filter(key => typeof (firstLine as Record<string, unknown>)[key] === 'function').sort()).toEqual(['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine'])
     expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
     const ipc = src('ipc.ts')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).match(/result\.answer = \w+/g)).toEqual(['result.answer = answered'])

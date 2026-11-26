@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { companyNote, createBot, createTask, handBacks, keepRead, keepSources, listTasks, loadBots, RELEVANCE_RULE, runToolSession, skipWalls, staffTool, timeBoxed, updateTask, vaultPaths, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { personaLines } from 'core/src/agent-prompt'
+import { leadPrompt } from '../../../packages/core/test/rules.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
@@ -110,7 +110,7 @@ describe('R3 replay', () => {
 describe('H1 replay', () => {
   it('the lunch ask with the knee fact in memory: the prompt carries the relevance rule, the ask reaches the model as typed with no host note on its length, and the pick is posted as written', async () => {
     const memory = '- 다음 주 목요일에 부모님 모시고 제주도 가요. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어요'
-    const lines = personaLines('persona', memory)
+    const lines = leadPrompt({ persona: 'persona', memory }).split('\n')
     console.log(`[replay H1] ${lines.slice(1).join(' | ')}`)
     expect(lines).toContain(RELEVANCE_RULE)
     const jobs: { told: string; prompt: string; modelHint?: string }[] = []

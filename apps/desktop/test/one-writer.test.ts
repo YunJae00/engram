@@ -96,7 +96,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     ])
     expect(back.note).toContain('markdown link')
     let seen = ''
-    const result = await runComet({ engine: brain(async job => { seen = `${job.system}\n${job.prompt}`; return DRAFT }), workdir: '.', tools: [] }, task.goal, { guided: false, modelHint: 'smart', attachmentContext: `Your teammates handed back their parts of this job.\n${handedBack}` })
+    const result = await runComet({ engine: brain(async job => { seen = `${job.system}\n${job.prompt}`; return DRAFT }), workdir: '.', tools: [] }, task.goal, { guided: false, modelHint: 'smart', context: { handedBack } })
     for (const words of ['등대는 토요일 9시에 열어요.', 'https://harbor.example/notice/41', '방파제 산책로는 공사로 닫혀 있어요.', 'https://harbor.example/works', '다온']) expect(seen).toContain(words)
     expect(result.answer).toBe(DRAFT)
     expect(stored(result.answer)).toBe(DRAFT)
@@ -112,7 +112,7 @@ describe('what the model wrote is what the thread stores, in every lane', () => 
     expect(ipc).toContain('const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))')
     expect(ipc).toContain("await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned,")
     expect(ipc).toContain("...(files.length ? { files: [...files] } : {}) }).catch(() => undefined)")
-    expect(ipc).toContain("handedBack ? `${HANDED_BACK}\\n${handedBack}` : ''")
+    expect(ipc).toContain('context: () => ({ company, handedBack, attachments: attachments.context')
     expect(ipc).not.toMatch(/\.replace\([^\n]*result\.answer|result\.answer\.replace\(/)
   })
 })

@@ -6,7 +6,7 @@ import * as core from 'core'
 import { createBot, createTask, employeeNote, employeesAnswer, handBacks, listTasks, memberPersona, partOutcome, settleMember, TAKEN_OFF, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type Hired = { members: { id: string; role: string; state: string; accepted?: boolean; result?: string; sources?: string[] }[]; note: string }

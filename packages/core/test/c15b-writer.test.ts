@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { runToolSession } from '../src/agent-session.js'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import { recordFacts } from '../src/bot-memory.js'
 import { createBot, loadBots } from '../src/bots.js'
 import * as company from '../src/company-tools.js'

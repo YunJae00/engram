@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import { openRuleLines } from '../src/agent-prompt.js'
-import { sessionRules } from '../src/agent-session-shape.js'
-import { COLLEAGUE_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/agent-voice.js'
+import { openRuleLines } from './rules.js'
+import { sessionRules } from './rules.js'
+import { COLLEAGUE_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
 import { documentTools } from '../src/document-tools.js'
 import { DOCUMENT_CHECK_RULE } from '../src/office-verification.js'
 

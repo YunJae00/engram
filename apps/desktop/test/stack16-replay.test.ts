@@ -8,8 +8,8 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answer, openWorld } from '../src/main/answer.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
-import { openRuleLines } from 'core/src/agent-prompt'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
+import { openRuleLines } from '../../../packages/core/test/rules.js'
 
 const posted = async (draft: string, ask: string): Promise<string> => (await runToolSession({ engine: { id: 'mock', runTools: async () => ({ answer: draft }) } as never, workdir: '/x', tools: [] }, ask, {})).answer
 const looking = (search: AgentTool, left = 28_000): { tool: AgentTool; seen: Set<string>; kept: string[] } => { const seen = new Set<string>(), kept: string[] = []; return { tool: timeBoxed(keepRead(keepSources(skipWalls(search), seen), kept), () => left), seen, kept } }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { openRuleLines, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines, stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
-import { sessionRules } from '../src/agent-session-shape.js'
-import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from '../src/agent-voice.js'
+import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
+import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
+import { openRuleLines } from './rules.js'
+import { sessionRules } from './rules.js'
+import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from '../src/prompt.js'
 
 describe('a comet speaks to the person, not about them', () => {
   it('the open rules ask for direct, first-person progress lines and forbid third-person narration', () => {

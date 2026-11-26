@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentLoopStep, AgentTool } from '../src/agent-loop.js'
-import { DESKTOP_TASK_RULE, pickTools, stepPrompt } from '../src/agent-prompt.js'
+import { pickTools, stepPrompt } from '../src/agent-prompt.js'
+import { DESKTOP_TASK_RULE } from '../src/prompt.js'
 import { runToolSession } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'

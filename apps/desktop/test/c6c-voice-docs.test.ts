@@ -7,11 +7,12 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { runToolSession, type Engine, type EngineCwd, type ToolSessionJob } from 'core'
 const answerSetInTurn = (ipc: string): number => ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('answerDelivered = true')).split('result.answer = ').length - 1
-import { COLLEAGUE_RULE as VOICE } from '../../../packages/core/src/agent-voice.js'
-import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, firstLinePrompt, firstLineReady } from '../src/main/first-line.js'
+import { COLLEAGUE_RULE as VOICE } from '../../../packages/core/src/prompt.js'
+import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
+import { ackPrompt } from './ack-prompt.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
-const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/agent-voice.ts', import.meta.url), 'utf8')
+const COLLEAGUE_RULE = readFileSync(new URL('../../../packages/core/src/prompt.ts', import.meta.url), 'utf8')
 async function deskTurn(draft: string, said: string) {
   const jobs: ToolSessionJob[] = []
   const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } } } as unknown as Engine
@@ -38,7 +39,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(got.prompt).toContain('"메모 내용부터 훑어볼게요.", "일정표부터 훑어볼게요."')
     expect(got.line).toBe('시간 순서부터 훑어볼게요.')
     expect(got.shown).toBe(1)
-    expect(firstLinePrompt('다음 주 워크숍 진행표 만들어줘', true, earlier)).toBe(firstLinePrompt('다음 주 워크숍 진행표 만들어줘', true, ['메모 내용 볼게요.', '일정표 열게요.']).replace('"메모 내용 볼게요.", "일정표 열게요."', '"메모 내용부터 훑어볼게요.", "일정표부터 훑어볼게요."'))
+    expect(ackPrompt('다음 주 워크숍 진행표 만들어줘', true, earlier)).toBe(ackPrompt('다음 주 워크숍 진행표 만들어줘', true, ['메모 내용 볼게요.', '일정표 열게요.']).replace('"메모 내용 볼게요.", "일정표 열게요."', '"메모 내용부터 훑어볼게요.", "일정표부터 훑어볼게요."'))
   })
 
   it('three document asks the voice has no line for show nothing of their own, and only the one safety line stands in at 1.3 s', async () => {
@@ -56,7 +57,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
   it('a split asked as a question is the voice\'s to name: its prompt carries the split rule and its line is posted as written', async () => {
     const ask = '하은이랑 수진한테 나눠서 숙소 알아봐 줄래?'
-    expect(firstLinePrompt(ask, true)).toContain('the line says the split in their words')
+    expect(ackPrompt(ask, true)).toContain('the line says the split in their words')
     expect((await run(ask, '하은이랑 수진한테 나눠 맡길게요.', [])).line).toBe('하은이랑 수진한테 나눠 맡길게요.')
     expect((await run('둘이 뭐 하고 있어?', '지금 확인해 볼게요.', [])).line).toBe('지금 확인해 볼게요.')
   })
@@ -71,7 +72,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(second.shown).toBe(1)
     expect(second.line).toBe('3분기 실적 내용부터 정리할게요.')
     expect((await run(DOCS[2]!, '월별로 먼저 더해 볼게요.', [first.line!, second.line!])).line).toBe('월별로 먼저 더해 볼게요.')
-    expect(firstLinePrompt('x 정리해줘', true, ['하나 볼게요.', '둘 볼게요.', '셋 볼게요.'])).not.toContain('하나 볼게요.')
+    expect(ackPrompt('x 정리해줘', true, ['하나 볼게요.', '둘 볼게요.', '셋 볼게요.'])).not.toContain('하나 볼게요.')
   })
 
   it('never shows a voice line over 60 characters as the acknowledgement (rule 1)', async () => {
@@ -84,7 +85,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect([...edge].length).toBe(60)
     expect((await run(DOCS[0]!, edge, [])).line).toBe(edge)
     expect(cleanLine(long)).toBe(long)
-    expect(firstLinePrompt('x 정리해줘', true)).toContain('at most 40 characters')
+    expect(ackPrompt('x 정리해줘', true)).toContain('at most 40 characters')
   })
 
   it('keeps the budget and asks the voice once on a turn that only needs a first line', async () => {
@@ -99,7 +100,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
   it('a split ask is told to the voice as a split, and the voice line is posted as written (T3)', async () => {
     const T3 = '아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜'
-    expect(firstLinePrompt(T3, true)).toContain('the line says the split in their words ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")')
+    expect(ackPrompt(T3, true)).toContain('the line says the split in their words ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")')
     for (const ask of [T3, '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '이번 주 경쟁사 3곳 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜']) {
       expect((await run(ask, '가격표부터 훑어볼게요.', [])).line, ask).toBe('가격표부터 훑어볼게요.')
       expect((await run(ask, '셋이 나눠서 알아볼게요.', [])).line).toBe('셋이 나눠서 알아볼게요.')

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { createBot } from '../src/bots.js'
 import { HOST_TODAY } from '../src/comet-navigation-tools.js'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import * as company from '../src/company-tools.js'
 import { companyNote, companyStatus, employeeWriteBack, handBacks, partOutcome, teamRecord } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, LOOKUP_TOOLS, TEAM_ANSWER_MS, updateTask, WORK_REPLY_RULE, type AgentTool, type VaultPaths } from 'core'
 import type { ToolSessionJob } from '../../../packages/core/src/engine/types.js'
 import { COLLECTION_RULE } from '../../../packages/core/src/collection-progress.js'
-import { CHOICE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { CHOICE_RULE } from '../../../packages/core/src/prompt.js'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 

@@ -25,9 +25,6 @@ function runPurpose(): string {
 }
 const tier = (purpose: string, model: string, hint = 'work'): string => { flog('model-tier', JSON.stringify({ purpose, hint, model })); return model }
 
-const UNSANDBOXED = 'Commands are not sandboxed: use only the files and network access needed for this request.'
-const SANDBOXED = 'Commands run in a sandbox with no network and writes only inside the task folder. A command that needs more may ask to run outside the sandbox; the person approves each one.'
-export const forSandbox = (job: ToolSessionJob): ToolSessionJob => job.native && 'sandbox' in job.native ? { ...job, system: job.system.replace(UNSANDBOXED, SANDBOXED) } : job
 
 interface AgentSdk {
   query(params: { prompt: string; options?: Record<string, unknown> }): AsyncIterable<SdkMessage>
@@ -280,7 +277,6 @@ export class ClaudeEngine implements CloudEngine {
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = this.inputs.binary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
-    job = forSandbox(job)
     const lease = await workerPool.lease(job.signal)
     if (!lease) return { answer: '', error: 'canceled' }
     job.onStart?.()
@@ -294,7 +290,6 @@ export class ClaudeEngine implements CloudEngine {
     if (job.signal?.aborted) return
     const binary = this.inputs.binary()
     if (!binary || !job.native) return
-    job = forSandbox(job)
     const [sdk, model] = await Promise.all([this.sdk(), chosenModel(), this.inputs.loadConnections()])
     if (job.signal?.aborted) return
     this.inputs.sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env, started: this.inputs.started }, job)

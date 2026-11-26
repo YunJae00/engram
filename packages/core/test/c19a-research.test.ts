@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import { employeesAnswer, handBacks } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { withoutRepeats } from '../src/search-template.js'

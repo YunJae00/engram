@@ -26,7 +26,7 @@ describe('answer is the one entry the app and the runner share', () => {
     const engine = fake(async job => { told = [job.system, job.opening, job.prompt].join('\n'); menu = job.tools.map(tool => tool.name); return '반납일은 금요일이에요.' })
     const shelf: AgentTool = { name: 'shelf_lookup', description: 'finds a book on the shelf', argsSchema: { type: 'object' }, run: async () => '3층 서가' }
     const world = { ...await openWorld(await temp(), engine), history: [{ role: 'user' as const, text: '지난주에 빌린 책은 "바다의 지도"야' }, { role: 'assistant' as const, text: '"바다의 지도" 기억할게요.' }] }
-    const { trace, result } = await answer(world, '그 책 반납일 언제야?', { tools: [shelf], persona: 'You are 하람, the reading-room helper.', memory: 'The person reads on the 3rd floor.', context: () => 'The library closes at 9.' })
+    const { trace, result } = await answer(world, '그 책 반납일 언제야?', { tools: [shelf], persona: 'You are 하람, the reading-room helper.', memory: 'The person reads on the 3rd floor.', context: () => ({ turn: 'The library closes at 9.' }) })
     expect(told).toContain('하람, the reading-room helper')
     expect(told).toContain('The person reads on the 3rd floor.')
     expect(told).toContain('바다의 지도')

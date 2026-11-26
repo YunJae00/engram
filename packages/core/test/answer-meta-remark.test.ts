@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sessionRules } from '../src/agent-session-shape.js'
+import { sessionRules } from './rules.js'
 
 const flagSets = [
   { engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false },

@@ -8,7 +8,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type Report = { who: string; part?: string; state: string; result: string; sources?: string[] }
@@ -63,7 +63,7 @@ describe('stack-18: "못 찾았어요" agrees (c18a missing × c18b writer and f
     expect(count(shown.answer, '운영시간')).toBe(1)
   })
   it('there is no fallback text: the hand-back is given only to the lead\'s step in the turn context, and saying a missing point is the model\'s rule', () => {
-    expect(ipc).toContain('handedBack ? `${HANDED_BACK}\\n${handedBack}` : \'\'')
+    expect(ipc).toContain('context: () => ({ company, handedBack, attachments: attachments.context')
     expect(ipc.split('\n').filter(line => line.includes('handedBack')).every(line => !/broadcast\(|appendBotTurn\(/.test(line))).toBe(true)
     expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place')
     expect(handed(members()).note).toContain('Say plainly which part failed or is missing.')

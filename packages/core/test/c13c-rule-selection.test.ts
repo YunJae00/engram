@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { runToolSession } from '../src/agent-session.js'
-import { COMMAND_STEP_RULE, EARLIER_REPLIES_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, sessionRules, sessionShape, TEXTING_RULE, WORK_REPLY_RULE } from '../src/agent-session-shape.js'
-import { DESKTOP_TASK_RULE } from '../src/agent-prompt.js'
-import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, RESULT_FIRST_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/agent-voice.js'
+import { sessionShape } from '../src/agent-session-shape.js'
+import { COMMAND_STEP_RULE, EARLIER_REPLIES_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
+import { sessionRules } from './rules.js'
+import { DESKTOP_TASK_RULE } from '../src/prompt.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, RESULT_FIRST_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
 import { COLLECTION_RULE } from '../src/collection-progress.js'
 import { DOCUMENT_CHECK_RULE } from '../src/office-verification.js'
 import { LOOKUP_TOOLS } from '../src/team-hire-tools.js'
@@ -155,7 +157,7 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
 describe('stack-13: a gate follows the tools a session holds, never the turn kind', () => {
   const every = ['file_read', 'file_create_copy', 'file_move', 'open_page', 'app_press', 'app_set', 'desktop_sequence', 'search_web']
   it('a short or lookup session holding files and desktop tools keeps their gates; one holding neither gets none', async () => {
-    const { DESKTOP_GATE_RULE } = await import('../src/agent-prompt.js')
+    const { DESKTOP_GATE_RULE } = await import('../src/prompt.js')
     for (const kind of ['short', 'lookup'] as const) {
       const holds = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(count(holds, DESKTOP_GATE_RULE), kind).toBe(1)

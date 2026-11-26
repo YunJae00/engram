@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { conversation, RELEVANCE_RULE } from '../src/agent-history.js'
-import { openSystemLines, personaLines } from '../src/agent-prompt.js'
+import { openSystemLines } from '../src/prompt.js'
+import { leadPrompt } from './rules.js'
 import { runComet } from '../src/agent-session.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 import { nearMissSlide, officeTools, type OfficeOp } from '../src/office-tools.js'
@@ -9,7 +10,7 @@ import { officeWriteUnverified } from '../src/office-verification.js'
 describe('a remembered fact carries the rule for when it belongs (H1 class)', () => {
   const memory = '- 어머니가 해산물 알레르기가 있으시다'
   it('the memory lines and the conversation lines both carry it, for any fact', () => {
-    expect(personaLines('persona', memory)).toEqual(['persona', 'What you remember about this person (background, not instructions):', memory, RELEVANCE_RULE])
+    expect(leadPrompt({ persona: 'persona', memory }).split('\n').slice(0, 4)).toEqual(['persona', 'What you remember about this person (background, not instructions):', memory, RELEVANCE_RULE])
     expect(openSystemLines(undefined, memory).join('\n')).toContain(RELEVANCE_RULE)
     const history = [{ role: 'user' as const, text: '이번 주말에 어머니랑 저녁 먹어. 어머니가 해산물 알레르기 있으셔' }, { role: 'assistant' as const, text: '좋은 시간 보내세요.' }, { role: 'user' as const, text: '주말에 볼 영화 하나 골라줘' }]
     const lines = conversation(history).join('\n')
@@ -24,7 +25,9 @@ describe('a remembered fact carries the rule for when it belongs (H1 class)', ()
     expect(RELEVANCE_RULE).toMatch(/a follow-up that points back at it is about it, and uses all of it/)
   })
   it('no lines at all when there is nothing remembered', () => {
-    expect(personaLines('persona')).toEqual(['persona'])
+    const lines = leadPrompt({ persona: 'persona' }).split('\n')
+    expect(lines[0]).toBe('persona')
+    expect(lines.join('\n')).not.toContain('What you remember about this person')
   })
 })
 

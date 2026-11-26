@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { AgentLoopStep } from '../src/agent-loop.js'
 import { routineTask } from '../src/routine-task.js'
-import { openRuleLines, pickTools } from '../src/agent-prompt.js'
+import { pickTools } from '../src/agent-prompt.js'
+import { openRuleLines } from './rules.js'
 
 const page = { url: 'https://example.test/app', title: 'App', text: 'Ready Saved', links: [] }
 const check = { id: 'save', url: page.url, ready: 'Ready', present: ['Saved'], absent: ['Failed'] }

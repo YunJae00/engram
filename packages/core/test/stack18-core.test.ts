@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runToolSession } from '../src/agent-session.js'
-import { COLLEAGUE_CORE_RULE } from '../src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../src/prompt.js'
 import { employeesAnswer, handBacks, handoffBrief, handoffShown, partOutcome } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { MockEngine } from '../src/engine/mock.js'

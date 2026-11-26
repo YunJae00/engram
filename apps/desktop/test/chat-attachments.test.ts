@@ -279,7 +279,7 @@ it('keeps attachment context and native images in both normal and fallback model
   } }
   const imagePaths = [join(paths.cache, 'chat-attachments', 'approved-image.png')]
   for (const maxCalls of [0, 1]) {
-    await runComet({ engine, workdir: engineCwd(paths), tools: [], imagePaths }, 'What is the delivery date?', { maxCalls, guided: false, attachmentContext: read.context })
+    await runComet({ engine, workdir: engineCwd(paths), tools: [], imagePaths }, 'What is the delivery date?', { maxCalls, guided: false, context: { attachments: read.context } })
   }
   expect(jobs.length).toBeGreaterThanOrEqual(2)
   for (const job of jobs) {

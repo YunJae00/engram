@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { openRuleLines } from '../src/agent-prompt.js'
+import { openRuleLines } from './rules.js'
 
 it('instructs the engine to complete and verify work within the same turn', () => {
   const rules = openRuleLines().join('\n')

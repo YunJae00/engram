@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, dateLine, handBacks, keptItems, LATE_CEILING_MS, LOOKUP_RULE, memberTask, partOutcome, TEAM_ANSWER_MS, settleMember, updateTask, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
 const AT = '2026-11-18T03:00:00.000Z'
 const member = (id: string, role: string, brief: string, topic: string, over: Partial<TeamMember> = {}): TeamMember =>

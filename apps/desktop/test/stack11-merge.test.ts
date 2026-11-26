@@ -5,7 +5,7 @@ import * as core from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answerOnly } from '../src/main/result-check.js'
 import * as firstLine from '../src/main/first-line.js'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 
 const AT = '2026-11-18T03:00:00.000Z'
 const member = (id: string, role: string, brief: string, topic: string, over: Partial<TeamMember> = {}): TeamMember =>
@@ -21,7 +21,7 @@ const posted = async (draft: string, ask: string): Promise<string> => answerOnly
 const ipc = (): string => readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 const ipcTurn = (): string => { const all = ipc(), from = all.indexOf('await begun!.run({'); return all.slice(from, all.indexOf('answerDelivered = true', from)) }
 const fns = (mod: object): string[] => Object.entries(mod).filter(([, value]) => typeof value === 'function').map(([name]) => name).sort()
-const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineNote', 'firstLinePrompt', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'wantsFirstLine', 'warmFirstLine']
+const FIRST_FNS = ['beginFirstLine', 'cleanLine', 'endFirstLine', 'firstLineCarried', 'firstLineReady', 'firstLineSaw', 'firstLineSpoke', 'firstLineState', 'wantsFirstLine', 'warmFirstLine']
 
 describe('stack-11 merge: a team answer is never cut by wording on its way through ipc.ts', () => {
   const ASK = '밀밭제과랑 호두당 이번 달 새 빵 찾아줘. 다온이랑 시우한테 나눠서'

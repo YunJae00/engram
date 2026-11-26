@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import stack5 from './fixtures/grokbar-stack5-team.json' with { type: 'json' }
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from '../src/index.js'
-import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
+import { TEAM_LEAD_RULE } from '../src/prompt.js'
 import { foundNothing, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, keepRead, keepSources, keepTitle, priorPriceQuery, sourceName, timeBoxed, periodsIn, dateLine, datedQuery, ANSWER_FROM_THIS, LOOKUP_CALL_MS, LOOKUP_ROUND_MS, MERGED_SHAPE, answeredLookup, AUTO_REVIEW, skipWalls, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 import * as hireTools from '../src/team-hire-tools.js'
 import { deadOf, NO_LIVE_SOURCE, withLiveSources } from '../src/team-hire-tools.js'

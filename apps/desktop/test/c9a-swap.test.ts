@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import type { AgentTool, Engine, ToolSessionJob } from 'core'
-import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/agent-voice.js'
+import { COLLEAGUE_CORE_RULE } from '../../../packages/core/src/prompt.js'
 import { answer, openWorld } from '../src/main/answer.js'
 
 const engineOf = (lead: (job: ToolSessionJob, call: number) => Promise<string>): { engine: Engine; jobs: ToolSessionJob[] } => {
