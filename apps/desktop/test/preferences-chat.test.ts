@@ -24,14 +24,15 @@ import { preferenceHost } from '../src/main/preferences-chat.js'
 
 const rules = { reviewRules: vi.fn(async () => [{ kind: 'ask-first' as const, operation: 'submit', target: 'naver.com' }]), addReviewRule: vi.fn(), removeReviewRule: vi.fn() }
 const ctx = { git: {}, paths: { cache: '/fake/vault/.engram' } } as never
+const card = { yes: false }
 const chat = () => {
-  const tool = preferences(preferenceHost(ctx, rules)).tool('b', () => said)
-  let said = ''
-  return (person: string, args: Record<string, unknown>) => { said = person; return tool.run(args, { task: person }) }
+  const tool = preferences(preferenceHost(ctx, rules)).tool(async () => card.yes)
+  return (person: string, args: Record<string, unknown>) => tool.run(args, { task: person })
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  card.yes = false
   delete process.env['ENGRAM_USERDATA']
   fake.settings = { autoStart: true, workMap: true, workFiles: true, workApps: true, teamSync: 'auto', theme: 'system', appsOff: [] }
 })
@@ -81,24 +82,25 @@ it('exports logs without a folder picker, and away from the real Downloads when 
   expect(fake.dialog).not.toHaveBeenCalled()
 })
 
-it('widening waits for the person\'s yes: a rule is not removed, a source not turned on and a repository not connected before it', async () => {
+it('widening waits for a yes on the approval card: a rule is not removed, a source not turned on and a repository not connected before it', async () => {
   const call = chat()
   const loosen = { do: 'ask_first', name: 'naver.com', on: false }
-  await call('naver.com은 이제 그냥 해', loosen)
-  await call('아뇨', loosen)
+  expect(await call('naver.com 확인 절차 빼', loosen)).toBe('그대로 둘게요.')
   expect(rules.removeReviewRule).not.toHaveBeenCalled()
   const repo = { do: 'backup_connect', name: 'https://github.com/me/notes' }
-  expect(await call('https://github.com/me/notes 에 노트 올려줘', repo)).toBe('https://github.com/me/notes에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
+  expect(await call('https://github.com/me/notes 에 노트 올려줘', repo)).toBe('그대로 둘게요.')
+  expect(await call('네', repo)).toBe('그대로 둘게요.')
   expect(fake.connect).not.toHaveBeenCalled()
-  await call('네', repo)
-  expect(fake.connect).toHaveBeenCalledOnce()
   fake.settings['workMap'] = false
   const places = { do: 'learn_places', on: true }
   await call('들른 사이트 다시 봐도 돼', places)
   expect(fake.settings['workMap']).toBe(false)
-  await call('네', places)
+  card.yes = true
+  await call('들른 사이트 다시 봐도 돼', places)
   expect(fake.settings['workMap']).toBe(true)
   expect(fake.workMap).toHaveBeenLastCalledWith(true)
+  await call('https://github.com/me/notes 에 노트 올려줘', repo)
+  expect(fake.connect).toHaveBeenCalledOnce()
   expect(fake.dialog).not.toHaveBeenCalled()
 })
 
@@ -108,5 +110,5 @@ it('the chat handler has no settings reply of its own: every sentence reaches th
   const handler = ipc.slice(ipc.indexOf('async function handleChatSend('))
   expect(ipc).not.toMatch(/settingsChat\.(say|opening)\(/)
   expect(handler).not.toContain('isPersonSentence(')
-  expect(ipc).toContain("settingsChat.tool(channel, () => turnGoals.get(channel) ?? '')")
+  expect(ipc).toContain("settingsChat.tool(async words => !studying.has(channel) && await team.askFor(channel, async () => 'approve')?.({ words, url: 'engram://preferences/' }) === 'approve')")
 })

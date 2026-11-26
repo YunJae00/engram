@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from '../src/main/usage-limit.js'
+import { claudeRetryAfterMs, signInMessage, threadKorean, usageLimitMessage } from '../src/main/usage-limit.js'
 
 it('says in the thread language when Claude can pick the work up again', () => {
   const now = new Date(2026, 10, 14, 13, 0).getTime()
@@ -26,4 +26,15 @@ it('keeps the thread language when the latest reply has no letters', () => {
   expect(threadKorean('2', [{ text: 'make the report' }])).toBe(false)
   expect(threadKorean('ok', [{ text: '보고서 만들어 줘' }])).toBe(false)
   expect(threadKorean('응', [])).toBe(true)
+})
+
+it('with no AI connected, the reply is the one sign-in line in the thread language, stored as the turn, not an English error', async () => {
+  expect(signInMessage(true).replaceAll('AI', '')).toMatch(/^[^A-Za-z]+$/)
+  expect(signInMessage(false)).toContain('Sign in')
+  const { readFile } = await import('node:fs/promises')
+  const ipc = await readFile('apps/desktop/src/main/ipc.ts', 'utf8')
+  const handler = ipc.slice(ipc.indexOf('async function handleChatSend('), ipc.indexOf('const steer = bot?.primary'))
+  expect(handler).not.toContain('is not connected')
+  expect(handler).toContain(': signInMessage(korean)')
+  expect(handler.indexOf('await recordAsk()')).toBeLessThan(handler.indexOf('signInMessage('))
 })

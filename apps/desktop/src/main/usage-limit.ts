@@ -26,6 +26,10 @@ export function usageLimitMessage(korean: boolean, until?: number, now = Date.no
   return `AI usage limit reached. I can pick this up again around ${clock}.`
 }
 
+export function signInMessage(korean: boolean): string {
+  return korean ? 'AI가 아직 연결되지 않았어요. 설정에서 AI에 로그인하면 바로 이어서 할게요.' : 'No AI is connected yet. Sign in to an AI in Settings and I will pick this up right away.'
+}
+
 export function threadKorean(message: string, history: { text: string }[]): boolean {
   if (/[가-힣]/.test(message)) return true
   if (/[A-Za-z]/.test(message)) return false

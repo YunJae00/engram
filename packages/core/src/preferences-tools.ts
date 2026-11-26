@@ -162,29 +162,14 @@ async function apply(host: PreferenceHost, ask: PreferenceAsk, now: Date): Promi
   }
 }
 
-const YES = /^(응|ㅇㅇ|ㅇ|네|넵|예|그래|좋아|맞아|어|웅|해\s*줘|해|그렇게\s*해|허용|허용해|연결해|ok|okay|yes|y|sure)\s*(요|줘|주세요)?$/iu
-const NO = /^(아니|아니요|아뇨|ㄴㄴ|안\s*돼|하지\s*마|됐어|취소|no|n|nope)\s*(요)?$/iu
-const PENDING_MS = 10 * 60_000
-const named = (ask: PreferenceAsk, turn: string): boolean => {
-  if (ask.do !== 'auto_allow' && ask.do !== 'backup_connect') return true
-  const said = turn.toLowerCase()
-  if (ask.do === 'auto_allow') return said.includes(ask.name!)
-  const repo = /github\.com[/:]([\w.-]+\/[\w.-]+?)(\.git)?$/i.exec((ask.name ?? '').trim().replace(/\/+$/, ''))?.[1]?.toLowerCase()
-  return !!repo && said.includes(repo)
-}
-const same = (one: PreferenceAsk, other: PreferenceAsk): boolean => one.do === other.do && one.on === other.on && (one.name ?? '').trim().toLowerCase() === (other.name ?? '').trim().toLowerCase()
-
 export interface Preferences {
-  tool(channel: string, said: () => string): AgentTool
+  tool(ask?: (words: string) => Promise<boolean>): AgentTool
 }
 
 export function preferences(host: PreferenceHost, clock: () => Date = () => new Date()): Preferences {
-  const pending = new Map<string, { ask: PreferenceAsk; at: number; turn: string }>()
   const failed = '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'
   const done = (ask: PreferenceAsk) => apply(host, ask, clock()).catch(() => failed)
-  const settle = async (channel: string, said: PreferenceAsk, turn: string): Promise<string> => {
-    const held = pending.get(channel)
-    pending.delete(channel)
+  const settle = async (said: PreferenceAsk, confirm?: (words: string) => Promise<boolean>): Promise<string> => {
     const ask: PreferenceAsk = { ...said, on: said.do === 'ask_first' ? said.on !== false : said.on === true }
     if (!widens(ask)) return done(ask)
     if ((ask.do === 'app' || ask.do === 'auto_allow') && !ask.name?.trim()) return done(ask)
@@ -194,25 +179,17 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow') { const site = siteOf(ask.name ?? ''); if (!site) return done(ask); ask.name = site }
-    const fresh = !held || !same(held.ask, ask) || held.turn === turn
-    if (fresh && !named(ask, turn)) return ask.do === 'auto_allow' ? `${ask.name}에서 묻지 않고 제출하는 건 그 사이트를 직접 말씀해 주셔야 바꿀 수 있어요.` : '백업 연결은 저장소 주소를 직접 말씀해 주셔야 할 수 있어요.'
-    const answer = turn.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
-    if (held && same(held.ask, ask) && held.turn !== turn && clock().getTime() - held.at <= PENDING_MS) {
-      if (YES.test(answer)) return done(ask)
-      if (NO.test(answer)) return '그대로 둘게요.'
-    }
-    pending.set(channel, { ask, at: clock().getTime(), turn })
-    return question(ask)
+    return confirm && await confirm(question(ask)).catch(() => false) ? done(ask) : '그대로 둘게요.'
   }
   return {
-    tool: (channel, said) => ({
+    tool: confirm => ({
       name: 'preferences',
-      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call, then tell them in your own words what it returned. do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). When it returns a question, nothing changed yet: ask it and stop; when the person answers, call again with the same arguments.',
+      description: 'Change or show the person\'s Engram preferences, which have no settings screen: say what they asked in ONE call, then tell them in your own words what it returned. do = auto_start (open at login; on) | app_activity (remember which apps they use; on) | learn_places / learn_files / learn_apps (learn from browser history and bookmarks / recently opened files / apps in use; on) | rescan_work (look again at where they work) | app (an app Engram may use or must leave alone; name = the app, on) | habits (list the ways of working it noticed) | habit (name = words from its title; on = keep it, false = forget it) | review_rules (list) | ask_first (always ask before submitting on a site; name = site address, on; on=false removes the rule) | auto_allow (submit on a site without asking; name = site, on) | activity_log (what the bots did; name = "yesterday" for the day before) | export_logs | backup_connect (name = GitHub repository address) | backup_disconnect | backup_now | backup_auto (on) | computer_control (on=false stops it) | theme (name = system | light | dark). A change that lets Engram do more waits for the person\'s answer on a card; never ask it in chat.',
       argsSchema: { type: 'object', additionalProperties: false, required: ['do'], properties: { do: { type: 'string', enum: [...PREFERENCE_ACTIONS] }, on: { type: 'boolean' }, name: { type: 'string' } } },
       async run(args) {
         const action = PREFERENCE_ACTIONS.find(one => one === args['do'])
         if (!action) return '그건 여기서 바꿀 수 없어요.'
-        return settle(channel, { do: action, ...(typeof args['on'] === 'boolean' ? { on: args['on'] } : {}), ...(typeof args['name'] === 'string' ? { name: args['name'].slice(0, 200) } : {}) }, said())
+        return settle({ do: action, ...(typeof args['on'] === 'boolean' ? { on: args['on'] } : {}), ...(typeof args['name'] === 'string' ? { name: args['name'].slice(0, 200) } : {}) }, confirm)
       },
     }),
   }

@@ -36,10 +36,10 @@ function fakeHost(over: Partial<PreferenceHost> = {}) {
 const NOW = new Date(2026, 10, 16, 15, 0, 0)
 const setup = (over: Partial<PreferenceHost> = {}) => {
   const fake = fakeHost(over), chat = preferences(fake.host, () => NOW)
-  let said = ''
-  const tool = chat.tool('c', () => said)
-  const call = (person: string, args: Record<string, unknown>) => { said = person; return tool.run(args, { task: person }) }
-  return { ...fake, chat, call }
+  const card = { shown: [] as string[], yes: false }
+  const tool = chat.tool(async words => { card.shown.push(words); return card.yes })
+  const call = (person: string, args: Record<string, unknown>) => tool.run(args, { task: person })
+  return { ...fake, chat, call, card }
 }
 const HANGUL_ONLY = /^[^A-Za-z]*$/
 
@@ -133,43 +133,50 @@ describe('the model\'s call changes a setting, and the tool says what changed in
         return { answer: '까만 배경으로 바꿔 뒀어요. 눈이 좀 편하실 거예요.' }
       },
     } as unknown as Engine
-    const result = await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [chat.tool('c', () => asked)] }, asked)
+    const result = await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [chat.tool()] }, asked)
     expect(calls).toEqual(['theme:dark'])
     expect(result.answer).toBe('까만 배경으로 바꿔 뒀어요. 눈이 좀 편하실 거예요.')
   })
 })
 
-describe('narrowing is done at once, widening waits for the person\'s own yes', () => {
+describe('narrowing is done at once, widening waits for the person\'s press on the approval card', () => {
   const widening: [string, Record<string, unknown>, string, string, string][] = [
-    ['앱 쓰는 거 다시 봐도 돼', { do: 'app_activity', on: true }, '앱 활동을 다시 참고할까요?', '앱 활동을 다시 참고할게요.', 'learning:activity:true'],
-    ['요즘 연 파일 다시 참고해도 괜찮아', { do: 'learn_files', on: true }, '최근 파일을 다시 참고할까요?', '최근 파일을 다시 참고할게요.', 'learning:files:true'],
-    ['엑셀 이제 열어도 돼', { do: 'app', name: '엑셀', on: true }, '엑셀을 다시 써도 될까요?', '엑셀을 다시 쓸게요.', 'app:excel:엑셀:true'],
-    ['naver.com은 이제 안 물어봐도 돼', { do: 'ask_first', name: 'naver.com', on: false }, 'naver.com에서 먼저 여쭤보는 규칙을 없앨까요?', 'naver.com에서 먼저 여쭤보는 규칙을 없앴어요.', 'rule:ask-first:naver.com:false'],
+    ['내가 켜 두는 프로그램들 다시 살펴봐', { do: 'app_activity', on: true }, '앱 활동을 다시 참고할까요?', '앱 활동을 다시 참고할게요.', 'learning:activity:true'],
+    ['최근에 열었던 문서도 참고해 줘', { do: 'learn_files', on: true }, '최근 파일을 다시 참고할까요?', '최근 파일을 다시 참고할게요.', 'learning:files:true'],
+    ['엑셀 다시 써 줘', { do: 'app', name: '엑셀', on: true }, '엑셀을 다시 써도 될까요?', '엑셀을 다시 쓸게요.', 'app:excel:엑셀:true'],
+    ['naver.com 제출할 때 이제 확인 안 받아도 돼', { do: 'ask_first', name: 'naver.com', on: false }, 'naver.com에서 먼저 여쭤보는 규칙을 없앨까요?', 'naver.com에서 먼저 여쭤보는 규칙을 없앴어요.', 'rule:ask-first:naver.com:false'],
   ]
   for (const [person, args, asks, done, did] of widening) {
-    it(`${person}: nothing changes until the person says yes in a later message`, async () => {
-      const { call, calls } = setup()
-      expect(await call(person, args)).toBe(asks)
-      expect(await call(person, args)).toBe(asks)
+    it(`${person}: the card shows the change, and only its yes applies it`, async () => {
+      const { call, calls, card } = setup()
+      expect(await call(person, args)).toBe('그대로 둘게요.')
+      expect(card.shown).toEqual([asks])
       expect(calls).toEqual([])
-      expect(await call('좋아요', args)).toBe(done)
-      expect(calls).toEqual([did])
-      expect(await call('좋아요', args)).toBe(asks)
+      card.yes = true
+      expect(await call(person, args)).toBe(done)
       expect(calls).toEqual([did])
     })
-    it(`${person}: a no leaves it as it is`, async () => {
-      const { call, calls } = setup()
-      await call(person, args)
-      expect(await call('아뇨', args)).toBe('그대로 둘게요.')
-      expect(await call('네', args)).toBe(asks)
-      expect(calls).toEqual([])
+    it(`${person}: turning the same thing the other way is done at once with no card`, async () => {
+      const { call, calls, card } = setup()
+      const back = { ...args, on: args['on'] === false }
+      expect(await call('그거 다시 원래대로 해 둬', back)).not.toBe('그대로 둘게요.')
+      expect(card.shown).toEqual([])
+      expect(calls).toHaveLength(1)
     })
   }
 
   it('an app that is already in reach needs no question', async () => {
-    const { call, calls } = setup()
+    const { call, calls, card } = setup()
     expect(await call('카톡 써도 돼', { do: 'app', name: '카카오톡', on: true })).toBe('카카오톡은 지금도 쓸 수 있어요.')
     expect(await call('파워포인트 써도 돼', { do: 'app', name: '파워포인트', on: true })).toBe('파워포인트는 지금도 쓸 수 있어요.')
+    expect(calls).toEqual([])
+    expect(card.shown).toEqual([])
+  })
+
+  it('a backup address that is not a GitHub repository shows no card and asks for the address', async () => {
+    const { call, calls, card } = setup()
+    expect(await call('내 노트 회사 서버에 백업해', { do: 'backup_connect', name: 'https://files.example.net/notes' })).toContain('깃허브 저장소 주소')
+    expect(card.shown).toEqual([])
     expect(calls).toEqual([])
   })
 
@@ -179,49 +186,29 @@ describe('narrowing is done at once, widening waits for the person\'s own yes', 
     expect(wide).toEqual(['app_activity:true', 'learn_places:true', 'learn_files:true', 'learn_apps:true', 'app:true', 'ask_first:false', 'auto_allow:true', 'backup_connect:true', 'backup_connect:false'])
   })
 
-  it('a yes in another conversation, a late yes, a yes to a different change, or leaving `on` out confirm nothing', async () => {
-    let now = NOW.getTime(), said = ''
-    const fake = fakeHost(), chat = preferences(fake.host, () => new Date(now))
-    const one = chat.tool('one', () => said), two = chat.tool('two', () => said)
-    const excel = { do: 'app', name: '엑셀', on: true }
-    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
-    said = '응'; expect(await two.run(excel, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
-    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
-    said = '응'; expect(await one.run({ do: 'learn_files', on: true }, { task: '' })).toBe('최근 파일을 다시 참고할까요?')
-    said = '엑셀 써도 돼'; await one.run(excel, { task: '' })
-    now += 11 * 60_000
-    said = '응'; expect(await one.run(excel, { task: '' })).toBe('엑셀을 다시 써도 될까요?')
-    expect(await one.run({ do: 'app_activity' }, { task: '' })).toBe('앱 활동은 이제 참고하지 않을게요.')
+  it('with no card to show, or a card that fails, a widening change is not made, and a typed yes in chat never makes it', async () => {
+    const fake = fakeHost(), chat = preferences(fake.host, () => NOW)
+    const bare = chat.tool(), broken = chat.tool(async () => { throw new Error('card gone') })
+    const allow = { do: 'auto_allow', name: 'bookings.riverside.kr', on: true }
+    expect(await bare.run(allow, { task: '리버사이드 예약 사이트는 그냥 바로 넣어' })).toBe('그대로 둘게요.')
+    expect(await bare.run(allow, { task: '응 그렇게 해' })).toBe('그대로 둘게요.')
+    expect(await broken.run({ do: 'learn_apps', on: true }, { task: '좋아' })).toBe('그대로 둘게요.')
+    expect(await bare.run({ do: 'app_activity' }, { task: '' })).toBe('앱 활동은 이제 참고하지 않을게요.')
     expect(fake.calls).toEqual(['learning:activity:false'])
   })
 
-  it('a standing allow and a backup connect are made only after the person types a yes in a later message', async () => {
-    const { call, calls } = setup()
-    const allow = { do: 'auto_allow', name: 'https://forms.sample.org/apply', on: true }
-    expect(await call('forms.sample.org 신청서는 묻지 말고 바로 넣어', allow)).toBe('forms.sample.org에서는 묻지 않고 바로 제출해도 될까요?')
-    expect(await call('forms.sample.org 신청서는 묻지 말고 바로 넣어', allow)).toBe('forms.sample.org에서는 묻지 않고 바로 제출해도 될까요?')
+  it('a standing allow or a backup the model starts from a message that only mentions the site is shown on the card, and nothing changes until the person presses yes there', async () => {
+    const { call, calls, card } = setup()
+    const allow = { do: 'auto_allow', name: 'https://apply.citylib.kr/form', on: true }
+    const backup = { do: 'backup_connect', name: 'git@github.com:byeol/jottings.git' }
+    expect(await call('apply.citylib.kr 이거 무슨 사이트야?', allow)).toBe('그대로 둘게요.')
+    expect(await call('그래요', allow)).toBe('그대로 둘게요.')
+    expect(await call('byeol/jottings 저장소 아직 비어 있지?', backup)).toBe('그대로 둘게요.')
     expect(calls).toEqual([])
-    expect(await call('넵', { ...allow, name: 'forms.sample.org' })).toBe('forms.sample.org에서는 묻지 않고 제출할게요.')
-    const backup = { do: 'backup_connect', name: 'https://github.com/haneul/diary' }
-    expect(await call('내 메모들 github.com/haneul/diary 로 올려두게 해줘', backup)).toBe('https://github.com/haneul/diary에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
-    expect(await call('아니요', backup)).toBe('그대로 둘게요.')
-    expect(await call('다시 생각해보니 github.com/haneul/diary 연결해줘', backup)).toBe('https://github.com/haneul/diary에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
-    expect(await call('좋아요', backup)).toBe('깃허브 백업을 연결했어요.')
-    expect(calls).toEqual(['rule:allow:forms.sample.org:true', 'connect:https://github.com/haneul/diary'])
-  })
-
-  it('a model call from a message that never named the site or repository starts no standing allow or backup, and a later yes applies nothing', async () => {
-    const { call, calls } = setup()
-    const allow = { do: 'auto_allow', name: 'tickets.harbor.net', on: true }
-    const backup = { do: 'backup_connect', name: 'git@github.com:dalbit/notes.git' }
-    expect(await call('이번 달 영수증 정리 좀 해줄래', allow)).not.toContain('될까요')
-    expect(await call('그래요', allow)).not.toContain('될까요')
-    expect(await call('저녁 메뉴 추천해줘', backup)).not.toContain('할까요')
-    expect(await call('좋아', backup)).not.toContain('할까요')
-    expect(calls).toEqual([])
-    expect(await call('tickets.harbor.net 예매는 매번 확인 안 받아도 돼', allow)).toBe('tickets.harbor.net에서는 묻지 않고 바로 제출해도 될까요?')
-    expect(await call('dalbit/notes 저장소에 메모 백업 이어줘', backup)).toBe('git@github.com:dalbit/notes.git에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
-    expect(await call('그래', backup)).toBe('깃허브 백업을 연결했어요.')
-    expect(calls).toEqual(['connect:git@github.com:dalbit/notes.git'])
+    expect(card.shown).toEqual(['apply.citylib.kr에서는 묻지 않고 바로 제출해도 될까요?', 'apply.citylib.kr에서는 묻지 않고 바로 제출해도 될까요?', 'git@github.com:byeol/jottings.git에 백업을 연결할까요? 노트가 그 저장소로 올라가요.'])
+    card.yes = true
+    expect(await call('도서관 신청은 묻지 말고 넣어줘', allow)).toBe('apply.citylib.kr에서는 묻지 않고 제출할게요.')
+    expect(await call('메모 거기로 올려줘', backup)).toBe('깃허브 백업을 연결했어요.')
+    expect(calls).toEqual(['rule:allow:apply.citylib.kr:true', 'connect:git@github.com:byeol/jottings.git'])
   })
 })

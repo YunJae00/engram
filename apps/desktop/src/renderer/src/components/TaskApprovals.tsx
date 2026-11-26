@@ -64,10 +64,10 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
         <DecisionCard
           key={a.id}
           testId={`task-approval-${a.id}`}
-          hint={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlHint : t('card.pressHint')}
+          hint={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlHint : a.url.startsWith('engram://preferences/') ? undefined : t('card.pressHint')}
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
-          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? commandGate(a.words, t.lang).title : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
+          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('engram://preferences/') ? a.words : a.url.startsWith('file:') ? commandGate(a.words, t.lang).title : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
           sub={a.url.startsWith('engram:') ? undefined : a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>

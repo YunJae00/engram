@@ -193,7 +193,7 @@ import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, assertDesktopTurnNotStopped, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
-import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from './usage-limit.js'
+import { claudeRetryAfterMs, signInMessage, threadKorean, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
 import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
@@ -2014,7 +2014,7 @@ export function registerIpc(ctx: VaultContext): void {
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
     ...(channel.startsWith('bot-') && !isHelperLane(channel) ? [teammateSettingsTool(paths, channel.slice('bot-'.length), () => broadcast({ type: 'bots:changed' }))] : []),
-    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => turnGoals.get(channel) ?? '')] : []),
+    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(async words => !studying.has(channel) && await team.askFor(channel, async () => 'approve')?.({ words, url: 'engram://preferences/' }) === 'approve')] : []),
     ...kit.learning,
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
       look: (question, index, lookSignal) => lookAsHelper({
@@ -2049,25 +2049,14 @@ export function registerIpc(ctx: VaultContext): void {
       recordedRequests.add(request)
     }
     const settings = await loadSettings()
-    const wanted = 'claude'
     const engine = await chatEngine(ctx.engines)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
-    if (!engine) {
-      broadcast({
-        type: 'chat:error',
-        channel,
-        message:
-          wanted === 'claude' || wanted === 'codex'
-            ? `${wanted === 'claude' ? 'Claude' : 'ChatGPT'} is not connected — open Settings and sign in.`
-            : 'No engine available — connect an AI first.',
-      })
-      return
-    }
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error).map(turn => turn.files?.length ? { ...turn, text: withFiles(turn.text, turn.files) } : turn)
     await recordAsk()
-    if (isLimited('claude', channel)) {
-      const said = usageLimitMessage(threadKorean(request.message, savedHistory), limitedAt('claude', channel))
+    if (!engine || isLimited('claude', channel)) {
+      const korean = threadKorean(request.message, savedHistory)
+      const said = engine ? usageLimitMessage(korean, limitedAt('claude', channel)) : signInMessage(korean)
       if (bot) await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
       turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 })
       broadcast({ type: 'chat:done', channel, text: said })
