@@ -156,6 +156,8 @@ describe('instant first line', () => {
     expect(prompt).toContain('Everything else is handed off')
     expect(prompt).toContain('then call hand_off with a brief')
     expect(prompt).toContain('When unsure, hand it off.')
+    expect(prompt).toContain('A message that names an address, a page, a file or a folder is always handed off, and so is anything you would have to say cannot be done or cannot be reached')
+    expect(prompt).toContain('write the whole reply in the language of the request')
     expect(prompt).not.toMatch(/\bNONE\b/)
     expect(quickPrompt('x', true)).not.toContain('Your first sentences earlier')
     const history = [{ role: 'user' as const, text: '내 담당 거래처는 대명유통이야' }, { role: 'assistant' as const, text: '알겠어요.' }]
