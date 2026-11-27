@@ -66,7 +66,7 @@ describe('sidebar preview', () => {
 describe('voice', () => {
   it('drafts self-contained asks without a notes lookup', () => {
     expect(VOICE_RULE).toMatch(/self-contained/)
-    expect(VOICE_RULE).toMatch(/never announce such a search/)
+    expect(VOICE_RULE).toMatch(/is done from it with no search/)
     expect(VOICE_RULE).toContain('지난번')
   })
 })

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { openRuleLines } from './rules.js'
+import { leadPrompt, openRuleLines } from './rules.js'
 import { sessionRules } from './rules.js'
 import { COLLEAGUE_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
 import { documentTools } from '../src/document-tools.js'
@@ -15,13 +15,25 @@ it('asks for nothing before the first tool call once the host has shown a first 
   expect(openRuleLines().join('\n')).toContain(VOICE_RULE)
 })
 
+it('says the first line once in the work rules, and never on a turn that does no work', () => {
+  const first = 'Otherwise one line before the first call restates the job and its outcome'
+  const count = (text: string, part: string) => text.split(part).length - 1
+  for (const text of [rules, openRuleLines().join('\n'), `${sessionRules({ engineId: 'claude', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })}\n${leadPrompt({ context: { firstLine: { pending: true } } })}`]) {
+    expect(count(text, first)).toBe(1)
+    expect(count(text, 'that line is your first line')).toBe(1)
+    expect(count(text, 'restates the job')).toBe(1)
+  }
+  expect(count(openRuleLines({ kind: 'lookup' }).join('\n'), 'restates the job')).toBe(0)
+})
+
 it('asks for no caveat about a check nobody asked for', () => {
   expect(DOCUMENT_CHECK_RULE).not.toContain('say in one line what was not checked')
   expect(DOCUMENT_CHECK_RULE).toContain('never mention a check nobody asked for')
   expect(rules).toContain(DOCUMENT_CHECK_RULE)
   expect(rules).toContain('never mention that Word, Excel or PowerPoint was not opened, that a file link is new or changed, or a check nobody asked for')
   expect(rules).not.toContain('only if part of the ask was not done or could not be confirmed')
-  expect(rules).toContain('only if part of what the person asked for is truly missing - one calm clause saying which, in their language')
+  expect(rules).toContain('A part truly missing gets one calm clause')
+  expect(rules).toContain('nothing about what was not opened or checked')
   expect(COLLEAGUE_RULE).toContain('Never tell them what you did not do or check when nobody asked for it')
   expect(COLLEAGUE_RULE).toContain('파일 링크가 새로 바뀌었으니')
   const tools = documentTools(async () => { throw new Error('unused') }, async () => { throw new Error('unused') })

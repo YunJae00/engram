@@ -12,7 +12,7 @@ describe('a comet speaks to the person, not about them', () => {
     expect(rule).toMatch(/first person/)
     expect(rule).toMatch(/never about them in the third person/)
     expect(rule).toContain('사용자가')
-    expect(rule).toContain('The user asked')
+    expect(rule).toContain('The user said')
   })
 
   it('one rule keeps tool names out of what the person reads, and a figure off a results page is linked to that results page', () => {
@@ -32,14 +32,14 @@ describe('a comet describes its work in plain words of the thread language', () 
 
   it('asks non-English threads for plain words without English jargon or file internals', () => {
     expect(PLAIN_WORK_RULE).toMatch(/language other than English/)
-    expect(PLAIN_WORK_RULE).toMatch(/in their language with plain everyday words/)
-    expect(PLAIN_WORK_RULE).toMatch(/not English technical terms or file internals/)
+    expect(PLAIN_WORK_RULE).toMatch(/say what you do in plain everyday words/)
+    expect(PLAIN_WORK_RULE).toMatch(/not technical terms or file internals/)
     expect(PLAIN_WORK_RULE).toContain('zip/unzip')
     expect(PLAIN_WORK_RULE).toContain('바꿀 곳이 한 군데인 걸 확인했어요. 바꿔서 저장할게요.')
   })
 
   it('leaves English threads unchanged', () => {
-    expect(PLAIN_WORK_RULE).toMatch(/in an English thread this rule does not apply/)
+    expect(PLAIN_WORK_RULE.startsWith('In a language other than English,')).toBe(true)
     expect(PLAIN_WORK_RULE).not.toMatch(/plain English/)
   })
 
@@ -57,18 +57,15 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('opens with the job and its outcome, and that line replaces naming what will be looked at first', () => {
-    expect(VOICE_RULE).toMatch(/first line to the person restates the job and the outcome/)
+    expect(VOICE_RULE).toMatch(/Otherwise one line before the first call restates the job and its outcome/)
     expect(VOICE_RULE).toContain('세 도시 날씨 조사해서 PDF로 정리해줄게요.')
-    expect(VOICE_RULE).toMatch(/not a step and not what you will look at first/)
-    expect(VOICE_RULE).toMatch(/one short sentence said before the first tool call; it takes the place of naming what you will look at first, and wherever another rule asks for that, give this line instead/)
+    expect(VOICE_RULE).toMatch(/not a step or what you will look at first, whatever other rules ask/)
   })
 
   it('reports milestones and failed routes only, never internal checks', () => {
-    expect(VOICE_RULE).toMatch(/only when a part is finished/)
-    expect(VOICE_RULE).toMatch(/what failed and the new route, in one sentence/)
+    expect(VOICE_RULE).toMatch(/Then a line only for a finished part, or for a failure and the new route/)
     expect(VOICE_RULE).toMatch(/Never narrate looking in memory/)
-    expect(VOICE_RULE).toMatch(/saved procedures or how-tos, skills/)
-    expect(VOICE_RULE).toMatch(/scope of your tools/)
+    expect(VOICE_RULE).toMatch(/memory, notes, past chats, how-tos, skills or tools/)
   })
 
   it('skips a saved way or skill that does not fit without a word', () => {
@@ -87,7 +84,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('leads the final answer with the result, guided path included', () => {
-    for (const prompt of prompts.slice(0, 2)) expect(prompt).toMatch(/When the job is done, reply as one message[^\n]*first one friendly line with the result/)
+    for (const prompt of prompts.slice(0, 2)) expect(prompt).toMatch(/When the job is done, reply as one short message in markdown: first one friendly line with the result/)
     for (const prompt of prompts.slice(0, 2)) expect(prompt).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps')
     expect(wrapUpPrompt('t', [])).toContain('Lead with the result, not with what was checked.')
   })
@@ -108,9 +105,8 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('drafts a self-contained ask straight from what was given, without announcing a notes search', () => {
-    expect(VOICE_RULE).toMatch(/When the ask is self-contained/)
-    expect(VOICE_RULE).toMatch(/do not search notes, memory, chats or past work first/)
-    expect(VOICE_RULE).toMatch(/never announce such a search/)
+    expect(VOICE_RULE).toMatch(/A self-contained ask \(drafting, translating, summarizing what they gave\) is done from it with no search/)
+    expect(VOICE_RULE).toMatch(/Never narrate looking in memory, notes, past chats/)
     expect(VOICE_RULE).toContain('"지난번"')
   })
 })

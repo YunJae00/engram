@@ -19,7 +19,7 @@ describe('the model is told that a blank line is a bubble break, in every kind o
   it('no rule asks for several messages or for a blank line as a separator', () => {
     const told = [...KINDS.map(kind => openRuleLines({ kind }).join('\n')), ...KINDS.map(kind => sessionRules({ ...FLAGS, kind }))].join('\n')
     expect(told).not.toMatch(/two to four short messages|use one between the result line and its details|at most three bubbles/)
-    expect(sessionRules({ ...FLAGS, kind: 'work' })).toContain('reply as one message with no blank line in it')
+    expect(sessionRules({ ...FLAGS, kind: 'work' })).toContain('reply as one short message in markdown')
   })
 })
 

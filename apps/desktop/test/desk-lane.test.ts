@@ -85,7 +85,8 @@ describe('a question about a named file', () => {
 describe('document and tidy answers', () => {
   const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
   it('closes a document turn with one or two sentences and no list of contents', () => {
-    expect(core('prompt.ts').match(/never a list of its sections, slides, sheets or contents/g)).toHaveLength(2)
+    expect(core('prompt.ts').match(/never a list of its sections, slides, sheets or contents/g)).toHaveLength(1)
+    expect(core('prompt.ts').match(/After a document, one or two sentences on what it is and the one choice you made, never a list of its contents/g)).toHaveLength(1)
   })
   it('asks for the offer in one place only, at most once across document turns, and exactly once after an extraction', () => {
     const voice = core('prompt.ts')

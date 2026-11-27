@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { ESCALATE_RULE, ESCALATE_TOOL, ONE_BUBBLE_RULE, REPLIES_RULE } from '../../../packages/core/src/prompt.js'
+import { ESCALATE_RULE, ESCALATE_TOOL, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -31,12 +31,19 @@ const repliesEnd = 'switch apps or defer.'
 const oldReplies = between(web0.system, REPLIES_RULE.slice(0, REPLIES_RULE.indexOf('buttons.') + 'buttons.'.length), repliesEnd)
 const oldEarlier = between(oldReplies, 'Your earlier suggested replies', repliesEnd)
 const cutFromTurn = [`\n${oldEarlier}\nTask: `, `\n${ONE_BUBBLE_RULE}`]
-const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE)
+const lineOf = (text: string, from: string): string => text.slice(text.indexOf(from), text.indexOf('\n', text.indexOf(from)))
+const oldVoice = lineOf(web0.system, 'When the turn says a first line from you is already on screen')
+const oldWorkReply = between(web0.system, 'When the job is done, reply as one message', 'never a site name alone.')
+const oldWrite = lineOf(web0.system, 'Write to the person in the language of their message')
+const oldSpeak = lineOf(web0.system, 'Speak to the person directly')
+const oldToPerson = `${oldWrite}\n${oldSpeak}`
+const oldPlain = `\n${lineOf(web0.system, 'When the person writes in a language other than English')}`
+const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '')
 const minusTurn = (text: string): string => cutFromTurn.reduce((left, cut) => left.replace(cut, cut.endsWith('Task: ') ? '\nTask: ' : ''), text)
 const minusCut = (was: unknown): unknown => typeof was === 'string' ? minusSystem(was) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, the first-line, reply-shape and to-the-person rules replaced by their short forms, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -88,6 +95,8 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   }
   expect(oldReplies.length).toBeGreaterThan(4000)
   expect(oldEarlier.length).toBeGreaterThan(2000)
+  expect(oldVoice.length + oldWorkReply.length + oldToPerson.length + oldPlain.length).toBeGreaterThan(3300)
+  expect(VOICE_RULE.length + WORK_REPLY_RULE.length + TO_PERSON_RULE.length).toBeLessThanOrEqual(1700)
   cutFromSystem.reduce((left, cut) => { expect(left).toContain(cut); return left.replace(cut, '') }, web0.system)
   for (const cut of cutFromTurn) expect(web0.prompt).toContain(cut)
   const kept = Object.keys(parent).filter(key => !key.startsWith('ack-'))
@@ -106,8 +115,10 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     const sentences = [...readFileSync(home, 'utf8').matchAll(/'((?:[^'\\\n]|\\.){60,})'|`([^`$]{60,})/g)].map(match => (match[1] ?? match[2])!)
     expect(sentences.some(sentence => sentence.includes(REPLIES_RULE))).toBe(true)
     expect(sentences.some(sentence => sentence.includes(oldEarlier))).toBe(false)
-    expect([...sentences, oldEarlier].length).toBeGreaterThan(60)
-    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
+    for (const old of [oldVoice, oldWorkReply, oldPlain.trim(), oldWrite, oldSpeak]) expect(sentences.some(sentence => sentence.includes(old))).toBe(false)
+    expect(sentences.some(sentence => `${sentence}${PLAIN_WORK_RULE}` === TO_PERSON_RULE)).toBe(true)
+    expect([...sentences, oldEarlier, oldWrite].length).toBeGreaterThan(60)
+    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|TO_PERSON_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
     for (const path of sources) {
       const text = readFileSync(path, 'utf8')
       expect(text, path).not.toMatch(names)

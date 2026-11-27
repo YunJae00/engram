@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { answer as answerTurn, openWorld } from '../src/main/answer.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { promptFor, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type View = { id: string; role: string; state: string; result?: string; sources?: string[]; accepted?: boolean }
@@ -182,7 +182,10 @@ describe('stack-16: the person reads only a helper\'s own words', () => {
 
 describe('stack-16: a listing page taken apart keeps the person\'s language', () => {
   it('no items round is left; the reply rule itself asks for the person\'s language whatever the page\'s (an English conference page, a Korean thread)', () => {
-    expect(WORK_REPLY_RULE).toContain('each fact from it is followed by a Markdown link to that page')
-    expect(WORK_REPLY_RULE).toContain('in the language the person wrote in')
+    const work = promptFor('work', { task: '', flags: { engineId: 'claude', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false } }).system
+    expect(work).toContain(WORK_REPLY_RULE)
+    expect(work).toContain('A fact read from a page or results carries a Markdown link to it')
+    expect(work).toContain('Write in the language of their message with its units and date formats, not that of notes, pages or site')
+    expect(WORK_REPLY_RULE).not.toMatch(/link|language/)
   })
 })

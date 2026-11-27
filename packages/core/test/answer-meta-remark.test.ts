@@ -13,11 +13,13 @@ describe('answers never remark on their own rules', () => {
     expect(rules).toContain('Never say the person asked for something they did not ask for.')
   })
 
-  it.each(flagSets)('the reply rule asks for blank-line messages and a Markdown link after each fact, with no address-line or dash-line format left (%#)', flags => {
-    const reply = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
-    expect(reply).toContain('reply as one message with no blank line in it, because a blank line starts a new message bubble')
-    expect(reply).toContain('each fact from it is followed by a Markdown link to that page whose address is copied exactly from what a tool returned, never a site name alone')
+  it.each(flagSets)('the reply rule asks for one message, and the kept one-bubble, link and register sentences say how, with no address-line or dash-line format left (%#)', flags => {
+    const rules = sessionRules(flags)
+    const reply = rules.split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(reply).toContain('reply as one short message in markdown')
+    expect(rules).toContain('an empty line cuts the reply into a separate chat bubble')
+    expect(rules).toContain('with the address copied exactly from what a tool returned: never an address from memory or one you put together, never a site name without its link')
     expect(reply).not.toMatch(/lines of only ---|its address alone on its own line|no emoji, icon or label/)
-    expect(reply).toContain('the polite -요 form')
+    expect(rules).toContain('in Korean keep the polite-casual -요 form through the whole reply')
   })
 })

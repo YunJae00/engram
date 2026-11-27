@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
-import { ONE_BUBBLE_RULE, REPLIES_RULE } from '../../../packages/core/src/prompt.js'
+import { ONE_BUBBLE_RULE, PLAIN_WORK_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>
 const parent = fixture('prompts-parent.json') as Record<string, string>
@@ -120,6 +120,27 @@ describe('the sentences that must survive word for word', () => {
       expect(count(runnerTurn.system, rule), rule).toBe(1)
       expect(count(runnerTurn.prompt, rule), rule).toBe(0)
     }
+  })
+
+  it('the first-line, reply-shape and to-the-person rules are each said once in their short form, and the reply rule leaves bubbles, links and register to the kept sentences', async () => {
+    expect(VOICE_RULE.length).toBeLessThanOrEqual(650)
+    expect(WORK_REPLY_RULE.length).toBeLessThanOrEqual(450)
+    expect(TO_PERSON_RULE.length).toBeLessThanOrEqual(600)
+    expect(TO_PERSON_RULE.endsWith(PLAIN_WORK_RULE)).toBe(true)
+    const was = parent['lead-web'] as unknown as { system: string }
+    const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
+    scratch.push(dir)
+    const jobs: ToolSessionJob[] = []
+    await answer(await openWorld(dir, recorder(jobs)), '가족 모임 장소 후보 세 군데 비교해서 정리해줘')
+    for (const text of [`${runnerTurn.system}\n${runnerTurn.prompt}`, `${jobs[0]!.system}\n${jobs[0]!.prompt}`]) {
+      for (const rule of [VOICE_RULE, WORK_REPLY_RULE, TO_PERSON_RULE, ONE_BUBBLE_RULE]) expect(count(text, rule), rule.slice(0, 40)).toBe(1)
+      for (const part of ['restates the job', 'one friendly line with the result', 'third person', 'plain everyday words', 'units and date formats']) expect(count(text, part), part).toBe(1)
+      for (const old of ['Write to the person in the language of their message', 'addressing them in the second person', 'a blank line starts a new message bubble']) {
+        expect(count(was.system, old), old).toBe(1)
+        expect(count(text, old), old).toBe(0)
+      }
+    }
+    expect(WORK_REPLY_RULE).not.toMatch(/blank line|link|-요|language/)
   })
 
   it('a sentence that is missing or doubled is caught', () => {
