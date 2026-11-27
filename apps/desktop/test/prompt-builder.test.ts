@@ -104,7 +104,9 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     const home = new URL('packages/core/src/prompt.ts', root).pathname
     const sources = ['packages/core/src', 'apps/desktop/src'].flatMap(dir => readdirSync(new URL(dir, root), { recursive: true, encoding: 'utf8' }).filter(name => /\.tsx?$/.test(name)).map(name => new URL(`${dir}/${name}`, root).pathname)).filter(path => path !== home)
     const sentences = [...readFileSync(home, 'utf8').matchAll(/'((?:[^'\\\n]|\\.){60,})'|`([^`$]{60,})/g)].map(match => (match[1] ?? match[2])!)
-    expect(sentences.length).toBeGreaterThanOrEqual(60)
+    expect(sentences.some(sentence => sentence.includes(REPLIES_RULE))).toBe(true)
+    expect(sentences.some(sentence => sentence.includes(oldEarlier))).toBe(false)
+    expect([...sentences, oldEarlier].length).toBeGreaterThan(60)
     const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
     for (const path of sources) {
       const text = readFileSync(path, 'utf8')
