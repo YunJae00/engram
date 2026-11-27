@@ -207,8 +207,7 @@ function escalateLine(escalated?: PromptContext['escalated']): string {
 }
 
 function firstLineNote(line?: FirstLine): string {
-  if (!line) return ''
-  return 'shown' in line ? `The person has already been shown this first line from you: ${JSON.stringify(line.shown)}. Do not repeat or rephrase it. ${QUIET}` : `A short first line from you saying what you are starting on is already on screen when you answer. Do not open with a greeting or a restatement of the request. ${QUIET}`
+  return line ? `A short first line from you saying what you are starting on is already on screen when you answer. Do not open with a greeting or a restatement of the request. ${QUIET}` : ''
 }
 
 export function contextText(context: PromptContext = {}): string {

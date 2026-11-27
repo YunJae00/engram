@@ -27,7 +27,7 @@ const doubled = ' When the turn says a first line from you is already on screen,
 const minusDoubled = (was: unknown): unknown => typeof was === 'string' ? was.replace(doubled, '') : was && typeof was === 'object' && 'system' in was ? { ...was, system: (was as { system: string }).system.replace(doubled, '') } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -84,7 +84,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
     const was = minusDoubled(parent[key]) as { prompt?: string }
-    expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : was)
+    expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : key === 'note-shown' ? parent['note-pending'] : was)
   }
   })
 

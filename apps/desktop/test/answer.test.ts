@@ -37,18 +37,29 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.final.text).toBe('반납일은 금요일이에요.')
   })
 
-  it('shows the quick tier\'s first line before the work lead starts; the lead is told the line and works from the person\'s own words, and the brief goes only to the trace', async () => {
+  it('shows the quick tier\'s first line before the work lead starts; the lead is told a line is up, never its words, and works from the person\'s own words, and the brief goes only to the trace', async () => {
     let told = ''
     const shown = vi.fn()
     const engine = fake(async job => { told = job.system + job.opening + job.prompt; await wait(80); job.onToken?.('대출 기록을 보니 반납일은 금요일이에요.'); return '대출 기록을 보니 반납일은 금요일이에요.' }, async () => ({ text: '대출 기록부터 볼게요.', handOff: '빌린 책 반납일 확인' }))
     const { trace } = await answer(await openWorld(await temp(), engine), '빌린 책 반납일 언제야?', { ack: { show: shown } })
     expect(trace.first?.text).toBe('대출 기록부터 볼게요.')
     expect(shown).toHaveBeenCalledExactlyOnceWith('대출 기록부터 볼게요.')
-    expect(told).toContain('The person has already been shown this first line from you: "대출 기록부터 볼게요."')
+    expect(told).toContain('is already on screen when you answer')
+    expect(told).not.toContain('대출 기록부터 볼게요.')
     expect(told).not.toContain('빌린 책 반납일 확인')
     expect(told).toContain('빌린 책 반납일 언제야?')
     expect(trace.brief).toBe('빌린 책 반납일 확인')
     expect(trace.final.text).toBe('대출 기록을 보니 반납일은 금요일이에요.')
+  })
+
+  it('never puts the quick line\'s words in the lead\'s prompt, so a step the line guessed for a plain statement is not worked', async () => {
+    let told = ''
+    const engine = fake(async job => { told = job.system + job.opening + job.prompt; return '목요일 오후 반차시군요.' }, async () => ({ text: '목요일 오후 일정 비워 둘게요.', handOff: '목요일 오후 일정 비우기' }))
+    const { trace } = await answer(await openWorld(await temp(), engine), '나 이번 주 목요일 오후 반차야', { ack: { show: vi.fn() } })
+    expect(trace.first?.text).toBe('목요일 오후 일정 비워 둘게요.')
+    expect(told).toContain('is already on screen when you answer')
+    expect(told).not.toContain('일정 비워 둘게요')
+    expect(told).toContain('나 이번 주 목요일 오후 반차야')
   })
 
   it('starts the work lead only once the quick tier has handed off, so its line is never dropped for the lead\'s words', async () => {
@@ -245,7 +256,8 @@ describe('three tiers: the work lead can pass a hard job to the deep tier', () =
     expect(jobs[1]!.sessionKey).toMatch(/:deep$/)
     expect(jobs[1]!.tools.map(one => one.name)).not.toContain('escalate')
     expect(jobs[1]!.prompt).toContain('This job was passed to you because it needs more thought: "예산 다섯 개를 맞춰 계획까지 세워야 해서"')
-    expect(jobs[1]!.prompt).toContain('The person has already been shown this first line from you: "다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요."')
+    expect(jobs[1]!.prompt).toContain('is already on screen when you answer')
+    expect(jobs[1]!.prompt).not.toContain('다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요.')
     expect(trace.escalated).toMatchObject({ why: '예산 다섯 개를 맞춰 계획까지 세워야 해서', said: '다섯 동호회 예산을 서로 맞춰 봐야 해서 조금 걸려요.' })
     expect(trace.final.text).toBe('사내 동호회 다섯 곳 예산을 맞춰 보니 등산회부터 줄이면 돼요.')
     expect(result?.answer).toBe(trace.final.text)

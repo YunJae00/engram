@@ -169,7 +169,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     start('', {}, 3000)
     expect(firstLineNote('bot-1')).toContain('Write nothing before your first tool call and nothing between tool calls')
     await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS)
-    expect(firstLineNote('bot-1')).toContain(`"${SAFETY_LINE.ko}"`)
+    expect(firstLineNote('bot-1')).not.toContain(SAFETY_LINE.ko)
     expect(firstLineNote('bot-1')).toContain('Your next words to the person are the answer itself.')
   })
 
