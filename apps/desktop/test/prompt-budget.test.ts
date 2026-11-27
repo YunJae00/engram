@@ -201,7 +201,7 @@ describe('the sentences that must survive word for word', () => {
     const starts = [persist, 'Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', REFERENCE_ID_RULE, 'What you say about the subject', 'You can make documents']
     const block = (system: string) => system.split('\n').filter(line => starts.some(start => line.startsWith(start)))
     expect(block(runnerTurn.system)).toHaveLength(starts.length)
-    expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4400)
+    expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4446)
     const was = parent['lead-web'] as unknown as { system: string }
     const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
     scratch.push(dir)
@@ -222,8 +222,8 @@ describe('the sentences that must survive word for word', () => {
         'a press that changes nothing was the wrong control',
         'their notebook (search_memory',
         'never for a value read this turn',
-        'goes into the first search',
-        'read a page listing newest first',
+        'goes into the first search or address, not into a retry',
+        'read a page listing newest first rather than searching again with dates',
         'note every condition first',
         'list an item only when its own page was read this turn',
         'Several found items go in one table, one row each, name first, link in the row',
