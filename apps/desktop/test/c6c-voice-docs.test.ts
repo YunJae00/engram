@@ -112,7 +112,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
 describe('a figure that rests on a convention says so (Q2)', () => {
   it('asks the lead to name an unstated convention inside its one-sentence answer, and posts that sentence as written', async () => {
-    expect(VOICE).toContain('A one-fact ask, also from a file, gets the fact in one sentence naming any convention it rests on')
+    expect(VOICE).toContain('A one-fact ask, also from a file, gets one sentence naming any convention it rests on')
     expect(VOICE).toContain('nothing more unless asked')
     expect(VOICE).not.toContain('31,536,000')
     const draft = '30일 기준으로 한 달은 43,200분이에요.'

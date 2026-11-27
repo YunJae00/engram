@@ -86,7 +86,7 @@ test('the lead\'s answer that says "세 곳 모두" over a part that brought not
 test('the lead\'s answer that never shows the split the ask asked for is not rewritten: the voice rule asks for who did what', async () => {
   const draft = `오븐은 밤식빵, 도우는 무화과 깜빠뉴를 냈어요. [오븐 소식](${OVEN}) [도우 게시판](${DOUGH})`
   expect(await posted(draft, ASK)).toBe(draft)
-  expect(COLLEAGUE_CORE_RULE).toContain('Teammates\' work is told as a team would, who did what in one natural sentence')
+  expect(COLLEAGUE_CORE_RULE).toContain('Teammates\' work is told as a team would, who did what in a natural sentence')
 })
 
 test('no rewrite stands between the lead and the person: a draft with an address nobody read is posted as it is, and the rule against such an address is the model\'s', async () => {

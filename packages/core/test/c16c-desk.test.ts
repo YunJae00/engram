@@ -45,7 +45,7 @@ describe('a shorter form of the last reply keeps the earlier ask\'s facts by rul
     const { answer, jobs } = await turn('방금 거 한 줄로 줄여줘', draft)
     expect(answer).toBe(draft)
     expect(jobs).toHaveLength(1)
-    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, and nothing about the change')
+    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, none added, and nothing about the change')
     expect(jobs[0]!.system).toContain(COLLEAGUE_CORE_RULE)
   })
 })

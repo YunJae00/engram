@@ -99,7 +99,7 @@ describe('stack-16 replays', () => {
   })
 
   it('Q4: the Q3/Q4 pair → the keep-facts line for a reshaped reply is in the rules every turn\'s prompt carries', () => {
-    const line = 'A reply asked for in another form is written again in it with every fact and constraint kept, and nothing about the change.'
+    const line = 'A reply asked for in another form is written again in it with every fact and constraint kept, none added, and nothing about the change.'
     console.log(`Q4 reshape line: ${line}`)
     expect(COLLEAGUE_CORE_RULE).toContain(line)
     for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind }).join('\n'), kind).toContain(line)

@@ -117,7 +117,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(ipc).toMatch(/await deliverAnswer\(\s*result\.asked \? askText\(result\.answer, result\.options\) : result\.answer,/)
   })
   it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', async () => {
-    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, and nothing about the change.')
+    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, none added, and nothing about the change.')
     expect(COLLEAGUE_CORE_RULE).toContain('means do the new thing at once - never ask which one they mean when the thread already says it')
     const { told, jobs } = await lead('조금만 더 짧게', [{ role: 'user', text: '대구 지점 할 일 알려줘' }, { role: 'assistant', text: '울산 지점 할 일은 두 개예요.' }])
     expect(jobs[0]!.prompt).toContain('조금만 더 짧게')

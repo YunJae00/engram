@@ -44,7 +44,7 @@ it('asks for no caveat about a check nobody asked for', () => {
 const readSource = (): string => documentTools.toString()
 
 it('gives one fact as one sentence, adds nothing the source lacks, answers a short note in the chat and closes a file job with one offer', () => {
-  expect(COLLEAGUE_RULE).toContain('A one-fact ask, also from a file, gets the fact in one sentence naming any convention it rests on, nothing more unless asked.')
+  expect(COLLEAGUE_RULE).toContain('A one-fact ask, also from a file, gets one sentence naming any convention it rests on, nothing more unless asked.')
   expect(COLLEAGUE_RULE).toContain('holds only what is in it: no added item, number, owner, date or question')
   expect(COLLEAGUE_RULE).toContain('A summary or tidy-up of a short note is answered in the chat; a file only when asked for or long.')
   expect(COLLEAGUE_RULE).toContain('After a file job, say in a few words what you chose.')

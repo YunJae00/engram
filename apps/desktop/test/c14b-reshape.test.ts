@@ -5,7 +5,7 @@ import { runToolSession, type AgentLoopOptions, type Engine, type EngineCwd, typ
 
 const ASK = '광합성이 뭔지 초등학생 아이에게 설명하듯 써줘'
 const LAST = '식물은 햇빛을 밥처럼 먹어요. 잎에서 햇빛이랑 물, 공기를 섞어서 자기가 먹을 달콤한 양분을 만들어요. 그래서 식물한테는 햇빛이 아주 중요해요.'
-const KEEPS = 'is written again in it with every fact and constraint kept, and nothing about the change'
+const KEEPS = 'is written again in it with every fact and constraint kept, none added, and nothing about the change'
 const WORKDIR = '/tmp/c14b-reshape' as EngineCwd
 const THREAD = [{ role: 'user' as const, text: '안녕' }, { role: 'assistant' as const, text: '안녕하세요' }, { role: 'user' as const, text: ASK }, { role: 'assistant' as const, text: LAST }]
 

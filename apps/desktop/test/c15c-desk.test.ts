@@ -168,7 +168,7 @@ describe('a list goes out whole, every row as written (H2 class, rule 7)', () =>
   })
   it('a one-fact ask from a file is asked to be one sentence in the rules; a longer answer is still posted whole', async () => {
     const { posted, told } = await deskTurn(DRAFT, '방문자 csv에서 10월 방문자 수 알려줘', '지점,요일,방문자')
-    expect(told).toContain('A one-fact ask, also from a file, gets the fact in one sentence')
+    expect(told).toContain('A one-fact ask, also from a file, gets one sentence')
     expect(posted).toContain('강남점')
     expect(posted.split('\n')).toHaveLength(DRAFT.split('\n').length)
   })

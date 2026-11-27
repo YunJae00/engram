@@ -139,7 +139,7 @@ describe('C6 (stack17: writer=fallback:items-first>items-first; "서연이 지�
     expect(out.reports[1]).toMatchObject({ who: '서연', result: COPY.join('\n') })
     expect(JSON.stringify(out.reports)).not.toMatch(/만든 거예요/)
     for (const url of [COEX, ZDNET, NCLOUD]) expect(out.reports[0]!.result).toContain(url)
-    expect(COLLEAGUE_CORE_RULE).toContain('told as a team would, who did what in one natural sentence')
+    expect(COLLEAGUE_CORE_RULE).toContain('told as a team would, who did what in a natural sentence')
     expect(Object.keys(out)).toEqual(['reports', 'note'])
   })
 })

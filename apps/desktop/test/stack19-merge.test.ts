@@ -251,7 +251,7 @@ describe('stack-19: fixes after the branch results', () => {
     const out = await runToolSession({ engine: { ...brain(async () => ({ answer: short })), quick: async () => { quick++; return '' } } as Engine, workdir: WORKDIR, tools: [] }, '좀 더 짧게')
     expect(out.answer).toBe(short)
     expect(quick).toBe(0)
-    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, and nothing about the change')
+    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, none added, and nothing about the change')
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 

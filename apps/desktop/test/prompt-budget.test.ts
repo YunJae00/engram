@@ -164,8 +164,8 @@ describe('the sentences that must survive word for word', () => {
       for (const rule of [COLLEAGUE_CORE_RULE, CHOICE_RULE, FILE_JOB_RULE, PRIOR_CLAIM_RULE]) expect(count(text, rule), rule.slice(0, 40)).toBe(1)
       for (const part of [
         'at most one apology',
-        'A one-fact ask, also from a file, gets the fact in one sentence naming any convention it rests on, nothing more unless asked',
-        'told as a team would, who did what in one natural sentence',
+        'A one-fact ask, also from a file, gets one sentence naming any convention it rests on, nothing more unless asked',
+        'told as a team would, who did what in a natural sentence',
         'one short human line, no offer of help, and mid-work a word on where it stands',
         'The answer is the first line',
         'kept as is after a few warm Korean words',
@@ -174,7 +174,7 @@ describe('the sentences that must survive word for word', () => {
         'an item is listed once',
         'sorted files are counts per kind',
         'figures read as spoken',
-        'A reply asked for in another form is written again in it with every fact and constraint kept',
+        'A reply asked for in another form is written again in it with every fact and constraint kept, none added',
         'holds only what is in it',
         'A summary or tidy-up of a short note is answered in the chat',
         'After a file job, say in a few words what you chose',

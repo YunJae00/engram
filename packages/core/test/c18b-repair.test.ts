@@ -127,7 +127,7 @@ test('a draft of the items alone gets no made-from sentence added by a repair; t
   const { answer, jobs } = await lead(HANDOFF_ASK, items, handBacks([minji, haneul]))
   expect(answer).toBe(items)
   expect(jobs).toHaveLength(1)
-  expect(jobs[0]!.system).toContain('Teammates\' work is told as a team would, who did what in one natural sentence')
+  expect(jobs[0]!.system).toContain('Teammates\' work is told as a team would, who did what in a natural sentence')
 })
 
 const cable = (id: string, topic: string, text: string, url: string): TeamMember => part(id, `${topic}요금`, `${topic} 케이블카 요금`, { topic, result: `${text} ${url}`, sources: [url] })
