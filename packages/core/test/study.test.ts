@@ -60,4 +60,10 @@ describe('studying a job', () => {
     expect((await readStudies(paths)).map(one => one.id).sort()).toEqual(['s1', 's2'])
     expect(studyCandidate(study).slug).toMatch(/^study--[0-9a-f]{24}$/)
   })
+
+  it('the offer tool and the lead rule agree: a job still undone after its failing routes may be offered, only what the person alone can clear is not', () => {
+    const description = offerStudyTool({ offer: async () => {} }).description
+    expect(description).not.toMatch(/page failed|timed out/)
+    expect(description).toContain('not for a sign-in or permission only they can clear')
+  })
 })

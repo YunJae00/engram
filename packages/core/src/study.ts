@@ -85,7 +85,7 @@ export function studyMessage(study: Pick<Study, 'what' | 'where' | 'ask'>): stri
 export function offerStudyTool(deps: { offer(input: { what: string; where: string[] }): Promise<void> }): AgentTool {
   return {
     name: 'offer_study',
-    description: 'offer to learn how the person does a job you could not do because you do not know their way of doing it or where it lives in their systems - not because a page failed, timed out or needs a sign-in. A card asks them; if they agree you study their past work, reading only. Args: {"what": "what you do not know, in their words", "where": ["apps, sites or records where their past work on it would show"]}',
+    description: 'offer to learn how the person does a job you could not do because you do not know their way of doing it or where it lives in their systems - not for a sign-in or permission only they can clear. A card asks them; if they agree you study their past work, reading only. Args: {"what": "what you do not know, in their words", "where": ["apps, sites or records where their past work on it would show"]}',
     argsSchema: { type: 'object', additionalProperties: false, required: ['what'], properties: { what: { type: 'string' }, where: { type: 'array', items: { type: 'string' } } } },
     async run(args) {
       const what = typeof args['what'] === 'string' ? args['what'].trim().slice(0, 300) : ''

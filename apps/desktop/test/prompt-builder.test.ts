@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { ESCALATE_RULE, ESCALATE_TOOL, promptFor } from '../../../packages/core/src/prompt.js'
+import { ESCALATE_RULE, ESCALATE_TOOL } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -86,14 +86,6 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     const was = minusDoubled(parent[key]) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : was)
   }
-  })
-
-  it('the quick prompt that replaced the first-line prompt is no longer than it was for the same asks', () => {
-    for (const [key, korean, said] of [['ack-ko', true, []], ['ack-en', false, []], ['ack-ko-said', true, ['지금 시세 확인할게요.']]] as [string, boolean, string[]][]) {
-      const was = parent[key] as string
-      const message = JSON.parse(was.split('\n').pop()!.slice('Request: '.length)) as string
-      expect(promptFor('quick', { message, korean, said }).length, key).toBeLessThanOrEqual(was.length)
-    }
   })
 
   it('the moved prompt sentences live only in core/prompt.ts: no other source file defines or repeats one', () => {

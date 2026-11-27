@@ -112,9 +112,9 @@ describe('how the bot is told to talk', () => {
 
   it('asks for a first line that names the first step in -요 form, not an echo of the request', () => {
     const prompt = quickPrompt('엔비디아 오늘 주가 알려줘', true)
-    expect(prompt).toContain('naming the first concrete step ("회의록부터 읽어볼게요."')
+    expect(prompt).toContain('naming the first concrete step ("종류별 폴더로 옮길게요."')
     expect(prompt).toMatch(/never -습니다/)
-    expect(prompt).toMatch(/No restating the request, filler/)
+    expect(prompt).toMatch(/No restating, filler/)
     expect(prompt).not.toMatch(/restates the job/)
   })
 

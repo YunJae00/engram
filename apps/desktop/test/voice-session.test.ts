@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
+import { z, type ZodTypeAny } from 'zod'
+import { promptFor } from 'core'
 import type { SdkUserMessage } from '../src/main/engine-claude-session.js'
 
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
@@ -66,5 +69,30 @@ describe('a quick voice answers one prompt and nothing that came before it', () 
     await expect(voice.ask('지난주 반품 접수 몇 건인지 넘겨서 확인해줘', 1000)).resolves.toEqual({ text: '접수 내역부터 볼게요.', handOff: '반품 접수 현황' })
     expect(options[0]).toMatchObject({ tools: [], permissionMode: 'dontAsk', allowedTools: ['mcp__voice__hand_off'], strictMcpConfig: true })
     await vi.waitFor(() => expect(voice.closed).toBe(true))
+  })
+
+  it('a quick turn sends the model no more text than the first-line turn it replaced: its prompt plus every tool name, description and schema', async () => {
+    const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, string>
+    for (const [key, korean, said] of [['ack-ko', true, []], ['ack-en', false, []], ['ack-ko-said', true, ['지금 시세 확인할게요.']]] as [string, boolean, string[]][]) {
+      const was = parent[key]!
+      const message = JSON.parse(was.split('\n').pop()!.slice('Request: '.length)) as string
+      const tools: string[] = []
+      const heard: string[] = []
+      const sdk = {
+        tool: (name: string, description: string, shape: Record<string, ZodTypeAny>) => ({ name, description, shape }),
+        createSdkMcpServer: (server: { name: string; tools: { name: string; description: string; shape: Record<string, ZodTypeAny> }[] }) => {
+          for (const one of server.tools) tools.push(`mcp__${server.name}__${one.name}`, one.description, JSON.stringify(z.toJSONSchema(z.object(one.shape))))
+          return server
+        },
+        query: ({ prompt }: { prompt: AsyncIterable<SdkUserMessage> }) => (async function* () {
+          for await (const turn of prompt) { heard.push(turn.message.content); yield { type: 'result', result: '네' } }
+        })(),
+      }
+      const voice = new VoiceSession({ sdk: sdk as never, binary: 'fixture', workdir: 'fixture', model: 'haiku' })
+      await voice.ask(promptFor('quick', { message, korean, said }), 1000)
+      voice.close()
+      expect(tools.length, key).toBeGreaterThan(0)
+      expect([...heard, ...tools].join('').length, key).toBeLessThanOrEqual(was.length)
+    }
   })
 })
