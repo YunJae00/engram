@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { runToolSession } from '../src/agent-session.js'
 import { sessionShape } from '../src/agent-session-shape.js'
-import { COMMAND_STEP_RULE, EARLIER_REPLIES_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
+import { COMMAND_STEP_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
 import { sessionRules } from './rules.js'
 import { DESKTOP_TASK_RULE } from '../src/prompt.js'
 import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
@@ -74,8 +74,8 @@ describe('c13c: the turn kind reaches the session from its options', () => {
     const work = await run({})
     expect(count(work.system, WORK_REPLY_RULE)).toBe(1)
     expect(count(work.system, CHOICE_RULE)).toBe(1)
-    expect(count(`${work.system}\n${work.prompt}`, EARLIER_REPLIES_RULE)).toBe(1)
-    expect(count(work.prompt, EARLIER_REPLIES_RULE)).toBe(0)
+    expect(count(`${work.system}\n${work.prompt}`, REPLIES_RULE)).toBe(1)
+    expect(count(work.prompt, 'replies they did not pick')).toBe(0)
   })
   it('the warmed shape and a default work session render the same rules for the same tools', async () => {
     const work = await run({}, DECK_MENU)

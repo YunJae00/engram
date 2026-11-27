@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { ANSWER_NOW, runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
-import { EARLIER_REPLIES_RULE } from '../src/prompt.js'
+import { REPLIES_RULE } from '../src/prompt.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { MockEngine } from '../src/engine/mock.js'
@@ -320,10 +320,10 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
     await runToolSession({ engine, workdir: WORKDIR, tools }, '좀 더 자세히 알려줘', { guided: false, session: 'comet-1' })
     expect(seen[1]!.opening).toBeUndefined()
     for (const turn of seen) {
-      expect(turn.system.split(EARLIER_REPLIES_RULE)).toHaveLength(2)
-      expect(turn.prompt).not.toContain(EARLIER_REPLIES_RULE)
+      expect(turn.system.split(REPLIES_RULE)).toHaveLength(2)
+      expect(turn.prompt).not.toContain('replies they did not pick')
     }
-    for (const word of ['any detail', '분기', '엑셀 파일', '지금까지 확정된 내용', 'recap']) expect(seen[1]!.system).toContain(word)
+    for (const word of ['Your earlier replies they did not pick are your words', '미정', 'recap']) expect(seen[1]!.system).toContain(word)
   })
 
   it('a question to the person ends the turn as an ask, whatever the brain says afterwards', async () => {

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
-import { EARLIER_REPLIES_RULE, ONE_BUBBLE_RULE } from '../../../packages/core/src/prompt.js'
+import { ONE_BUBBLE_RULE, REPLIES_RULE } from '../../../packages/core/src/prompt.js'
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>
 const parent = fixture('prompts-parent.json') as Record<string, string>
@@ -36,6 +36,7 @@ const persona = memberPersona({ id: 'member-1', parentId: null, depth: 1, role: 
 const scratch: string[] = []
 const texts: Record<string, string> = {}
 const held: Record<string, string> = {}
+const runnerTurn: { system: string; prompt: string } = { system: '', prompt: '' }
 
 beforeAll(async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -49,6 +50,7 @@ beforeAll(async () => {
   const task = '안녕하세요'
   await answer(await openWorld(dir, recorder(jobs)), task)
   texts['lead-runner'] = ruleText(jobs[0]!, task).replaceAll(dir, '/w')
+  Object.assign(runnerTurn, { system: jobs[0]!.system, prompt: jobs[0]!.prompt })
   texts['lead-runner-tools'] = toolText(jobs[0]!.tools).replaceAll(dir, '/w')
   texts['lead-full'] = promptFor('work', { task: '', flags: { engineId: 'claude', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false, native } }).system
   texts['lead-bare'] = ruleText(await lead('안녕하세요', [], {}), '안녕하세요')
@@ -90,8 +92,34 @@ describe('the sentences that must survive word for word', () => {
     for (const [sentence, times] of Object.entries(keep[name]!)) expect(count({ ...texts, ...held }[name]!, sentence), sentence.slice(0, 80)).toBe(times)
   })
 
-  it('the lead reads the earlier-replies rule and the one-bubble rule once across its system and turn prompt', () => {
-    for (const rule of [EARLIER_REPLIES_RULE, ONE_BUBBLE_RULE]) expect(count(texts['lead-runner']!, rule), rule.slice(0, 40)).toBe(1)
+  it('the lead reads the reply-chips rule and the one-bubble rule once across its system and turn prompt', () => {
+    for (const rule of [REPLIES_RULE, ONE_BUBBLE_RULE]) expect(count(texts['lead-runner']!, rule), rule.slice(0, 40)).toBe(1)
+  })
+
+  it('the reply-chips rule is one short rule in the system only, opening with the parent\'s first sentence word for word', async () => {
+    const opening = 'Then always close with a fenced block whose language is replies'
+    const was = parent['lead-web'] as unknown as { system: string }
+    const firstOf = (text: string) => text.slice(text.indexOf(opening), text.indexOf('the app shows them as buttons.', text.indexOf(opening)) + 'the app shows them as buttons.'.length)
+    expect(firstOf(REPLIES_RULE)).toBe(firstOf(was.system))
+    expect(REPLIES_RULE.startsWith(firstOf(was.system))).toBe(true)
+    expect(REPLIES_RULE.length).toBeLessThanOrEqual(1300)
+    expect(count(runnerTurn.system, REPLIES_RULE)).toBe(1)
+    expect(count(runnerTurn.prompt, opening)).toBe(0)
+    const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
+    scratch.push(dir)
+    const jobs: ToolSessionJob[] = []
+    await answer(await openWorld(dir, recorder(jobs)), '동창회 공지 초안 하나 써줘. 단톡방에 올리는 건 내가 말할 때')
+    expect(count(jobs[0]!.system, REPLIES_RULE)).toBe(1)
+    expect(count(jobs[0]!.prompt, opening)).toBe(0)
+    for (const rule of [
+      'A reply states nothing that is not already in the conversation or a tool result',
+      'What your answer asks for, and what they left open, put off, gave in part or do not know, is never filled in',
+      'An action they put on hold, typed or picked, is not offered now in any form',
+      'Your earlier replies they did not pick are your words, never their decision or their answer',
+    ]) {
+      expect(count(runnerTurn.system, rule), rule).toBe(1)
+      expect(count(runnerTurn.prompt, rule), rule).toBe(0)
+    }
   })
 
   it('a sentence that is missing or doubled is caught', () => {
