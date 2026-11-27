@@ -22,6 +22,17 @@ const BRANCHES: Record<string, string> = {
   '지점자료/수원.csv': '월,방문객,매출(만원),직원수,평균대기(분)\n7,3100,4000,5,8\n8,3000,3900,5,7\n9,2900,3800,5,7\n10,2800,3700,5,6\n',
   '지점자료/대전.csv': '월,방문객,매출(만원),직원수,평균대기(분)\n7,2500,3300,3,15\n8,2700,3600,3,18\n9,2900,3900,3,22\n10,3200,4300,3,27\n',
 }
+const page = (title: string, body: string) => ({ html: `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><h1>${title}</h1>${body}</body></html>` })
+const REPLIES = /```replies\n([\s\S]*?)\n```\s*$/
+const repliesOf = (run: CaseRun) => (all(run).trim().match(REPLIES)?.[1] ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+const koreanReplies = (run: CaseRun) => { const lines = repliesOf(run); return lines.length >= 2 && lines.length <= 3 && lines.every(line => /[가-힣]/.test(line) && !/(?:[A-Za-z]+\s+){3}[A-Za-z]+/.test(line)) }
+const bodyOf = (run: CaseRun) => all(run).trim().replace(REPLIES, '').trim()
+const linksTo = (run: CaseRun, path: string) => new RegExp(`http://127\\.0\\.0\\.1:\\d+${path}`).test(all(run))
+const BOOK_CLUB = '# 독서모임 운영 메모\n\n- 12월 모임은 12월 13일 토요일 오후 3시, 망원동 카페 두잔\n- 회비는 한 달 만 원, 총무는 은지\n- 다음 책 후보: 「작별하지 않는다」, 「불편한 편의점」\n- 1월 모임은 1월 10일로 잠정, 장소 미정\n- 연말 송년회 날짜는 12월 27일로 확정\n- 새 회원 두 명 소개 예정\n'
+const SUPPLIES = '품목,수량,단위,보관 위치\nA4 용지,14,박스,3층 창고\n볼펜(검정),62,자루,사무실 서랍\n토너,3,개,3층 창고\n포스트잇,25,묶음,사무실 서랍\n'
+const PACKING = '# 부산 출장 챙길 것\n\n- 노트북과 충전기\n- 사원증\n- 명함 50장\n- 견본 카탈로그 3부\n- 우산\n'
+const PACKED = ['노트북', '사원증', '명함', '카탈로그', '우산']
+
 const kindOf = (name: string) => name.slice(name.lastIndexOf('.'))
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 const folderOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf('/')))
@@ -104,5 +115,47 @@ export const CASES: EvalCase[] = [
     ask: url => `${url} 보고 서울 주간 날씨 정리해줘`,
     aside: { afterMs: 3_000, text: '아직 멀었어?' },
     grade: run => ({ seoul: /18°/.test(all(run)) }),
+  },
+  {
+    id: 'replies-close',
+    files: { '독서모임.md': BOOK_CLUB },
+    ask: () => '독서모임.md에서 날짜 정해진 일정만 골라줘',
+    grade: run => ({ dates: /12월\s*13일/.test(all(run)) && /12월\s*27일/.test(all(run)), closesWithReplies: koreanReplies(run) }),
+  },
+  {
+    id: 'hold-replies',
+    before: ['우리 동네 탁구 모임 사람들한테 돌릴 다음 달 정기 모임 안내 문자 하나 써줘'],
+    ask: () => '좋아요. 근데 돌리는 건 내가 하자고 할 때까지 그냥 둬요',
+    grade: run => ({ hasReplies: repliesOf(run).length > 0, noSendNow: repliesOf(run).every(line => !/(?:지금|바로|이제|이대로)[^\n]{0,8}(?:보내|돌려|발송|전송)|(?:보내|돌려|발송|전송)(?:줘|주세요|요\b)/.test(line)) }),
+  },
+  {
+    id: 'one-fact-file',
+    files: { '비품재고.csv': SUPPLIES },
+    ask: () => '비품재고.csv 보면 A4 용지 몇 박스 남았어?',
+    grade: run => ({ value: /14\s*박스/.test(all(run)), noTable: !/\|\s*-{3,}/.test(all(run)), short: bodyOf(run).split('\n').filter(line => line.trim()).length <= 2 }),
+  },
+  {
+    id: 'reshape-last',
+    files: { '출장준비물.md': PACKING },
+    before: ['출장준비물.md에 뭐 적혀 있는지 알려줄래요?'],
+    ask: () => '그 목록 표 모양으로 한 번 더 줄래요?',
+    grade: run => {
+      const rows = all(run).split('\n').filter(line => line.trim().startsWith('|'))
+      return { table: rows.some(line => /\|\s*-{3,}/.test(line)), everyItem: PACKED.every(item => rows.some(line => line.includes(item))) }
+    },
+  },
+  {
+    id: 'teammate-lookup',
+    as: 'teammate',
+    ask: url => `${url}book-room 에 있는 구립 작은도서관이 주말엔 몇 시에 문 닫는지 찾아줘`,
+    page: path => path.startsWith('/book-room') ? page('구립 작은도서관 이용 안내', '<p>평일 오전 9시 ~ 오후 10시</p><p>주말 오전 9시 ~ 오후 6시</p><p>매주 월요일 휴관</p>') : null,
+    grade: run => ({ closes: /(?:오후\s*)?6시|18시|18:00/.test(all(run)), address: linksTo(run, '/book-room') }),
+  },
+  {
+    id: 'helper-look',
+    as: 'helper',
+    ask: url => `${url}parking 에 나온 시민공원 공영주차장 최초 30분 요금 알아봐줘`,
+    page: path => path.startsWith('/parking') ? page('시민공원 공영주차장 요금 안내', '<table><tr><th>구분</th><th>요금</th></tr><tr><td>최초 30분</td><td>1,500원</td></tr><tr><td>이후 10분마다</td><td>500원</td></tr><tr><td>1일 최대</td><td>15,000원</td></tr></table>') : null,
+    grade: run => ({ fee: /1,?500\s*원/.test(all(run)), address: linksTo(run, '/parking') }),
   },
 ]

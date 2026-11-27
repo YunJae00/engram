@@ -3,10 +3,11 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { dirname, join, relative, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { engineCwd, loadBots, type Engine, type VaultPaths } from 'core'
-import { answer, openWorld, type AnswerTrace } from './answer.js'
+import { engineCwd, loadBots, LOOKUP_TOOLS, memberPersona, runComet, type Engine, type VaultPaths } from 'core'
+import { answer, openWorld, worldTools, type AnswerTrace, type World } from './answer.js'
 import type { ClaudeInputs } from './engine-claude.js'
 import { SessionPool } from './engine-claude-session.js'
+import { lookAsHelper } from './helper-lanes.js'
 import { openStudies } from './study-offers.js'
 
 const SETTLE_MS = 3_000
@@ -25,6 +26,7 @@ export interface CaseRun {
 export interface EvalCase {
   id: string
   ask(url: string): string
+  as?: 'teammate' | 'helper'
   page?(path: string): { html: string; status?: number } | null
   aside?: { afterMs: number; text: string }
   before?: string[]
@@ -99,6 +101,30 @@ async function seedFiles(paths: VaultPaths, files: Record<string, string>): Prom
   return own
 }
 
+const MEMBER_NAME = 'Doyun'
+
+async function handBack(world: World, as: 'teammate' | 'helper', message: string, signal: AbortSignal): Promise<AnswerTrace> {
+  const started = performance.now()
+  const ms = () => Math.round(performance.now() - started)
+  const trace: AnswerTrace = { message, steps: [], final: { text: '', ms: 0 }, end: 'done' }
+  const onStep = (line: string) => { trace.steps.push({ line, ms: ms() }) }
+  const deps = { engine: world.engine, workdir: engineCwd(world.paths) }
+  try {
+    const text = as === 'helper'
+      ? await lookAsHelper({ ...deps, channel: `bot-${world.botId}`, guided: false, toolsFor: async () => worldTools(world, message, signal), onStep }, message, 0, signal)
+      : (await runComet({ ...deps, tools: worldTools(world, message, signal).filter(tool => LOOKUP_TOOLS.has(tool.name)) }, message, {
+        guided: false, role: 'deep', lookup: true, signal, onStep,
+        persona: memberPersona({ id: 'member-1', parentId: null, depth: 1, role: MEMBER_NAME, brief: message, lookup: true, state: 'working', sessionKey: 'member-1', hiredAt: new Date().toISOString() }),
+      })).answer
+    trace.final = { text, ms: ms() }
+  } catch (cause) {
+    trace.final = { text: '', ms: ms() }
+    trace.error = cause instanceof Error ? cause.message : String(cause)
+  }
+  if (signal.aborted) trace.end = 'stop'
+  return trace
+}
+
 async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: number, worlds: string[]): Promise<CaseRow> {
   const log: SiteLog = { visits: [], posts: [] }
   const stop = new AbortController()
@@ -121,7 +147,7 @@ async function runCase(one: EvalCase, engine: Engine, out: string, deadlineMs: n
     const waiting = new Set<() => void>()
     const steered = (signal: AbortSignal): Promise<void> => new Promise(heard => { if (steer.length) return heard(); waiting.add(heard); signal.addEventListener('abort', () => heard(), { once: true }) })
     if (one.aside) aside = setTimeout(() => { steer.push(one.aside!.text); for (const wake of waiting) wake(); waiting.clear() }, one.aside.afterMs)
-    trace = (await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0), steered })).trace
+    trace = one.as ? await handBack(world, one.as, one.ask(served.url), stop.signal) : (await answer(world, one.ask(served.url), { signal: stop.signal, takeSteer: () => steer.splice(0), steered })).trace
     const tasks = (await loadBots(world.paths)).find(bot => bot.id === world.botId)?.tasks ?? []
     checks = one.grade({ answers: [trace.final.text], site: log, offers: await openStudies(world.paths, world.botId), tasks, steps: trace.steps.map(step => step.line), files: (await workFiles(world.paths)).filter(path => !own.has(path)), trace })
   } catch (cause) {

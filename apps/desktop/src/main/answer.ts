@@ -60,7 +60,7 @@ export async function openWorld(dir: string, engine: Engine, courier: WebCourier
   return { paths, botId: bot.id, engine, courier, history: [] }
 }
 
-function worldTools(world: World, message: string, signal?: AbortSignal): AgentTool[] {
+export function worldTools(world: World, message: string, signal?: AbortSignal): AgentTool[] {
   const { paths, botId } = world
   const kit = toolKit({
     paths,

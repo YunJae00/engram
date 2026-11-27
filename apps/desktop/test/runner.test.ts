@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Engine, ToolSessionJob } from 'core'
+import { HELPER_PERSONA, LOOKUP_TOOLS, type Engine, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { loadCases, runCases, runtimeInputs, summaryTable, type CaseRun, type EvalCase } from '../src/main/runner.js'
 
@@ -209,6 +209,37 @@ describe('what a case is graded on', () => {
     const pot = (id: string, ask: string): EvalCase => ({ id, ask: () => ask, grade: run => { used[id] = run.steps.map(line => line.split(':')[0]!); return {} } })
     await runCases([pot('hello', '반가워요'), pot('seek', '모종 기록 찾아줘')], engine, { out: await temp(), workers: 1, deadlineMs: 10_000 })
     expect(used).toEqual({ hello: [], seek: ['find_files'] })
+  })
+})
+
+describe('cases run as a teammate or a helper', () => {
+  it('reach the engine on the deep tier with their persona, grade the text handed back, and add no turn to the lead', async () => {
+    const jobs: ToolSessionJob[] = []
+    const engine = fakeEngine(async job => { jobs.push(job); return job.prompt.includes('Task: look') ? '찻잎은 3월에 따요. http://tea.example/' : '찻잎은 4월에 따요. http://tea.example/' })
+    const graded: Record<string, string> = {}
+    const leaf = (id: string, as: 'teammate' | 'helper'): EvalCase => ({ id, as, ask: () => `${id} 찻잎 따는 달 찾아줘`, grade: run => { graded[id] = run.answers[0]!; return { month: /월에/.test(run.answers[0]!) } } })
+    const out = await temp()
+    const rows = await runCases([leaf('mate', 'teammate'), leaf('look', 'helper')], engine, { out, workers: 2, deadlineMs: 10_000 })
+    expect(rows.map(row => [row.id, row.pass, row.end])).toEqual([['mate', true, 'done'], ['look', true, 'done']])
+    const mate = jobs.find(job => job.prompt.includes('Task: mate'))!, look = jobs.find(job => job.prompt.includes('Task: look'))!
+    expect(mate.modelHint).toBe('smart')
+    expect(`${mate.system}\n${mate.prompt}`).toContain('You are "Doyun", a member of a hidden team')
+    expect(mate.tools.map(tool => tool.name).every(name => LOOKUP_TOOLS.has(name))).toBe(true)
+    expect(`${look.system}\n${look.prompt}`).toContain(HELPER_PERSONA)
+    expect(graded).toEqual({ mate: '찻잎은 4월에 따요. http://tea.example/', look: '찻잎은 3월에 따요. http://tea.example/' })
+    const trace = JSON.parse(await readFile(join(out, 'mate.json'), 'utf8'))
+    expect(trace.final.text).toBe(graded['mate'])
+  })
+
+  it('never writes to the world history, and two worlds do not see each other', async () => {
+    const heard: string[] = []
+    const engine = fakeEngine(async job => { heard.push(job.opening ?? ''); return job.prompt.includes('보리') ? '보리는 6월이에요.' : '밀은 7월이에요.' })
+    const [a, b] = [await openWorld(await temp(), engine), await openWorld(await temp(), engine)]
+    await answer(a, '보리 수확 언제야?')
+    await runCases([{ id: 'wheat', as: 'teammate', before: ['밀 심었어'], ask: () => '밀 수확 언제야?', grade: () => ({}) }, { id: 'oat', as: 'helper', ask: () => '귀리 수확 언제야?', grade: () => ({}) }], engine, { out: await temp(), workers: 2, deadlineMs: 10_000 })
+    expect(a.history.map(turn => turn.text)).toEqual(['보리 수확 언제야?', '보리는 6월이에요.'])
+    expect(b.history).toEqual([])
+    expect(heard.join('\n')).not.toContain('보리는 6월이에요.')
   })
 })
 
