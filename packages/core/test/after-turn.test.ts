@@ -3,8 +3,8 @@ import { openRuleLines } from './rules.js'
 
 it('instructs the engine to complete and verify work within the same turn', () => {
   const rules = openRuleLines().join('\n')
-  expect(rules).toContain('Persist through execution and verification within the current turn')
-  expect(rules).toContain('do not stop at analysis, a plan, or a partial change')
+  expect(rules).toContain('Finish the job in this turn, doing and checking it')
+  expect(rules).toContain('never end on a plan to try something: try it now')
   expect(rules).toContain('call ask_person and wait')
-  expect(rules).toContain('repeat completed side effects')
+  expect(rules).toContain('repeat a side effect')
 })

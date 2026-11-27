@@ -3,7 +3,7 @@ import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
 import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
 import { openRuleLines } from './rules.js'
 import { sessionRules } from './rules.js'
-import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, VOICE_RULE } from '../src/prompt.js'
+import { COLLEAGUE_CORE_RULE, NO_SELF_RESEARCH_RULE, PERSIST_RULE, PERSIST_WEB_RULE, VOICE_RULE } from '../src/prompt.js'
 
 describe('a comet speaks to the person, not about them', () => {
   it('the open rules ask for direct, first-person progress lines and forbid third-person narration', () => {
@@ -21,7 +21,7 @@ describe('a comet speaks to the person, not about them', () => {
     expect(lines.some(line => line.startsWith('Never name internal tools'))).toBe(false)
     const prompt = lines.join('\n')
     expect(prompt).not.toContain('never a results address')
-    expect(prompt).toContain("a results page's own figure to that page's address")
+    expect(prompt).toContain("a results page's figure to its address")
     expect(COLLEAGUE_CORE_RULE).toContain('A fact read from a page or results carries a Markdown link to it')
   })
 })
@@ -53,7 +53,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   const prompts = [system, openRuleLines().join('\n'), stepPrompt('t', [], [], undefined, undefined, undefined, false), wrapUpPrompt('t', [], undefined, undefined, undefined, false)]
 
   it('carries every voice rule into the session system prompt and open prompts', () => {
-    for (const prompt of prompts) for (const rule of [VOICE_RULE, NO_SELF_RESEARCH_RULE, FALLBACK_LADDER_RULE]) expect(prompt).toContain(rule)
+    for (const prompt of prompts) for (const rule of [VOICE_RULE, NO_SELF_RESEARCH_RULE, `${PERSIST_RULE} ${PERSIST_WEB_RULE}`]) expect(prompt).toContain(rule)
   })
 
   it('opens with the job and its outcome, and that line replaces naming what will be looked at first', () => {
@@ -79,8 +79,8 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('goes down a source ladder that ends in a partial answer, never a plan', () => {
-    expect(FALLBACK_LADDER_RULE).toMatch(/the official source, then another reputable source, then search results or news coverage, then a partial answer that says exactly what is missing/)
-    expect(FALLBACK_LADDER_RULE).toMatch(/never end on a plan to try something/)
+    expect(PERSIST_WEB_RULE).toMatch(/the ladder: the official source, another reputable one, search results or news, a partial answer saying exactly what is missing/)
+    expect(PERSIST_RULE).toMatch(/never end on a plan to try something: try it now/)
   })
 
   it('leads the final answer with the result, guided path included', () => {

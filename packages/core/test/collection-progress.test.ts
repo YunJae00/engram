@@ -164,11 +164,13 @@ it.each(['Sign in', '로그인', 'Log in', 'security screen', '보안 화면', '
 it('requires another reading approach and complete scope before a partial finish', async () => {
   const { COLLECTION_RULE } = await import('../src/collection-progress.js')
   const { sessionRules } = await import('./rules.js')
-  for (const text of [COLLECTION_RULE, sessionRules({ engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })]) {
-    expect(text).toContain('try it once another way')
-    expect(text).toContain('go through all of them in this turn without asking to continue')
-    expect(text).toContain('Partial is for a real barrier')
-  }
+  expect(COLLECTION_RULE).toContain('try it once another way')
+  expect(COLLECTION_RULE).toContain('go through all of them in this turn without asking to continue')
+  expect(COLLECTION_RULE).toContain('Partial is for a real barrier')
+  const rules = sessionRules({ engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })
+  expect(rules).toContain('take another route to the same source')
+  expect(rules).toContain('Do every item asked for without asking to continue')
+  expect(rules).toContain('Partial is only for a real barrier')
 })
 
 it('finishes a one-value lookup with the single receipt call, no list registered first', async () => {

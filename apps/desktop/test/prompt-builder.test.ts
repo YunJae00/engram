@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { COLLEAGUE_CORE_RULE, ESCALATE_RULE, ESCALATE_TOOL, FILE_JOB_RULE, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, RECEIPT_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { COLLEAGUE_CORE_RULE, ESCALATE_RULE, ESCALATE_TOOL, FILE_JOB_RULE, ONE_BUBBLE_RULE, PERSIST_RULE, PERSIST_WEB_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, RECEIPT_RULE, REFERENCE_ID_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -42,12 +42,23 @@ const oldReceipt = lineOf(web0.system, 'Before a final answer after browser work
 const oldCore = between(web0.system, 'You talk like a capable, friendly coworker', 'and nothing about what you changed.')
 const oldFileJob = between(web0.system, 'What you make from a file or text they named', '("파일 링크가 새로 바뀌었으니").')
 const oldPrior = between(web0.system, 'Never say the person asked for, did or saved', 'when nothing earlier was found, say so.')
-const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '').replace(oldReceipt, RECEIPT_RULE).split(oldCore).join(COLLEAGUE_CORE_RULE).split(oldFileJob).join(FILE_JOB_RULE).split(oldPrior).join(PRIOR_CLAIM_RULE)
+const oldStop = lineOf(web0.system, 'Do not stop at the first failure.')
+const oldLadder = lineOf(web0.system, 'When a source fails, go down the ladder')
+const oldBefore = lineOf(web0.system, 'Before recording an item as unverified')
+const oldWork = ['Where to look, in order', 'On an open page, act before asking', 'Searching: when the ask names', 'Before writing something the person writes again and again', 'What you say about the subject', 'You can make documents (PDF'].map(from => lineOf(web0.system, from))
+const oldRef = lineOf(web0.system, 'An identifier in the person')
+const newWork = (now: string): string[] => ['Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', 'What you say about the subject', 'You can make documents'].map(from => lineOf(now, from))
+const howToWork = (text: string, now: string): string => {
+  const persist = text.includes(oldStop) ? `${PERSIST_RULE} ${PERSIST_WEB_RULE}` : PERSIST_RULE
+  const lines = newWork(now)
+  return oldWork.reduce((left, old, at) => left.split(old).join(lines[at]!), text.replace(lineOf(text, 'Keep going until the requested task'), persist).replace(`\n${oldStop}`, '').replace(`\n${oldLadder}`, '').replace(`\n${oldBefore}\n`, '\n')).split(oldRef).join(REFERENCE_ID_RULE)
+}
+const minusSystem = (text: string, now: string): string => { const was = cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '').replace(oldReceipt, RECEIPT_RULE).split(oldCore).join(COLLEAGUE_CORE_RULE).split(oldFileJob).join(FILE_JOB_RULE).split(oldPrior).join(PRIOR_CLAIM_RULE); return was.includes('Keep going until the requested task') ? howToWork(was, now) : was }
 const minusTurn = (text: string): string => cutFromTurn.reduce((left, cut) => left.replace(cut, cut.endsWith('Task: ') ? '\nTask: ' : ''), text)
-const minusCut = (was: unknown): unknown => typeof was === 'string' ? minusSystem(was) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
+const minusCut = (was: unknown, now: string): unknown => typeof was === 'string' ? minusSystem(was, now) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system, now), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, the first-line, reply-shape and to-the-person rules replaced by their short forms, the browser receipt rule saying a one-value answer finishes in one call, the colleague, file-job and prior-claim rules replaced by their short forms, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, the first-line, reply-shape and to-the-person rules replaced by their short forms, the browser receipt rule saying a one-value answer finishes in one call, the colleague, file-job and prior-claim rules replaced by their short forms, the four persistence rules replaced by one and the how-to-work lines by their short forms, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -108,7 +119,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   expect(Object.keys(out)).toEqual(kept)
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
-    const was = minusCut(parent[key]) as { prompt?: string }
+    const was = minusCut(parent[key], (out['lead-web'] as { system: string }).system) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : key === 'note-shown' ? parent['note-pending'] : was)
   }
   })
@@ -123,7 +134,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     for (const old of [oldVoice, oldWorkReply, oldPlain.trim(), oldWrite, oldSpeak]) expect(sentences.some(sentence => sentence.includes(old))).toBe(false)
     expect(sentences.some(sentence => `${sentence}${PLAIN_WORK_RULE}` === TO_PERSON_RULE)).toBe(true)
     expect([...sentences, oldEarlier, oldWrite].length).toBeGreaterThan(60)
-    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|TO_PERSON_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
+    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|PERSIST_RULE|PERSIST_WEB_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|TO_PERSON_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
     for (const path of sources) {
       const text = readFileSync(path, 'utf8')
       expect(text, path).not.toMatch(names)

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
-import { CHOICE_RULE, COLLEAGUE_CORE_RULE, COLLEAGUE_RULE, FILE_JOB_RULE, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, COLLEAGUE_RULE, FILE_JOB_RULE, ONE_BUBBLE_RULE, PERSIST_RULE, PERSIST_WEB_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, REFERENCE_ID_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 import { stepPrompt, wrapUpPrompt } from '../../../packages/core/src/agent-prompt.js'
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>
@@ -192,6 +192,68 @@ describe('the sentences that must survive word for word', () => {
         expect(count(was.system, old), old).toBe(1)
         expect(count(text, old), old).toBe(0)
       }
+    }
+  })
+
+  it('the persistence rule replaces the four old ones, the how-to-work block is short, the lookup kind keeps persistence and sources, and a menu with no web tool gets none of the web rules', async () => {
+    const persist = `${PERSIST_RULE} ${PERSIST_WEB_RULE}`
+    expect(persist.length).toBeLessThanOrEqual(900)
+    const starts = [persist, 'Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', REFERENCE_ID_RULE, 'What you say about the subject', 'You can make documents']
+    const block = (system: string) => system.split('\n').filter(line => starts.some(start => line.startsWith(start)))
+    expect(block(runnerTurn.system)).toHaveLength(starts.length)
+    expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4400)
+    const was = parent['lead-web'] as unknown as { system: string }
+    const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
+    scratch.push(dir)
+    const jobs: ToolSessionJob[] = []
+    await answer(await openWorld(dir, recorder(jobs)), '우리 동 주민센터 요가 교실 접수 기간 알아봐줘')
+    for (const text of [`${runnerTurn.system}\n${runnerTurn.prompt}`, `${jobs[0]!.system}\n${jobs[0]!.prompt}`]) {
+      expect(count(text, persist)).toBe(1)
+      for (const part of [
+        'Finish the job in this turn, doing and checking it',
+        'never end on a plan to try something: try it now',
+        'A failed, empty or cut-short read or search is not proof: take another route to the same source',
+        'Do every item asked for without asking to continue',
+        'Partial is only for a real barrier',
+        'call ask_person and wait',
+        'Never invent success, repeat a side effect or widen the ask',
+        'reload it, its own address and menus',
+        'the official source, another reputable one, search results or news, a partial answer saying exactly what is missing',
+        'a press that changes nothing was the wrong control',
+        'their notebook (search_memory',
+        'never for a value read this turn',
+        'goes into the first search',
+        'read a page listing newest first',
+        'note every condition first',
+        'list an item only when its own page was read this turn',
+        'Several found items go in one table, one row each, name first, link in the row',
+        'the page beats your own knowledge',
+        'marked unverified in the same sentence',
+        'no substitute is passed off as it',
+        'read a view that covers it or say first what was covered',
+        'unverified and as of when',
+        'act before asking',
+        'Say something cannot be done only after words, point and look have failed',
+        'match them field by field',
+        'never save it half-filled',
+        'is a reference, not a task',
+        'unless they name one',
+      ]) expect(count(text, part), part).toBe(1)
+      for (const old of ['Keep going until the requested task is completely resolved', 'Do not stop at the first failure', 'When a source fails, go down the ladder', 'Where to look, in order', 'the app shows each row as a card', 'Web research uses search_web and open_page']) {
+        expect(count(was.system, old), old).toBe(1)
+        expect(count(text, old), old).toBe(0)
+      }
+      expect(count(was.system, 'Before recording an item as unverified')).toBe(2)
+      expect(count(text, 'Before recording an item as unverified')).toBe(1)
+    }
+    const link = Object.keys(keep['lead-runner']!).find(sentence => sentence.startsWith('A fact read from a page or results carries a Markdown link'))!
+    for (const name of ['lead-lookup', 'teammate', 'helper']) {
+      for (const rule of [persist, link, 'What you say about the subject', 'Searching:']) expect(count(texts[name]!, rule), `${name}: ${rule.slice(0, 40)}`).toBe(1)
+    }
+    const bare = await lead('find when the community centre yoga class opens sign-ups', [tool('file_read')], { lookup: true })
+    for (const text of [texts['lead-bare']!, bare.system]) {
+      expect(count(text, PERSIST_RULE)).toBe(1)
+      for (const web of [PERSIST_WEB_RULE, 'the ladder', 'Look in order:', 'Searching:', 'On an open page', 'What you say about the subject', 'search results or news']) expect(count(text, web), web).toBe(0)
     }
   })
 
