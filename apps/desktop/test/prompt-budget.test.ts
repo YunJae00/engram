@@ -210,15 +210,15 @@ describe('the sentences that must survive word for word', () => {
     for (const text of [`${runnerTurn.system}\n${runnerTurn.prompt}`, `${jobs[0]!.system}\n${jobs[0]!.prompt}`]) {
       expect(count(text, persist)).toBe(1)
       for (const part of [
-        'Finish the job in this turn, doing and checking it',
+        'Finish the job this turn and check each claim against what you read',
         'never end on a plan to try something: try it now',
         'A failed, empty or cut-short read or search is not proof: take another route to the same source',
-        'Do every item asked for without asking to continue',
+        'Do every item asked without asking to continue',
         'Partial is only for a real barrier',
         'call ask_person and wait',
         'Never invent success, repeat a side effect or widen the ask',
-        'reload it, its own address and menus',
-        'the official source, another reputable one, search results or news, a partial answer saying exactly what is missing',
+        'reload, its own address and menus',
+        'the official source, another reputable one, search results or news, a partial answer naming exactly what is missing',
         'a press that changes nothing was the wrong control',
         'their notebook (search_memory',
         'never for a value read this turn',

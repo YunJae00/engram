@@ -169,7 +169,7 @@ it('requires another reading approach and complete scope before a partial finish
   expect(COLLECTION_RULE).toContain('Partial is for a real barrier')
   const rules = sessionRules({ engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })
   expect(rules).toContain('take another route to the same source')
-  expect(rules).toContain('Do every item asked for without asking to continue')
+  expect(rules).toContain('Do every item asked without asking to continue')
   expect(rules).toContain('Partial is only for a real barrier')
 })
 

@@ -79,7 +79,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('goes down a source ladder that ends in a partial answer, never a plan', () => {
-    expect(PERSIST_WEB_RULE).toMatch(/the ladder: the official source, another reputable one, search results or news, a partial answer saying exactly what is missing/)
+    expect(PERSIST_WEB_RULE).toMatch(/the ladder: the official source, another reputable one, search results or news, a partial answer naming exactly what is missing/)
     expect(PERSIST_RULE).toMatch(/never end on a plan to try something: try it now/)
   })
 
