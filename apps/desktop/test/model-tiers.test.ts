@@ -170,7 +170,7 @@ describe('instant first line', () => {
     expect(prompt).toContain('and the message names no address, page, file or folder, even a local or broken one')
     expect(prompt.indexOf('names no address')).toBeLessThan(prompt.indexOf('Write one or two short'))
     expect(prompt).toContain('Hand off everything else')
-    expect(prompt).toContain('and anything you doubt you can do')
+    expect(prompt).toContain('and anything to do or you doubt you can do')
     expect(prompt).toContain('then call hand_off and write nothing after')
     expect(prompt).toContain('When unsure, hand it off.')
     expect(prompt).toContain("in the request's language")
@@ -178,6 +178,17 @@ describe('instant first line', () => {
     expect(quickPrompt('x', true)).not.toContain('Your first sentences earlier')
     expect(prompt).toContain('anything that needs earlier messages')
     expect(prompt).not.toContain('calendar, today first')
+  })
+
+  it('has the quick tier sort a message by what it asks, so a telling about plans or work days is answered whole, not handed off as a job its line invents', () => {
+    for (const korean of [true, false]) {
+      const prompt = quickPrompt(korean ? '저 다음 주부터 매일 아침 수영 다녀요' : 'Starting next week I swim every morning', korean)
+      const hand = prompt.slice(prompt.indexOf('Hand off everything else'), prompt.indexOf('When unsure'))
+      expect(prompt).toContain('Judge by the ask, not its subject. Hand off everything else')
+      expect(prompt.indexOf('something they only tell you')).toBeLessThan(prompt.indexOf('Judge by the ask'))
+      expect(hand).not.toMatch(/schedules|the team|documents/)
+      expect(hand).toContain('anything to do')
+    }
   })
 
   it('tells the quick tier what its hand-off can do, so its one sentence never refuses work the tools behind it can do', () => {
