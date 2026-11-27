@@ -99,7 +99,7 @@ describe('small talk never sounds like a help desk (Q1)', () => {
   it('a greeting is answered whole by the quick tier, whose prompt says never to ask or offer help, like the lead\'s rule; a line is shown as written', () => {
     expect(COLLEAGUE_RULE).toContain('no asking or offering help in any wording')
     const prompt = quickPrompt('주말 잘 보내셨어요?', true)
-    expect(prompt).toContain('Answer in full yourself only when the reply needs nothing but this conversation and common knowledge (a greeting')
+    expect(prompt).toContain('Answer in full yourself only when the reply needs nothing but this message and common knowledge (a greeting')
     expect(prompt).toContain('with no emoji, question back or offer of help')
     for (const said of ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요! 오늘은 무엇을 도와드릴까요?', '좋은 아침이에요. 뭐 도와드릴까요?', '안녕하세요! 도와드릴 일 있으면 말씀하세요.', '반가워요. 필요하신 게 있으면 말씀해 주세요.', 'Hi there! How can I help you today?', '무엇을 도와드릴까요?']) expect(cleanLine(said), said).toBe(said)
     for (const none of ['  ', '안녕하세요!\n좋은 아침이에요.']) expect(cleanLine(none), none).toBeUndefined()

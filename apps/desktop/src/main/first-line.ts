@@ -1,4 +1,4 @@
-import { calendarLine, promptFor, type Engine, type EngineCwd, type FirstLine, type QuickInput } from 'core'
+import { promptFor, type Engine, type EngineCwd, type FirstLine } from 'core'
 import { flog } from './flog.js'
 
 export const FIRST_LINE_BUDGET_MS = 3000
@@ -15,7 +15,6 @@ export interface FirstLineAsk {
   studying: boolean
   limited: boolean
   secret: boolean
-  history?: QuickInput['history']
 }
 export type QuickTurn = { answer: string } | { brief: string } | undefined
 type Voice = Pick<Engine, 'id' | 'quick'>
@@ -67,7 +66,7 @@ export async function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voi
     if (engine?.id !== 'claude' || !engine.quick) { clearTimeout(timer); close('skipped', 'engine'); return undefined }
     const said = await ask.said?.().catch(() => []) ?? []
     if (ask.signal.aborted) return undefined
-    const reply = await engine.quick(promptFor('quick', { message: ask.message, korean: ask.korean, said, ...(ask.history ? { history: ask.history } : {}), calendar: calendarLine() }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
+    const reply = await engine.quick(promptFor('quick', { message: ask.message, korean: ask.korean, said }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
     if (ask.signal.aborted) return undefined
     if (reply.handOff === undefined) {
       if (!reply.text.trim()) { log({ channel: ask.channel, outcome: 'silent', ms: Date.now() - started }); return undefined }

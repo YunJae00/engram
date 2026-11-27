@@ -101,7 +101,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   const quick = beginFirstLine({
     interactive: true, studying: false, limited: false, secret: false, engine: async () => engine,
     ...asked,
-    channel, message, korean, history: world.history, workdir: engineCwd(paths), signal: turn,
+    channel, message, korean, workdir: engineCwd(paths), signal: turn,
     show: line => { trace.first ??= { text: line, ms: ms() }; asked.show?.(line) },
   })
   firstLineReady(channel)

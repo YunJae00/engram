@@ -200,7 +200,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     }
   })
 
-  it('takes something the person only told to the quick tier with the conversation in view, and posts its whole reply as written with no lead step', async () => {
+  it('takes something the person only told to the quick tier, which reads that one message and nothing said before it, and posts its whole reply as written with no lead step', async () => {
     vi.useRealTimers()
     const said = '이번 토요일에 동생 결혼식이라 아침 일찍 대전 내려가'
     const asked: string[] = []
@@ -208,7 +208,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(calls).toBe(0)
     expect(posted).toBe('축하드려요, 조심히 다녀오세요.')
     expect(asked).toHaveLength(1)
-    expect(asked[0]).toContain('주말에 뭐 할지 아직 몰라')
+    expect(asked[0]).not.toContain('주말에 뭐 할지 아직 몰라')
     expect(asked[0]).toContain(said)
     expect(source('answer.ts')).not.toMatch(/told:|onlyTells|TOLD_NOTE/)
     expect(source('ipc.ts')).not.toMatch(/reply: !\(turn\?\.context/)

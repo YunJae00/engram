@@ -97,19 +97,19 @@ describe('answer is the one entry the app and the runner share', () => {
     expect(trace.steps).toEqual([])
   })
 
-  it('a recall the thread already holds is answered whole by the quick tier, which sees the conversation, before the safety time', async () => {
-    const quick = vi.fn<(prompt: string) => Promise<QuickReply>>(async () => { await wait(10); return { text: '토요일 2시예요.' } })
-    const lead = vi.fn(async () => '쓰이면 안 돼요.')
-    const engine = fake(lead, quick)
-    const world = { ...await openWorld(await temp(), engine), history: [{ role: 'user' as const, text: '치과 예약 금요일 3시야' }, { role: 'assistant' as const, text: '알겠어요.' }, { role: 'user' as const, text: '아 금요일 말고 토요일 2시로 옮겼어' }, { role: 'assistant' as const, text: '토요일 2시로 고쳤어요.' }] }
-    const shown: string[] = []
-    const { trace } = await answer(world, '치과 언제 가더라?', { ack: { show: line => { shown.push(line) } } })
-    await wait(50)
-    expect(quick.mock.calls[0]![0]).toContain('아 금요일 말고 토요일 2시로 옮겼어')
-    expect(lead).not.toHaveBeenCalled()
-    expect(shown).toEqual([])
-    expect(trace.first?.text).toBe('토요일 2시예요.')
-    expect(trace.first?.ms).toBeLessThan(1500)
+  it('a long earlier conversation never reaches the quick tier: its prompt is the same as with none, so a recall of it is handed to the work lead, which reads it', async () => {
+    const quick = vi.fn<(prompt: string) => Promise<QuickReply>>(async () => ({ text: '이전 대화부터 볼게요.', handOff: '세탁소 맡긴 날 확인' }))
+    const told: string[] = []
+    const engine = fake(async job => { told.push([job.system, job.opening, job.prompt].join('\n')); return '코트는 화요일에 찾으시면 돼요.' }, quick)
+    const earlier = Array.from({ length: 40 }, (_, index) => [{ role: 'user' as const, text: `세탁소 메모 ${index}: 코트는 화요일에 찾기로 했어` }, { role: 'assistant' as const, text: '알겠어요.' }]).flat()
+    const ask = '코트 언제 찾으러 가면 돼?'
+    await answer({ ...await openWorld(await temp(), engine), history: earlier }, ask)
+    await answer({ ...await openWorld(await temp(), engine), history: [] }, ask)
+    expect(quick).toHaveBeenCalledTimes(2)
+    expect(quick.mock.calls[0]![0]).toBe(quick.mock.calls[1]![0])
+    expect(quick.mock.calls[0]![0]).not.toContain('세탁소 메모')
+    expect(quick.mock.calls[0]![0]).not.toContain('calendar, today first')
+    expect(told[0]).toContain('세탁소 메모 39: 코트는 화요일에 찾기로 했어')
   })
 
   it('a quick call that fails leaves the turn to the work lead, whose words are the first text', async () => {

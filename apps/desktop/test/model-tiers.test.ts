@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { calendarLine, promptFor, vaultPaths, type EngineCwd, type QuickReply, type ToolSessionJob } from 'core'
+import { promptFor, vaultPaths, type EngineCwd, type QuickReply, type ToolSessionJob } from 'core'
 import { FILE_JOB_RULE } from '../../../packages/core/src/prompt.js'
 
 const fixture = vi.hoisted(() => ({
@@ -38,7 +38,7 @@ import { refreshEngines, resolveEngines } from '../src/main/vault.js'
 import { checkAISelection } from '../src/main/check-ai.js'
 
 const WORKDIR = 'C:/tmp' as EngineCwd
-const quickPrompt = (message: string, korean: boolean, said: readonly string[] = []): string => promptFor('quick', { message, korean, said, calendar: calendarLine() })
+const quickPrompt = (message: string, korean: boolean, said: readonly string[] = []): string => promptFor('quick', { message, korean, said })
 const source = (name: string): string => readFileSync(resolve(__dirname, '../src/main', name), 'utf8')
 const tiers = (): { purpose: string; hint: string; model: string }[] => fixture.flog.mock.calls.filter(call => call[0] === 'model-tier').map(call => JSON.parse(call[1] as string))
 const drain = async (events: AsyncIterable<unknown>): Promise<void> => { for await (const event of events) void event }
@@ -152,7 +152,7 @@ describe('instant first line', () => {
   it('shows the voice its earlier lines, has it answer a greeting, a thanks, a telling or a one-step question in full, and hand everything else off', () => {
     const prompt = quickPrompt('이 사진 배경 지워줄 수 있어?', true, ['파일부터 열어 볼게요.'])
     expect(prompt).toContain('Your first sentences earlier in this conversation: "파일부터 열어 볼게요."')
-    expect(prompt).toContain('Answer in full yourself only when the reply needs nothing but this conversation and common knowledge (a greeting, thanks, small talk, a complaint, something they only tell you, a definition, a calculation, a well-known fact')
+    expect(prompt).toContain('Answer in full yourself only when the reply needs nothing but this message and common knowledge (a greeting, thanks, small talk, a complaint, something they only tell you, a definition, a calculation, a well-known fact')
     expect(prompt).toContain('and the message names no address, page, file or folder, even a local or broken one')
     expect(prompt.indexOf('names no address')).toBeLessThan(prompt.indexOf('Write one or two short'))
     expect(prompt).toContain('Hand off everything else')
@@ -162,8 +162,8 @@ describe('instant first line', () => {
     expect(prompt).toContain("in the request's language")
     expect(prompt).not.toMatch(/\bNONE\b/)
     expect(quickPrompt('x', true)).not.toContain('Your first sentences earlier')
-    const history = [{ role: 'user' as const, text: '내 담당 거래처는 대명유통이야' }, { role: 'assistant' as const, text: '알겠어요.' }]
-    expect(promptFor('quick', { message: '내 거래처 어디였지?', korean: true, history })).toContain('내 담당 거래처는 대명유통이야')
+    expect(prompt).toContain('anything that needs earlier messages')
+    expect(prompt).not.toContain('calendar, today first')
   })
 
   it('starts the lead once the quick tier has chosen, reads the note without waiting for a line, and holds the lead\'s words only while a line is pending', () => {
