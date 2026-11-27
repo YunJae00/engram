@@ -66,7 +66,8 @@ export async function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voi
     if (engine?.id !== 'claude' || !engine.quick) { clearTimeout(timer); close('skipped', 'engine'); return undefined }
     const said = await ask.said?.().catch(() => []) ?? []
     if (ask.signal.aborted) return undefined
-    const reply = await engine.quick(promptFor('quick', { message: ask.message, korean: ask.korean, said }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
+    const voiced = (text: string): void => { const line = cleanLine(text, ACK_MAX); if (line && !turn.line) { clearTimeout(timer); say(line, 'voiced') } }
+    const reply = await engine.quick(promptFor('quick', { message: ask.message, korean: ask.korean, said }), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS, onHandOff: voiced })
     if (ask.signal.aborted) return undefined
     if (reply.handOff === undefined) {
       if (!reply.text.trim()) { log({ channel: ask.channel, outcome: 'silent', ms: Date.now() - started }); return undefined }
@@ -75,9 +76,8 @@ export async function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voi
       log({ channel: ask.channel, outcome: 'answered', ms: Date.now() - started })
       return { answer: reply.text.trim() }
     }
-    const line = cleanLine(reply.text, ACK_MAX)
     log({ channel: ask.channel, outcome: 'handed', brief: reply.handOff, ms: Date.now() - started })
-    if (line && !turn.line) { clearTimeout(timer); say(line, 'voiced') }
+    voiced(reply.text)
     return { brief: reply.handOff }
   } catch (error) {
     log({ channel: ask.channel, outcome: 'failed', reason: error instanceof Error ? error.message : String(error), ms: Date.now() - started })

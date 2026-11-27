@@ -14,6 +14,8 @@ export class VoiceSession {
   private wake: (() => void) | undefined
   private waiting: { resolve(reply: QuickReply): void; reject(error: Error): void } | undefined
   private said = ''
+  private streamed = ''
+  private onHandOff: ((said: string) => void) | undefined
   private asked = false
   private late = 0
   private idle: NodeJS.Timeout | undefined
@@ -38,13 +40,19 @@ export class VoiceSession {
       prompt: this.questions(),
       options: {
         cwd: spec.workdir, env: spec.env, pathToClaudeCodeExecutable: spec.binary, spawnClaudeCodeProcess: spawnRuntime,
-        abortController: this.abort, tools: [], permissionMode: 'dontAsk', mcpServers: { [SERVER]: server }, allowedTools: [`mcp__${SERVER}__${HAND_OFF_TOOL.name}`], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model, effort: 'low',
+        abortController: this.abort, includePartialMessages: true, tools: [], permissionMode: 'dontAsk', mcpServers: { [SERVER]: server }, allowedTools: [`mcp__${SERVER}__${HAND_OFF_TOOL.name}`], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model, effort: 'low',
         thinking: { type: 'disabled' },
       },
     })
     void (async () => {
       try {
         for await (const message of stream) {
+          if (message.type === 'stream_event') {
+            const event = (message as { event?: { type?: string; delta?: { type?: string; text?: string }; content_block?: { type?: string } } }).event
+            if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.streamed += event.delta.text
+            else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') { this.onHandOff?.((this.streamed || this.said).trim()); this.onHandOff = undefined }
+            continue
+          }
           if (message.type === 'assistant') this.said += textOf((message as { message: { content: unknown } }).message.content)
           if (message.type !== 'result') continue
           const result = message as { is_error?: boolean; result?: string }
@@ -67,9 +75,10 @@ export class VoiceSession {
   get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && !this.asked }
   get spent(): boolean { return this.asked && !this.waiting && this.late === 0 }
 
-  ask(text: string, timeoutMs: number): Promise<QuickReply> {
+  ask(text: string, timeoutMs: number, onHandOff?: (said: string) => void): Promise<QuickReply> {
     if (!this.ready) return Promise.reject(new Error('The voice is busy.'))
     this.asked = true
+    this.onHandOff = onHandOff
     this.rest()
     return new Promise<QuickReply>((resolve, reject) => {
       const timer = setTimeout(() => { if (this.waiting) { this.waiting = undefined; this.late++; reject(new Error('The voice took too long.')) } }, timeoutMs)

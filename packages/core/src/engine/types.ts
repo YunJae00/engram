@@ -71,7 +71,7 @@ export interface Engine {
   warm?(job: ToolSessionJob): Promise<void>
   spareReady?(): boolean
   warmQuick?(workdir: string): Promise<void>
-  quick?(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply>
+  quick?(prompt: string, options: { workdir: string; timeoutMs: number; onHandOff?(said: string): void }): Promise<QuickReply>
   claimWorkFolder?(channel: string, fallback: string): string
   readonly id: EngineId
   readonly desktopToolIsolation?: boolean

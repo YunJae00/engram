@@ -67,8 +67,38 @@ describe('a quick voice answers one prompt and nothing that came before it', () 
     const { options, sdk } = conversation()
     const voice = new VoiceSession({ sdk, binary: 'fixture', workdir: 'fixture', model: 'haiku' })
     await expect(voice.ask('지난주 반품 접수 몇 건인지 넘겨서 확인해줘', 1000)).resolves.toEqual({ text: '접수 내역부터 볼게요.', handOff: '반품 접수 현황' })
-    expect(options[0]).toMatchObject({ tools: [], permissionMode: 'dontAsk', allowedTools: ['mcp__voice__hand_off'], strictMcpConfig: true })
+    expect(options[0]).toMatchObject({ includePartialMessages: true, tools: [], permissionMode: 'dontAsk', allowedTools: ['mcp__voice__hand_off'], strictMcpConfig: true })
     await vi.waitFor(() => expect(voice.closed).toBe(true))
+  })
+
+  it('tells the caller what it said as soon as it starts the hand-off, while the brief is still being written', async () => {
+    let release = (): void => undefined
+    const gate = new Promise<void>(done => { release = done })
+    const sdk = {
+      tool: (name: string, _description: string, _shape: unknown, handler: Handler) => ({ name, handler }),
+      createSdkMcpServer: (server: { name: string; tools: { name: string; handler: Handler }[] }) => server,
+      query: ({ prompt, options: given }: { prompt: AsyncIterable<SdkUserMessage>; options: Record<string, unknown> }) => (async function* () {
+        const server = (given['mcpServers'] as Record<string, { tools: { name: string; handler: Handler }[] }>)['voice']!
+        for await (const message of prompt) {
+          void message
+          yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '화분 물 준 날짜부터 ' } } }
+          yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '볼게요.' } } }
+          yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', name: 'mcp__voice__hand_off' } } }
+          await gate
+          yield { type: 'assistant', message: { content: [{ type: 'text', text: '화분 물 준 날짜부터 볼게요.' }] } }
+          await server.tools.find(one => one.name === 'hand_off')!.handler({ brief: '화분 물 주기' })
+        }
+      })(),
+    }
+    const voice = new VoiceSession({ sdk: sdk as never, binary: 'fixture', workdir: 'fixture', model: 'haiku' })
+    const early = vi.fn()
+    let settled = false
+    const reply = voice.ask('베란다 화분 언제 물 줬는지 기록 찾아줘', 1000, early).then(value => { settled = true; return value })
+    await vi.waitFor(() => expect(early).toHaveBeenCalledExactlyOnceWith('화분 물 준 날짜부터 볼게요.'))
+    expect(settled).toBe(false)
+    release()
+    await expect(reply).resolves.toEqual({ text: '화분 물 준 날짜부터 볼게요.', handOff: '화분 물 주기' })
+    expect(early).toHaveBeenCalledOnce()
   })
 
   it('a quick turn sends the model no more text than the first-line turn it replaced: its prompt plus every tool name, description and schema', async () => {

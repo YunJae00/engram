@@ -108,6 +108,20 @@ describe('instant first line', () => {
   }
   beforeEach(() => { vi.useFakeTimers(); endFirstLine('bot-1') })
 
+  it('shows the line the moment the voice starts its hand-off, before the hand-off call itself comes back', async () => {
+    const quick = vi.fn((_prompt: string, options: { onHandOff?(said: string): void }) => new Promise<QuickReply>(done => {
+      setTimeout(() => options.onHandOff?.('세탁물 접수증부터 찾아볼게요.'), 400)
+      setTimeout(() => done({ text: '세탁물 접수증부터 찾아볼게요.', handOff: '세탁물 찾을 날짜' }), 900)
+    }))
+    const { show, turn } = begin({ id: 'claude' as const, quick })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(400)
+    expect(show).toHaveBeenCalledExactlyOnceWith('세탁물 접수증부터 찾아볼게요.')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(await turn).toEqual({ brief: '세탁물 찾을 날짜' })
+    expect(show).toHaveBeenCalledOnce()
+  })
+
   it('shows the line as soon as it arrives while the answer is silent, and tells the main turn', async () => {
     const { show, turn } = begin(voice(handing('보고서를 표로 정리해드릴게요.', 300)))
     firstLineReady('bot-1')

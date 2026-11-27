@@ -142,11 +142,11 @@ export class ClaudeEngine implements CloudEngine {
   forgetStatus(): void { this.status.forget() }
 
   async warmQuick(workdir: string): Promise<void> { await Promise.all(Array.from({ length: WARM_LANES }, (_, lane) => this.voiceFor(workdir, lane))) }
-  async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply> {
+  async quick(prompt: string, options: { workdir: string; timeoutMs: number; onHandOff?(said: string): void }): Promise<QuickReply> {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('quick', chosenModel(MODEL_TIER.quick), MODEL_TIER.quick)
     let lane: number | undefined
-    try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes()) }
+    try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes(), options.onHandOff) }
     catch (error) {
       const voice = lane === undefined ? undefined : this.state.voices[lane]
       if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir, lane).catch(() => undefined) }
