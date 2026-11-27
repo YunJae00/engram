@@ -37,12 +37,10 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   const web = ['search_web', 'open_page', 'read_pages', 'search_memory', 'search_chats', 'keep_in_mind', 'schedule', 'offer_study'].map(tool)
   await lead('lead-web', 'claude', web, '엔비디아 오늘 주가 알려줘', { persona: 'You are 지민, a colleague who gets the task done.', memory: 'The person is 민호.', history, onScreen: 'screen text', context: { attachments: 'note one', turn: 'note two' }, resume: 'step 1 done', skills: [{ name: 'stock', description: 'reads a quote' }] })
   await lead('lead-bare', 'claude', [], '안녕하세요', {})
-  await lead('lead-short', 'claude', web.slice(0, 2), '1년은 몇 초야?', { short: true, history })
   await lead('lead-lookup', 'claude', web.slice(0, 3), '도쿄 날씨', { lookup: true, persona: 'You are 서연.' })
   const desk = ['file_read', 'file_read_package', 'file_edit_package', 'file_move', 'file_create_workbook', 'app_read', 'open_app', 'page_do', 'page_steps', 'hire_members', 'open_page'].map(tool)
   await lead('lead-desk', 'claude', desk, 'fixtures 정리해줘', { native: native({ workspace: '/vault/workspace', mode: 'once' }), history })
   await lead('lead-codex', 'codex', desk.slice(0, 5), '보고서 고쳐줘', { native: native({ mode: 'each' }) })
-  await lead('lead-plan', 'claude', desk.slice(0, 4), '계획만 세워줘', { native: native({ mode: 'plan', workspace: '/vault/workspace' }), short: true })
   await lead('teammate', 'claude', web.slice(0, 3), '서울 날씨 찾아줘', { role: 'deep', persona: 'You are 도윤, on the team. Bring back what you found.', lookup: true, session: 'member-1' })
   out['warm'] = sessionShape({ engine: { id: 'claude' } as Engine, tools: desk }, { native: native({ workspace: '/vault/workspace' }) }).system
   out['warm-bare'] = sessionShape({ engine: { id: 'codex' } as Engine, tools: web }).system

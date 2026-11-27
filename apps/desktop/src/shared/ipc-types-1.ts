@@ -182,20 +182,6 @@ export interface RoutineDto {
   pendingWrite?: { at: string; step: number; label: string }
 }
 
-export interface ErrandRunDto {
-  id: string
-  goal: string
-  botId?: string
-  startedAt: string
-  endedAt: string
-  outcome: 'done' | 'failed' | 'aborted'
-  title?: string
-  cardId?: string
-  noteSources: number
-  pages: { url: string; title: string }[]
-  error?: string
-}
-
 export interface UpdateCheckDto {
   state: 'current' | 'downloading' | 'ready' | 'available' | 'checking-unavailable' | 'error'
   version?: string

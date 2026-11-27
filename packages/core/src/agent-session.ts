@@ -44,8 +44,6 @@ export const ANSWER_NOW = 'Call no more tools. Answer now from what you already 
 const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
 const LATE_STEER_ROUNDS = 3
-const RECHECK_CALLS = 2
-const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
 const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
 const theirLanguage = (text: string, task: string): boolean => !/[가-힣]/.test(task) || /[가-힣]/.test(text) && !(text.match(/[A-Za-z]+/g) ?? []).some(word => !task.toLowerCase().includes(word.toLowerCase()))
 const STILL_RUNNING = 'That call is still running; its result will be given to you when it is ready, so do not call it again.'
@@ -58,9 +56,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
-  const browser = !options.lookup && !options.short && deps.tools.some(tool => tool.name === 'open_page')
+  const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
-  const kind = options.lookup ? 'lookup' as const : options.short ? 'short' as const : 'work' as const
+  const kind = options.lookup ? 'lookup' as const : 'work' as const
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   deps = { ...deps, tools: sessionMenu(desktopScopeTools(deps.tools)) }
@@ -374,19 +372,6 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!session.answer.trim() && !session.error && !options.lookup && theirLanguage(note, task)) session = { answer: note }
       await takeLate()
     }
-    let gap: string | undefined
-    do gap = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.recheck?.(session.answer), ended.then(() => undefined)]) : undefined
-    while (await takeLate())
-    if (gap && !signal.aborted) {
-      const draft = session.answer
-      options.onReset?.(true)
-      exhausted = false; extended = false; startedCalls = Math.max(0, allowance() - RECHECK_CALLS); working = Date.now()
-      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${recheckNote(draft, gap)}` }), ended])
-      if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
-      await takeLate()
-    }
-    const short = closed === undefined && !signal.aborted && !session.error && !asked && session.answer.trim() ? options.shortfall?.(session.answer) : undefined
-    if (short) session = { ...session, answer: `${session.answer.trimEnd()}\n\n${short}` }
   } finally {
     heard.abort()
     options.onSteerable?.(null)

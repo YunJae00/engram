@@ -94,6 +94,5 @@ export interface ErrandOptions {
   signal?: AbortSignal
   onPhase?: (state: ErrandState) => void
   onWall?: (page: { url: string; wall: 'login' | 'captcha' }) => Promise<'resolved' | 'skip'>
-  resume?: ErrandState
   now?: () => Date
 }

@@ -155,7 +155,6 @@ const api: EngramApi = {
   studyAnswer: (id: string, answer: 'go' | 'later' | 'keep' | 'wrong') => ipcRenderer.invoke('study:answer', id, answer),
   errandStart: (goal: string, botId?: string) => ipcRenderer.invoke('errand:start', goal, botId),
   errandAbort: () => ipcRenderer.invoke('errand:abort'),
-  errandJournal: () => ipcRenderer.invoke('errand:journal'),
   botsList: () => ipcRenderer.invoke('bots:list'),
   botsSearch: (query: string) => ipcRenderer.invoke('bots:search', query),
   siteIcon: (origin, shortcut) => ipcRenderer.invoke('site:icon', origin, shortcut),

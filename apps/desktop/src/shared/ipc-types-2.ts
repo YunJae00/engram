@@ -109,11 +109,6 @@ export type EngramEvent =
   | {
       type: 'errand:phase'
       phase: 'plan' | 'gather' | 'web' | 'distill' | 'compose' | 'done' | 'failed'
-      goal: string
-      queries?: string[]
-      notes?: number
-      pages?: { url: string; title: string }[]
-      points?: number
       error?: string
     }
   | { type: 'errand:logged' }

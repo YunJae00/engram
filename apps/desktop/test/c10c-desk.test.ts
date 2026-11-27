@@ -76,7 +76,7 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   async function turn(draft: string, said: string, last?: string) {
     const jobs: ToolSessionJob[] = [], voiced: string[] = []
     const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: draft } }, quick: async (prompt: string) => { voiced.push(prompt); return 'YES' } } as unknown as Engine
-    const result = await runToolSession({ engine, workdir: '/tmp/c10c-desk' as EngineCwd, tools: [] }, said, { short: true, ...(last?.trim() ? { history: [{ role: 'user' as const, text: '엔비디아 종가 알려줘' }, { role: 'assistant' as const, text: last }] } : {}) })
+    const result = await runToolSession({ engine, workdir: '/tmp/c10c-desk' as EngineCwd, tools: [] }, said, { ...(last?.trim() ? { history: [{ role: 'user' as const, text: '엔비디아 종가 알려줘' }, { role: 'assistant' as const, text: last }] } : {}) })
     return { posted: result.answer, calls: jobs.length, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
   }
 

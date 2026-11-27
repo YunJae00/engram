@@ -21,7 +21,6 @@ import {
   noteActivation,
   appendBotTurn,
   appendCounterexample,
-  appendErrandRecord,
   approveCard,
   badgeOf,
   buildContextPack,
@@ -73,7 +72,6 @@ import {
   readBotTranscript,
   removeBotTask,
   setBotTaskPaused,
-  readErrandJournal,
   readNote,
   recommendBots,
   recordCoRecall,
@@ -961,8 +959,6 @@ export function registerIpc(ctx: VaultContext): void {
     }
     errandAbort = new AbortController()
     const signal = errandAbort.signal
-    const runId = randomUUID()
-    const runStartedAt = new Date().toISOString()
     const done = runErrand(
       paths,
       {
@@ -979,11 +975,6 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({
             type: 'errand:phase',
             phase: s.phase,
-            goal: s.goal,
-            ...(s.plan ? { queries: s.plan.queries } : {}),
-            ...(s.gathered ? { notes: s.gathered.length } : {}),
-            ...(s.web ? { pages: s.web.map((p) => ({ url: p.url, title: p.title })) } : {}),
-            ...(s.points ? { points: s.points.length } : {}),
             ...(s.error ? { error: s.error } : {}),
           })
         },
@@ -999,30 +990,16 @@ export function registerIpc(ctx: VaultContext): void {
           }),
       },
     )
-      .then((result) => {
+      .then(async (result) => {
         if (result.ok) broadcast({ type: 'vault:changed' })
-        return appendErrandRecord(paths, {
-          id: runId,
-          goal,
-          ...(botId ? { botId } : {}),
-          startedAt: runStartedAt,
-          endedAt: new Date().toISOString(),
-          outcome: result.ok ? 'done' : signal.aborted ? 'aborted' : 'failed',
-          ...(result.title ? { title: result.title } : {}),
-          ...(result.card ? { cardId: result.card.id } : {}),
-          noteSources: result.sources.length,
-          pages: result.pages,
-          ...(result.error ? { error: result.error } : {}),
-        })
-          .then(() => {
-            if (!botId) return
-            const line = result.ok
-              ? `Errand finished: "${result.title ?? goal.slice(0, 80)}" — the proposal is waiting in review.`
-              : `Errand ${signal.aborted ? 'stopped' : 'failed'}: ${result.error ?? 'unknown reason'}`
-            return appendBotTurn(paths, botId, { role: 'assistant', text: line, at: new Date().toISOString() })
-          })
-          .then(() => broadcast({ type: 'errand:logged' }))
-          .then(() => result)
+        if (botId) {
+          const line = result.ok
+            ? `Errand finished: "${result.title ?? goal.slice(0, 80)}" — the proposal is waiting in review.`
+            : `Errand ${signal.aborted ? 'stopped' : 'failed'}: ${result.error ?? 'unknown reason'}`
+          await appendBotTurn(paths, botId, { role: 'assistant', text: line, at: new Date().toISOString() })
+        }
+        broadcast({ type: 'errand:logged' })
+        return result
       })
       .catch((err) => {
         flog('errand', err)
@@ -1041,8 +1018,6 @@ export function registerIpc(ctx: VaultContext): void {
     void done
     return reply
   })
-
-  ipcMain.handle('errand:journal', () => readErrandJournal(paths, 50))
 
   registerCometMemoryIpc(paths)
   const visitedOrigins = new Set<string>()

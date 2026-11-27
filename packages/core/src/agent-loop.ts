@@ -73,11 +73,8 @@ export interface AgentLoopOptions {
   maxCalls?: number
   lookup?: boolean
   light?: boolean
-  short?: boolean
   deadlineMs?: number
   onStart?(): void
-  recheck?(answer: string): string | undefined | Promise<string | undefined>
-  shortfall?(answer: string): string | undefined
 }
 
 export interface AgentLoopStep {

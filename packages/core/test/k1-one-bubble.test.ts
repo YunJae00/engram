@@ -6,7 +6,7 @@ import { ONE_BUBBLE_RULE } from '../src/prompt.js'
 import { runToolSession } from '../src/agent-session.js'
 import type { Engine, EngineCwd, ToolSessionJob } from '../src/engine/types.js'
 
-const KINDS: NonNullable<SessionFlags['kind']>[] = ['short', 'lookup', 'work']
+const KINDS: NonNullable<SessionFlags['kind']>[] = ['lookup', 'work']
 const FLAGS = { engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false }
 
 describe('the model is told that a blank line is a bubble break, in every kind of turn', () => {

@@ -92,10 +92,10 @@ describe('a one-line answer drawn from a named file is checked too (Codex r1 #1)
     expect((await deskTurn(fixed, ask, { name: 'workshop.md', text: memo })).posted).toBe(fixed)
     expect(lacks).toContain('missing')
   })
-  it('a one-line short-ask answer (no named source) is delivered as written, with no voice call', async () => {
+  it('a one-line answer (no named source) is delivered as written, with no voice call', async () => {
     const quick = vi.fn(async () => lacks)
     const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: async () => ({ answer: '아침 9시에 열어요.' }), quick } as unknown as Engine
-    expect((await runToolSession({ engine, workdir: '/tmp/c16c-desk' as EngineCwd, tools: [] }, '동네 도서관 문 여는 때가 언제야?', { short: true })).answer).toBe('아침 9시에 열어요.')
+    expect((await runToolSession({ engine, workdir: '/tmp/c16c-desk' as EngineCwd, tools: [] }, '동네 도서관 문 여는 때가 언제야?')).answer).toBe('아침 9시에 열어요.')
     expect(quick).not.toHaveBeenCalled()
   })
 })

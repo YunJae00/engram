@@ -72,7 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pendingWork, setPendingWork] = useState<PendingWorkDto>({ inbox: 0, notes: 0, filing: false })
   const [sweepJob, setSweepJob] = useState<{ job: string; index: number; total: number } | null>(null)
   const [sweepStartedAt, setSweepStartedAt] = useState<number | null>(null)
-  const [errand, setErrand] = useState<AppState['errand']>({ running: false, timeline: [] })
+  const [errand, setErrand] = useState<AppState['errand']>({ running: false })
   const [errandWall, setErrandWall] = useState<{ url: string; wall: 'login' | 'captcha' } | null>(null)
   const [routine, setRoutine] = useState<AppState['routine']>({ running: false, steps: [] })
   const [routineWall, setRoutineWall] = useState<AppState['routineWall']>(null)
@@ -236,10 +236,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startErrand = useCallback(
     async (goal: string, botId?: string) => {
       if (!goal.trim()) return
-      setErrand({ running: true, goal: goal.trim(), timeline: [] })
+      setErrand({ running: true })
       const result = await api.errandStart(goal.trim(), botId)
       if (!result.ok) {
-        setErrand({ running: false, timeline: [] })
+        setErrand({ running: false })
         showToast(result.error ?? t('toast.errandFailed', { reason: '' }))
       }
     },

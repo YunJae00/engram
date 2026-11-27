@@ -1,5 +1,5 @@
 import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -96,7 +96,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botSuggestionDismiss(name: string): Promise<void>
   botMemory(botId: string): Promise<BotFactDto[]>
   botMemoryForget(botId: string, factId: string): Promise<void>
-  errandJournal(): Promise<ErrandRunDto[]>
   errandAbort(): Promise<void>
   errandWallDone(verdict: 'resolved' | 'skip'): Promise<void>
   routinesList(): Promise<RoutineDto[]>

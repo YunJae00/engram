@@ -1,7 +1,5 @@
 import type { ErrandRetrievedNote, WebFinding, WebPage, ErrandDeps, ErrandState, ErrandResult, ErrandOptions, ErrandPhase } from './errand-types.js'
 export type { ErrandRetrievedNote, WebFinding, WebPage, PageMove, WebCourier, ErrandDeps, ErrandState, ErrandResult } from './errand-types.js'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { createCard } from './cards.js'
 import { collectResult, extractJson } from './engine/types.js'
 import { noteTitle, type Note } from './schema.js'
@@ -18,7 +16,6 @@ const PAGE_TEXT_MIN = 200
 const DISTILL_BATCH = 4
 const BODY_CHARS = 700
 const CALL_TIMEOUT_MS = 180_000
-const STATE_FILE = 'errand-state.json'
 
 const PLAN_SCHEMA = {
   type: 'object',
@@ -148,25 +145,6 @@ function composePrompt(goal: string, title: string, points: { text: string; sour
   ].join('\n')
 }
 
-function stateFile(paths: VaultPaths): string {
-  return join(paths.cache, STATE_FILE)
-}
-
-export async function saveErrandState(paths: VaultPaths, state: ErrandState): Promise<void> {
-  await mkdir(paths.cache, { recursive: true }).catch(() => undefined)
-  await writeFile(stateFile(paths), JSON.stringify(state)).catch(() => undefined)
-}
-
-export async function loadErrandState(paths: VaultPaths): Promise<ErrandState | null> {
-  try {
-    const state = JSON.parse(await readFile(stateFile(paths), 'utf8')) as ErrandState
-    return state.phase === 'done' || state.phase === 'failed' ? null : state
-  } catch {
-    return null
-  }
-}
-
-
 async function call(deps: ErrandDeps, prompt: string, schema: object | undefined, signal?: AbortSignal): Promise<string> {
   return collectResult(deps.engine, {
     prompt,
@@ -208,59 +186,51 @@ export async function runErrand(
   options: ErrandOptions = {},
 ): Promise<ErrandResult> {
   const now = options.now ?? (() => new Date())
-  const state: ErrandState =
-    options.resume && options.resume.goal === goal
-      ? options.resume
-      : { goal, startedAt: now().toISOString(), phase: 'plan' }
-  const step = async (phase: ErrandPhase): Promise<void> => {
+  const state: ErrandState = { goal, startedAt: now().toISOString(), phase: 'plan' }
+  const step = (phase: ErrandPhase): void => {
     state.phase = phase
-    await saveErrandState(paths, state)
     options.onPhase?.(state)
   }
   const fail = async (error: string): Promise<ErrandResult> => {
     state.error = error
-    await step('failed')
+    step('failed')
     return { ok: false, sources: [], pages: [], skipped: state.skipped ?? [], error }
   }
 
   try {
-    if (!state.plan) {
-      await step('plan')
-      const raw = extractJson(await call(deps, planPrompt(goal), PLAN_SCHEMA, options.signal)) as {
-        queries?: unknown
-        start_urls?: unknown
-        note_title?: unknown
-      }
-      const queries = cleanQueries(raw?.queries)
-      if (queries.length === 0) return fail('the plan produced no usable queries')
-      const noteTitleRaw = typeof raw?.note_title === 'string' ? raw.note_title.trim() : ''
-      state.plan = {
-        queries,
-        startUrls: cleanUrls(raw?.start_urls as string[] | undefined),
-        noteTitle: noteTitleRaw || goal.slice(0, 80),
-      }
+    step('plan')
+    const raw = extractJson(await call(deps, planPrompt(goal), PLAN_SCHEMA, options.signal)) as {
+      queries?: unknown
+      start_urls?: unknown
+      note_title?: unknown
+    }
+    const queries = cleanQueries(raw?.queries)
+    if (queries.length === 0) return fail('the plan produced no usable queries')
+    const noteTitleRaw = typeof raw?.note_title === 'string' ? raw.note_title.trim() : ''
+    state.plan = {
+      queries,
+      startUrls: cleanUrls(raw?.start_urls as string[] | undefined),
+      noteTitle: noteTitleRaw || goal.slice(0, 80),
     }
 
-    if (!state.gathered) {
-      await step('gather')
-      const cap = deps.courier ? MAX_NOTES_WEB : MAX_NOTES
-      const seen = new Map<string, ErrandRetrievedNote>()
-      for (const query of state.plan.queries) {
-        if (options.signal?.aborted) return fail('canceled')
-        for (const note of await deps.retrieve(query, NOTES_PER_QUERY)) {
-          if (!seen.has(note.id)) seen.set(note.id, note)
-        }
+    step('gather')
+    const cap = deps.courier ? MAX_NOTES_WEB : MAX_NOTES
+    const seen = new Map<string, ErrandRetrievedNote>()
+    for (const query of state.plan.queries) {
+      if (options.signal?.aborted) return fail('canceled')
+      for (const note of await deps.retrieve(query, NOTES_PER_QUERY)) {
+        if (!seen.has(note.id)) seen.set(note.id, note)
       }
-      if (seen.size === 0) {
-        for (const note of await deps.retrieve(goal, NOTES_PER_QUERY)) seen.set(note.id, note)
-      }
-      state.gathered = [...seen.values()].slice(0, cap)
-      if (state.gathered.length === 0 && !deps.courier) return fail('nothing in the vault matched the errand')
     }
+    if (seen.size === 0) {
+      for (const note of await deps.retrieve(goal, NOTES_PER_QUERY)) seen.set(note.id, note)
+    }
+    state.gathered = [...seen.values()].slice(0, cap)
+    if (state.gathered.length === 0 && !deps.courier) return fail('nothing in the vault matched the errand')
 
     const plan = state.plan
-    if (!state.web && deps.courier && plan) {
-      await step('web')
+    if (deps.courier) {
+      step('web')
       const courier = deps.courier
       const findings: WebFinding[] = cleanUrls(plan.startUrls).map((url) => ({ url, title: url, snippet: '' }))
       const pages: { url: string; title: string; text: string }[] = []
@@ -296,29 +266,27 @@ export async function runErrand(
         return fail('nothing to work from — no reachable pages and no matching notes')
     }
 
-    if (!state.points) {
-      await step('distill')
-      const known = new Set([...state.gathered.map((n) => n.id), ...(state.web ?? []).map((p) => p.url)])
-      const points: { text: string; sources: string[] }[] = []
-      for (let i = 0; i < state.gathered.length; i += DISTILL_BATCH) {
-        if (options.signal?.aborted) return fail('canceled')
-        const batch = state.gathered.slice(i, i + DISTILL_BATCH)
-        const raw = extractJson(await call(deps, distillPrompt(goal, batch), DISTILL_SCHEMA, options.signal))
-        points.push(...cleanPoints(raw, known))
-      }
-      for (const page of state.web ?? []) {
-        if (options.signal?.aborted) return fail('canceled')
-        const raw = await call(deps, webDistillPrompt(goal, page), DISTILL_SCHEMA, options.signal)
-          .then(extractJson)
-          .catch(() => null)
-        if (options.signal?.aborted) return fail('canceled')
-        if (raw) points.push(...cleanPoints(raw, known))
-      }
-      if (points.length === 0) return fail('no relevant points were found in the gathered material')
-      state.points = points
+    step('distill')
+    const known = new Set([...state.gathered.map((n) => n.id), ...(state.web ?? []).map((p) => p.url)])
+    const points: { text: string; sources: string[] }[] = []
+    for (let i = 0; i < state.gathered.length; i += DISTILL_BATCH) {
+      if (options.signal?.aborted) return fail('canceled')
+      const batch = state.gathered.slice(i, i + DISTILL_BATCH)
+      const raw = extractJson(await call(deps, distillPrompt(goal, batch), DISTILL_SCHEMA, options.signal))
+      points.push(...cleanPoints(raw, known))
     }
+    for (const page of state.web ?? []) {
+      if (options.signal?.aborted) return fail('canceled')
+      const raw = await call(deps, webDistillPrompt(goal, page), DISTILL_SCHEMA, options.signal)
+        .then(extractJson)
+        .catch(() => null)
+      if (options.signal?.aborted) return fail('canceled')
+      if (raw) points.push(...cleanPoints(raw, known))
+    }
+    if (points.length === 0) return fail('no relevant points were found in the gathered material')
+    state.points = points
 
-    await step('compose')
+    step('compose')
     const composed = (
       await call(deps, composePrompt(goal, state.plan.noteTitle, state.points), undefined, options.signal)
     ).trim()
@@ -343,7 +311,7 @@ export async function runErrand(
       },
       now(),
     )
-    await step('done')
+    step('done')
     return {
       ok: true,
       card,

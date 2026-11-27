@@ -1,16 +1,11 @@
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { listCards } from '../src/cards.js'
 import { engineCwd } from '../src/engine/types.js'
 import { MockEngine } from '../src/engine/mock.js'
 import {
-  loadErrandState,
   runErrand,
-  saveErrandState,
   type ErrandDeps,
   type ErrandRetrievedNote,
-  type ErrandState,
 } from '../src/errand.js'
 import { initVault, type VaultPaths } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
@@ -111,7 +106,7 @@ describe('runErrand — citation cleaning', () => {
 })
 
 describe('runErrand — empty vault', () => {
-  it('fails when nothing matched and leaves no resumable state', async () => {
+  it('fails when nothing matched', async () => {
     const engine = new MockEngine({
       'ERRAND-PLAN': PLAN,
       'ERRAND-DISTILL': '{"points":[]}',
@@ -123,10 +118,6 @@ describe('runErrand — empty vault', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('nothing')
     expect(result.card).toBeUndefined()
-
-    const raw = JSON.parse(await readFile(join(paths.cache, 'errand-state.json'), 'utf8')) as ErrandState
-    expect(raw.phase).toBe('failed')
-    expect(await loadErrandState(paths)).toBeNull()
   })
 })
 
@@ -148,52 +139,6 @@ describe('runErrand — unusable plan', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('no usable queries')
     expect(retrieveCalls).toBe(0)
-  })
-})
-
-describe('runErrand — resume', () => {
-  it('skips plan and distill when state carries their outputs', async () => {
-    const resume: ErrandState = {
-      goal: GOAL,
-      startedAt: NOW.toISOString(),
-      phase: 'compose',
-      plan: { queries: ['배포 정책', 'deploy policy'], startUrls: [], noteTitle: '배포 정책 정리' },
-      gathered: [note('n-a', '배포 회의', '스테이징 먼저 배포한다.')],
-      points: [{ text: '스테이징 먼저 배포', sources: ['n-a'] }],
-    }
-    await saveErrandState(paths, resume)
-
-    let planCalls = 0
-    let distillCalls = 0
-    let composeCalls = 0
-    const composed =
-      '# 배포 정책 정리\n\n스테이징 환경에 먼저 배포하고 검증을 거친 뒤 카나리로 승격한다 (n-a). 이후 전체 배포로 확대한다.'
-    const engine = new MockEngine({
-      'ERRAND-PLAN': () => {
-        planCalls += 1
-        return PLAN
-      },
-      'ERRAND-DISTILL': () => {
-        distillCalls += 1
-        return '{"points":[]}'
-      },
-      'ERRAND-COMPOSE': () => {
-        composeCalls += 1
-        return composed
-      },
-    })
-    const retrieve: ErrandDeps['retrieve'] = async () => {
-      throw new Error('gather should not run on resume')
-    }
-
-    const result = await runErrand(paths, depsWith(engine, retrieve), GOAL, { now: () => NOW, resume })
-
-    expect(result.ok).toBe(true)
-    expect(planCalls).toBe(0)
-    expect(distillCalls).toBe(0)
-    expect(composeCalls).toBe(1)
-    expect(result.card!.proposed).toBe(composed)
-    expect(result.sources).toEqual(['n-a'])
   })
 })
 
@@ -341,12 +286,13 @@ describe('runErrand — web courier', () => {
       'ERRAND-DISTILL': `{"points":[{"text":"a fact","source_ids":["${pool[0]!.id}"]}]}`,
       'ERRAND-COMPOSE': `# 조사 결과\n\n배포는 화요일에 한다 (${pool[0]!.id}). 이 결정은 지난 회의에서 확정되었다.`,
     })
+    let gathered = 0
     const result = await runErrand(paths, { ...depsWith(engine, retrieverFrom(pool)), courier }, GOAL, {
       now: () => NOW,
+      onPhase: (state) => { gathered = state.gathered?.length ?? gathered },
     })
     expect(result.ok).toBe(true)
     expect(result.card!.proposed).toContain('배포는 화요일에 한다. 이 결정은')
-    const state = JSON.parse(await readFile(join(paths.cache, 'errand-state.json'), 'utf8')) as ErrandState
-    expect(state.gathered).toHaveLength(6)
+    expect(gathered).toBe(6)
   })
 })

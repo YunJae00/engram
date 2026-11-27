@@ -163,23 +163,7 @@ export function useAppEvents(options: AppEventsOptions): void {
       if (event.type === 'errand:wall') setters.errandWall({ url: event.url, wall: event.wall })
       if (event.type === 'errand:phase') {
         setters.errandWall(null)
-        setters.errand((previous) => {
-          const fresh = event.phase === 'plan' && (!previous.running || previous.goal !== event.goal)
-          const timeline = fresh ? [] : previous.timeline
-          const stamped = timeline.some((step) => step.phase === event.phase)
-            ? timeline
-            : [...timeline, { phase: event.phase, at: Date.now() }]
-          return {
-            running: event.phase !== 'done' && event.phase !== 'failed',
-            phase: event.phase,
-            goal: event.goal,
-            queries: event.queries ?? (fresh ? undefined : previous.queries),
-            notes: event.notes ?? (fresh ? undefined : previous.notes),
-            pages: event.pages ?? (fresh ? undefined : previous.pages),
-            points: event.points ?? (fresh ? undefined : previous.points),
-            timeline: stamped,
-          }
-        })
+        setters.errand({ running: event.phase !== 'done' && event.phase !== 'failed', phase: event.phase })
         if (event.phase === 'done') latest.current.showToast(latest.current.t('toast.errandDone'))
         else if (event.phase === 'failed') {
           latest.current.showToast(latest.current.t('toast.errandFailed', { reason: event.error ?? '' }))

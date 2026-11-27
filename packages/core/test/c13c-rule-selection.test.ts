@@ -14,9 +14,8 @@ import type { WebPage } from '../src/errand.js'
 
 const native = { cwd: '/vault/workspace/tasks/bot-1', mode: 'auto', workspace: '/vault/workspace' } as NativeTools
 const base = { engineId: 'claude', desktop: false, browser: false, pageSteps: false, native }
-const SHORT_MENU = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats', 'file_read', 'find_files', 'ask_person', 'report_result_check']
+const NOTE_MENU = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats', 'file_read', 'find_files', 'ask_person', 'report_result_check']
 const LANE_MENU = ['hire_members', 'review_member', 'team_status', 'search_web', 'read_pages', 'open_page', 'read_open_page', 'search_memory', 'read_note', 'search_chats', 'ask_person']
-const NOTE_MENU = SHORT_MENU
 const DECK_MENU = ['ppt_build', 'word_write', 'file_read', 'file_read_package', 'file_edit_package', 'file_read_workbook', 'file_create_workbook', 'file_create_copy', 'find_files', 'render_file', 'search_web', 'read_pages', 'search_memory', 'read_note', 'report_result_check']
 const count = (text: string, rule: string): number => text.split(rule).length - 1
 const WORK_ONLY = [WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE, FILE_JOB_RULE, VOICE_RULE, TEXTING_RULE, COMMAND_STEP_RULE, RESULT_FIRST_RULE]
@@ -24,7 +23,6 @@ const WORK_ONLY = [WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE, FILE_JOB_RULE, VO
 describe('c13c: a session is sent the rules for its tools and its turn kind', () => {
   const teammate = sessionRules({ ...base, workflow: false, planned: true, kind: 'lookup', tools: [...LOOKUP_TOOLS] })
   const lone = sessionRules({ ...base, native: undefined, workflow: false, planned: true, kind: 'lookup', tools: LANE_MENU })
-  const short = sessionRules({ ...base, workflow: true, planned: true, kind: 'short', tools: SHORT_MENU })
   const note = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: NOTE_MENU })
   const deck = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: DECK_MENU })
 
@@ -36,11 +34,6 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
     }
     expect(count(teammate, TEAM_LEAD_RULE)).toBe(0)
     expect(count(lone, TEAM_LEAD_RULE)).toBe(1)
-  })
-
-  it('a short ask gets no reply-shape rule of its own: the host note is the one owner', () => {
-    for (const rule of [COLLECTION_RULE, OFFICE_FILE_RULE, DOCUMENT_CHECK_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE, ...WORK_ONLY]) expect(count(short, rule)).toBe(0)
-    expect(count(short, COLLEAGUE_CORE_RULE)).toBe(1)
   })
 
   it('work keeps exactly one reply-shape rule and the choice rule, and Office rules only with Office tools', () => {
@@ -55,8 +48,7 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
     expect(count(deck, DOCUMENT_CHECK_RULE)).toBe(1)
   })
 
-  it('fits a char budget per kind (before c13c: short 30.0k, lookup teammate 28.7k, lone lookup 25.9k, desk note 30.0k)', () => {
-    expect(short.length).toBeLessThan(7_500)
+  it('fits a char budget per kind (before c13c: lookup teammate 28.7k, lone lookup 25.9k, desk note 30.0k)', () => {
     expect(teammate.length).toBeLessThan(12_500)
     expect(lone.length).toBeLessThan(12_500)
     expect(note.length).toBeLessThan(24_000)
@@ -69,17 +61,13 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
 })
 
 describe('c13c: the turn kind reaches the session from its options', () => {
-  const run = async (options: Parameters<typeof runToolSession>[2], names = SHORT_MENU): Promise<ToolSessionJob> => {
+  const run = async (options: Parameters<typeof runToolSession>[2], names = NOTE_MENU): Promise<ToolSessionJob> => {
     const jobs: ToolSessionJob[] = []
     const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '休暇' } } } as unknown as Engine
     const tools = names.map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
     await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '‘내일 휴가입니다’를 일본어 한 줄로', options)
     return jobs[0]!
   }
-  it('a short ask has no multi-message rule, no "say what you chose" and no suggested-replies rules', async () => {
-    const job = await run({ short: true })
-    for (const rule of [WORK_REPLY_RULE, CHOICE_RULE, REPLIES_RULE, EARLIER_REPLIES_RULE]) expect(count(`${job.system}\n${job.prompt}`, rule)).toBe(0)
-  })
   it('a lookup has none of them either; a plain turn has each once', async () => {
     const lookup = await run({ lookup: true }, LANE_MENU)
     for (const rule of [WORK_REPLY_RULE, CHOICE_RULE, REPLIES_RULE, COLLECTION_RULE]) expect(count(`${lookup.system}\n${lookup.prompt}`, rule)).toBe(0)
@@ -98,12 +86,12 @@ describe('c13c: the turn kind reaches the session from its options', () => {
 
 describe('c13c r2: rules follow the turn kind, not just the tools offered', () => {
   const fileTools = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'open_page', 'read_open_page']
-  it('a short ask or lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
+  it('a lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
     const work = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: fileTools })
     const make = (text: string): boolean => /file_create_copy|file_move|Commands are not|short script/.test(text)
     expect(make(work)).toBe(true)
     expect(count(work, PAGE_DELTA_RULE)).toBe(1)
-    for (const kind of ['short', 'lookup'] as const) {
+    for (const kind of ['lookup'] as const) {
       const rules = sessionRules({ ...base, workflow: true, planned: true, kind, tools: fileTools })
       expect(make(rules)).toBe(false)
       for (const rule of [OFFICE_FILE_RULE, PAGE_DELTA_RULE, COMMAND_STEP_RULE]) expect(count(rules, rule)).toBe(0)
@@ -127,14 +115,14 @@ describe('c13c r2: rules follow the turn kind, not just the tools offered', () =
       return sent
     }
     expect((await reads({})).some(text => text.includes('delta from'))).toBe(true)
-    for (const options of [{ lookup: true }, { short: true }]) expect((await reads(options)).some(text => text.includes('delta from'))).toBe(false)
+    expect((await reads({ lookup: true })).some(text => text.includes('delta from'))).toBe(false)
   })
 })
 
-describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and tools it has', () => {
+describe('c13c r3: a lookup gets no act rule, whatever flags and tools it has', () => {
   const every = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'file_read_package', 'word_write', 'ppt_build', 'excel_write', 'open_page', 'read_open_page', 'read_pages', 'page_steps', 'page_do', 'search_web', 'desktop_sequence']
   it('all flags on equals all flags off, and holds no Office, receipt, desktop or download rule', () => {
-    for (const kind of ['short', 'lookup'] as const) {
+    for (const kind of ['lookup'] as const) {
       const on = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind, tools: every })
       const off = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(on).toBe(off)
@@ -144,11 +132,11 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
     const work = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind: 'work', tools: every })
     for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(work, rule)).toBe(1)
   })
-  it('a short ask offered a page tool is opened without the receipt tool or rule', async () => {
+  it('a lookup offered a page tool is opened without the receipt tool or rule', async () => {
     const jobs: ToolSessionJob[] = []
     const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '네' } } } as unknown as Engine
     const tools = ['open_page', 'read_open_page', 'file_read'].map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
-    await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '이 링크 제목만 말해줘', { short: true })
+    await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '이 링크 제목만 말해줘', { lookup: true })
     expect(count(jobs[0]!.system, COLLECTION_RULE)).toBe(0)
     expect(jobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
   })
@@ -156,9 +144,9 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
 
 describe('stack-13: a gate follows the tools a session holds, never the turn kind', () => {
   const every = ['file_read', 'file_create_copy', 'file_move', 'open_page', 'app_press', 'app_set', 'desktop_sequence', 'search_web']
-  it('a short or lookup session holding files and desktop tools keeps their gates; one holding neither gets none', async () => {
+  it('a lookup session holding files and desktop tools keeps their gates; one holding neither gets none', async () => {
     const { DESKTOP_GATE_RULE } = await import('../src/prompt.js')
-    for (const kind of ['short', 'lookup'] as const) {
+    for (const kind of ['lookup'] as const) {
       const holds = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(count(holds, DESKTOP_GATE_RULE), kind).toBe(1)
       expect(holds).toContain('Deleting a file of theirs is never done without asking first.')

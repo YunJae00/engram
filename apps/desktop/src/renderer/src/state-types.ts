@@ -59,12 +59,6 @@ export interface AppState {
   errand: {
     running: boolean
     phase?: string
-    goal?: string
-    queries?: string[]
-    notes?: number
-    pages?: { url: string; title: string }[]
-    points?: number
-    timeline: { phase: string; at: number }[]
   }
   errandWall: { url: string; wall: 'login' | 'captcha' } | null
   answerErrandWall(verdict: 'resolved' | 'skip'): void
