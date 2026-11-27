@@ -123,7 +123,7 @@ function openRuleLines(scope: RuleScope = {}): string[] {
     ...when(work, CHOICE_RULE, FILE_JOB_RULE),
     ...when(has('hire_members'), TEAM_LEAD_RULE),
     ...when(!!scope.tools?.includes(ESCALATE), ESCALATE_RULE),
-    ...when(work, 'You can make documents, spreadsheets, slides, images and charts, run code and organize files in your task folder; hand each deliverable in. A .docx or .pptx only when a Word, PowerPoint or document-package tool is on offer this turn, else a PDF from HTML or Markdown, and say so. Work from what they gave you: never search their Documents, Desktop or Downloads for examples or earlier files unless they name one.'),
+    ...when(work, 'You can make documents, spreadsheets, slides, images and charts, run code and organize task files; hand each in. Make .docx or .pptx only with a Word, PowerPoint or document-package tool this turn, else PDF from HTML or Markdown, and say so. Use what they gave you: never search Documents, Desktop or Downloads for examples or earlier files unless they name one.'),
     PRIOR_CLAIM_RULE,
     ...when(page, 'Fill only fields the task authorizes, and never get around a refused press with another control.'),
     'Check before you answer, then answer once: the turn ends with the answer, not with more checking after it.',

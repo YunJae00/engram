@@ -201,7 +201,7 @@ describe('the sentences that must survive word for word', () => {
     const starts = [persist, 'Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', REFERENCE_ID_RULE, 'What you say about the subject', 'You can make documents']
     const block = (system: string) => system.split('\n').filter(line => starts.some(start => line.startsWith(start)))
     expect(block(runnerTurn.system)).toHaveLength(starts.length)
-    expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4446)
+    expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4400)
     const was = parent['lead-web'] as unknown as { system: string }
     const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
     scratch.push(dir)
