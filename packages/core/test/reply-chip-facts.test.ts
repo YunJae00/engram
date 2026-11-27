@@ -18,7 +18,7 @@ describe('replies block facts rule', () => {
     expect(line).toContain(REPLIES_RULE)
     expect(line).toContain(NO_NEW_FACT)
     for (const word of ['date', 'time', 'owner', 'amount', 'name', 'place']) expect(line).toContain(word)
-    expect(line).toContain('ask instead, such as "박민수 기한 확인해줘", never "박민수 기한은 11월 14일로 넣어줘"')
+    expect(line).toContain('ask, such as "박민수 기한 확인해줘", never "박민수 기한은 11월 14일로 넣어줘"')
     expect(line).toContain('the two or three things the person is most likely to say next')
     expect(line).toContain('never English for a request written in another language')
   })
@@ -71,13 +71,13 @@ describe('replies block facts rule', () => {
   })
 
   it('keeps chips from offering an action the person put on hold, such as sending the mail', () => {
-    expect(REPLIES_RULE).toContain(`${HELD}, not as a retry and not in another app`)
-    expect(REPLIES_RULE).toContain('the replies follow what they did ask, such as "한 번 더 다듬어줘", never "이대로 보내줘"')
+    expect(REPLIES_RULE).toContain(`${HELD}, not as a retry or in another app`)
+    expect(REPLIES_RULE).toContain('the replies follow their ask and leave when to them, such as "보낼 때 말할게", never "이대로 보내줘"')
     for (const flags of flagSets) expect(sessionRules(flags)).toContain(HELD)
   })
 
   it('keeps chips from retrying a held or failed step and from echoing the deferral back', () => {
-    expect(REPLIES_RULE).toContain('not as a retry and not in another app, even after it failed, and their deferral is not repeated back')
+    expect(REPLIES_RULE).toContain('not as a retry or in another app, even after it failed, and their deferral is not repeated back')
     for (const flags of flagSets) expect(sessionRules(flags)).toContain('their deferral is not repeated back')
   })
 })
