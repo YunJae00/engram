@@ -33,7 +33,7 @@ it('asks for no caveat about a check nobody asked for', () => {
   expect(rules).toContain('never mention that Word, Excel or PowerPoint was not opened, that a file link is new or changed, or a check nobody asked for')
   expect(rules).not.toContain('only if part of the ask was not done or could not be confirmed')
   expect(rules).toContain('A part truly missing gets one calm clause')
-  expect(rules).toContain('nothing about what was not opened or checked')
+  expect(rules).toContain('nor of what was not opened or checked')
   expect(COLLEAGUE_RULE).toContain('Never tell them what you did not do or check when nobody asked for it')
   expect(COLLEAGUE_RULE).toContain('파일 링크가 새로 바뀌었으니')
   const tools = documentTools(async () => { throw new Error('unused') }, async () => { throw new Error('unused') })

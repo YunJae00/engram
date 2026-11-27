@@ -84,7 +84,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('leads the final answer with the result, guided path included', () => {
-    for (const prompt of prompts.slice(0, 2)) expect(prompt).toMatch(/When the job is done, reply as one short message in markdown: first one friendly line with the result/)
+    for (const prompt of prompts.slice(0, 2)) expect(prompt).toMatch(/When the job is done, reply as one short message in markdown with no blank line: first one friendly line with the result/)
     for (const prompt of prompts.slice(0, 2)) expect(prompt).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps')
     expect(wrapUpPrompt('t', [])).toContain('Lead with the result, not with what was checked.')
   })

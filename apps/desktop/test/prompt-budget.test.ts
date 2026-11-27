@@ -140,7 +140,7 @@ describe('the sentences that must survive word for word', () => {
         expect(count(text, old), old).toBe(0)
       }
     }
-    expect(WORK_REPLY_RULE).not.toMatch(/blank line|link|-요|language/)
+    expect(WORK_REPLY_RULE).not.toMatch(/bubble|empty line|link|-요|language/)
   })
 
   it('a sentence that is missing or doubled is caught', () => {
