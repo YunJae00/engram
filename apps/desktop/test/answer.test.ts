@@ -251,6 +251,23 @@ describe('three tiers: the work lead can pass a hard job to the deep tier', () =
     expect(result?.answer).toBe(trace.final.text)
   })
 
+  it('words the person sent while the work step ran reach the deep step that carries the job on, so it answers the changed scope', async () => {
+    const jobs: ToolSessionJob[] = []
+    const typed = ['아 동쪽 화단도 같이 넣어줘']
+    const plots: AgentTool = { name: 'read_plots', description: 'reads plots', argsSchema: { type: 'object', properties: {} }, run: async () => '북쪽, 남쪽, 서쪽 화단' }
+    const engine = fake(async job => {
+      jobs.push(job)
+      if (jobs.length > 1) return '네 화단 모종 배치를 단계별로 짰어요.'
+      expect(String(await job.tools.find(one => one.name === 'read_plots')!.run({}))).toContain('동쪽 화단도')
+      await escalate(job).run({ why: '화단마다 해 드는 시간을 맞춰 봐야 해서' }).catch(() => undefined)
+      return ''
+    })
+    const { trace } = await answer(await openWorld(await temp(), engine), '아파트 화단 세 곳에 봄 모종을 어떻게 나눠 심을지 단계별로 짜줘', { tools: [plots], takeSteer: () => typed.splice(0) })
+    expect(jobs).toHaveLength(2)
+    expect(jobs[1]!.prompt).toContain('While it ran they also wrote "아 동쪽 화단도 같이 넣어줘"')
+    expect(trace.final.text).toBe('네 화단 모종 배치를 단계별로 짰어요.')
+  })
+
   it('a turn its caller already runs on the deep tier keeps the smart model and is offered no escalate', async () => {
     const jobs: ToolSessionJob[] = []
     const engine = fake(async job => { jobs.push(job); return '봉사 동아리 일정은 셋이 나눠 맡았어요.' })

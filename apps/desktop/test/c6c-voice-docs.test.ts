@@ -68,7 +68,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     expect(first.prompt).not.toContain('earlier in this conversation')
     const second = await run(DOCS[1]!, '3분기 실적 내용부터 정리할게요.', [first.line!])
     expect(second.prompt).toContain('Your first sentences earlier in this conversation: "회의록 내용부터 정리할게요."')
-    expect(second.prompt).toContain('Do not reuse their ending, their last word or their sentence frame')
+    expect(second.prompt).toContain('Do not reuse their ending, last word or frame')
     expect(second.shown).toBe(1)
     expect(second.line).toBe('3분기 실적 내용부터 정리할게요.')
     expect((await run(DOCS[2]!, '월별로 먼저 더해 볼게요.', [first.line!, second.line!])).line).toBe('월별로 먼저 더해 볼게요.')
@@ -100,7 +100,7 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
   it('a split ask is told to the voice as a split, and the voice line is posted as written (T3)', async () => {
     const T3 = '아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜'
-    expect(quickPrompt(T3, true)).toContain('the sentence says the split in their words ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")')
+    expect(quickPrompt(T3, true)).toContain('the sentence says the split in their words ("셋이 나눠서 알아볼게요.")')
     for (const ask of [T3, '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '이번 주 경쟁사 3곳 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜']) {
       expect((await run(ask, '가격표부터 훑어볼게요.', [])).line, ask).toBe('가격표부터 훑어볼게요.')
       expect((await run(ask, '셋이 나눠서 알아볼게요.', [])).line).toBe('셋이 나눠서 알아볼게요.')

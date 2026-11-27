@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { ESCALATE_RULE } from '../../../packages/core/src/prompt.js'
+import { ESCALATE_RULE, ESCALATE_TOOL, promptFor } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -23,9 +23,11 @@ const recorder = (id: string, jobs: ToolSessionJob[]): Engine => ({
 const native = (more: Partial<NativeTools> = {}): NativeTools => ({ cwd: '/vault/workspace/tasks/bot-1', readRoots: [], decide: async () => ({ behavior: 'allow' }), ...more })
 const history = [{ role: 'user' as const, text: '다음 주 목요일에 부모님이랑 제주도 가' }, { role: 'assistant' as const, text: '좋겠어요. 날씨 한번 볼게요.' }]
 const shot = (job: ToolSessionJob) => ({ system: job.system, prompt: job.prompt, opening: job.opening ?? null })
+const doubled = ' When the turn says a first line from you is already on screen, write nothing before your first tool call and nothing between tool calls: your next words are the answer. Only when no such line is up does one short, friendly sentence that you are on it come before the first tool call; after it, a word between steps is only a short note that a part is finished or that the route changed, never another greeting and never what you are about to read or check.'
+const minusDoubled = (was: unknown): unknown => typeof was === 'string' ? was.replace(doubled, '') : was && typeof was === 'object' && 'system' in was ? { ...was, system: (was as { system: string }).system.replace(doubled, '') } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are byte-identical to the parent snapshot; the chat lead adds only the escalate rule, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -74,15 +76,24 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     await answer(world, '날씨 정리해줘', { tools: web.slice(0, 2), context: () => context })
     const job = shot(jobs[0]!)
     expect(job.system, name).toContain(ESCALATE_RULE)
+    expect(job.system.length + ESCALATE_TOOL.description.length, name).toBeLessThanOrEqual((parent[name] as { system: string }).system.length)
     out[name] = { ...job, system: job.system.replace(`${ESCALATE_RULE}\n`, '') }
   }
   const kept = Object.keys(parent).filter(key => !key.startsWith('ack-'))
   expect(Object.keys(out)).toEqual(kept)
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
-    const was = parent[key] as { prompt?: string }
+    const was = minusDoubled(parent[key]) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : was)
   }
+  })
+
+  it('the quick prompt that replaced the first-line prompt is no longer than it was for the same asks', () => {
+    for (const [key, korean, said] of [['ack-ko', true, []], ['ack-en', false, []], ['ack-ko-said', true, ['지금 시세 확인할게요.']]] as [string, boolean, string[]][]) {
+      const was = parent[key] as string
+      const message = JSON.parse(was.split('\n').pop()!.slice('Request: '.length)) as string
+      expect(promptFor('quick', { message, korean, said }).length, key).toBeLessThanOrEqual(was.length)
+    }
   })
 
   it('the moved prompt sentences live only in core/prompt.ts: no other source file defines or repeats one', () => {

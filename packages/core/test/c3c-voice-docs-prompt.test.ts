@@ -9,8 +9,8 @@ const rules = sessionRules({ engineId: 'claude', desktop: false, workflow: true,
 
 it('asks for nothing before the first tool call once the host has shown a first line', () => {
   expect(rules).not.toContain('Before the first tool call, say')
-  expect(rules).toContain('When the turn says a first line from you is already on screen, write nothing before your first tool call and nothing between tool calls')
-  expect(rules).toContain('never what you are about to read or check')
+  expect(rules).toContain(VOICE_RULE)
+  expect(rules.split('When the turn says a first line from you is already on screen')).toHaveLength(2)
   expect(VOICE_RULE.startsWith('When the turn says a first line from you is already on screen, that line is your first line: write nothing before your first tool call')).toBe(true)
   expect(openRuleLines().join('\n')).toContain(VOICE_RULE)
 })

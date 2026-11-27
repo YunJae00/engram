@@ -108,6 +108,8 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
   const run = async (options: Omit<AnswerOptions, 'signal' | 'ack'> = {}): Promise<Answered> => {
     const { takeSteer, tools, imagePaths, context, onToken, onReset, onStep, skills, native, ...loop } = options
     let streamed = '', said = '', spoke = false, firstLine = false, result: AgentLoopResult | undefined, failure: unknown
+    const heard: string[] = []
+    const steer = takeSteer && ((): string[] => { const words = takeSteer(); heard.push(...words); return words })
     const everyTool = tools ?? worldTools(world, message, signal)
     let shortlist: LoopOptions['skills']
     const lead = (role: 'work' | 'deep', notes: PromptContext, menu: AgentTool[], stop?: AbortSignal): Promise<AgentLoopResult> => {
@@ -122,7 +124,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
         ...(role === 'deep' ? { session: `${loop.session ?? botId}:deep` } : {}),
         ...(native ? { native } : {}),
         ...(ended ? { signal: ended } : {}),
-        ...(takeSteer ? { takeSteer } : {}),
+        ...(steer ? { takeSteer: steer } : {}),
         context: notes,
         onStep: line => { trace.steps.push({ line, ms: ms() }); onStep?.(line) },
         onToken: text => {
@@ -157,7 +159,7 @@ export function beginAnswer(world: World, message: string, options: Pick<AnswerO
           const passed = trace.escalated
           if (!passed || signal?.aborted) throw cause
           streamed = ''
-          result = await lead('deep', { ...notes, ...(passed.said ? { firstLine: { shown: passed.said } } : {}), escalated: passed.why }, everyTool)
+          result = await lead('deep', { ...notes, ...(passed.said ? { firstLine: { shown: passed.said } } : {}), escalated: { why: passed.why, heard } }, everyTool)
         }
         result = result.answer.trim() ? result : { ...result, answer: streamed.trim() }
       }

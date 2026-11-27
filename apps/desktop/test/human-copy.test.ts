@@ -112,18 +112,17 @@ describe('how the bot is told to talk', () => {
 
   it('asks for a first line that names the first step in -요 form, not an echo of the request', () => {
     const prompt = quickPrompt('엔비디아 오늘 주가 알려줘', true)
-    expect(prompt).toContain('지금 시세 확인할게요.')
+    expect(prompt).toContain('naming the first concrete step ("회의록부터 읽어볼게요."')
     expect(prompt).toMatch(/never -습니다/)
-    expect(prompt).toMatch(/does not restate or echo the request/)
-    expect(prompt).toContain('네, 알겠습니다')
+    expect(prompt).toMatch(/No restating the request, filler/)
     expect(prompt).not.toMatch(/restates the job/)
   })
 
   it('asks the same one prompt to answer a greeting, a thanks or a one-step question in full itself and to hand off anything to look up or do, whatever the wording', () => {
     for (const said of ['오후도 힘내요', '덕분에 살았어요', '광년은 몇 킬로미터야?']) {
       const prompt = quickPrompt(said, true)
-      expect(prompt).toMatch(/a greeting, a thanks, small talk, a complaint, something the person only tells you, a definition, a calculation, a well-known fact/)
-      expect(prompt).toMatch(/Everything else is handed off: anything to look up, read, open or check as it is now/)
+      expect(prompt).toMatch(/a greeting, thanks, small talk, a complaint, something they only tell you, a definition, a calculation, a well-known fact/)
+      expect(prompt).toMatch(/Hand off everything else: anything to look up or check as it is now/)
       expect(prompt).toContain(JSON.stringify(said))
     }
   })

@@ -88,7 +88,7 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
     const fresh = quickPrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(fresh).not.toContain('Your first sentences earlier')
     const later = quickPrompt('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true, ['보고서 구성부터 잡을게요.'])
-    for (const said of ['"보고서 구성부터 잡을게요."', '"엑셀로 바로 묶어 볼게요."', '"3번 슬라이드 제목 바꿀게요."', '"차트까지 넣어서 만들게요."', 'Do not reuse their ending, their last word or their sentence frame']) expect(later, said).toContain(said)
+    for (const said of ['"보고서 구성부터 잡을게요."', '"엑셀로 바로 묶어 볼게요."', '"금방 돼요."', 'Do not reuse their ending, last word or frame']) expect(later, said).toContain(said)
     expect(quickPrompt('회의록 요약해줘', true, ['지금 시세 확인할게요.'])).toBe(quickPrompt('회의록 요약해줘', true, ['보고서 구성부터 잡을게요.']).replace('"보고서 구성부터 잡을게요."', '"지금 시세 확인할게요."'))
   })
 
@@ -96,7 +96,7 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
     const ask = '분기별 지출 내역 표로 정리해줘'
     const after = quickPrompt(ask, true, ['영수증부터 모아 볼게요.'])
     expect(after).toContain('Your first sentences earlier in this conversation: "영수증부터 모아 볼게요."')
-    expect(after).toContain('Do not reuse their ending, their last word or their sentence frame')
+    expect(after).toContain('Do not reuse their ending, last word or frame')
     expect(quickPrompt(ask, true)).not.toContain('Do not reuse their ending')
   })
   it('has no host line to build after a voice line: the one safety line is all the host writes, whatever came before', () => {
