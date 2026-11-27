@@ -23,12 +23,12 @@ describe('the model is told that a blank line is a bubble break, in every kind o
   })
 })
 
-describe('the one-bubble rule is the last thing the model reads before it answers', () => {
-  it.each(['장마철 빨래 잘 마르는 법 알려줘', 'compare oat milk and soy milk in a table'])('the turn prompt for "%s" ends with the rule', async ask => {
-    const prompts: string[] = []
-    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { prompts.push(job.prompt); return { answer: 'ok' } } } as unknown as Engine
+describe('the one-bubble rule reaches the model once, in its system text', () => {
+  it.each(['장마철 빨래 잘 마르는 법 알려줘', 'compare oat milk and soy milk in a table'])('the turn for "%s" carries the rule once and ends with the task and its language', async ask => {
+    const jobs: ToolSessionJob[] = []
+    const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: 'ok' } } } as unknown as Engine
     await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, ask, { guided: false })
-    expect(prompts[0]!.split('\n').at(-1)).toBe(ONE_BUBBLE_RULE)
-    expect(prompts[0]).toContain(`Task: ${ask}`)
+    expect(`${jobs[0]!.system}\n${jobs[0]!.prompt}`.split(ONE_BUBBLE_RULE)).toHaveLength(2)
+    expect(jobs[0]!.prompt.split('\n').at(-2)).toBe(`Task: ${ask}`)
   })
 })

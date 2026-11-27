@@ -3,7 +3,7 @@ import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
 import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
 import { openRuleLines } from './rules.js'
 import { sessionRules } from './rules.js'
-import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from '../src/prompt.js'
+import { COLLEAGUE_CORE_RULE, FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, VOICE_RULE } from '../src/prompt.js'
 
 describe('a comet speaks to the person, not about them', () => {
   it('the open rules ask for direct, first-person progress lines and forbid third-person narration', () => {
@@ -53,7 +53,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   const prompts = [system, openRuleLines().join('\n'), stepPrompt('t', [], [], undefined, undefined, undefined, false), wrapUpPrompt('t', [], undefined, undefined, undefined, false)]
 
   it('carries every voice rule into the session system prompt and open prompts', () => {
-    for (const prompt of prompts) for (const rule of [VOICE_RULE, NO_SELF_RESEARCH_RULE, FALLBACK_LADDER_RULE, RESULT_FIRST_RULE]) expect(prompt).toContain(rule)
+    for (const prompt of prompts) for (const rule of [VOICE_RULE, NO_SELF_RESEARCH_RULE, FALLBACK_LADDER_RULE]) expect(prompt).toContain(rule)
   })
 
   it('opens with the job and its outcome, and that line replaces naming what will be looked at first', () => {
@@ -87,7 +87,8 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('leads the final answer with the result, guided path included', () => {
-    expect(RESULT_FIRST_RULE).toMatch(/the final answer leads with the result/)
+    for (const prompt of prompts.slice(0, 2)) expect(prompt).toMatch(/When the job is done, reply as one message[^\n]*first one friendly line with the result/)
+    for (const prompt of prompts.slice(0, 2)) expect(prompt).toContain('The answer is the first line: no opening line about what you are about to do, no account of your steps')
     expect(wrapUpPrompt('t', [])).toContain('Lead with the result, not with what was checked.')
   })
 

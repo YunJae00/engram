@@ -320,10 +320,10 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
     await runToolSession({ engine, workdir: WORKDIR, tools }, '좀 더 자세히 알려줘', { guided: false, session: 'comet-1' })
     expect(seen[1]!.opening).toBeUndefined()
     for (const turn of seen) {
-      expect(turn.prompt).toContain(EARLIER_REPLIES_RULE)
-      expect(turn.system).toContain(EARLIER_REPLIES_RULE)
+      expect(turn.system.split(EARLIER_REPLIES_RULE)).toHaveLength(2)
+      expect(turn.prompt).not.toContain(EARLIER_REPLIES_RULE)
     }
-    for (const word of ['any detail', '분기', '엑셀 파일', '지금까지 확정된 내용', 'recap']) expect(seen[1]!.prompt).toContain(word)
+    for (const word of ['any detail', '분기', '엑셀 파일', '지금까지 확정된 내용', 'recap']) expect(seen[1]!.system).toContain(word)
   })
 
   it('a question to the person ends the turn as an ask, whatever the brain says afterwards', async () => {

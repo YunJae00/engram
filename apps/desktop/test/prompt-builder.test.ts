@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { ESCALATE_RULE, ESCALATE_TOOL } from '../../../packages/core/src/prompt.js'
+import { EARLIER_REPLIES_RULE, ESCALATE_RULE, ESCALATE_TOOL, ONE_BUBBLE_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -24,10 +24,14 @@ const native = (more: Partial<NativeTools> = {}): NativeTools => ({ cwd: '/vault
 const history = [{ role: 'user' as const, text: '다음 주 목요일에 부모님이랑 제주도 가' }, { role: 'assistant' as const, text: '좋겠어요. 날씨 한번 볼게요.' }]
 const shot = (job: ToolSessionJob) => ({ system: job.system, prompt: job.prompt, opening: job.opening ?? null })
 const doubled = ' When the turn says a first line from you is already on screen, write nothing before your first tool call and nothing between tool calls: your next words are the answer. Only when no such line is up does one short, friendly sentence that you are on it come before the first tool call; after it, a word between steps is only a short note that a part is finished or that the route changed, never another greeting and never what you are about to read or check.'
-const minusDoubled = (was: unknown): unknown => typeof was === 'string' ? was.replace(doubled, '') : was && typeof was === 'object' && 'system' in was ? { ...was, system: (was as { system: string }).system.replace(doubled, '') } : was
+const cutFromSystem = [doubled, 'Talk like a capable assistant texting the person: warm, positive and brief, in the polite everyday form of their language, never in the tone of a report. When you got something wrong, own it in one plain line and say what you will do instead. ', '\nWhen the job is done, the final answer leads with the result - the answer itself and the files made, by name - never with what was checked, searched or tried; where it came from follows the result, and only a named source that could not be read is said before it, in one line.']
+const cutFromTurn = [`\n${EARLIER_REPLIES_RULE}\nTask: `, `\n${ONE_BUBBLE_RULE}`]
+const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text)
+const minusTurn = (text: string): string => cutFromTurn.reduce((left, cut) => left.replace(cut, cut.endsWith('Task: ') ? '\nTask: ' : ''), text)
+const minusCut = (was: unknown): unknown => typeof was === 'string' ? minusSystem(was) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -77,11 +81,14 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     expect(job.system.length + ESCALATE_TOOL.description.length, name).toBeLessThanOrEqual((parent[name] as { system: string }).system.length)
     out[name] = { ...job, system: job.system.replace(`${ESCALATE_RULE}\n`, '') }
   }
+  const web0 = parent['lead-web'] as { system: string; prompt: string }
+  cutFromSystem.reduce((left, cut) => { expect(left).toContain(cut); return left.replace(cut, '') }, web0.system)
+  for (const cut of cutFromTurn) expect(web0.prompt).toContain(cut)
   const kept = Object.keys(parent).filter(key => !key.startsWith('ack-'))
   expect(Object.keys(out)).toEqual(kept)
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
-    const was = minusDoubled(parent[key]) as { prompt?: string }
+    const was = minusCut(parent[key]) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : key === 'note-shown' ? parent['note-pending'] : was)
   }
   })
@@ -92,7 +99,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     const sources = ['packages/core/src', 'apps/desktop/src'].flatMap(dir => readdirSync(new URL(dir, root), { recursive: true, encoding: 'utf8' }).filter(name => /\.tsx?$/.test(name)).map(name => new URL(`${dir}/${name}`, root).pathname)).filter(path => path !== home)
     const sentences = [...readFileSync(home, 'utf8').matchAll(/'((?:[^'\\\n]|\\.){60,})'|`([^`$]{60,})/g)].map(match => (match[1] ?? match[2])!)
     expect(sentences.length).toBeGreaterThan(60)
-    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|RESULT_FIRST_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|EARLIER_REPLIES_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
+    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|FALLBACK_LADDER_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|EARLIER_REPLIES_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
     for (const path of sources) {
       const text = readFileSync(path, 'utf8')
       expect(text, path).not.toMatch(names)

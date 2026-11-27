@@ -4,7 +4,7 @@ import { sessionShape } from '../src/agent-session-shape.js'
 import { COMMAND_STEP_RULE, EARLIER_REPLIES_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
 import { sessionRules } from './rules.js'
 import { DESKTOP_TASK_RULE } from '../src/prompt.js'
-import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, RESULT_FIRST_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
 import { COLLECTION_RULE } from '../src/collection-progress.js'
 import { DOCUMENT_CHECK_RULE } from '../src/office-verification.js'
 import { LOOKUP_TOOLS } from '../src/team-hire-tools.js'
@@ -18,7 +18,7 @@ const NOTE_MENU = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats',
 const LANE_MENU = ['hire_members', 'review_member', 'team_status', 'search_web', 'read_pages', 'open_page', 'read_open_page', 'search_memory', 'read_note', 'search_chats', 'ask_person']
 const DECK_MENU = ['ppt_build', 'word_write', 'file_read', 'file_read_package', 'file_edit_package', 'file_read_workbook', 'file_create_workbook', 'file_create_copy', 'find_files', 'render_file', 'search_web', 'read_pages', 'search_memory', 'read_note', 'report_result_check']
 const count = (text: string, rule: string): number => text.split(rule).length - 1
-const WORK_ONLY = [WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE, FILE_JOB_RULE, VOICE_RULE, TEXTING_RULE, COMMAND_STEP_RULE, RESULT_FIRST_RULE]
+const WORK_ONLY = [WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE, FILE_JOB_RULE, VOICE_RULE, TEXTING_RULE, COMMAND_STEP_RULE]
 
 describe('c13c: a session is sent the rules for its tools and its turn kind', () => {
   const teammate = sessionRules({ ...base, workflow: false, planned: true, kind: 'lookup', tools: [...LOOKUP_TOOLS] })
@@ -74,7 +74,8 @@ describe('c13c: the turn kind reaches the session from its options', () => {
     const work = await run({})
     expect(count(work.system, WORK_REPLY_RULE)).toBe(1)
     expect(count(work.system, CHOICE_RULE)).toBe(1)
-    expect(count(work.prompt, EARLIER_REPLIES_RULE)).toBe(1)
+    expect(count(`${work.system}\n${work.prompt}`, EARLIER_REPLIES_RULE)).toBe(1)
+    expect(count(work.prompt, EARLIER_REPLIES_RULE)).toBe(0)
   })
   it('the warmed shape and a default work session render the same rules for the same tools', async () => {
     const work = await run({}, DECK_MENU)

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
+import { EARLIER_REPLIES_RULE, ONE_BUBBLE_RULE } from '../../../packages/core/src/prompt.js'
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>
 const parent = fixture('prompts-parent.json') as Record<string, string>
@@ -87,6 +88,10 @@ describe('the sentences that must survive word for word', () => {
   const count = (text: string, sentence: string) => text.split(sentence).length - 1
   it.each(Object.keys(keep))('each sentence held for %s appears as often as the keep list says', name => {
     for (const [sentence, times] of Object.entries(keep[name]!)) expect(count({ ...texts, ...held }[name]!, sentence), sentence.slice(0, 80)).toBe(times)
+  })
+
+  it('the lead reads the earlier-replies rule and the one-bubble rule once across its system and turn prompt', () => {
+    for (const rule of [EARLIER_REPLIES_RULE, ONE_BUBBLE_RULE]) expect(count(texts['lead-runner']!, rule), rule.slice(0, 40)).toBe(1)
   })
 
   it('a sentence that is missing or doubled is caught', () => {
