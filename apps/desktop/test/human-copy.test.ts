@@ -114,7 +114,7 @@ describe('how the bot is told to talk', () => {
     const prompt = quickPrompt('엔비디아 오늘 주가 알려줘', true)
     expect(prompt).toContain('naming the first concrete step ("종류별 폴더로 옮길게요."')
     expect(prompt).toMatch(/never -습니다/)
-    expect(prompt).toMatch(/No restating, filler/)
+    expect(prompt).toMatch(/No restating, refusal, filler/)
     expect(prompt).not.toMatch(/restates the job/)
   })
 

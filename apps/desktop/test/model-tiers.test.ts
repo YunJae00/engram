@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { promptFor, vaultPaths, type EngineCwd, type QuickReply, type ToolSessionJob } from 'core'
-import { FILE_JOB_RULE } from '../../../packages/core/src/prompt.js'
+import { FILE_JOB_RULE, HAND_OFF_TOOL } from '../../../packages/core/src/prompt.js'
 
 const fixture = vi.hoisted(() => ({
   query: vi.fn(), binary: vi.fn(), flog: vi.fn(), created: [] as string[],
@@ -170,7 +170,7 @@ describe('instant first line', () => {
     expect(prompt).toContain('and the message names no address, page, file or folder, even a local or broken one')
     expect(prompt.indexOf('names no address')).toBeLessThan(prompt.indexOf('Write one or two short'))
     expect(prompt).toContain('Hand off everything else')
-    expect(prompt).toContain('anything you would call impossible or unreachable')
+    expect(prompt).toContain('and anything you doubt you can do')
     expect(prompt).toContain('then call hand_off and write nothing after')
     expect(prompt).toContain('When unsure, hand it off.')
     expect(prompt).toContain("in the request's language")
@@ -178,6 +178,16 @@ describe('instant first line', () => {
     expect(quickPrompt('x', true)).not.toContain('Your first sentences earlier')
     expect(prompt).toContain('anything that needs earlier messages')
     expect(prompt).not.toContain('calendar, today first')
+  })
+
+  it('tells the quick tier what its hand-off can do, so its one sentence never refuses work the tools behind it can do', () => {
+    for (const korean of [true, false]) {
+      const prompt = quickPrompt('격주 금요일마다 화분 물 주라고 챙겨줘', korean)
+      expect(prompt).toContain('a capable coworker who can search the web, use their files and notes, make documents, run the team and schedule work.')
+      expect(prompt).toContain('No restating, refusal, filler')
+      expect(prompt.indexOf('schedule work')).toBeLessThan(prompt.indexOf('Hand off everything else'))
+    }
+    expect(HAND_OFF_TOOL.description).not.toMatch(/has the tools/)
   })
 
   it('starts the lead once the quick tier has chosen, reads the note without waiting for a line, and holds the lead\'s words only while a line is pending', () => {
