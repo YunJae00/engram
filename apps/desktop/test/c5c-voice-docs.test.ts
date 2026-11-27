@@ -133,7 +133,7 @@ describe('a line in another language is led by a few Korean words (Q3, c11b)', (
     }
   })
   it('keeps a rewording to the earlier line\'s facts and constraints, and posts its opening as written (c11b: asked of the model)', async () => {
-    expect(COLLEAGUE_RULE).toContain('is written again in it with every fact and constraint kept')
+    expect(COLLEAGUE_RULE).toContain('is written again in it, every fact and constraint kept')
     for (const answer of ['이건 어때요? I apologize for being late.', '이렇게 쓰면 돼요. My sincere apologies for the delay.']) expect((await turn(answer, '다르게 써줘')).posted, answer).toBe(answer)
   })
   it('adds nothing when the answer has Korean, has no words, or the person wrote in English (c11b: the host adds nothing at all)', async () => {

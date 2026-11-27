@@ -11,7 +11,7 @@ async function turn(draft: string, said: string, options: AgentLoopOptions = {},
   const result = await runToolSession({ engine, workdir: '/tmp/c19b-desk' as EngineCwd, tools: [] }, said, options)
   return { posted: result.answer, calls: jobs.length, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
 }
-const KEEPS = 'is written again in it with every fact and constraint kept, none added, and nothing about the change'
+const KEEPS = 'is written again in it, every fact and constraint kept, no value guessed, nothing about the change'
 
 describe('item 1: a desk answer\'s ```replies block is not prose', () => {
   const REPLIES = ['```replies', '두부도 넣어줘', '양 좀 줄여줘', '```'].join('\n')

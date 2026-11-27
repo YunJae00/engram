@@ -92,7 +92,7 @@ test('what the four problem kinds looked for is asked of the writer in its own p
   expect(system).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place, never left out and never shown as finished.')
   expect(system).toContain(CHOICE_RULE)
   expect(system).toContain(FILE_JOB_RULE)
-  expect(COLLEAGUE_CORE_RULE).toContain('with every fact and constraint kept')
+  expect(COLLEAGUE_CORE_RULE).toContain('every fact and constraint kept, no value guessed')
 })
 
 test('what the team did this week: the lane note keeps a teammate who has left in the record only and a renamed one under the new name, and the lane model\'s text is returned as written', async () => {

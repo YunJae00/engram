@@ -32,6 +32,12 @@ const BOOK_CLUB = '# 독서모임 운영 메모\n\n- 12월 모임은 12월 13일
 const SUPPLIES = '품목,수량,단위,보관 위치\nA4 용지,14,박스,3층 창고\n볼펜(검정),62,자루,사무실 서랍\n토너,3,개,3층 창고\n포스트잇,25,묶음,사무실 서랍\n'
 const PACKING = '# 부산 출장 챙길 것\n\n- 노트북과 충전기\n- 사원증\n- 명함 50장\n- 견본 카탈로그 3부\n- 우산\n'
 const PACKED = ['노트북', '사원증', '명함', '카탈로그', '우산']
+const UNCOUNTED = ['노트북', '사원증', '우산']
+const FLOWERS = '# 꽃꽂이 수업 재료\n\n- 꽃가위\n- 오아시스 2개\n- 리본\n- 포장지 3장\n- 유리 화병\n'
+const FLOWER_ITEMS = ['꽃가위', '오아시스', '리본', '포장지', '화병']
+const FLOWER_UNCOUNTED = ['꽃가위', '리본', '화병']
+const tableRows = (run: CaseRun) => all(run).split('\n').filter(line => line.trim().startsWith('|'))
+const blanksKept = (rows: string[], uncounted: string[]) => uncounted.every(item => rows.filter(line => line.includes(item)).every(line => !/\d/.test(line)))
 
 const kindOf = (name: string) => name.slice(name.lastIndexOf('.'))
 const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1)
@@ -140,8 +146,18 @@ export const CASES: EvalCase[] = [
     before: ['출장준비물.md에 뭐 적혀 있는지 알려줄래요?'],
     ask: () => '그 목록 표 모양으로 한 번 더 줄래요?',
     grade: run => {
-      const rows = all(run).split('\n').filter(line => line.trim().startsWith('|'))
-      return { table: rows.some(line => /\|\s*-{3,}/.test(line)), everyItem: PACKED.every(item => rows.some(line => line.includes(item))) }
+      const rows = tableRows(run)
+      return { table: rows.some(line => /\|\s*-{3,}/.test(line)), everyItem: PACKED.every(item => rows.some(line => line.includes(item))), blanksKept: blanksKept(rows, UNCOUNTED) }
+    },
+  },
+  {
+    id: 'reshape-blanks',
+    files: { '수업재료.md': FLOWERS },
+    before: ['수업재료.md 내용 좀 읽어줘요'],
+    ask: () => '방금 거 칸 나눠서 정리해 줄 수 있어요?',
+    grade: run => {
+      const rows = tableRows(run)
+      return { table: rows.some(line => /\|\s*-{3,}/.test(line)), everyItem: FLOWER_ITEMS.every(item => rows.some(line => line.includes(item))), blanksKept: blanksKept(rows, FLOWER_UNCOUNTED) }
     },
   },
   {

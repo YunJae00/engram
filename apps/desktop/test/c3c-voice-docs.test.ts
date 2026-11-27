@@ -150,7 +150,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
     expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
     expect(source('ipc.ts')).not.toContain('withoutWorkNote')
-    expect(rules).toContain('is written again in it with every fact and constraint kept')
+    expect(rules).toContain('is written again in it, every fact and constraint kept')
   })
 
   it('the renderer replaces the waiting line with the answer and keeps no trace of it', () => {

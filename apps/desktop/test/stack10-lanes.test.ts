@@ -21,7 +21,7 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
-    expect(COLLEAGUE_CORE_RULE).toContain('A reply asked for in another form is written again in it with every fact and constraint kept, none added, and nothing about the change.')
+    expect(COLLEAGUE_CORE_RULE).toContain('A reply asked for in another form is written again in it, every fact and constraint kept, no value guessed, nothing about the change.')
   })
   it('a send, a post, a team ask or a shorter-form ask is answered by the one draft as written, and the quick voice is never asked to rewrite it (wordings not in the harness)', async () => {
     const yes = vi.fn(async () => JSON.stringify({ form: 'shorter', was: '엔비디아는 지금 182.3달러예요.', reply: '엔비디아는 182.3달러예요.' }))

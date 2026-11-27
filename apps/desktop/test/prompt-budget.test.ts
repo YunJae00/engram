@@ -174,7 +174,7 @@ describe('the sentences that must survive word for word', () => {
         'an item is listed once',
         'sorted files are counts per kind',
         'figures read as spoken',
-        'A reply asked for in another form is written again in it with every fact and constraint kept, none added',
+        'A reply asked for in another form is written again in it, every fact and constraint kept, no value guessed',
         'holds only what is in it',
         'A summary or tidy-up of a short note is answered in the chat',
         'After a file job, say in a few words what you chose',

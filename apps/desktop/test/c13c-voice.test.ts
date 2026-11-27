@@ -55,7 +55,7 @@ describe('c13c: a reshape is the model\'s reply in the asked form, posted as wri
     const last = `이렇게 쓰면 돼요. ${LAST}\n출시를 도와준 데 감사하는 뜻을 담은 문장이에요.`
     const draft = `감사 인사예요.\n${LAST}`
     const { posted, told } = await reshape('더 간단하게', last, draft)
-    expect(told).toContain('and nothing about the change')
+    expect(told).toContain('no value guessed, nothing about the change')
     expect(posted).toBe(draft)
     expect((await reshape('더 간단하게', last, 'Thanks!')).posted).toBe('Thanks!')
   })

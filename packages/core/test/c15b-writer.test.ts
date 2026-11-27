@@ -131,7 +131,7 @@ test('round 2 (finding 1): no repair is ever asked for, so none can be shown wit
 test('round 2 (finding 2): the lead\'s comparison table and its links stand as written, and reshaping a reply is ruled in the prompt, not by a host rewrite', async () => {
   const draft = `두 곳 새 메뉴 비교예요.\n\n| 빵집 | 새 메뉴 | 출처 |\n|---|---|---|\n| 오븐 | 밤식빵 | [오븐 소식](${OVEN}) |\n| 도우 | 무화과 깜빠뉴 | [도우 게시판](${DOUGH}) |`
   expect(await posted(draft, '오븐이랑 도우 새 메뉴 표로 비교해줘')).toBe(draft)
-  expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept')
+  expect(COLLEAGUE_CORE_RULE).toContain('is written again in it, every fact and constraint kept')
 })
 
 test('round 3: a compared subject and the source beside it stay where the lead put them: every row of the posted table is the row it wrote', async () => {
