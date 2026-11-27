@@ -85,14 +85,14 @@ describe('a question about a named file', () => {
 describe('document and tidy answers', () => {
   const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
   it('closes a document turn with one or two sentences and no list of contents', () => {
-    expect(core('prompt.ts').match(/never a list of its sections, slides, sheets or contents/g)).toHaveLength(1)
+    expect(core('prompt.ts').match(/a list of its parts/g)).toHaveLength(1)
     expect(core('prompt.ts').match(/After a document, one or two sentences on what it is and the one choice you made, never a list of its contents/g)).toHaveLength(1)
   })
   it('asks for the offer in one place only, at most once across document turns, and exactly once after an extraction', () => {
     const voice = core('prompt.ts')
-    expect(voice.match(/ONE short offer line/g)).toHaveLength(1)
-    expect(voice).toContain('An extraction from a file ("할 일만 뽑아줘") ends with exactly ONE short offer line')
-    expect(voice).toContain('never as a "(참고: …)" note or an aside')
-    expect(voice).toContain('document turns in a row carry at most one offer between them')
+    expect(voice.match(/one short offer line/g)).toHaveLength(1)
+    expect(voice).toContain('An extraction ends with exactly one short offer line')
+    expect(voice).toContain('never a note, aside or menu')
+    expect(voice).toContain('a summary or document turn may end with one only when no earlier reply ended with an offer')
   })
 })

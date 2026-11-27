@@ -28,7 +28,7 @@ async function turn(draft: string, said: string, options: AgentLoopOptions = {})
 
 describe('a document ask makes the document (D3, D4, D5)', () => {
   it('tells a document ask to make the document, not ask about it, on the one menu, and leaves the real gates where they are', () => {
-    expect(COLLEAGUE_RULE).toContain('A document they ask for is made, not asked about')
+    expect(COLLEAGUE_RULE).toContain('A document asked for is made, not asked about')
     expect(COLLEAGUE_RULE).toContain('never offer a menu of options or ask how they want it when one reasonable choice exists')
     expect(source('answer.ts')).toContain('[...everyTool, escalate]')
     expect(source('answer.ts')).not.toMatch(/DESK_TOOLS|deskKind/)
@@ -36,7 +36,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(core('comet-page-tools.ts')).toContain('The page needs the person to sign in or pass a check.')
   })
   it('tells the turn to make the file with marked blanks, say the choice, and never ask or invent', () => {
-    for (const part of ['A document they ask for is made, not asked about', 'clearly marked blanks where the real numbers go ("수치 입력")', 'never invented figures', 'never offer a menu of options', '실제 수치는 비워 두고 5장 틀로 만들었어요.']) expect(COLLEAGUE_RULE, part).toContain(part)
+    for (const part of ['A document asked for is made, not asked about', 'clearly marked blanks ("수치 입력")', 'never invented figures', 'never offer a menu of options', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, part).toContain(part)
   })
   it('changes the deck made earlier in the thread, the same file', () => {
     expect(core('document-tools.ts')).toContain('give name the same file name and the file in the task folder is replaced in place and stays one file')
@@ -48,7 +48,7 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     const line = quickPrompt('위 회의록으로 워드 보고서 만들어줘', true)
     expect(line).toContain('for a document it is the first thing done with what the request names ("매출 파일부터 볼게요.", never "보고서 작성해볼게요.")')
     expect(quickPrompt('Make a report from the notes', false)).toContain('never "Making the report now."')
-    expect(COLLEAGUE_RULE).toContain('never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요.")')
+    expect(COLLEAGUE_RULE).toContain('never that a file was made')
   })
 })
 
@@ -97,7 +97,7 @@ describe('a kept fact is corrected by the model\'s own keep_in_mind call (M2)', 
 
 describe('small talk never sounds like a help desk (Q1)', () => {
   it('a greeting is answered whole by the quick tier, whose prompt says never to ask or offer help, like the lead\'s rule; a line is shown as written', () => {
-    expect(COLLEAGUE_RULE).toContain('no asking or offering help in any wording')
+    expect(COLLEAGUE_RULE).toContain('no offer of help')
     const prompt = quickPrompt('주말 잘 보내셨어요?', true)
     expect(prompt).toContain('Answer in full yourself only when the reply needs nothing but this message and common knowledge (a greeting')
     expect(prompt).toContain('with no emoji, question back or offer of help')
@@ -109,15 +109,15 @@ describe('small talk never sounds like a help desk (Q1)', () => {
     expect((await turn('안녕하세요!\n\n좋은 하루 보내세요.', '안녕')).posted).toBe('안녕하세요!\n\n좋은 하루 보내세요.')
   })
   it('describes the pattern in the prompts, not one string, and the main model\'s small talk is posted as it wrote it', async () => {
-    expect(COLLEAGUE_RULE).toMatch(/help in any wording/)
-    expect(COLLEAGUE_RULE).toContain('뭘 도와드릴까요')
+    expect(COLLEAGUE_RULE).toMatch(/offer of help/)
+    expect(COLLEAGUE_RULE).toContain('no offer of help')
     expect(source('first-line.ts')).not.toMatch(/smallTalkPrompt|SMALL_TALK/)
     expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
     expect(functionsOf(firstLine)).toEqual(FIRST_LINE_FUNCTIONS)
     for (const said of ['뭘 도와드릴까요?', '안녕하세요! 뭘 도와드릴까요?', '안녕하세요! 좋은 아침이에요.', 'How can I help you today?']) {
       const { posted, told, voiced } = await turn(said, '안녕')
       expect(posted, said).toBe(said)
-      expect(told).toMatch(/help in any wording/)
+      expect(told).toMatch(/offer of help/)
       expect(voiced).toEqual([])
     }
   })
@@ -129,11 +129,11 @@ describe('a line in another language is led by a few Korean words (Q3, c11b)', (
     for (const answer of [line, `${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``, 'Hi Minho,\n\nSorry for the delay.']) {
       const { posted, told } = await turn(answer, ask)
       expect(posted, answer).toBe(answer)
-      expect(told).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
+      expect(told).toContain('text asked for in another language, kept as is after a few warm Korean words')
     }
   })
   it('keeps a rewording to the earlier line\'s facts and constraints, and posts its opening as written (c11b: asked of the model)', async () => {
-    expect(COLLEAGUE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept')
+    expect(COLLEAGUE_RULE).toContain('is written again in it with every fact and constraint kept')
     for (const answer of ['이건 어때요? I apologize for being late.', '이렇게 쓰면 돼요. My sincere apologies for the delay.']) expect((await turn(answer, '다르게 써줘')).posted, answer).toBe(answer)
   })
   it('adds nothing when the answer has Korean, has no words, or the person wrote in English (c11b: the host adds nothing at all)', async () => {
@@ -145,7 +145,7 @@ describe('a line in another language is led by a few Korean words (Q3, c11b)', (
 describe('a marked blank is one the deck check lets through (D3)', () => {
   it('names the wording that passes, and the check agrees', async () => {
     const { auditDeck } = await import('../../../packages/core/src/deck-audit.js')
-    expect(COLLEAGUE_RULE).toContain('clearly marked blanks where the real numbers go ("수치 입력")')
+    expect(COLLEAGUE_RULE).toContain('clearly marked blanks ("수치 입력")')
     expect(auditDeck([{ title: '3분기 핵심 지표', bullets: ['매출: 수치 입력', '영업이익: 수치 입력'] }])).toEqual([])
     for (const blank of ['주요 성과: 내용 입력', '[수치 입력]']) expect(auditDeck([{ title: '3분기 핵심 지표', bullets: [blank] }]), blank).toHaveLength(1)
   })
@@ -167,8 +167,8 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
   it('the one line of at most 60 characters is asked of the model, and what it writes is posted with nothing added', async () => {
     const { posted, told } = await turn(answer, ask, desk)
     expect(posted).toBe(answer)
-    expect(told).toContain('ends with exactly ONE short offer line of something new that would really help')
-    expect(told).toContain(`("${offer}")`)
+    expect(told).toContain('ends with exactly one short offer line of something new that helps')
+    expect(told).toContain('a plain sentence, never a note, aside or menu')
     expect([...offer].length).toBeLessThanOrEqual(60)
     for (const own of [`${answer}\n\n${offer}`, '- 38%\n- 12명', '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', `${answer}\n\n${offer}\n\n\`\`\`replies\n표로\n\`\`\``]) expect((await turn(own, ask, desk)).posted, own).toBe(own)
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
@@ -178,12 +178,12 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     const { posted, told } = await turn(answer, ask, { ...desk, history: [{ role: 'user', text: '회의록 요약해줘' }, { role: 'assistant', text: '요약했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.' }] })
     expect(posted).toBe(answer)
     expect(told).toContain('원하시면 워드 파일로도 만들어 드릴게요.')
-    expect(told).toContain('only when none of your earlier replies in this conversation ended with an offer')
+    expect(told).toContain('only when no earlier reply ended with an offer')
   })
   it('never adds one to another kind of turn', async () => {
     for (const other of ['엔비디아 오늘 주가 알려줘', '1년은 몇 초야?', '안녕', '고마워 수고했어', 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', 'fixtures/sales.csv에서 12월 매출 합계 알려줘',
       '빵집 세 군데에 하나씩 물어봐', '챙길 것 세 가지만 골라줘', '등산 모임 회칙을 문서 파일에 담아줘']) expect((await turn(answer, other)).posted, other).toBe(answer)
-    expect((await turn(answer, '연락선 첫 배가 언제 떠?')).told).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
+    expect((await turn(answer, '연락선 첫 배가 언제 떠?')).told).toContain('No offer after a correction, a simple fact, small talk or a short ask')
     expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
   })
 })

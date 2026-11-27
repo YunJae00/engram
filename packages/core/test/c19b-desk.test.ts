@@ -50,7 +50,7 @@ test('item 1: a real code block between prose lines is delivered with the prose 
   const { answer, jobs } = await session('택배비만 더하는 수식 알려줘', draft)
   expect(answer).toBe(draft)
   expect(jobs).toHaveLength(1)
-  expect(FILE_JOB_RULE).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
+  expect(FILE_JOB_RULE).toContain('No offer after a correction, a simple fact, small talk or a short ask')
   expect(jobs[0]!.system).toContain(FILE_JOB_RULE)
 })
 

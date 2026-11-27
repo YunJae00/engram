@@ -536,8 +536,8 @@ test('the results as they were stored reach the lead whole: every teammate\'s wo
   expect(out.reports.map(r => r.result)).toEqual(c3.map(m => m.result ?? ''))
   expect(out.reports.map(r => r.sources ?? [])).toEqual(c3.map(m => m.sources ?? []))
   expect(handed(c5).reports[0]!.result).toBe(c5[0]!.result)
-  expect(COLLEAGUE_CORE_RULE).toContain('no account of your steps')
-  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean')
+  expect(COLLEAGUE_CORE_RULE).toContain('no preface, steps or notes to yourself')
+  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread all is Korean')
 })
 
 test('no writer pass follows the lead: its merged draft, table and link included, is the answer byte for byte', async () => {
@@ -798,7 +798,7 @@ test('a teammate cut short with only English rows is handed back in the words it
   const m = part('m1', '하늘', '여객선 증편 소식', { state: 'working' })
   settleMember(m, { answer: '', timedOut: true, read: row }, 'now', true)
   expect(handed([m]).reports[0]!.result).toContain(row)
-  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names')
+  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread all is Korean but names, code, addresses, file names')
 })
 
 test('every dated item a teammate listed is in the hand-back, and a lead draft that leaves one out is still posted as written', async () => {

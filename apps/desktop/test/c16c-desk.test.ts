@@ -63,7 +63,7 @@ describe('a reshape keeps the facts of the earlier ask (Q4 class)', () => {
   const thread = [{ role: 'user' as const, text: EARLIER }, { role: 'assistant' as const, text: LAST }]
   it('the model is told that another form keeps every fact of the original ask, with that ask in view', async () => {
     const { told } = await turn(say(kept), '더 간단히', { history: thread })
-    expect(told).toContain('with every fact and every constraint of the original ask kept, and nothing about what you changed')
+    expect(told).toContain('with every fact and constraint kept, and nothing about the change')
     expect(told).toContain(EARLIER)
     expect(told).toContain(was)
   })

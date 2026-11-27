@@ -70,8 +70,8 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(jobs[0]!.prompt).toContain('그냥 광주 걸로 바꿔')
     expect(told).toContain('팀 일정표 week-plan.md에서 대전 출장 건만 골라줘')
     expect(told).not.toMatch(NO_HOST_NOTE)
-    expect(COLLEAGUE_CORE_RULE).toContain('When they ask for one part of something, give that part only.')
-    expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
+    expect(COLLEAGUE_CORE_RULE).toContain('one part asked is one part given')
+    expect(FILE_JOB_RULE).toContain('ends with exactly one short offer line of something new that helps')
   })
   it('a correction that widens the ask reaches the model with the earlier narrowing word before it', async () => {
     const before: Turn[] = [{ role: 'user', text: 'meeting/trim-02.md에서 결정만 추려줘' }, { role: 'assistant', text: '- 예산 동결' }]
@@ -117,7 +117,7 @@ describe('a correction reaches the model as typed, and the thread says what it c
     expect(ipc).toMatch(/await deliverAnswer\(\s*result\.asked \? askText\(result\.answer, result\.options\) : result\.answer,/)
   })
   it('a reshape keeps every fact and constraint, and a changed fact is the model\'s to carry', async () => {
-    expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
+    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, and nothing about the change.')
     expect(COLLEAGUE_CORE_RULE).toContain('means do the new thing at once - never ask which one they mean when the thread already says it')
     const { told, jobs } = await lead('조금만 더 짧게', [{ role: 'user', text: '대구 지점 할 일 알려줘' }, { role: 'assistant', text: '울산 지점 할 일은 두 개예요.' }])
     expect(jobs[0]!.prompt).toContain('조금만 더 짧게')

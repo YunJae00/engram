@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
-import { ONE_BUBBLE_RULE, PLAIN_WORK_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { CHOICE_RULE, COLLEAGUE_CORE_RULE, COLLEAGUE_RULE, FILE_JOB_RULE, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { stepPrompt, wrapUpPrompt } from '../../../packages/core/src/agent-prompt.js'
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`fixtures/${name}`, import.meta.url), 'utf8')) as Record<string, unknown>
 const parent = fixture('prompts-parent.json') as Record<string, string>
@@ -141,6 +142,57 @@ describe('the sentences that must survive word for word', () => {
       }
     }
     expect(WORK_REPLY_RULE).not.toMatch(/bubble|empty line|link|-요|language/)
+  })
+
+  it('the colleague, file-job and prior-claim rules are each said once in their short form, every behaviour of the old text kept, and the choice rule untouched', async () => {
+    expect(COLLEAGUE_CORE_RULE.length).toBeLessThanOrEqual(3300)
+    expect(FILE_JOB_RULE.length).toBeLessThanOrEqual(1020)
+    expect(PRIOR_CLAIM_RULE.length).toBeLessThanOrEqual(250)
+    expect(COLLEAGUE_CORE_RULE.length + FILE_JOB_RULE.length + PRIOR_CLAIM_RULE.length).toBeLessThanOrEqual(4570)
+    expect(COLLEAGUE_RULE).toBe([COLLEAGUE_CORE_RULE, CHOICE_RULE, FILE_JOB_RULE].join(' '))
+    const was = parent['lead-web'] as unknown as { system: string }
+    expect(count(was.system, CHOICE_RULE)).toBe(1)
+    for (const prompt of [stepPrompt('반상회 공지 메모 짧게 다듬어줘', [], []), wrapUpPrompt('tidy the block meeting note', [])]) {
+      expect(count(prompt, COLLEAGUE_RULE)).toBe(1)
+      expect(count(prompt, PRIOR_CLAIM_RULE)).toBe(1)
+    }
+    const dir = await mkdtemp(join(tmpdir(), 'prompt-budget-'))
+    scratch.push(dir)
+    const jobs: ToolSessionJob[] = []
+    await answer(await openWorld(dir, recorder(jobs)), '반상회 공지 메모 짧게 다듬어줘')
+    for (const text of [`${runnerTurn.system}\n${runnerTurn.prompt}`, `${jobs[0]!.system}\n${jobs[0]!.prompt}`]) {
+      for (const rule of [COLLEAGUE_CORE_RULE, CHOICE_RULE, FILE_JOB_RULE, PRIOR_CLAIM_RULE]) expect(count(text, rule), rule.slice(0, 40)).toBe(1)
+      for (const part of [
+        'at most one apology',
+        'A one-fact ask, also from a file, gets the fact in one sentence naming any convention it rests on, nothing more unless asked',
+        'told as a team would, who did what in one natural sentence',
+        'one short human line, no offer of help, and mid-work a word on where it stands',
+        'The answer is the first line',
+        'kept as is after a few warm Korean words',
+        'A changed ask names the new subject first',
+        'one part asked is one part given',
+        'an item is listed once',
+        'sorted files are counts per kind',
+        'figures read as spoken',
+        'A reply asked for in another form is written again in it with every fact and constraint kept',
+        'holds only what is in it',
+        'A summary or tidy-up of a short note is answered in the chat',
+        'After a file job, say in a few words what you chose',
+        'An extraction ends with exactly one short offer line',
+        'only when no earlier reply ended with an offer',
+        'No offer after a correction, a simple fact, small talk or a short ask',
+        'clearly marked blanks',
+        'never invented figures',
+        'one or two sentences on what is in it and the choice made',
+        'Never say what you did not do or check unless asked',
+        'unless a search or read this turn returned it',
+        'when nothing earlier was found, say so',
+      ]) expect(count(text, part), part).toBe(1)
+      for (const old of ['tell it the way a team would', 'no asking or offering help in any wording', 'which you hand over unchanged', 'write that reply again in the asked form', 'Give no offer after a correction', 'search_chats, search_memory, find_skills or open_skill']) {
+        expect(count(was.system, old), old).toBe(1)
+        expect(count(text, old), old).toBe(0)
+      }
+    }
   })
 
   it('a sentence that is missing or doubled is caught', () => {

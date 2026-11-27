@@ -20,7 +20,7 @@ test('c10a L1: a weather answer is posted with its ".0" and its bracketed date a
   for (const kept of ['오늘(12월 3일)은 흐리고 지금 7.0도예요. [기상청](https://www.weather.go.kr/w/index.do)', '내일(4일 목)은 -1.0℃, 모레(12월 5일)는 6.0°까지 올라요.', '지금 8.5도예요.', '1엔에 9.0원이에요.']) expect(await posted(kept)).toBe(kept)
   expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
-  expect(COLLEAGUE_CORE_RULE).toContain('a whole number has no ".0", and a day is said with its date in plain words, never in brackets')
+  expect(COLLEAGUE_CORE_RULE).toContain('figures read as spoken (no ".0", dates in plain words)')
 })
 
 test('c10a r2: a weekend answer is never rewritten, lumped or day by day', async () => {

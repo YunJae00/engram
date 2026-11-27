@@ -112,12 +112,12 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
 describe('a figure that rests on a convention says so (Q2)', () => {
   it('asks the lead to name an unstated convention inside its one-sentence answer, and posts that sentence as written', async () => {
-    expect(VOICE).toContain('A one-fact ask gets that fact in one sentence, also when it comes from a file, naming in it any convention it rests on (a common year, a 30-day month)')
-    expect(VOICE).toContain('other variant or "if" unless they ask')
+    expect(VOICE).toContain('A one-fact ask, also from a file, gets the fact in one sentence naming any convention it rests on')
+    expect(VOICE).toContain('nothing more unless asked')
     expect(VOICE).not.toContain('31,536,000')
     const draft = '30일 기준으로 한 달은 43,200분이에요.'
     const { posted, told } = await deskTurn(draft, '한 달은 몇 분이야?')
-    expect(told).toContain('naming in it any convention it rests on')
+    expect(told).toContain('naming any convention it rests on')
     expect(posted).toBe(draft)
     expect(source('first-line.ts')).not.toContain('quickAnswerPrompt')
   })
@@ -129,7 +129,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
 
   it('pins the shape and the one move call in what the model is told; the chat turn reshapes nothing', async () => {
     expect(source('file-move.ts')).toContain('up to 500 in one call')
-    expect((await deskTurn(F1, F1_ASK)).told).toContain('Files you sorted are told as counts per kind in one sentence, without file names unless asked.')
+    expect((await deskTurn(F1, F1_ASK)).told).toContain('sorted files are counts per kind')
     expect(answerSetInTurn(source('ipc.ts'))).toBe(0)
   })
 
@@ -166,7 +166,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
   it('a 결정사항 block that the 할 일 lines say again is the model\'s to leave out: it is told so, and its answer keeps every line it wrote', async () => {
     for (const answer of [H3, marked]) {
       const { posted, told } = await deskTurn(answer, H3_ASK)
-      expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+      expect(told).toContain('an item is listed once')
       expect(posted).toBe(answer)
       expect(posted.match(/온보딩 화면 시안 확정/g)).toHaveLength(2)
       expect(posted.split('\n').length).toBe(answer.split('\n').length)
@@ -225,7 +225,7 @@ it('stack-6: "할 일만" is asked of the model as that part only; a reply with 
   const shown = ['회의록에서 할 일을 뽑아봤어요.', '', '할 일', '', ...tasks, '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
   const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
   const { posted, told } = await deskTurn(shown, ask)
-  expect(told).toContain('When they ask for one part of something, give that part only.')
+  expect(told).toContain('one part asked is one part given')
   expect(posted).toBe(shown)
   const marked = ['**할 일**', ...tasks.map(line => `- ${line}`), '', '**미결**', '- 결제 모듈 후보 선택', '', '```replies', '담당자별로 나눠줘', '```'].join('\n')
   expect((await deskTurn(marked, ask)).posted).toBe(marked)

@@ -87,7 +87,7 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
       expect(posted, ask).toBe(reply)
       expect(told).toContain(LAST)
       expect(told).toContain(`Task: ${ask}`)
-      expect(told).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form')
+      expect(told).toContain('A reply asked for in another form is written again in it')
       expect(calls).toBe(1)
     }
     const table = '| 종목 | 종가 | 등락 |\n|---|---|---|\n| 엔비디아 | 135.2달러 | +2.1% |'

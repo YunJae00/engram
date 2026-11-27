@@ -36,7 +36,7 @@ describe('an answer asked for in another language reaches the thread whole (Q3 c
     expect(Object.keys(firstLine)).not.toEqual(expect.arrayContaining(['withoutWorkNote']))
     for (const gone of ['withoutWorkNote', 'koreanLead', 'asState']) expect(Object.keys(firstLine)).not.toContain(gone)
     for (const gone of ['withoutWorkNote(', 'koreanLead(', 'asState(', 'newsItems(', 'shortSaid(', 'listOnly(']) expect(src('ipc.ts')).not.toContain(gone)
-    expect(voice).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
+    expect(voice).toContain('text asked for in another language, kept as is after a few warm Korean words')
     expect(voice).not.toMatch(/같이 일하고 계세요|살고 계세요/)
   })
 })

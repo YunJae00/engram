@@ -162,7 +162,7 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
     const said = '판교 리액트 밋업이 12월 9일에 열려요. [밋업](https://meetup.example.kr/react)\n판교 개발자 모임은 12월 16일 저녁이에요. [밋업](https://meetup.example.kr/notice)'
     const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '이든', brief: '판교 코딩 모임 알아보기', botId: 'bot-m1', lookup: true, state: 'done', sessionKey: 's1', hiredAt: new Date().toISOString(), result: said }
     expect((JSON.parse(handBacks([m])) as Back).reports[0]!.result).toBe(said)
-    expect(COLLEAGUE_CORE_RULE).toContain('a day is said with its date in plain words, never in brackets')
+    expect(COLLEAGUE_CORE_RULE).toContain('dates in plain words')
   })
 
   it('c15b r3 #1: three parts with nothing new each hand back their own sentence; saying it plainly once is the lead\'s rule', () => {

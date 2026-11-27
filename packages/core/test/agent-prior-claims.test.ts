@@ -7,10 +7,9 @@ import { openRuleLines } from './rules.js'
 describe('a comet claims the person did something before only after reading it this turn', () => {
   it('the open rules tie any claim about earlier requests, records or work to a search or read this turn', () => {
     expect(openRuleLines()).toContain(PRIOR_CLAIM_RULE)
-    expect(PRIOR_CLAIM_RULE).toMatch(/asked for, did or saved something before/)
+    expect(PRIOR_CLAIM_RULE).toMatch(/asked, did or saved something before/)
     expect(PRIOR_CLAIM_RULE).toMatch(/a search or read this turn/)
-    expect(PRIOR_CLAIM_RULE).toContain('search_chats')
-    expect(PRIOR_CLAIM_RULE).toContain('이전에 같은 요청을 하신 기록이 있네요')
+    expect(PRIOR_CLAIM_RULE).toMatch(/returned it/)
     expect(PRIOR_CLAIM_RULE).toContain('메모와 대화 기록을 확인해볼게요.')
     expect(PRIOR_CLAIM_RULE).toMatch(/nothing earlier was found, say so/)
   })

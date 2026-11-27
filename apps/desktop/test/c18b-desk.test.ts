@@ -56,7 +56,7 @@ describe('a missing named part is the model\'s to write, never the host\'s to in
 
   it('the model is told to add nothing that is not in the file, and reads the file with its own call: nothing of it is pre-read into the turn', async () => {
     const { posted, told, read, menu } = await deskTurn(DRAFT)
-    expect(told).toContain('holds only what is in it: add no item, number, owner, date or open question that is not there')
+    expect(told).toContain('holds only what is in it: no added item, number, owner, date or question')
     expect(menu).toContain('file_read')
     expect(told).not.toContain('<<<sales-nov.md')
     expect(told).not.toContain(TASKS[0])
@@ -70,7 +70,7 @@ describe('r2: where a line belongs is said in the rules, and the host moves no l
     const misplaced = [...DRAFT.split('\n'), ...TASKS].join('\n')
     const { posted, told } = await deskTurn(misplaced)
     expect(posted).toBe(misplaced)
-    expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(told).toContain('an item is listed once')
     for (const task of TASKS) expect(posted.split(task)).toHaveLength(2)
   })
   it('the mover, the checker and the desk note are gone from the desk lane: only the keep, slide-title and sort answers are left', () => {

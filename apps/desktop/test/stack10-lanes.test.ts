@@ -21,7 +21,7 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
     expect(ipc).toContain('result.asked ? askText(result.answer, result.options) : result.answer,')
-    expect(COLLEAGUE_CORE_RULE).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.')
+    expect(COLLEAGUE_CORE_RULE).toContain('A reply asked for in another form is written again in it with every fact and constraint kept, and nothing about the change.')
   })
   it('a send, a post, a team ask or a shorter-form ask is answered by the one draft as written, and the quick voice is never asked to rewrite it (wordings not in the harness)', async () => {
     const yes = vi.fn(async () => JSON.stringify({ form: 'shorter', was: '엔비디아는 지금 182.3달러예요.', reply: '엔비디아는 182.3달러예요.' }))
@@ -38,6 +38,6 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
 describe('stack-10 (c10a run L1, "today\'s date missing"): a weather answer keeps its date, said plainly', () => {
   it('a date in brackets after a day word is posted as the model wrote it; the shared rule asks for the date, never in brackets, before it writes', async () => {
     for (const draft of ['오늘(12월 3일, 수)은 눈 오고 -2.0도예요.', '내일(1월 9일)은 맑대요.']) expect(await posted('강릉 경포대 쪽 지금 바람 세게 불어?', draft, undefined, { maxCalls: 4 })).toBe(draft)
-    expect(COLLEAGUE_CORE_RULE).toContain('a day is said with its date in plain words, never in brackets')
+    expect(COLLEAGUE_CORE_RULE).toContain('dates in plain words')
   })
 })

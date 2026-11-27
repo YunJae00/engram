@@ -43,7 +43,7 @@ describe('an item under two headings is ruled out in the prompt, not looked for 
     const result = await runComet({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [] }, '이 여객선 후기 좋은 점이랑 아쉬운 점 나눠서 정리해줘', { guided: false })
     expect(result.answer).toBe(draft)
     expect(jobs).toHaveLength(1)
-    expect(jobs[0]!.system).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(jobs[0]!.system).toContain('an item is listed once')
   })
 })
 

@@ -693,7 +693,7 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')).not.toMatch(/modelHint|light: true|deskKind|deskLane/)
     expect(ipc).not.toContain('koreanLead(')
     expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
-    expect(FILE_JOB_RULE).toContain('ends with exactly ONE short offer line of something new that would really help')
+    expect(FILE_JOB_RULE).toContain('ends with exactly one short offer line of something new that helps')
   })
 })
 

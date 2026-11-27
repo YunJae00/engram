@@ -38,7 +38,7 @@ describe('stack-17: a correction after a lookup reaches the model as typed, with
     expect(told).not.toContain('What the person asks for now')
     expect(told).not.toContain('the later words hold')
     expect(result?.answer).toBe(draft)
-    expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
+    expect(COLLEAGUE_CORE_RULE).toContain('A changed ask names the new subject first')
   })
   it('in the turn, no meaning is built by the host and no judge, page read, helpers\' writer or lead check reads the answer after it; the turn keeps the plain words', () => {
     const own = readFileSync(new URL('../src/main/answer.ts', import.meta.url), 'utf8')
@@ -214,7 +214,7 @@ describe('stack-17: the words before a reply in another form keep the 해요체 
   it('the one voice rule rules out -습니다 for the whole reply, the foreign line is handed over unchanged, and the reply is posted whole', async () => {
     expect(COLLEAGUE_CORE_RULE).toContain('in Korean keep the polite-casual -요 form through the whole reply')
     expect(COLLEAGUE_CORE_RULE).toContain('never switch to -습니다')
-    expect(COLLEAGUE_CORE_RULE).toContain('which you hand over unchanged after a few warm Korean words')
+    expect(COLLEAGUE_CORE_RULE).toContain('kept as is after a few warm Korean words')
     const reply = '이렇게 쓰면 돼요.\n\nThank you for waiting while we reprint the hiking club roster.'
     expect(await posted(reply, '명단 다시 뽑는 동안 기다려줘서 고맙다는 영어 문장')).toBe(reply)
     expect(fns(firstLine)).toEqual(FIRST_FNS)

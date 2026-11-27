@@ -55,7 +55,7 @@ describe('c13c: a reshape is the model\'s reply in the asked form, posted as wri
     const last = `이렇게 쓰면 돼요. ${LAST}\n출시를 도와준 데 감사하는 뜻을 담은 문장이에요.`
     const draft = `감사 인사예요.\n${LAST}`
     const { posted, told } = await reshape('더 간단하게', last, draft)
-    expect(told).toContain('and nothing about what you changed')
+    expect(told).toContain('and nothing about the change')
     expect(posted).toBe(draft)
     expect((await reshape('더 간단하게', last, 'Thanks!')).posted).toBe('Thanks!')
   })
@@ -84,7 +84,7 @@ describe('c13c: a reshape is the model\'s reply in the asked form, posted as wri
   })
   it('the turn asks for the asked thing only, with no commentary, and for no wrapper around it', async () => {
     const { told } = await reshape('더 간단하게', LAST, 'Thanks!')
-    expect(told).toContain('When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form')
+    expect(told).toContain('A reply asked for in another form is written again in it')
     expect(told).toContain(LAST)
     expect(told).not.toContain('"form"')
   })

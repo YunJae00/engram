@@ -92,14 +92,14 @@ describe('stack-16 replays', () => {
     const engine = { id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: '' } }, runTools: async (job: { system: string; opening?: string; prompt: string }) => { told = [job.system, job.opening, job.prompt].join('\n'); return { answer: draft } } } as never
     const { result } = await answer(await openWorld(await mkdtemp(join(tmpdir(), 'stack16-d1-')), engine), '회의 메모에서 정해진 것과 맡은 일만 추려줘')
     expect(result?.answer).toBe(draft)
-    expect(told).toContain('A summary or tidy-up of a short note is answered in the chat itself')
+    expect(told).toContain('A summary or tidy-up of a short note is answered in the chat')
     expect(told).not.toContain('A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file')
-    expect(COLLEAGUE_CORE_RULE).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(COLLEAGUE_CORE_RULE).toContain('an item is listed once')
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 
   it('Q4: the Q3/Q4 pair → the keep-facts line for a reshaped reply is in the rules every turn\'s prompt carries', () => {
-    const line = 'When they ask for your last reply in another form (shorter, as a table, another tone or language), write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed.'
+    const line = 'A reply asked for in another form is written again in it with every fact and constraint kept, and nothing about the change.'
     console.log(`Q4 reshape line: ${line}`)
     expect(COLLEAGUE_CORE_RULE).toContain(line)
     for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind }).join('\n'), kind).toContain(line)

@@ -105,9 +105,9 @@ test('after a change the lead is told to name the new subject first, and its dra
       const { engine, jobs } = engineOf(async (_job, call) => call === 1 ? '유로는 지금 1,520원이에요.' : draft)
       const { result } = await answer(await openWorld(dir, engine), '유로 환율 얼마야', { tools: [], takeSteer: () => waiting.splice(0) })
       expect(jobs).toHaveLength(2)
-      expect(jobs[1]!.system).toContain('When they change the ask while you work, the first sentence names the new subject.')
+      expect(jobs[1]!.system).toContain('A changed ask names the new subject first')
       expect(result?.answer).toBe(draft)
     })
   }
-  expect(COLLEAGUE_CORE_RULE).toContain('When they change the ask while you work, the first sentence names the new subject.')
+  expect(COLLEAGUE_CORE_RULE).toContain('A changed ask names the new subject first')
 })

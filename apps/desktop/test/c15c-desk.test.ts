@@ -16,8 +16,8 @@ const ASK = '리뷰 메모 장점이랑 단점으로 나눠서 정리해줘'
 const DRAFT = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요'
 const FIXED = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요'
 
-const ONCE = 'A decision or item is listed once, never again under a second heading.'
-const ONLY_FILE = 'holds only what is in it: add no item, number, owner, date or open question that is not there'
+const ONCE = 'an item is listed once'
+const ONLY_FILE = 'holds only what is in it: no added item, number, owner, date or question'
 async function deskTurn(draft: string, said = ASK, source = SOURCE) {
   const jobs: ToolSessionJob[] = [], seen: string[] = []
   const quick = vi.fn(async () => '{"problems":[]}')
@@ -168,7 +168,7 @@ describe('a list goes out whole, every row as written (H2 class, rule 7)', () =>
   })
   it('a one-fact ask from a file is asked to be one sentence in the rules; a longer answer is still posted whole', async () => {
     const { posted, told } = await deskTurn(DRAFT, '방문자 csv에서 10월 방문자 수 알려줘', '지점,요일,방문자')
-    expect(told).toContain('gets that fact in one sentence, also when it comes from a file')
+    expect(told).toContain('A one-fact ask, also from a file, gets the fact in one sentence')
     expect(posted).toContain('강남점')
     expect(posted.split('\n')).toHaveLength(DRAFT.split('\n').length)
   })

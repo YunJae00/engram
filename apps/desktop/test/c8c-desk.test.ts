@@ -112,7 +112,7 @@ describe('an offer is the next step, never the same content in another shape (H4
     const offer = '원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.'
     const { posted, told } = await turn(draft)
     expect(posted).toBe(draft)
-    expect(told).toContain('ends with exactly ONE short offer line')
+    expect(told).toContain('ends with exactly one short offer line')
     expect([...offer].length).toBeLessThanOrEqual(60)
     const own = `${draft}\n\n${offer}`
     expect((await turn(own)).posted).toBe(own)
@@ -124,7 +124,7 @@ describe('an offer is the next step, never the same content in another shape (H4
     const earlier = '정리했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.'
     const { posted, told } = await turn(draft, [{ role: 'user', text: '바자회 회의록 정리해줘' }, { role: 'assistant', text: earlier }])
     expect(posted).toBe(draft)
-    expect(told).toContain('document turns in a row carry at most one offer between them')
+    expect(told).toContain('a summary or document turn may end with one only when no earlier reply ended with an offer')
     expect(told).toContain('원하시면 워드 파일로도 만들어 드릴게요.')
   })
 })

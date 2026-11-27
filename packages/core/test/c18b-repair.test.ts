@@ -127,7 +127,7 @@ test('a draft of the items alone gets no made-from sentence added by a repair; t
   const { answer, jobs } = await lead(HANDOFF_ASK, items, handBacks([minji, haneul]))
   expect(answer).toBe(items)
   expect(jobs).toHaveLength(1)
-  expect(jobs[0]!.system).toContain('When teammates did parts of it, tell it the way a team would - who found or made what and who took it from there')
+  expect(jobs[0]!.system).toContain('Teammates\' work is told as a team would, who did what in one natural sentence')
 })
 
 const cable = (id: string, topic: string, text: string, url: string): TeamMember => part(id, `${topic}요금`, `${topic} 케이블카 요금`, { topic, result: `${text} ${url}`, sources: [url] })
@@ -171,7 +171,7 @@ test('a table draft with dates in digits is delivered cell for cell; no host pas
 test('how a date and a figure are said is a rule for the writer; a draft with a dotted date reaches the person unchanged on the step path', async () => {
   const draft = '출시일은 2026.08.12.'
   expect((await stepped('출시일 알려줘', draft)).answer).toBe(draft)
-  expect(COLLEAGUE_CORE_RULE).toContain('A figure is written the way a person says it: a whole number has no ".0", and a day is said with its date in plain words, never in brackets.')
+  expect(COLLEAGUE_CORE_RULE).toContain('figures read as spoken (no ".0", dates in plain words).')
 })
 
 test('a deck build result lists what was checked: the slide count, every title and the audit result', () => {
@@ -198,7 +198,7 @@ test('r2: a draft with a plain-form line, a line more or an English sentence is 
     const { answer, jobs } = await lead(asked, draft)
     expect(answer, draft).toBe(draft)
     expect(jobs, draft).toHaveLength(1)
-    expect(jobs[0]!.system).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
+    expect(jobs[0]!.system).toContain('In a Korean thread all is Korean but names, code, addresses, file names and text asked for in another language')
   }
 })
 

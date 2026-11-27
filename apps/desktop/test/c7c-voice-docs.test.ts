@@ -40,8 +40,8 @@ describe('decisions and tasks are said once (D1)', () => {
 
   it('the model is told to open on the answer and to say each thing under one part; a draft with a promise line and owner / date tails under 결정사항 is posted as written', async () => {
     const { posted, told } = await turn(D1, D1_ASK)
-    expect(told).toContain('The answer is the first line: no opening line about what you are about to do')
-    expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(told).toContain('The answer is the first line: no preface')
+    expect(told).toContain('an item is listed once')
     expect(posted).toBe(D1)
     expect(posted.startsWith(D1.split('\n')[0]!)).toBe(true)
     expect(posted.match(/담당: /g)).toHaveLength(4)
@@ -127,8 +127,8 @@ describe('a fact about the person is a state, not an instruction (M3, c11b)', ()
 
 describe('a pick comes with its reason, recommendations with what they went by (H1)', () => {
   it('keeps the rules Q2-Q4 and H2 ride on in the prompts still sent, with no short-ask note left', () => {
-    for (const said of ['text they asked for in another language, which you hand over unchanged after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
-    expect(COLLEAGUE_RULE).toContain('naming in it any convention it rests on (a common year, a 30-day month)')
+    for (const said of ['text asked for in another language, kept as is after a few warm Korean words', 'never ask which one they mean when the thread already says it', 'say in a few words what you chose']) expect(COLLEAGUE_RULE, said).toContain(said)
+    expect(COLLEAGUE_RULE).toContain('naming any convention it rests on')
   })
   it('keeps a recommendation\'s lead and every pick under it: nothing is taken off a short answer', async () => {
     const picks = '아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.\n\n1. 제주 가시면 해안도로 드라이브가 좋아요.\n2. 오설록 티뮤지엄은 실내라 편해요.\n3. 함덕 해변 카페에서 쉬어 가세요.'

@@ -183,7 +183,7 @@ describe('stack-19: a team answer goes through c19b\'s fence split and invariant
     const out = await posted(LINES.join('\n'))
     expect(out.split(`](${PAGE('순천')})`)).toHaveLength(2)
     expect(out.split(`](${PAGE('여수')})`)).toHaveLength(2)
-    expect(COLLEAGUE_CORE_RULE).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(COLLEAGUE_CORE_RULE).toContain('an item is listed once')
   })
   it('a teammate that read two facts on one page hands both back, and a draft that links that page after each is posted as written', async () => {
     const two = teammate('m1', '하람', `순천 첫차는 오전 5시 30분이에요. ${PAGE('순천')}\n순천 막차는 밤 11시예요. ${PAGE('순천')}`, PAGE('순천'))
@@ -251,7 +251,7 @@ describe('stack-19: fixes after the branch results', () => {
     const out = await runToolSession({ engine: { ...brain(async () => ({ answer: short })), quick: async () => { quick++; return '' } } as Engine, workdir: WORKDIR, tools: [] }, '좀 더 짧게')
     expect(out.answer).toBe(short)
     expect(quick).toBe(0)
-    expect(COLLEAGUE_CORE_RULE).toContain('write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed')
+    expect(COLLEAGUE_CORE_RULE).toContain('is written again in it with every fact and constraint kept, and nothing about the change')
     expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   })
 

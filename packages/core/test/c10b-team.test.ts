@@ -58,7 +58,7 @@ test('c10b fix 2 and 3 → k1: the three stored parts reach the lead in order, e
     expect(out.reports[i]!.sources).toEqual(c3()[i]!.sources)
   }
   expect(out.note).toContain('A headline or title a source wrote in another language is given in the person\'s language, not quoted in the original')
-  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names')
+  expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread all is Korean but names, code, addresses, file names')
   expect(COLLEAGUE_CORE_RULE).toContain('A part still being worked on, or one that found nothing, is said in one plain sentence in its place')
 })
 

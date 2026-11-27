@@ -40,7 +40,7 @@ describe('stack-11 merge: a team answer is never cut by wording on its way throu
   it('an English run the writer made up is posted as written; keeping a Korean thread Korean is a rule the model reads, and no host check cuts the draft', async () => {
     const draft = `밀밭제과는 다온이 봤는데 "Slow Rye Country Loaf Batch Two"가 나왔어요. [밀밭제과](${MIL})\n\n호두당은 시우가 봤어요, here is the short rundown for the bakery. [호두당](${HODU})`
     expect(await posted(draft, ASK)).toBe(draft)
-    expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread every line is Korean except names, code, addresses, file names and text they asked for in another language')
+    expect(COLLEAGUE_CORE_RULE).toContain('In a Korean thread all is Korean but names, code, addresses, file names and text asked for in another language')
     expect(COLLEAGUE_CORE_RULE).toContain('Your reply reaches the person exactly as you write it')
     expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
     expect(Object.keys(JSON.parse(handBacks([mil(), hodu()])) as object)).toEqual(['reports', 'note'])
@@ -105,7 +105,7 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
     expect(await posted(led, '이 수정 내용 커밋 제목 영문으로 하나')).toBe(led)
     const code = '이렇게 조회하면 돼요.\n\n```sql\nSELECT pier FROM sailings WHERE leaves > \'06:00\';\n```'
     expect(await posted(code, '6시 이후 배 조회 쿼리')).toBe(code)
-    expect(COLLEAGUE_CORE_RULE).toContain('text they asked for in another language, which you hand over unchanged after a few warm Korean words')
+    expect(COLLEAGUE_CORE_RULE).toContain('text asked for in another language, kept as is after a few warm Korean words')
     expect(fns(firstLine)).toEqual(FIRST_FNS)
   })
   it('ipc runs no pass over the answer before delivery: the files are attached to the answer the model wrote', () => {
@@ -123,7 +123,7 @@ describe('stack-11: working notes and date ranges', () => {
     expect(await posted(asked, '독서 모임 목요일 저녁으로 옮기자는 영어 문장 하나 써줘')).toBe(asked)
     const script = '스크립트예요.\n```sh\necho sorting all the returned books now\n```'
     expect(await posted(script, '반납 도서 정리 스크립트')).toBe(script)
-    expect(COLLEAGUE_CORE_RULE).toContain('no opening line about what you are about to do, no account of your steps and no notes to yourself')
+    expect(COLLEAGUE_CORE_RULE).toContain('no preface, steps or notes to yourself')
     expect(fns(firstLine)).toEqual(FIRST_FNS)
     expect(ipcTurn().match(/result\.answer = /g)).toBeNull()
   })

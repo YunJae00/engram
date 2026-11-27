@@ -40,7 +40,7 @@ it('stack-8 (c8c run D1): a Han shorthand in a note summary is the model\'s to a
     const result = await runComet({ engine: { id: 'claude', runTools: async () => ({ answer: draft }) } as unknown as Engine, workdir: '.' as never, tools: [] }, '회의 메모 한 줄로 정리해줘', { guided: false, role: 'deep' })
     expect(result.answer).toBe(draft)
   }
-  expect(COLLEAGUE_CORE_RULE).toContain('no Chinese-character shorthand (多, 約, 等)')
+  expect(COLLEAGUE_CORE_RULE).toContain('no 多/約 shorthand')
   expect(existsSync(new URL('../src/main/desk-lane.ts', import.meta.url))).toBe(false)
   expect(ipc.slice(ipc.indexOf('await begun!.run({'), ipc.indexOf('afterAnswer = async () => {')).match(/result\.answer = \w+/g)).toBeNull()
 })

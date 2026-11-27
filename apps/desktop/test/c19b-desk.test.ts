@@ -11,7 +11,7 @@ async function turn(draft: string, said: string, options: AgentLoopOptions = {},
   const result = await runToolSession({ engine, workdir: '/tmp/c19b-desk' as EngineCwd, tools: [] }, said, options)
   return { posted: result.answer, calls: jobs.length, voiced, told: jobs.map(job => `${job.system}\n${job.prompt}\n${job.opening ?? ''}`).join('\n') }
 }
-const KEEPS = 'write that reply again in the asked form with every fact and every constraint of the original ask kept, and nothing about what you changed'
+const KEEPS = 'is written again in it with every fact and constraint kept, and nothing about the change'
 
 describe('item 1: a desk answer\'s ```replies block is not prose', () => {
   const REPLIES = ['```replies', '두부도 넣어줘', '양 좀 줄여줘', '```'].join('\n')
@@ -43,7 +43,7 @@ describe('item 2: a line is under one part because the model is told so, not bec
   it('the turn says an item is listed once and carries no copy of the notes, and the draft is posted with every task line once, where the model put it', async () => {
     const { posted, told, calls, voiced } = await turn(DRAFT, ASK)
     expect(told).not.toContain(SOURCE)
-    expect(told).toContain('A decision or item is listed once, never again under a second heading.')
+    expect(told).toContain('an item is listed once')
     expect(posted).toBe(DRAFT)
     expect(posted).not.toContain('님이')
     for (const task of TASKS) expect(posted.split('\n').filter(line => line === task)).toHaveLength(1)
@@ -97,7 +97,7 @@ describe('item 3: a shorter reshape is the model\'s own reply: one call, the ask
   it('another form is asked of the model the same way, and its reply is posted, never the last reply again', async () => {
     const polite = '택배 배송이 늦어져 정말 죄송해요. 최대한 빨리 받아보시게 할게요.'
     const { posted, told, voiced } = await turn(polite, '좀 부드럽게', thread(ASK, LAST))
-    expect(told).toContain('(shorter, as a table, another tone or language)')
+    expect(told).toContain('A reply asked for in another form')
     expect(told).toContain(LAST)
     expect(posted).toBe(polite)
     expect(voiced).toEqual([])
