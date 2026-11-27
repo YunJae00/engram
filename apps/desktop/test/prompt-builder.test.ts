@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { ESCALATE_RULE, ESCALATE_TOOL, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { ESCALATE_RULE, ESCALATE_TOOL, ONE_BUBBLE_RULE, PLAIN_WORK_RULE, RECEIPT_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -38,12 +38,13 @@ const oldWrite = lineOf(web0.system, 'Write to the person in the language of the
 const oldSpeak = lineOf(web0.system, 'Speak to the person directly')
 const oldToPerson = `${oldWrite}\n${oldSpeak}`
 const oldPlain = `\n${lineOf(web0.system, 'When the person writes in a language other than English')}`
-const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '')
+const oldReceipt = lineOf(web0.system, 'Before a final answer after browser work')
+const minusSystem = (text: string): string => cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '').replace(oldReceipt, RECEIPT_RULE)
 const minusTurn = (text: string): string => cutFromTurn.reduce((left, cut) => left.replace(cut, cut.endsWith('Task: ') ? '\nTask: ' : ''), text)
 const minusCut = (was: unknown): unknown => typeof was === 'string' ? minusSystem(was) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
 
 describe('one prompt builder: every role builds the same prompt the parent commit built for the same inputs', () => {
-  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, the first-line, reply-shape and to-the-person rules replaced by their short forms, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
+  it('work, deep and helper prompts and the turn notes are the parent snapshot less the doubled first-line sentence, the repeated texting sentences and result-first rule in the system, the two reply-chip rules in the system replaced by the one short rule, the first-line, reply-shape and to-the-person rules replaced by their short forms, the browser receipt rule saying a one-value answer finishes in one call, and the second reply-chips and one-bubble rules in the turn prompt, a shown line noted like a pending one, without its words; the chat lead adds only the escalate rule, is no longer than the parent with the escalate tool counted, and starts after the quick tier chose, so no pending-line note is left', async () => {
   const out: Record<string, unknown> = {}
   const lead = async (name: string, engineId: string, tools: AgentTool[], task: string, options: Parameters<typeof runComet>[2]) => {
     const jobs: ToolSessionJob[] = []
@@ -64,6 +65,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   const helperJobs: ToolSessionJob[] = []
   await lookAsHelper({ channel: 'bot-1', engine: recorder('claude', helperJobs), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '부산 날씨', 0)
   out['helper'] = shot(helperJobs[0]!)
+  expect(helperJobs[0]!.system).toContain(RECEIPT_RULE)
 
 
   const quiet = new AbortController()

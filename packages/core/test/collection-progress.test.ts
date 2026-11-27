@@ -170,3 +170,11 @@ it('requires another reading approach and complete scope before a partial finish
     expect(text).toContain('Partial is for a real barrier')
   }
 })
+
+it('finishes a one-value lookup with the single receipt call, no list registered first', async () => {
+  const steps: AgentLoopStep[] = [{ tool: 'open_page', args: {}, observation: 'Harbor ferry timetable: first departure 06:40' }]
+  const ledger = collectionProgress(steps)
+  const receipt = await ledger.tool.run({ status: 'complete', summary: 'First ferry leaves at 06:40', evidenceStep: 1 }, { task: 'When does the first harbor ferry leave?' })
+  expect(JSON.parse(receipt)).toMatchObject({ finish: { status: 'complete' }, missing: [] })
+  expect(ledger.pending()).toBeUndefined()
+})
