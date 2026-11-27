@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { calendarLine, HAND_OFF_TOOL, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
+import { calendarLine, HAND_OFF_TOOL, memberPersona, promptFor, runComet, type AgentTool, type Engine, type NativeTools, type ToolSessionJob } from 'core'
 import { answer, openWorld } from '../src/main/answer.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
@@ -31,6 +31,7 @@ async function lead(task: string, tools: AgentTool[], options: Parameters<typeof
   return jobs[0]!
 }
 
+const persona = memberPersona({ id: 'member-1', parentId: null, depth: 1, role: 'Haneul', brief: '서울 날씨 찾아줘', lookup: true, state: 'working', sessionKey: 'member-1', hiredAt: '2026-11-26T00:00:00.000Z' })
 const scratch: string[] = []
 const texts: Record<string, string> = {}
 const held: Record<string, string> = {}
@@ -51,7 +52,7 @@ beforeAll(async () => {
   texts['lead-full'] = promptFor('work', { task: '', flags: { engineId: 'claude', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false, native } }).system
   texts['lead-bare'] = ruleText(await lead('안녕하세요', [], {}), '안녕하세요')
   texts['lead-lookup'] = ruleText(await lead('도쿄 날씨', web.slice(0, 3), { lookup: true }), '도쿄 날씨')
-  texts['teammate'] = ruleText(await lead('서울 날씨 찾아줘', web.slice(0, 3), { role: 'deep', lookup: true }), '서울 날씨 찾아줘')
+  texts['teammate'] = ruleText(await lead('서울 날씨 찾아줘', web.slice(0, 3), { role: 'deep', lookup: true, persona }), '서울 날씨 찾아줘')
   const helper: ToolSessionJob[] = []
   await lookAsHelper({ channel: 'bot-1', engine: recorder(helper), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '부산 날씨', 0)
   texts['helper'] = ruleText(helper[0]!, '부산 날씨')
@@ -66,6 +67,12 @@ describe('prompt sizes cannot grow back', () => {
   it('every scenario is at or under its ceiling, and every scenario is measured', () => {
     expect(Object.keys(texts).sort()).toEqual(Object.keys(ceilings).sort())
     expect(over(Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, text.length])))).toEqual([])
+  })
+
+  it('the teammate is measured with its member persona, so a longer persona is over the ceiling', () => {
+    expect(texts['teammate']).toContain(persona)
+    expect(texts['lead-lookup']).not.toContain(persona)
+    expect(texts['teammate']!.length).toBeGreaterThan(texts['lead-lookup']!.length)
   })
 
   it('one extra character in any scenario is over its ceiling', () => {
