@@ -106,6 +106,12 @@ export const CASES: EvalCase[] = [
     grade: run => ({ count: /4\s*건/.test(all(run)), realFirstInBand: realFirst(run), lineBeforeFinal: !!run.trace.first && run.trace.first.ms < run.trace.final.ms && !run.trace.final.text.trim().startsWith(run.trace.first.text) }),
   },
   {
+    id: 'named-file-direct',
+    files: { '재고장.md': '# 입고 확인\n- 파란 컵: 검수 완료\n- 흰 접시: 검수 완료\n- 나무 쟁반: 확인 중\n- 유리잔: 검수 완료\n' },
+    ask: () => '재고장.md에서 검수 완료된 품목 수만 알려줘',
+    grade: run => ({ count: /3\s*(?:개|품목)/.test(all(run)), readFile: run.steps.some(step => step.startsWith('file_read:')), namedSourceFirst: !run.steps.some(step => /^(?:search_chats|search_memory):/.test(step)) }),
+  },
+  {
     id: 'tier-hard',
     files: BRANCHES,
     ask: () => '지점자료/강남.csv, 지점자료/수원.csv, 지점자료/대전.csv 세 지점 넉 달 치를 서로 맞춰 보고, 내년 1분기에 어느 지점에 직원을 몇 명 더 둘지 근거를 대서 단계별 배치 계획 세워줘',
@@ -173,5 +179,18 @@ export const CASES: EvalCase[] = [
     ask: url => `${url}parking 에 나온 시민공원 공영주차장 최초 30분 요금 알아봐줘`,
     page: path => path.startsWith('/parking') ? page('시민공원 공영주차장 요금 안내', '<table><tr><th>구분</th><th>요금</th></tr><tr><td>최초 30분</td><td>1,500원</td></tr><tr><td>이후 10분마다</td><td>500원</td></tr><tr><td>1일 최대</td><td>15,000원</td></tr></table>') : null,
     grade: run => ({ fee: /1,?500\s*원/.test(all(run)), address: linksTo(run, '/parking') }),
+  },
+  {
+    id: 'helper-one-page',
+    as: 'helper',
+    ask: url => `${url}bakery 안내에서 평일에 몇 시에 닫는지만 알려줘`,
+    page: path => path.startsWith('/bakery') ? page('동네 빵집 이용 안내', '<p>평일 오전 8시 ~ 오후 8시</p><p>토요일 오전 9시 ~ 오후 5시</p>') : null,
+    grade: run => ({ closes: /(?:오후\s*)?8시|20시|20:00/.test(all(run)), address: linksTo(run, '/bakery'), oneReceipt: run.steps.filter(step => step.startsWith('collect_results:')).length <= 1 }),
+  },
+  {
+    id: 'single-page-lead',
+    ask: url => `${url}market 안내에서 중앙시장 수요일 문 닫는 시간만 알려줘`,
+    page: path => path.startsWith('/market') ? page('중앙시장 이용 안내', '<p>월~금 오전 9시 ~ 오후 7시</p><p>토요일 오전 10시 ~ 오후 5시</p>') : null,
+    grade: run => ({ closes: /(?:오후\s*)?7시|19시|19:00/.test(all(run)), address: linksTo(run, '/market'), oneReceipt: run.steps.filter(step => step.startsWith('collect_results:')).length <= 1 }),
   },
 ]

@@ -204,7 +204,7 @@ describe('the sentences that must survive word for word', () => {
   it('the persistence rule replaces the four old ones, the how-to-work block is short, the lookup kind keeps persistence and sources, and a menu with no web tool gets none of the web rules', async () => {
     const persist = `${PERSIST_RULE} ${PERSIST_WEB_RULE}`
     expect(persist.length).toBeLessThanOrEqual(900)
-    const starts = [persist, 'Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', REFERENCE_ID_RULE, 'What you say about the subject', 'You can make documents']
+    const starts = [persist, 'Open a named file or page first;', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', REFERENCE_ID_RULE, 'What you say about the subject', 'You can make documents']
     const block = (system: string) => system.split('\n').filter(line => starts.some(start => line.startsWith(start)))
     expect(block(runnerTurn.system)).toHaveLength(starts.length)
     expect(block(runnerTurn.system).join('').length).toBeLessThanOrEqual(4400)
@@ -216,17 +216,19 @@ describe('the sentences that must survive word for word', () => {
     for (const text of [`${runnerTurn.system}\n${runnerTurn.prompt}`, `${jobs[0]!.system}\n${jobs[0]!.prompt}`]) {
       expect(count(text, persist)).toBe(1)
       for (const part of [
-        'Finish the job this turn and check each claim against what you read',
-        'never end on a plan to try something: try it now',
-        'A failed, empty or cut-short read or search is not proof: take another route to the same source',
+        'Finish this turn and answer from observed evidence; verify only unsettled claims',
+        'Never end on a plan: try it now',
+        'A failed, empty or cut-short read or search is not proof',
         'Do every item asked without asking to continue',
         'Partial is only for a real barrier',
-        'call ask_person and wait',
+        'call ask_person and wait when only the person can clear it',
         'Never invent success, repeat a side effect or widen the ask',
-        'reload, its own address and menus',
-        'the official source, another reputable one, search results or news, a partial answer naming exactly what is missing',
+        'If a page or search fails, is empty, blocked or cut short',
+        'reload it; try its address, menus and sections',
+        'official source, another reputable one, search results or news, partial answer naming exactly what is missing',
         'a press that changes nothing was the wrong control',
-        'their notebook (search_memory',
+        'Open a named file or page first; if it settles one fact, answer without more tools',
+        'notebook (search_memory)',
         'never for a value read this turn',
         'goes into the first search or address, not into a retry',
         'read a page listing newest first rather than searching again with dates',
@@ -259,7 +261,7 @@ describe('the sentences that must survive word for word', () => {
     const bare = await lead('find when the community centre yoga class opens sign-ups', [tool('file_read')], { lookup: true })
     for (const text of [texts['lead-bare']!, bare.system]) {
       expect(count(text, PERSIST_RULE)).toBe(1)
-      for (const web of [PERSIST_WEB_RULE, 'the ladder', 'Look in order:', 'Searching:', 'On an open page', 'What you say about the subject', 'search results or news']) expect(count(text, web), web).toBe(0)
+      for (const web of [PERSIST_WEB_RULE, 'the ladder', 'Open a named file or page first', 'Searching:', 'On an open page', 'What you say about the subject', 'search results or news']) expect(count(text, web), web).toBe(0)
     }
   })
 

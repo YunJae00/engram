@@ -47,7 +47,7 @@ const oldLadder = lineOf(web0.system, 'When a source fails, go down the ladder')
 const oldBefore = lineOf(web0.system, 'Before recording an item as unverified')
 const oldWork = ['Where to look, in order', 'On an open page, act before asking', 'Searching: when the ask names', 'Before writing something the person writes again and again', 'What you say about the subject', 'You can make documents (PDF'].map(from => lineOf(web0.system, from))
 const oldRef = lineOf(web0.system, 'An identifier in the person')
-const newWork = (now: string): string[] => ['Look in order:', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', 'What you say about the subject', 'You can make documents'].map(from => lineOf(now, from))
+const newWork = (now: string): string[] => ['Open a named file or page first;', 'On an open page, act before asking', 'Searching:', 'Before writing something the person writes again and again', 'What you say about the subject', 'You can make documents'].map(from => lineOf(now, from))
 const howToWork = (text: string, now: string): string => {
   const persist = text.includes(oldStop) ? `${PERSIST_RULE} ${PERSIST_WEB_RULE}` : PERSIST_RULE
   const lines = newWork(now)
@@ -119,6 +119,14 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   expect(Object.keys(out)).toEqual(kept)
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
+    if (key === 'helper') {
+      const helper = out[key] as { system: string; prompt: string }
+      expect(helper.system).toContain(PERSIST_RULE)
+      expect(helperJobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
+      expect(helper.system).not.toContain('Before a final answer after browser work')
+      expect(helper.prompt).toContain('Task: 부산 날씨')
+      continue
+    }
     const was = minusCut(parent[key], (out['lead-web'] as { system: string }).system) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : key === 'note-shown' ? parent['note-pending'] : was)
   }
@@ -147,8 +155,8 @@ describe('one prompt builder: every role builds the same prompt the parent commi
       ['work-evidence.ts', 'Open the requested URL itself. Save a reviewed'],
       ['comet-navigation-tools.ts', 'deltas replace only indicated body lines'],
       ['browser-read-batch.ts', 'a positive ready check for each'],
-      ['collection-progress.ts', 'Before the final answer after browser work'],
-      ['collection-progress.ts', 'Use observed URLs and read_pages batches'],
+      ['collection-progress.ts', 'Call only if you used a browser tool this turn'],
+      ['collection-progress.ts', 'Use observed URLs and batch known addresses with read_pages'],
     ] as const
     const all = [...new Set(homes.map(([file]) => file))].map(source)
     const prompt = source('prompt.ts')

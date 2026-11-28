@@ -80,8 +80,10 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('goes down a source ladder that ends in a partial answer, never a plan', () => {
-    expect(PERSIST_WEB_RULE).toMatch(/the ladder: the official source, another reputable one, search results or news, a partial answer naming exactly what is missing/)
-    expect(PERSIST_RULE).toMatch(/never end on a plan to try something: try it now/)
+    expect(PERSIST_WEB_RULE).toMatch(/the ladder: official source, another reputable one, search results or news, partial answer naming exactly what is missing/)
+    expect(PERSIST_WEB_RULE).toMatch(/^If a page or search fails, is empty, blocked or cut short/)
+    expect(PERSIST_RULE).toContain('verify only unsettled claims')
+    expect(PERSIST_RULE).toMatch(/Never end on a plan: try it now/)
   })
 
   it('leads the final answer with the result, guided path included', () => {

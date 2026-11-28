@@ -23,6 +23,7 @@ export async function lookAsHelper(input: {
       ...(signal ? { signal } : {}),
       guided: input.guided,
       role: 'deep',
+      lookup: true,
       maxCalls: HELPER_CALLS,
       persona: HELPER_PERSONA,
       onStep: input.onStep,
