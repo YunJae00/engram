@@ -74,8 +74,8 @@ describe('prompt sizes cannot grow back', () => {
   })
 
   it('the runner system and tools together are smaller than the parent', () => {
-    expect(ceilings['lead-runner']).toBe(17900)
-    expect(ceilings['lead-runner-tools']).toBe(23960)
+    expect(ceilings['lead-runner']).toBe(16144)
+    expect(ceilings['lead-runner-tools']).toBe(23871)
     expect(texts['lead-runner']!.length + texts['lead-runner-tools']!.length).toBeLessThan(19900 + 23000)
   })
 
