@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cometTools } from '../src/comet-tools.js'
 import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
-import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
+import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, promptFor, skillIndexLines } from '../src/prompt.js'
 import { openRuleLines } from './rules.js'
 import { sessionRules } from './rules.js'
 import { COLLEAGUE_CORE_RULE, NO_SELF_RESEARCH_RULE, PERSIST_RULE, PERSIST_WEB_RULE, VOICE_RULE } from '../src/prompt.js'
@@ -84,6 +84,13 @@ describe('a comet sounds like a coworker who commits to the job', () => {
     expect(PERSIST_WEB_RULE).toMatch(/^If a page or search fails, is empty, blocked or cut short/)
     expect(PERSIST_RULE).toContain('verify only unsettled claims')
     expect(PERSIST_RULE).toMatch(/Never end on a plan: try it now/)
+  })
+
+  it('uses a record selector as navigation when an inventory has no detail links', () => {
+    const job = promptFor('work', { task: '창고 페이지에서 품목별 재고 수량을 모아줘', flags: { engineId: 'claude', desktop: false, workflow: false, browser: true, planned: false, pageSteps: true, tools: ['open_page', 'read_open_page', 'choose', 'press', 'read_pages'] } })
+    expect(job.prompt).toContain('창고 페이지에서 품목별 재고 수량을 모아줘')
+    expect(job.system).toContain('A selector plus view or search button opens details even without links')
+    expect(job.system).toContain('choose an entry, press the button, then read the observed address')
   })
 
   it('leads the final answer with the result, guided path included', () => {
