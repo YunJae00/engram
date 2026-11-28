@@ -43,10 +43,10 @@ const TOOL_KIT = [
   'src/main/stalled-scripts.ts',
 ]
 
-function runtimeImports(source: string): string[] {
+function runtimeImports(source: string, includeDynamic = true): string[] {
   const found: string[] = []
   for (const match of source.matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]/gm)) if (!match[1]) found.push(match[2]!)
-  for (const match of source.matchAll(/\bimport\(\s*(?:\/\*[^*]*\*\/\s*)?['"]([^'"]+)['"]\s*\)/g)) found.push(match[1]!)
+  if (includeDynamic) for (const match of source.matchAll(/\bimport\(\s*(?:\/\*[^*]*\*\/\s*)?['"]([^'"]+)['"]\s*\)/g)) found.push(match[1]!)
   return found
 }
 
@@ -59,12 +59,12 @@ function resolved(from: string, spec: string): string | null {
   return null
 }
 
-function shellPath(entry: string): string[] | null {
+function shellPath(entry: string, includeDynamic = true): string[] | null {
   const seen = new Set<string>()
   const walk = (file: string, trail: string[]): string[] | null => {
     if (seen.has(file)) return null
     seen.add(file)
-    for (const spec of runtimeImports(readFileSync(file, 'utf8'))) {
+    for (const spec of runtimeImports(readFileSync(file, 'utf8'), includeDynamic)) {
       if (spec === SHELL) return [...trail, file]
       const next = resolved(file, spec)
       const path = next && walk(next, [...trail, file])
@@ -104,8 +104,16 @@ describe('the model engine and the files it builds from', () => {
 })
 
 describe('the headless runner and its one answer entry', () => {
-  it.each(['src/main/answer.ts', 'src/main/first-line.ts', 'src/main/runner.ts', 'scripts/runner.mts'])('%s never reaches the shell through its imports', file => {
+  it.each(['src/main/answer.ts', 'src/main/first-line.ts', 'src/main/runner.ts'])('%s never reaches the shell through its imports', file => {
     expect(shellPath(file)).toBeNull()
+  })
+  it('registers the shell substitute before conditionally loading the Codex engine', () => {
+    const source = readFileSync(resolve(DESKTOP, 'scripts/runner.mts'), 'utf8')
+    expect(shellPath('scripts/runner.mts', false)).toBeNull()
+    const hook = source.indexOf("if (selected === 'codex') registerHooks(")
+    const engine = source.indexOf("await import('../src/main/engine-codex.js')")
+    expect(hook).toBeGreaterThan(-1)
+    expect(engine).toBeGreaterThan(hook)
   })
   it('src/main/fast-lane.ts is gone, so no lane file sits between the runner and its answer entry', () => {
     expect(existsSync(new URL('../src/main/fast-lane.ts', import.meta.url))).toBe(false)
