@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EngineCwd, EngineEvent } from 'core'
+import { MODEL_TIER, pickEngineTier, type EngineCwd, type EngineEvent } from 'core'
+import { readFileSync } from 'node:fs'
 
 const fixture = vi.hoisted(() => ({
   ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(), providerConfig: vi.fn(), connectionEnv: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
 }))
 vi.mock('../src/main/run-text.js', async (original) => ({ ...await original<typeof import('../src/main/run-text.js')>(), runText: fixture.catalog }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
-import { CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides, forgetCodexCatalog } from '../src/main/engine-codex.js'
+import { CODEX_TIER, CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides, forgetCodexCatalog } from '../src/main/engine-codex.js'
 import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
 import { claudeEngine, claudeInputs } from '../src/main/engine-cloud.js'
 
@@ -47,6 +48,24 @@ beforeEach(() => {
 })
 
 describe('text runtime desktop isolation boundary', () => {
+  it('selects the Codex model and effort for every prompt tier and honors explicit choices', () => {
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.quick, 'chosen-model')).toEqual({ model: 'gpt-6-luna', effort: 'low' })
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.work, 'chosen-model')).toEqual({ model: 'chosen-model', effort: 'medium' })
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.work, '')).toEqual({ effort: 'medium' })
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.deep, 'chosen-model')).toEqual({ model: 'gpt-6-astra', effort: 'high' })
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.deep, 'chosen-model', { model: 'my-model', effort: 'xhigh' })).toEqual({ model: 'my-model', effort: 'xhigh' })
+    expect(pickEngineTier(CODEX_TIER, MODEL_TIER.quick, 'chosen-model', { model: '', effort: 'medium' })).toEqual({ effort: 'medium' })
+    const source = readFileSync(new URL('../src/main/engine-codex.ts', import.meta.url), 'utf8')
+    expect(source.match(/pickEngineTier\(CODEX_TIER/g)).toHaveLength(5)
+    expect(source).toContain('runCodexNative({ ...job, effort: selected.effort')
+  })
+  it('uses the hint for unrelated questions through the real text call path', async () => {
+    const engine = new CodexEngine()
+    await collect(engine.run({ prompt: '달 관측 기록 요약해줘', workdir: WORKDIR, modelHint: 'fast' }))
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-luna', modelReasoningEffort: 'low' }))
+    await collect(engine.run({ prompt: '바다 생물의 차이 설명해줘', workdir: WORKDIR, modelHint: 'smart' }))
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-astra', modelReasoningEffort: 'high' }))
+  })
   it('keeps the owning provider config for plain, native and restricted fallback turns', async () => {
     fixture.providerConfig.mockReturnValue(['model_provider="fixture-gateway"'])
     const engine = new CodexEngine('system')

@@ -7,7 +7,7 @@ import { ProcessClient } from './process-client.js'
 
 export interface CodexTurn { options: CodexOptions; thread: Omit<ThreadOptions, 'modelReasoningEffort'> & { modelReasoningEffort?: ReasoningEffort }; input: Input; outputSchema?: unknown }
 
-export function codexWorkerPath(): string {
+function codexWorkerPath(): string {
   const js = fileURLToPath(new URL('./codex-worker.js', import.meta.url))
   if (existsSync(js)) return js
   const ts = fileURLToPath(new URL('./codex-worker.ts', import.meta.url))

@@ -1,5 +1,6 @@
 import type { CodexRpc, CodexRpcFactory } from './codex-native.js'
 import { flog } from './flog.js'
+import type { ReasoningEffort } from 'core'
 
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
@@ -7,7 +8,7 @@ const text = (value: unknown): string => typeof value === 'string' ? value : ''
 const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
-interface CodexVoiceSpec { rpc: CodexRpcFactory; env: NodeJS.ProcessEnv; config: string[]; cwd: string; model?: string }
+interface CodexVoiceSpec { rpc: CodexRpcFactory; env: NodeJS.ProcessEnv; config: string[]; cwd: string; model?: string; effort: ReasoningEffort }
 
 export class CodexVoice {
   private readonly rpc: CodexRpc
@@ -22,8 +23,8 @@ export class CodexVoice {
   closed = false
   readonly key: string
 
-  constructor(spec: CodexVoiceSpec) {
-    this.key = JSON.stringify([spec.cwd, spec.model ?? '', spec.config])
+  constructor(private readonly spec: CodexVoiceSpec) {
+    this.key = JSON.stringify([spec.cwd, spec.model ?? '', spec.effort, spec.config])
     const rpc = spec.rpc({ cwd: spec.cwd, env: spec.env, config: spec.config }, (method, params) => this.notify(method, params),
       async () => ({ decision: 'decline' }), (error) => { flog('voice', error.message); this.close() })
     this.rpc = rpc
@@ -58,7 +59,7 @@ export class CodexVoice {
         this.answer = ''
         this.turnId = ''
         this.running = true
-        const started = await this.rpc.send('turn/start', { threadId: this.threadId, input: [{ type: 'text', text: words, text_elements: [] }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' }, effort: 'low' })
+        const started = await this.rpc.send('turn/start', { threadId: this.threadId, input: [{ type: 'text', text: words, text_elements: [] }], approvalPolicy: 'never', sandboxPolicy: { type: 'readOnly' }, effort: this.spec.effort })
         this.turnId = text(object(started['turn'])['id'])
       } catch (error) {
         this.waiting?.reject(error instanceof Error ? error : new Error(String(error)))

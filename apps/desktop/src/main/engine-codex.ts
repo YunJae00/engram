@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
-import { ENGINE_BUDGETS, type QuickReply, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { ENGINE_BUDGETS, pickEngineTier, type EngineTierMap, type QuickReply, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
 import { codexBinary, withHelpersOnPath, type CloudEngine } from './engine-cloud.js'
 import { commandText, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudLoginOptions, type RunText } from './run-text.js'
 import { cloudErrorKind } from './usage-limit.js'
@@ -29,6 +29,7 @@ export const RUNTIME_TOOLS_OFF = [
 const TOOL_SERVER = 'engram_comet'
 const TOOL_REACH = `Work only through the ${TOOL_SERVER} tools. The read-only sandbox applies to this runtime's own commands, not to those tools: they can read the approved files, save outputs and act in the browser and applications as their descriptions say.`
 const TOKEN_ENV = 'ENGRAM_COMET_TOOL_TOKEN'
+export const CODEX_TIER: EngineTierMap = { fast: { model: 'gpt-6-luna', effort: 'low' }, work: { effort: 'medium' }, smart: { model: 'gpt-6-astra', effort: 'high' } }
 const NATIVE_KEEP = new Set(['shell_tool', 'unified_exec', 'shell_snapshot', 'shell_snapshot_v2'])
 export const NATIVE_TOOLS_OFF = RUNTIME_TOOLS_OFF.filter(entry => entry !== 'include_apply_patch_tool=false' && !NATIVE_KEEP.has(entry.slice('features.'.length, -'=false'.length)))
   .concat('web_search="disabled"', 'notify=[]')
@@ -109,7 +110,7 @@ export class CodexEngine implements CloudEngine {
 
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply> {
-    const metric = modelCall('codex', prompt.length, 'low')
+    const metric = modelCall('codex', prompt.length, pickEngineTier(CODEX_TIER, 'fast').effort)
     try { return { text: await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) } } finally { metric.end() }
   }
   private async voiceFor(workdir: string): Promise<CodexVoice | undefined> {
@@ -118,9 +119,9 @@ export class CodexEngine implements CloudEngine {
     if (!binary) return undefined
     const env = withHelpersOnPath(binary, this.env)
     const catalog = await mcpCatalog(binary, workdir, env, new AbortController().signal)
-    const model = (await loadSettings()).codexModel.trim()
-    const spec = { rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)], cwd: workdir, ...(model ? { model } : {}) }
-    if (!codexVoice || codexVoice.closed || codexVoice.spent || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
+    const { model, effort } = pickEngineTier(CODEX_TIER, 'fast')
+    const spec = { rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)], cwd: workdir, effort, ...(model ? { model } : {}) }
+    if (!codexVoice || codexVoice.closed || codexVoice.spent || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.effort, spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
     return codexVoice
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
@@ -161,13 +162,13 @@ export class CodexEngine implements CloudEngine {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }
       return
     }
-    const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+    const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
-    const metric = modelCall('codex', job.prompt.length, job.effort ?? (job.modelHint === 'fast' ? 'low' : undefined))
+    const metric = modelCall('codex', job.prompt.length, selected.effort)
     try {
       const env = withHelpersOnPath(binary, this.env)
       const catalog = { out: await mcpCatalog(binary, job.workdir, env, abort.signal) }
@@ -181,8 +182,8 @@ export class CodexEngine implements CloudEngine {
         approvalPolicy: 'never',
         webSearchMode: 'disabled',
         networkAccessEnabled: false,
-        ...(job.effort ? { modelReasoningEffort: job.effort } : job.modelHint === 'fast' ? { modelReasoningEffort: 'low' } : {}),
-        ...(codexModel ? { model: codexModel } : {}),
+        modelReasoningEffort: selected.effort,
+        ...(selected.model ? { model: selected.model } : {}),
         },
         input: job.imagePaths?.length ? [{ type: 'text' as const, text: job.prompt }, ...job.imagePaths.map(path => ({ type: 'local_image' as const, path }))] : job.prompt,
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
@@ -223,11 +224,11 @@ export class CodexEngine implements CloudEngine {
       try {
         const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
         const catalog = await mcpCatalog(binary, cwd, env, job.signal ?? new AbortController().signal)
-        const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
+        const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
         job.signal?.throwIfAborted()
         const warmed = await warmCodexSession({ rpc: appServer(binary), env,
           config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
-          instructions: [job.system.replaceAll(job.native.cwd, cwd), NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
+          instructions: [job.system.replaceAll(job.native.cwd, cwd), NATIVE_REACH].join('\n\n'), ...(selected.model ? { model: selected.model } : {}),
         }, { ...job.native, cwd, readRoots: job.native.readRoots?.map(root => root === job.native!.cwd ? cwd : root) })
         if (!warmed) { spareServers.delete(cwd); await server.close(); break }
       } catch (error) { spareServers.delete(cwd); await server.close(); throw error }
@@ -243,7 +244,8 @@ export class CodexEngine implements CloudEngine {
     logSessionTools('codex', job)
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
-    const metric = modelCall('codex', job.prompt.length + job.system.length, job.effort, job.tools.length)
+    const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
+    const metric = modelCall('codex', job.prompt.length + job.system.length, selected.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
     const abort = new AbortController()
@@ -256,11 +258,10 @@ export class CodexEngine implements CloudEngine {
       const env = { ...withHelpersOnPath(binary, this.env), [TOKEN_ENV]: server.token }
       const catalog = { out: await mcpCatalog(binary, job.native?.cwd ?? job.workdir, env, abort.signal) }
       const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
-      const codexModel = (job.model ?? (await loadSettings()).codexModel).trim()
       if (job.native) {
-        const result = await runCodexNative({ ...job, sessionKey: pooled, native: job.native, signal: abort.signal }, {
+        const result = await runCodexNative({ ...job, effort: selected.effort, sessionKey: pooled, native: job.native, signal: abort.signal }, {
           rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog.out, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
-          instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(codexModel ? { model: codexModel } : {}),
+          instructions: [job.system, NATIVE_REACH].join('\n\n'), ...(selected.model ? { model: selected.model } : {}),
         })
         if (job.signal?.aborted) return { answer: '', error: 'canceled' }
         if (!result.commandsDenied) return result
@@ -274,8 +275,8 @@ export class CodexEngine implements CloudEngine {
           approvalPolicy: 'never',
           webSearchMode: 'disabled',
           networkAccessEnabled: false,
-          ...(job.effort ? { modelReasoningEffort: job.effort } : {}),
-          ...(codexModel ? { model: codexModel } : {}),
+          modelReasoningEffort: selected.effort,
+          ...(selected.model ? { model: selected.model } : {}),
         },
         input: [job.system, TOOL_REACH, job.opening, job.prompt].filter(Boolean).join('\n\n'),
       }, abort.signal)
