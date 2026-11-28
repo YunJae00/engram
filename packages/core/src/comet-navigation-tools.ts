@@ -40,7 +40,7 @@ export function looksLikeSearchFor(url: string, task: string, page: { links?: { 
 function isFurniture(page: { text: string; links?: { text: string; url: string }[] }): boolean {
   const words = page.text.trim().length
   if (words >= PAGE_TEXT_MIN) return false
-  return (page.links?.length ?? 0) >= NAVIGATION_LINKS || words < 40
+  return (page.links?.length ?? 0) >= NAVIGATION_LINKS || words === 0 || (words < 40 && !!page.links?.length)
 }
 
 function hostOf(url: string): string {

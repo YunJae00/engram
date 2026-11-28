@@ -50,6 +50,14 @@ it('does not certify navigation guidance or a repeated empty page as readback', 
   expect(repeated.observedAfterAction).toBeUndefined()
 })
 
+it('reads a short inventory detail without links as content', async () => {
+  const open = openTool({ title: 'Stock', text: 'A4 paper: 14 boxes.', links: [] }, true)
+  const outcome = await open.runRich!({ url }, context)
+  expect(outcome.text).toContain('A4 paper: 14 boxes.')
+  expect(outcome.text).not.toContain('mostly links')
+  expect(outcome.observedAfterAction).toBe(true)
+})
+
 it('does not certify the note after a host fails twice, and lets it be tried again after another route', async () => {
   vi.useFakeTimers()
   try {
