@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MODEL_TIER, pickEngineTier, type EngineCwd, type EngineEvent } from 'core'
-import { readFileSync } from 'node:fs'
 
 const fixture = vi.hoisted(() => ({
-  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(), providerConfig: vi.fn(), connectionEnv: vi.fn(),
+  ready: vi.fn(), options: vi.fn(), threadOptions: vi.fn(), run: vi.fn(), binary: vi.fn(), settings: vi.fn(), query: vi.fn(), catalog: vi.fn(), native: vi.fn(), warmNative: vi.fn(), spareCount: vi.fn(), voice: vi.fn(), providerConfig: vi.fn(), connectionEnv: vi.fn(), connection: vi.fn(),
 }))
-vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), decisionConnectionState: () => ({ available: false, reason: 'missing-connection' }), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), codexProviderOverrides: fixture.providerConfig, connectionEnvironment: fixture.connectionEnv }))
-vi.mock('../src/main/codex-native.js', () => ({ appServer: () => 'fixture-rpc', runCodexNative: fixture.native }))
+vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), decisionConnectionState: () => ({ available: false, reason: 'missing-connection' }), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), brainConnection: fixture.connection, codexProviderOverrides: fixture.providerConfig, connectionEnvironment: fixture.connectionEnv }))
+vi.mock('../src/main/codex-native.js', () => ({ appServer: () => 'fixture-rpc', runCodexNative: fixture.native, warmCodexSession: fixture.warmNative, codexSpareCount: fixture.spareCount, codexSpareFolders: () => [] }))
+vi.mock('../src/main/engine-codex-voice.js', () => ({ CodexVoice: class {
+  closed = false
+  spent = false
+  ready = true
+  key: string
+  constructor(spec: { cwd: string; model?: string; effort: string; config: string[] }) { fixture.voice(spec); this.key = JSON.stringify([spec.cwd, spec.model ?? '', spec.effort, spec.config]) }
+  ask = async () => '첫 자료를 살펴볼게요.'
+  close = () => { this.closed = true }
+} }))
 vi.mock('../src/main/claude-runtime.js', () => ({ afterFirstClaudeSession: fixture.ready, claudeSessionStarted: () => {}, installedClaudeBinary: fixture.binary, loadClaudeSdk: async () => ({ query: fixture.query }) }))
 vi.mock('../src/main/codex-turn.js', () => ({
   runCodexTurn: async (request: import('../src/main/codex-turn.js').CodexTurn, signal: AbortSignal) => {
@@ -39,6 +47,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   fixture.providerConfig.mockReturnValue([])
   fixture.connectionEnv.mockReturnValue({})
+  fixture.connection.mockReturnValue(null)
+  fixture.spareCount.mockReturnValue(1)
+  fixture.warmNative.mockResolvedValue(true)
   fixture.ready.mockResolvedValue(undefined)
   fixture.binary.mockReturnValue('fixture-codex')
   fixture.catalog.mockResolvedValue({ code: 0, out: '[{"name":"fixture","transport":{"command":"node"}}]' })
@@ -55,9 +66,6 @@ describe('text runtime desktop isolation boundary', () => {
     expect(pickEngineTier(CODEX_TIER, MODEL_TIER.deep, 'chosen-model')).toEqual({ model: 'gpt-6-astra', effort: 'high' })
     expect(pickEngineTier(CODEX_TIER, MODEL_TIER.deep, 'chosen-model', { model: 'my-model', effort: 'xhigh' })).toEqual({ model: 'my-model', effort: 'xhigh' })
     expect(pickEngineTier(CODEX_TIER, MODEL_TIER.quick, 'chosen-model', { model: '', effort: 'medium' })).toEqual({ effort: 'medium' })
-    const source = readFileSync(new URL('../src/main/engine-codex.ts', import.meta.url), 'utf8')
-    expect(source.match(/pickEngineTier\(CODEX_TIER/g)).toHaveLength(5)
-    expect(source).toContain('runCodexNative({ ...job, effort: selected.effort')
   })
   it('uses the hint for unrelated questions through the real text call path', async () => {
     const engine = new CodexEngine()
@@ -65,6 +73,62 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-luna', modelReasoningEffort: 'low' }))
     await collect(engine.run({ prompt: '바다 생물의 차이 설명해줘', workdir: WORKDIR, modelHint: 'smart' }))
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-astra', modelReasoningEffort: 'high' }))
+  })
+  it('uses the tested connection model for quick voice and keeps its low effort', async () => {
+    fixture.connection.mockReturnValue({ model: 'gateway-tested' })
+    const engine = new CodexEngine()
+    expect(await engine.quick('도자기 유약 자료 찾아줘', { workdir: WORKDIR, timeoutMs: 1000 })).toEqual({ text: '첫 자료를 살펴볼게요.' })
+    expect(fixture.voice).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gateway-tested', effort: 'low' }))
+    await collect(engine.run({ prompt: '바둑 대회 기록 정리해줘', workdir: WORKDIR, modelHint: 'smart' }))
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gateway-tested', modelReasoningEffort: 'high' }))
+  })
+  it('sends the quick voice model at thread start and effort at turn start', async () => {
+    const { CodexVoice } = await vi.importActual<typeof import('../src/main/engine-codex-voice.js')>('../src/main/engine-codex-voice.js')
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = []
+    const voice = new CodexVoice({ cwd: WORKDIR, env: {}, config: [], model: 'gateway-tested', effort: 'low', rpc: (_options, notify) => ({
+      initialize: async () => undefined,
+      send: async (method, params) => {
+        calls.push({ method, params })
+        if (method === 'thread/start') return { thread: { id: 'voice-thread' } }
+        if (method === 'turn/start') {
+          setTimeout(() => {
+            notify('item/completed', { threadId: 'voice-thread', turnId: 'voice-turn', item: { type: 'agentMessage', text: '첫 기록부터 볼게요.' } })
+            notify('turn/completed', { threadId: 'voice-thread', turnId: 'voice-turn', turn: { status: 'completed' } })
+          }, 0)
+          return { turn: { id: 'voice-turn' } }
+        }
+        return {}
+      },
+      shutdown: async () => undefined,
+    }) })
+    try {
+      expect(await voice.ask('화석 기록 살펴줘', 1000)).toBe('첫 기록부터 볼게요.')
+      expect(calls[0]).toEqual({ method: 'thread/start', params: expect.objectContaining({ model: 'gateway-tested' }) })
+      expect(calls[1]).toEqual({ method: 'turn/start', params: expect.objectContaining({ effort: 'low' }) })
+    } finally { voice.close() }
+  })
+  it('passes the selected tier through tool and native calls', async () => {
+    const engine = new CodexEngine()
+    await engine.runTools({ workdir: WORKDIR, system: '', prompt: '산호 종류 정리', tools: [], maxCalls: 1, modelHint: 'fast' })
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-luna', modelReasoningEffort: 'low' }))
+    fixture.native.mockResolvedValue({ answer: 'ok' })
+    await engine.runTools({ workdir: WORKDIR, system: '', prompt: '성단 관측 기록', tools: [], maxCalls: 1, modelHint: 'smart', native: { cwd: process.cwd(), decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.native).toHaveBeenLastCalledWith(expect.objectContaining({ effort: 'high' }), expect.objectContaining({ model: 'gpt-6-astra' }))
+    fixture.connection.mockReturnValue({ model: 'gateway-tested' })
+    await engine.runTools({ workdir: WORKDIR, system: '', prompt: '도자기 연대 조사', tools: [], maxCalls: 1, modelHint: 'fast' })
+    expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gateway-tested', modelReasoningEffort: 'low' }))
+    await engine.runTools({ workdir: WORKDIR, system: '', prompt: '새 별자리 자료', tools: [], maxCalls: 1, modelHint: 'smart', native: { cwd: process.cwd(), decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.native).toHaveBeenLastCalledWith(expect.objectContaining({ effort: 'high' }), expect.objectContaining({ model: 'gateway-tested' }))
+  })
+  it('passes the selected model to a warmed native session', async () => {
+    fixture.spareCount.mockReturnValue(0)
+    fixture.warmNative.mockResolvedValue(false)
+    const engine = new CodexEngine()
+    await engine.warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, modelHint: 'smart', native: { cwd: process.cwd(), decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.warmNative.mock.lastCall![0]).toEqual(expect.objectContaining({ model: 'gpt-6-astra' }))
+    fixture.connection.mockReturnValue({ model: 'gateway-tested' })
+    await engine.warm({ workdir: WORKDIR, system: '', prompt: '', tools: [], maxCalls: 1, modelHint: 'smart', native: { cwd: process.cwd(), decide: async () => ({ behavior: 'allow' }) } })
+    expect(fixture.warmNative.mock.lastCall![0]).toEqual(expect.objectContaining({ model: 'gateway-tested' }))
   })
   it('keeps the owning provider config for plain, native and restricted fallback turns', async () => {
     fixture.providerConfig.mockReturnValue(['model_provider="fixture-gateway"'])

@@ -13,7 +13,7 @@ import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
-import { hasBrainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
+import { brainConnection, hasBrainConnection, clearBrainConnection, codexProviderOverrides, loadBrainConnections, probeConnection } from './brain-connections.js'
 import { startToolServer, type ToolServer } from './codex-tool-server.js'
 import { CodexVoice } from './engine-codex-voice.js'
 import { appServer, claimCodexWorkFolder, closeCodexSession as closeCodexNativeSession, closeCodexSessions as closeCodexNativeSessions, codexSpareCount, codexSpareFolders, runCodexNative, warmCodexSession } from './codex-native.js'
@@ -108,6 +108,11 @@ export class CodexEngine implements CloudEngine {
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
 
+  private async selected(job: { modelHint?: 'fast' | 'smart'; model?: string; effort?: ToolSessionJob['effort'] }) {
+    const settingsModel = job.model === undefined ? (await loadSettings()).codexModel : ''
+    return pickEngineTier(CODEX_TIER, job.modelHint, settingsModel, { ...job, model: job.model ?? brainConnection('codex', this.accountProfile)?.model })
+  }
+
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<QuickReply> {
     const metric = modelCall('codex', prompt.length, pickEngineTier(CODEX_TIER, 'fast').effort)
@@ -119,7 +124,7 @@ export class CodexEngine implements CloudEngine {
     if (!binary) return undefined
     const env = withHelpersOnPath(binary, this.env)
     const catalog = await mcpCatalog(binary, workdir, env, new AbortController().signal)
-    const { model, effort } = pickEngineTier(CODEX_TIER, 'fast')
+    const { model, effort } = pickEngineTier(CODEX_TIER, 'fast', '', { model: brainConnection('codex', this.accountProfile)?.model })
     const spec = { rpc: appServer(binary), env, config: [...disableMcpOverrides(catalog), ...RUNTIME_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)], cwd: workdir, effort, ...(model ? { model } : {}) }
     if (!codexVoice || codexVoice.closed || codexVoice.spent || codexVoice.key !== JSON.stringify([spec.cwd, spec.model ?? '', spec.effort, spec.config])) { codexVoice?.close(); codexVoice = new CodexVoice(spec) }
     return codexVoice
@@ -162,7 +167,7 @@ export class CodexEngine implements CloudEngine {
       yield { type: 'error', message: 'the ChatGPT runtime is not part of this build', kind: 'crash' }
       return
     }
-    const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
+    const selected = await this.selected(job)
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)
@@ -224,7 +229,7 @@ export class CodexEngine implements CloudEngine {
       try {
         const endpoint = `{url=${JSON.stringify(server.url)},bearer_token_env_var="${TOKEN_ENV}",tool_timeout_sec=900,default_tools_approval_mode="approve"}`
         const catalog = await mcpCatalog(binary, cwd, env, job.signal ?? new AbortController().signal)
-        const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
+        const selected = await this.selected(job)
         job.signal?.throwIfAborted()
         const warmed = await warmCodexSession({ rpc: appServer(binary), env,
           config: [...disableMcpOverrides(catalog, { [TOOL_SERVER]: endpoint }), ...NATIVE_TOOLS_OFF, ...codexProviderOverrides(this.accountProfile)],
@@ -244,7 +249,7 @@ export class CodexEngine implements CloudEngine {
     logSessionTools('codex', job)
     const binary = codexBinary()
     if (!binary) return { answer: '', error: 'the ChatGPT runtime is not part of this build' }
-    const selected = pickEngineTier(CODEX_TIER, job.modelHint, job.model === undefined ? (await loadSettings()).codexModel : '', job)
+    const selected = await this.selected(job)
     const metric = modelCall('codex', job.prompt.length + job.system.length, selected.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
