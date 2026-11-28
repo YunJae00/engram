@@ -77,7 +77,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   out['warm-bare'] = sessionShape({ engine: { id: 'codex' } as Engine, tools: web }).system
 
   const helperJobs: ToolSessionJob[] = []
-  await lookAsHelper({ channel: 'bot-1', engine: recorder('claude', helperJobs), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '부산 날씨', 0)
+  await lookAsHelper({ channel: 'bot-1', engine: recorder('claude', helperJobs), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '동네 도서관 휴관일', 0)
   out['helper'] = shot(helperJobs[0]!)
   expect(helperJobs[0]!.system).not.toContain('Before a final answer after browser work')
 
@@ -119,17 +119,14 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   expect(Object.keys(out)).toEqual(kept)
   const raced = `\n\n${parent['note-pending'] as string}`
   for (const key of kept) {
+    const was = minusCut(parent[key], (out['lead-web'] as { system: string }).system) as { prompt?: string }
     if (key === 'helper') {
-      const helper = out[key] as { system: string; prompt: string }
-      expect(helper.system).toContain(PERSIST_RULE)
-      expect(helperJobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
-      expect(helper.system).not.toContain('Before a final answer after browser work')
-      expect(helper.prompt).toContain('Task: 부산 날씨')
+      expect(out[key], key).toEqual({ ...was, system: (out['lead-lookup'] as { system: string }).system, prompt: was.prompt!.replace('부산 날씨', '동네 도서관 휴관일') })
       continue
     }
-    const was = minusCut(parent[key], (out['lead-web'] as { system: string }).system) as { prompt?: string }
     expect(out[key], key).toEqual(key.startsWith('context-') ? { ...was, prompt: was.prompt!.replace(raced, '') } : key === 'note-shown' ? parent['note-pending'] : was)
   }
+  expect(helperJobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
   })
 
   it('an unrelated recurring request sees the schedule rule in its tool, not in the prompt', async () => {
