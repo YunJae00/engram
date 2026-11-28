@@ -162,11 +162,12 @@ it.each(['Sign in', '로그인', 'Log in', 'security screen', '보안 화면', '
 
 
 it('requires another reading approach and complete scope before a partial finish', async () => {
-  const { COLLECTION_RULE } = await import('../src/collection-progress.js')
+  const { collectionProgress } = await import('../src/collection-progress.js')
+  const description = collectionProgress([]).tool.description
+  expect(description).toContain('Before calling an item unverified or finishing partial, try another reading route')
+  expect(description).toContain('Use observed URLs and read_pages batches')
+  expect(description).toContain('stop for approval or interruption')
   const { sessionRules } = await import('./rules.js')
-  expect(COLLECTION_RULE).toContain('try it once another way')
-  expect(COLLECTION_RULE).toContain('go through all of them in this turn without asking to continue')
-  expect(COLLECTION_RULE).toContain('Partial is for a real barrier')
   const rules = sessionRules({ engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })
   expect(rules).toContain('take another route to the same source')
   expect(rules).toContain('Do every item asked without asking to continue')

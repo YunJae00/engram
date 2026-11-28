@@ -64,6 +64,6 @@ describe('studying a job', () => {
   it('the offer tool and the lead rule agree: a job still undone after its failing routes may be offered, only what the person alone can clear is not', () => {
     const description = offerStudyTool({ offer: async () => {} }).description
     expect(description).not.toMatch(/page failed|timed out/)
-    expect(description).toContain('not for a sign-in or permission only they can clear')
+    expect(description).toContain('Ask for sign-in or permission instead')
   })
 })

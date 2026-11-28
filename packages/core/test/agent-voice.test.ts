@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { cometTools } from '../src/comet-tools.js'
 import { stepPrompt, wrapUpPrompt } from '../src/agent-prompt.js'
 import { PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, skillIndexLines } from '../src/prompt.js'
 import { openRuleLines } from './rules.js'
@@ -69,7 +70,7 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   })
 
   it('skips a saved way or skill that does not fit without a word', () => {
-    expect(openRuleLines().find((line) => line.startsWith('A chore on a website'))).toMatch(/does not fit the job is skipped without a word/)
+    expect(cometTools({ paths: {} as never, retrieve: async () => [] }).find(tool => tool.name === 'find_procedure')!.description).toContain('if none fits, silently do the job directly on the site')
     expect(skillIndexLines([{ name: 'weather', description: 'd' }]).join('\n')).toContain('passed over without a word')
   })
 

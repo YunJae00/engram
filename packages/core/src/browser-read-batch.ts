@@ -26,7 +26,7 @@ function normalizedUrl(value: string): string {
 export function browserReadBatch(courier: WebCourier, wallMet?: (url: string) => void, emit?: (metric: HarnessMetric) => void): AgentTool {
   return {
     name: 'read_pages',
-    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations. Each needs literal ready text and may specify find. Stops at the first mismatch, login or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Earlier successful reads remain usable when a later page fails; cite only their own observed values. Results are extracts, not proof of complete records.',
+    description: 'Read 1–4 known HTTP(S) addresses within this request in order, using fresh observations and a positive ready check for each. Each needs literal ready text and may specify find. Stops at the first mismatch, login or error; never submits or replays input. This navigates the current tab. Use single-page tools for unknown destinations. Earlier successful reads remain usable when a later page fails; cite only their own observed values. Results are extracts, not proof of complete records.',
     argsSchema: { type: 'object', properties: { pages: { type: 'array', minItems: 1, maxItems: 4, items: {
       type: 'object', properties: { url: { type: 'string' }, ready: { type: 'string' }, find: { type: 'string' } }, required: ['url', 'ready'], additionalProperties: false,
     } } }, required: ['pages'], additionalProperties: false },

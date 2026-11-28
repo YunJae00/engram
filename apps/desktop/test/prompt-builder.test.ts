@@ -7,7 +7,7 @@ import { runComet, sessionShape, type AgentTool, type Engine, type NativeTools, 
 import { answer, openWorld } from '../src/main/answer.js'
 import { beginFirstLine, endFirstLine, firstLineReady } from '../src/main/first-line.js'
 import { firstLineNote } from './ack-prompt.js'
-import { COLLEAGUE_CORE_RULE, ESCALATE_RULE, ESCALATE_TOOL, FILE_JOB_RULE, ONE_BUBBLE_RULE, PERSIST_RULE, PERSIST_WEB_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, RECEIPT_RULE, REFERENCE_ID_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
+import { COLLEAGUE_CORE_RULE, ESCALATE_RULE, ESCALATE_TOOL, FILE_JOB_RULE, ONE_BUBBLE_RULE, PERSIST_RULE, PERSIST_WEB_RULE, PLAIN_WORK_RULE, PRIOR_CLAIM_RULE, REFERENCE_ID_RULE, REPLIES_RULE, TO_PERSON_RULE, VOICE_RULE, WORK_REPLY_RULE } from '../../../packages/core/src/prompt.js'
 import { lookAsHelper } from '../src/main/helper-lanes.js'
 
 const parent = JSON.parse(readFileSync(new URL('fixtures/prompts-parent.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -53,7 +53,7 @@ const howToWork = (text: string, now: string): string => {
   const lines = newWork(now)
   return oldWork.reduce((left, old, at) => left.split(old).join(lines[at]!), text.replace(lineOf(text, 'Keep going until the requested task'), persist).replace(`\n${oldStop}`, '').replace(`\n${oldLadder}`, '').replace(`\n${oldBefore}\n`, '\n')).split(oldRef).join(REFERENCE_ID_RULE)
 }
-const minusSystem = (text: string, now: string): string => { const was = cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '').replace(oldReceipt, RECEIPT_RULE).split(oldCore).join(COLLEAGUE_CORE_RULE).split(oldFileJob).join(FILE_JOB_RULE).split(oldPrior).join(PRIOR_CLAIM_RULE); return was.includes('Keep going until the requested task') ? howToWork(was, now) : was }
+const minusSystem = (text: string, now: string): string => { const was = cutFromSystem.reduce((left, cut) => left.replace(cut, ''), text).replace(oldReplies, REPLIES_RULE).replace(oldVoice, VOICE_RULE).replace(oldWorkReply, WORK_REPLY_RULE).replace(oldToPerson, TO_PERSON_RULE).replace(oldPlain, '').replace(`\n${oldReceipt}`, '').split(oldCore).join(COLLEAGUE_CORE_RULE).split(oldFileJob).join(FILE_JOB_RULE).split(oldPrior).join(PRIOR_CLAIM_RULE).split('\n' + lineOf(web0.system, 'Keep what will matter later')).join('').split('\n' + lineOf(web0.system, 'offer_study is for')).join('').split('\n' + lineOf(web0.system, 'For browser evidence:')).join('').split('\n' + lineOf(web0.system, 'For a request to collect details')).join('').split('\n' + lineOf(web0.system, 'Page deltas replace')).join('').replace('A chore on a website starts with find_procedure; a saved way that does not fit the job is skipped without a word (never "저장된 방법은 있지만 그대로 실행하지 않을게요") and the job is done directly; with or without a saved way, open the site and do the job, and an ask that names a saved procedure is answered with run_procedure. ', ''); return was.includes('Keep going until the requested task') ? howToWork(was, now) : was }
 const minusTurn = (text: string): string => cutFromTurn.reduce((left, cut) => left.replace(cut, cut.endsWith('Task: ') ? '\nTask: ' : ''), text)
 const minusCut = (was: unknown, now: string): unknown => typeof was === 'string' ? minusSystem(was, now) : was && typeof was === 'object' && 'system' in was ? { ...was, system: minusSystem((was as { system: string }).system, now), ...('prompt' in was ? { prompt: minusTurn((was as { prompt: string }).prompt) } : {}) } : was
 
@@ -79,7 +79,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   const helperJobs: ToolSessionJob[] = []
   await lookAsHelper({ channel: 'bot-1', engine: recorder('claude', helperJobs), workdir: { root: '/tmp/w' } as never, guided: false, toolsFor: async () => web, onStep: () => {} }, '부산 날씨', 0)
   out['helper'] = shot(helperJobs[0]!)
-  expect(helperJobs[0]!.system).toContain(RECEIPT_RULE)
+  expect(helperJobs[0]!.system).not.toContain('Before a final answer after browser work')
 
 
   const quiet = new AbortController()
@@ -124,7 +124,44 @@ describe('one prompt builder: every role builds the same prompt the parent commi
   }
   })
 
-  it('the moved prompt sentences live only in core/prompt.ts: no other source file defines or repeats one', () => {
+  it('an unrelated recurring request sees the schedule rule in its tool, not in the prompt', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'prompt-builder-'))
+    scratch.push(dir)
+    const jobs: ToolSessionJob[] = []
+    await answer(await openWorld(dir, recorder('mock', jobs)), '매주 화요일 아침에 시립미술관 전시 새 소식 알려줘')
+    expect(jobs[0]!.system).not.toContain('Keep what will matter later as you go')
+    expect(jobs[0]!.tools.find(tool => tool.name === 'schedule')!.description).toContain('never set it up in another app or service unless the person names one')
+  })
+
+  it('each moved instruction has one tool-description home and none remains in the system text', () => {
+    const root = new URL('../../../', import.meta.url)
+    const source = (file: string) => readFileSync(new URL(`packages/core/src/${file}`, root), 'utf8')
+    const homes = [
+      ['learning-tools.ts', 'Keep what will matter later as you go.'],
+      ['learning-tools.ts', 'Keep a way that took wrong turns'],
+      ['schedule-tools.ts', 'never set it up in another app or service unless the person names one'],
+      ['comet-tools.ts', 'Start a website chore here'],
+      ['comet-tools.ts', 'When the person names a saved procedure, run it'],
+      ['study.ts', 'Read earlier entries in the current site directly'],
+      ['work-evidence.ts', 'Ready is literal visible text'],
+      ['work-evidence.ts', 'Open the requested URL itself. Save a reviewed'],
+      ['comet-navigation-tools.ts', 'deltas replace only indicated body lines'],
+      ['browser-read-batch.ts', 'a positive ready check for each'],
+      ['collection-progress.ts', 'Before the final answer after browser work'],
+      ['collection-progress.ts', 'Use observed URLs and read_pages batches'],
+    ] as const
+    const all = [...new Set(homes.map(([file]) => file))].map(source)
+    const prompt = source('prompt.ts')
+    for (const [file, sentence] of homes) {
+      expect(source(file), sentence).toContain(sentence)
+      expect(all.reduce((total, text) => total + text.split(sentence).length - 1, 0), sentence).toBe(1)
+      expect(prompt, sentence).not.toContain(sentence)
+    }
+    for (const sentence of ['Keep what will matter later as you go', 'A chore on a website starts', 'offer_study is for', 'For browser evidence:', 'Page deltas replace', 'For a request to collect details', 'Before a final answer after browser work']) expect(prompt).not.toContain(sentence)
+    expect(prompt).toContain('A control that would submit, save, send or buy is pressed like any other')
+  })
+
+  it('shared prompt sentences live only in core/prompt.ts; tool-owned rules live with their tools', () => {
     const root = new URL('../../../', import.meta.url)
     const home = new URL('packages/core/src/prompt.ts', root).pathname
     const sources = ['packages/core/src', 'apps/desktop/src'].flatMap(dir => readdirSync(new URL(dir, root), { recursive: true, encoding: 'utf8' }).filter(name => /\.tsx?$/.test(name)).map(name => new URL(`${dir}/${name}`, root).pathname)).filter(path => path !== home)
@@ -134,7 +171,7 @@ describe('one prompt builder: every role builds the same prompt the parent commi
     for (const old of [oldVoice, oldWorkReply, oldPlain.trim(), oldWrite, oldSpeak]) expect(sentences.some(sentence => sentence.includes(old))).toBe(false)
     expect(sentences.some(sentence => `${sentence}${PLAIN_WORK_RULE}` === TO_PERSON_RULE)).toBe(true)
     expect([...sentences, oldEarlier, oldWrite].length).toBeGreaterThan(60)
-    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|PERSIST_RULE|PERSIST_WEB_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|TO_PERSON_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|PAGE_DELTA_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
+    const names = /\b(?:const|function)\s+(VOICE_RULE|NO_SELF_RESEARCH_RULE|PERSIST_RULE|PERSIST_WEB_RULE|TEAM_LEAD_RULE|ONE_BUBBLE_RULE|COLLEAGUE_CORE_RULE|CHOICE_RULE|FILE_JOB_RULE|COLLEAGUE_RULE|PRIOR_CLAIM_RULE|PLAIN_WORK_RULE|TO_PERSON_RULE|DESKTOP_TASK_RULE|DESKTOP_GATE_RULE|REFERENCE_ID_RULE|PLAN_RULE|WORK_REPLY_RULE|REPLIES_RULE|COMMAND_STEP_RULE|OFFICE_FILE_RULE|TEXTING_RULE|HELPER_PERSONA|HANDED_BACK|sessionRules|openRuleLines|personaLines|openSystemLines|conversationLines|resumeLines|skillIndexLines|firstLinePrompt|firstLineNote)\b/
     for (const path of sources) {
       const text = readFileSync(path, 'utf8')
       expect(text, path).not.toMatch(names)

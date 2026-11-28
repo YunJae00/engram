@@ -202,7 +202,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
       {
         name: 'read_open_page',
         description:
-            'read the currently open page, including current form values outside the viewport; use "find" with a field label before asking the person to resize or concluding a saved value is empty. A long page comes in parts; "part" picks one and "find" jumps to matching text. Distinguish an empty current field from a verified empty saved record — args: {"part": 1, "find": "..."}',
+            'read the currently open page, including current form values outside the viewport; deltas replace only indicated body lines in their base observation; control numbers are current; a partial control list names the next part; if the base is gone, read again for a full report; never infer success from an unchanged page; use "find" with a field label before asking the person to resize or concluding a saved value is empty. A long page comes in parts; "part" picks one and "find" jumps to matching text. Distinguish an empty current field from a verified empty saved record — args: {"part": 1, "find": "..."}',
         argsSchema: { type: 'object', properties: { part: { type: 'integer' }, find: { type: 'string' } } },
         async run(args, context) {
           if (!courier.readOpen) return 'nothing is open — use open_page first'

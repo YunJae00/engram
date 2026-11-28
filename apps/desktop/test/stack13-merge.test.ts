@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, LOOKUP_TOOLS, TEAM_ANSWER_MS, updateTask, WORK_REPLY_RULE, type AgentTool, type VaultPaths } from 'core'
 import type { ToolSessionJob } from '../../../packages/core/src/engine/types.js'
-import { COLLECTION_RULE } from '../../../packages/core/src/collection-progress.js'
 import { CHOICE_RULE } from '../../../packages/core/src/prompt.js'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
@@ -30,7 +29,7 @@ describe('stack-13 merge: prompt selection reaches a lookup teammate', () => {
     await vi.waitFor(() => expect(jobs.length).toBeGreaterThan(0), { timeout: 3_000 })
     const first = jobs[0]!, chars = first.system.length + first.prompt.length
     console.log(`[stack13] lookup teammate prompt: system ${first.system.length} + prompt ${first.prompt.length} = ${chars} chars`)
-    expect(first.system).not.toContain(COLLECTION_RULE)
+    expect(first.system).not.toContain('Before the final answer after browser work')
     expect(first.system).not.toContain(WORK_REPLY_RULE)
     expect(first.system).not.toContain(CHOICE_RULE)
     expect(first.system).not.toContain('file_create_copy')

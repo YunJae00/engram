@@ -147,7 +147,7 @@ ${note.body.slice(0, 2_000)}`
     {
       name: 'find_procedure',
       description:
-        'find a task or browser procedure the person previously saved — args: {"task": "..."}',
+        'Start a website chore here. Find a task or browser procedure the person previously saved; if none fits, silently do the job directly on the site. Args: {"task": "..."}',
       argsSchema: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] },
       async run(args, context) {
         const task = str(args, 'task') || context.task
@@ -289,7 +289,7 @@ ${note.body.slice(0, 2_000)}`
     tools.push({
       name: 'run_procedure',
       description:
-        'start a saved procedure or load a saved task to carry out with current observations; returned instructions are not a completed result. "again": true only after the person said to repeat a job — args: {"id": "rt-...", "slots": {"name": "value"}, "again": false}',
+        'When the person names a saved procedure, run it. Start a saved procedure or load a saved task to carry out with current observations; returned instructions are not a completed result. "again": true only after the person said to repeat a job — args: {"id": "rt-...", "slots": {"name": "value"}, "again": false}',
       argsSchema: {
         type: 'object',
         properties: { id: { type: 'string' }, slots: { type: 'object', additionalProperties: { type: 'string' } }, again: { type: 'boolean' } },

@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { runToolSession } from '../src/agent-session.js'
 import { sessionShape } from '../src/agent-session-shape.js'
-import { COMMAND_STEP_RULE, OFFICE_FILE_RULE, PAGE_DELTA_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
+import { COMMAND_STEP_RULE, OFFICE_FILE_RULE, REPLIES_RULE, TEXTING_RULE, WORK_REPLY_RULE } from '../src/prompt.js'
 import { sessionRules } from './rules.js'
 import { DESKTOP_TASK_RULE } from '../src/prompt.js'
 import { CHOICE_RULE, COLLEAGUE_CORE_RULE, FILE_JOB_RULE, TEAM_LEAD_RULE, VOICE_RULE } from '../src/prompt.js'
-import { COLLECTION_RULE } from '../src/collection-progress.js'
 import { DOCUMENT_CHECK_RULE } from '../src/office-verification.js'
 import { LOOKUP_TOOLS } from '../src/team-hire-tools.js'
 import type { Engine, EngineCwd, NativeTools, ToolSessionJob } from '../src/engine/types.js'
@@ -28,9 +27,8 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
 
   it('a lookup gets no receipt, file, Office, desktop or work-reply rule', () => {
     for (const rules of [teammate, lone]) {
-      for (const rule of [COLLECTION_RULE, OFFICE_FILE_RULE, DOCUMENT_CHECK_RULE, DESKTOP_TASK_RULE, ...WORK_ONLY]) expect(count(rules, rule)).toBe(0)
+      for (const rule of [OFFICE_FILE_RULE, DOCUMENT_CHECK_RULE, DESKTOP_TASK_RULE, ...WORK_ONLY]) expect(count(rules, rule)).toBe(0)
       expect(count(rules, COLLEAGUE_CORE_RULE)).toBe(1)
-      expect(count(rules, PAGE_DELTA_RULE)).toBe(0)
     }
     expect(count(teammate, TEAM_LEAD_RULE)).toBe(0)
     expect(count(lone, TEAM_LEAD_RULE)).toBe(1)
@@ -41,7 +39,7 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
       expect(count(rules, WORK_REPLY_RULE)).toBe(1)
       expect(count(rules, REPLIES_RULE)).toBe(1)
       expect(count(rules, CHOICE_RULE)).toBe(1)
-      expect(count(rules, COLLECTION_RULE)).toBe(0)
+      expect(rules).not.toContain('Before the final answer after browser work')
     }
     expect(count(note, OFFICE_FILE_RULE)).toBe(0)
     expect(count(deck, OFFICE_FILE_RULE)).toBe(1)
@@ -70,7 +68,7 @@ describe('c13c: the turn kind reaches the session from its options', () => {
   }
   it('a lookup has none of them either; a plain turn has each once', async () => {
     const lookup = await run({ lookup: true }, LANE_MENU)
-    for (const rule of [WORK_REPLY_RULE, CHOICE_RULE, REPLIES_RULE, COLLECTION_RULE]) expect(count(`${lookup.system}\n${lookup.prompt}`, rule)).toBe(0)
+    for (const rule of [WORK_REPLY_RULE, CHOICE_RULE, REPLIES_RULE]) expect(count(`${lookup.system}\n${lookup.prompt}`, rule)).toBe(0)
     const work = await run({})
     expect(count(work.system, WORK_REPLY_RULE)).toBe(1)
     expect(count(work.system, CHOICE_RULE)).toBe(1)
@@ -87,15 +85,14 @@ describe('c13c: the turn kind reaches the session from its options', () => {
 
 describe('c13c r2: rules follow the turn kind, not just the tools offered', () => {
   const fileTools = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'open_page', 'read_open_page']
-  it('a lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
+  it('a lookup with every file tool gets no make, hand-in, move, command or Office rule, only where a named file is', () => {
     const work = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: fileTools })
     const make = (text: string): boolean => /file_create_copy|file_move|Commands are not|short script/.test(text)
     expect(make(work)).toBe(true)
-    expect(count(work, PAGE_DELTA_RULE)).toBe(1)
     for (const kind of ['lookup'] as const) {
       const rules = sessionRules({ ...base, workflow: true, planned: true, kind, tools: fileTools })
       expect(make(rules)).toBe(false)
-      for (const rule of [OFFICE_FILE_RULE, PAGE_DELTA_RULE, COMMAND_STEP_RULE]) expect(count(rules, rule)).toBe(0)
+      for (const rule of [OFFICE_FILE_RULE, COMMAND_STEP_RULE]) expect(count(rules, rule)).toBe(0)
       expect(rules).toContain(`workspace folder is ${native.workspace}`)
     }
   })
@@ -127,18 +124,18 @@ describe('c13c r3: a lookup gets no act rule, whatever flags and tools it has', 
       const on = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind, tools: every })
       const off = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(on).toBe(off)
-      for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(on, rule)).toBe(0)
+      for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, DESKTOP_TASK_RULE]) expect(count(on, rule)).toBe(0)
       expect(count(on, 'For a requested file download')).toBe(1)
     }
     const work = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind: 'work', tools: every })
-    for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(work, rule)).toBe(1)
+    for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, DESKTOP_TASK_RULE]) expect(count(work, rule)).toBe(1)
   })
   it('a lookup offered a page tool is opened without the receipt tool or rule', async () => {
     const jobs: ToolSessionJob[] = []
     const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '네' } } } as unknown as Engine
     const tools = ['open_page', 'read_open_page', 'file_read'].map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
     await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '이 링크 제목만 말해줘', { lookup: true })
-    expect(count(jobs[0]!.system, COLLECTION_RULE)).toBe(0)
+    expect(jobs[0]!.system).not.toContain('Before the final answer after browser work')
     expect(jobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
   })
 })

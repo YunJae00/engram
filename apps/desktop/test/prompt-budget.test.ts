@@ -73,6 +73,12 @@ describe('prompt sizes cannot grow back', () => {
     expect(over(Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, text.length])))).toEqual([])
   })
 
+  it('the runner system and tools together are smaller than the parent', () => {
+    expect(ceilings['lead-runner']).toBe(17900)
+    expect(ceilings['lead-runner-tools']).toBe(23960)
+    expect(texts['lead-runner']!.length + texts['lead-runner-tools']!.length).toBeLessThan(19900 + 23000)
+  })
+
   it('the teammate is measured with its member persona, so a longer persona is over the ceiling', () => {
     expect(texts['teammate']).toContain(persona)
     expect(texts['lead-lookup']).not.toContain(persona)
@@ -244,7 +250,7 @@ describe('the sentences that must survive word for word', () => {
         expect(count(text, old), old).toBe(0)
       }
       expect(count(was.system, 'Before recording an item as unverified')).toBe(2)
-      expect(count(text, 'Before recording an item as unverified')).toBe(1)
+      expect(count(text, 'Before recording an item as unverified')).toBe(0)
     }
     const link = Object.keys(keep['lead-runner']!).find(sentence => sentence.startsWith('A fact read from a page or results carries a Markdown link'))!
     for (const name of ['lead-lookup', 'teammate', 'helper']) {
