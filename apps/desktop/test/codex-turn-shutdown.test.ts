@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -29,4 +30,15 @@ it('returns the SDK response and retires its owned process', async () => {
   child.stdout.write(JSON.stringify({ text: 'Done' }) + '\n')
   await expect(result).resolves.toBe('Done')
   expect(child.kill).toHaveBeenCalledOnce()
+})
+
+it('points the worker at a file that exists when running from the TypeScript source tree', async () => {
+  const { runCodexTurn } = await import('../src/main/codex-turn.js')
+  const pending = runCodexTurn({ options: {}, thread: {}, input: 'test' }, new AbortController().signal)
+  const worker = (fake.calls[0]![1] as string[]).at(-1)
+  expect(worker).toBeDefined()
+  expect(existsSync(worker!)).toBe(true)
+  const child = fake.children[0] as { stdout: PassThrough; kill: ReturnType<typeof vi.fn> }
+  child.stdout.write(JSON.stringify({ text: 'ok' }) + '\n')
+  await expect(pending).resolves.toBe('ok')
 })

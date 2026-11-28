@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import type { CodexOptions, Input, ThreadOptions } from '@openai/codex-sdk'
@@ -6,13 +7,22 @@ import { ProcessClient } from './process-client.js'
 
 export interface CodexTurn { options: CodexOptions; thread: Omit<ThreadOptions, 'modelReasoningEffort'> & { modelReasoningEffort?: ReasoningEffort }; input: Input; outputSchema?: unknown }
 
+export function codexWorkerPath(): string {
+  const js = fileURLToPath(new URL('./codex-worker.js', import.meta.url))
+  if (existsSync(js)) return js
+  const ts = fileURLToPath(new URL('./codex-worker.ts', import.meta.url))
+  if (existsSync(ts)) return ts
+  throw new Error(`The Codex worker is missing (${js})`)
+}
+
 export function runCodexTurn(request: CodexTurn, signal: AbortSignal): Promise<string> {
   signal.throwIfAborted()
   return new Promise((resolve, reject) => {
-    const child = new ProcessClient(process.execPath, [fileURLToPath(new URL('./codex-worker.js', import.meta.url))], {
+    const child = new ProcessClient(process.execPath, [codexWorkerPath()], {
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, signal, killTree: true,
     })
-    child.stderr.resume()
+    const errChunks: string[] = []
+    child.stderr.on('data', chunk => { errChunks.push(String(chunk)) })
     const lines = createInterface({ input: child.stdout })
     let settled = false
     const finish = (error?: Error, text = '') => {
@@ -28,7 +38,7 @@ export function runCodexTurn(request: CodexTurn, signal: AbortSignal): Promise<s
     child.once('error', error => finish(error))
     child.stdin.on('error', error => finish(error))
     lines.on('error', error => finish(error))
-    child.once('close', () => finish(new Error('The model process closed before returning a result.')))
+    child.once('close', () => finish(new Error(errChunks.length ? 'The model process closed before returning a result. ' + errChunks.join('').trim() : 'The model process closed before returning a result.')))
     lines.on('line', line => {
       try {
         const reply = JSON.parse(line) as { text?: unknown; error?: unknown }
