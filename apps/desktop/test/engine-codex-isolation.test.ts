@@ -32,6 +32,7 @@ vi.mock('../src/main/engine-cloud.js', async (original) => ({
 vi.mock('../src/main/run-text.js', async (original) => ({ ...await original<typeof import('../src/main/run-text.js')>(), runText: fixture.catalog }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: fixture.settings }))
 import { CODEX_TIER, CodexEngine, RUNTIME_TOOLS_OFF, disableMcpOverrides, forgetCodexCatalog } from '../src/main/engine-codex.js'
+import { lookAsHelper } from '../src/main/helper-lanes.js'
 import { ClaudeEngine, fetchClaudeModels, forgetClaudeModels } from '../src/main/engine-claude.js'
 import { claudeEngine, claudeInputs } from '../src/main/engine-cloud.js'
 
@@ -73,6 +74,11 @@ describe('text runtime desktop isolation boundary', () => {
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-luna', modelReasoningEffort: 'low' }))
     await collect(engine.run({ prompt: '바다 생물의 차이 설명해줘', workdir: WORKDIR, modelHint: 'smart' }))
     expect(fixture.threadOptions).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'gpt-6-astra', modelReasoningEffort: 'high' }))
+  })
+  it('routes a delegated museum lookup to the smart tier', async () => {
+    const engine = { id: 'codex', runTools: vi.fn(async () => ({ answer: '관찰 기록을 찾았어요.' })) } as unknown as CodexEngine
+    await lookAsHelper({ channel: 'bot-museum', engine, workdir: WORKDIR, guided: false, toolsFor: async () => [], onStep: () => {} }, '고대 유리 전시 기록을 찾아줘', 0)
+    expect(engine.runTools).toHaveBeenCalledWith(expect.objectContaining({ modelHint: 'smart' }))
   })
   it('uses the tested connection model for quick voice and keeps its low effort', async () => {
     fixture.connection.mockReturnValue({ model: 'gateway-tested' })

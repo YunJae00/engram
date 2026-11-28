@@ -22,6 +22,7 @@ export async function lookAsHelper(input: {
     const result = await runComet({ engine: input.engine, workdir: input.workdir, tools }, question, {
       ...(signal ? { signal } : {}),
       guided: input.guided,
+      role: 'deep',
       maxCalls: HELPER_CALLS,
       persona: HELPER_PERSONA,
       onStep: input.onStep,
