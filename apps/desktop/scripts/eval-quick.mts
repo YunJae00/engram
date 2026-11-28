@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron, type Page } from '@playwright/test'
 import { initVault } from 'core'
 import { CASES } from './eval-quick-cases.mts'
+import { resolveRunnerEngine } from './runner-engine.mts'
 import { servePages, type CaseRun, type EvalCase, type SiteLog } from '../src/main/runner.js'
 
 const arg = (name: string) => process.argv.find(one => one.startsWith(`--${name}=`))?.slice(name.length + 3)
-const brains = (arg('brain') ?? 'both') === 'both' ? ['claude', 'codex'] : [arg('brain')!]
+const selectedBrain = arg('brain') ?? resolveRunnerEngine()
+const brains = selectedBrain === 'both' ? ['claude', 'codex'] : [selectedBrain]
 const repeat = Number(arg('repeat') ?? 1)
 const parallel = Number(arg('parallel') ?? 4)
 const only = arg('only')?.split(',')
